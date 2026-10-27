@@ -36,6 +36,11 @@ export function cardDrawable(card: CardInterface): boolean {
   return card.unsupported === null && card.scripts.length > 0;
 }
 
+/** 這張卡帶整頁介面：沒被判不支援，且至少一支腳本的替換範本本身抽得出整頁 HTML（匯入提示用，不套開場白） */
+export function cardCarriesPage(card: CardInterface): boolean {
+  return card.unsupported === null && card.scripts.some((script) => extractShell(script.replace_string) !== null);
+}
+
 /**
  * 一段候選文字與它的來源。腳本按卡隔離（ST 的卡片 regex 只套在那張卡的訊息上）：
  * - `owner`：已知所屬的卡（卡片開場白、已貼出且原文對得上的開場白、骨架合成樓），只給那張卡（cardKey）；

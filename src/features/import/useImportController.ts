@@ -10,7 +10,7 @@ import { hasRefactorCardChunk } from "../refactor/refactor-card";
 import { useTurnWait } from "../play/useTurnWait";
 import { type WorldbookEntry } from "../../shared/contracts/backend-contracts";
 import { PALETTE, type CharacterMeta } from "../characters/card-model";
-import { type CardInterface } from "../card-interface/interface-card";
+import { cardCarriesPage, type CardInterface } from "../card-interface/interface-card";
 import { looksLikeWebSave } from "../../shared/contracts/web-save/web-save";
 
 interface CharacterImport {
@@ -308,7 +308,7 @@ export function useImportController(input: {
       const interfaces = await refreshInterfaces(worldId);
       const mine = interfaces.find((card) => card.character_id === characterId);
       const notice =
-        mine && mine.scripts.length > 0
+        mine && cardCarriesPage(mine)
           ? t("importCardInterface")
           : mine?.unsupported === "scrypt"
             ? t("importCardScrypt")

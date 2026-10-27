@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyScripts,
   candidateCards,
+  cardCarriesPage,
   cardDrawable,
   buildEscapeShimSource,
   buildImeGuardSource,
@@ -498,5 +499,41 @@ describe("讀不出的原卡（unreadable）", () => {
     const healthy: CardInterface = { ...broken, character_id: "c2", unsupported: null, scripts: [script] };
     expect(cardDrawable(broken)).toBe(false);
     expect(candidateCards([broken, healthy], "x")).toEqual([healthy]);
+  });
+});
+
+describe("cardCarriesPage（匯入提示的判準）", () => {
+  const base: CardInterface = {
+    character_id: "c1",
+    character_name: "卡",
+    scripts: [],
+    unsupported: null,
+    opening: null,
+    mvu: false,
+  };
+  const page = makeScript({ find_regex: "/<UI>/", replace_string: "<!DOCTYPE html><html><body>x</body></html>" });
+
+  it("只有美化 regex：不算", () => {
+    const beauty = makeScript({ find_regex: "/a/", replace_string: "<span class=\"x\">a</span>" });
+    expect(cardCarriesPage({ ...base, scripts: [beauty] })).toBe(false);
+  });
+
+  it("替換範本帶整頁 HTML：算", () => {
+    expect(cardCarriesPage({ ...base, scripts: [page] })).toBe(true);
+  });
+
+  it("圍欄包住的整頁也算", () => {
+    const fenced = makeScript({ replace_string: "```html\n<html><body>x</body></html>\n```" });
+    expect(cardCarriesPage({ ...base, scripts: [fenced] })).toBe(true);
+  });
+
+  it("被判不支援的卡不算", () => {
+    expect(cardCarriesPage({ ...base, scripts: [page], unsupported: "remote_loader" })).toBe(false);
+  });
+
+  it("範本有頁面、開場沒命中 find：仍算（已知限制，匯入先預告、鈕要等模型輸出）", () => {
+    const card = { ...base, scripts: [page], opening: "沒有標籤的開場白" };
+    expect(cardCarriesPage(card)).toBe(true);
+    expect(findShell([card], [card.opening])).toBeNull();
   });
 });
