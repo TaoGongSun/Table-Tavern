@@ -1,5 +1,5 @@
 // 逐字稿事件標頭（後端 EventMarker 代碼）的十語系字典；與後端 data/scene/marker.rs 共讀同一份 JSON。
-// 鍵是 `marker_<code>`，index.ts 的 t() 把這份併進同一個 MsgKey 空間；組字在 features/play/event-text.ts。
+// 鍵是 `marker_<code>`，index.ts 的 t() 把這份併進同一個 MsgKey 空間；組字在 shared/ui/event-text.ts。
 import COPY from "../../shared/contracts/transcript-marker.json";
 
 type TranscriptMarkerLang = keyof typeof COPY;

@@ -5,8 +5,8 @@
 import { act, type FormEvent } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { t } from "../../i18n";
-import type { AppConfig, TranscriptEvent } from "../../shared/contracts/backend-contracts";
+import { t } from "../../../i18n";
+import type { AppConfig, TranscriptEvent } from "../../../shared/contracts/backend-contracts";
 
 type Invoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
 type Listener = (event: { payload: unknown }) => void;
@@ -27,7 +27,7 @@ vi.mock("@tauri-apps/api/event", () => ({
   }),
 }));
 
-import { PlayView } from "./PlayView";
+import { PlayView } from "../PlayView";
 import { useChatController, type ChatController, type TurnFailure } from "./useChatController";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

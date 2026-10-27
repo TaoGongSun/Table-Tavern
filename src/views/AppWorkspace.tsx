@@ -5,9 +5,9 @@ import { FormatBanner, FormatRepair } from "../features/world-format/FormatNotic
 import type { RepairNotice, TableGate } from "../features/world-format/open-world";
 import type { CardInterfaceController } from "../features/card-interface/useCardInterfaceController";
 import type { CharacterController } from "../features/characters/useCharacterController";
-import type { ChatController } from "../features/play/useChatController";
+import type { ChatController } from "../features/play/chat/useChatController";
 import type { ImportController } from "../features/import/useImportController";
-import { advanceThenReopen, type SceneActions } from "../features/play/useSceneActions";
+import { advanceThenReopen, type SceneActions } from "../features/play/scene/useSceneActions";
 import type { TableStateController } from "../features/table-state/useTableStateController";
 import {
   GM_TARGET,
@@ -19,7 +19,7 @@ import { buildOverlayComposer, CardInterfaceOverlay } from "../features/card-int
 import { MainView } from "./MainView";
 import { Onboarding } from "../features/ai-connection/Onboarding";
 import { PlayView } from "../features/play/PlayView";
-import { useSceneBudget } from "../features/play/useSceneBudget";
+import { useSceneBudget } from "../features/play/scene/useSceneBudget";
 import { CastRail } from "../features/characters/CastRail";
 import { StateBar } from "../features/table-state/StateBar";
 import { useKnownPresentNames } from "../features/table-state/present-glyphs";

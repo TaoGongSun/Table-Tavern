@@ -1,11 +1,11 @@
 // 回合沒完成的攔截式彈窗：只有「關閉」。打字送出卻沒能自動收回時，玩家剛送出的原文放在這裡，
 // 關掉前都選得到、複製得走（不另做複製鈕）。
 import { useEffect, useState } from "react";
-import { t } from "../../i18n";
-import { Dialog } from "../../shared/ui/Dialog";
-import { AiErrorText, offersSceneAdvance } from "../../shared/ui/atoms";
+import { t } from "../../../i18n";
+import { Dialog } from "../../../shared/ui/Dialog";
+import { AiErrorText, offersSceneAdvance } from "../../../shared/ui/atoms";
 import type { TurnFailure } from "./useChatController";
-import { offersWorldInfoReset } from "./world-info-reset";
+import { offersWorldInfoReset } from "../world-info-reset";
 
 /** 彈窗還開著且帶玩家原文時，後續失敗不覆寫它——原文關窗前都要拿得到 */
 export function nextTurnFailure(previous: TurnFailure | null, next: TurnFailure): TurnFailure {

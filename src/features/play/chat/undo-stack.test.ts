@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { TranscriptEvent } from "../../shared/contracts/backend-contracts";
+import type { TranscriptEvent } from "../../../shared/contracts/backend-contracts";
 import { consumeFrom, pushUndone, restorableIndex, restorePayload, tailMatches } from "./undo-stack";
 
 function line(text: string, id?: string): TranscriptEvent {

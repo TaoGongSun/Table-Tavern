@@ -3,21 +3,12 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import {
-  createEventDeduper,
-  FAILOVER_EVENT,
-  type FailoverPayload,
-  failoverNotice,
-  SWITCHED_EVENT,
-  type SmartFreeNotice,
-  type SwitchedPayload,
-  switchedNotice,
-} from "../ai-connection/smart-free-events";
-import { AppConfig, PlayerAppend, TranscriptEvent } from "../../shared/contracts/backend-contracts";
-import { CharacterMeta } from "../characters/card-model";
-import { backendCode } from "../../shared/ui/backend-text";
-import { showWorldInfoNotices } from "./world-info-notices";
-import { askWorldInfoReset, offersWorldInfoReset } from "./world-info-reset";
+import { AppConfig, PlayerAppend, TranscriptEvent } from "../../../shared/contracts/backend-contracts";
+import { CharacterMeta } from "../../characters/card-model";
+import { backendCode } from "../../../shared/ui/backend-text";
+import { showWorldInfoNotices } from "../world-info-notices";
+import { askWorldInfoReset, offersWorldInfoReset } from "../world-info-reset";
+import { type ChatNotice, useSmartFreeNotices } from "./useSmartFreeNotices";
 import {
   consumeFrom,
   hasContent,
@@ -47,13 +38,6 @@ interface WriteTrack {
   rev: number;
   inFlight: number;
   waiters: (() => void)[];
-}
-
-/** 聊天室裡的一行非持久系統提示（不進逐字稿）；at＝出現時逐字稿有幾則，畫面據此插在那個位置 */
-export interface ChatNotice {
-  id: string;
-  at: number;
-  notice: SmartFreeNotice;
 }
 
 export interface ChatController {
@@ -200,7 +184,7 @@ export function useChatController({
   // 換幕容量關卡的動作收據（scene_budget::gate）：一個玩家動作（送出、請某某發言、旁白、推進）
   // 一個 id，玩家句與其後所有回覆都帶同一個，後端同一動作只算一次容量
   const actionIdRef = useRef<string | null>(null);
-  const [notices, setNotices] = useState<(ChatNotice & { gen: number })[]>([]);
+  const visibleNotices = useSmartFreeNotices(worldId, scene, generation, ownTurns);
   const [canStop, setCanStop] = useState(false);
 
   /** 同步問「有沒有一輪對話或旁白在跑」：state 的 busy 會晚一拍，守門要用這個 */
@@ -234,39 +218,6 @@ export function useChatController({
       unlisten?.();
     };
   }, [worldId]);
-
-  useEffect(() => {
-    let disposed = false;
-    const stops: (() => void)[] = [];
-    const accept = createEventDeduper();
-    const gen = generation.current;
-    const show = (
-      payload: { eventId: string; world: string | null; turnId: string | null },
-      notice: SmartFreeNotice,
-    ) => {
-      if (disposed || generation.current !== gen) return;
-      if (payload.turnId === null || payload.world !== worldId) return;
-      const anchor = ownTurns.current.get(payload.turnId);
-      if (anchor === undefined) return;
-      if (!accept(payload.eventId)) return;
-      setNotices((previous) => [
-        ...previous,
-        { id: payload.eventId, at: anchor, notice, gen },
-      ]);
-    };
-    const track = (promise: Promise<() => void>) =>
-      void promise.then((stop) => {
-        if (disposed) stop();
-        else stops.push(stop);
-      });
-    track(listen<FailoverPayload>(FAILOVER_EVENT, (event) => show(event.payload, failoverNotice(event.payload))));
-    track(listen<SwitchedPayload>(SWITCHED_EVENT, (event) => show(event.payload, switchedNotice(event.payload))));
-    return () => {
-      disposed = true;
-      stops.forEach((stop) => stop());
-      setNotices([]);
-    };
-  }, [worldId, scene]);
 
   const takeResponseTruncated = useCallback(async () => {
     // Rust 端先 emit 再讓 invoke resolve；讓事件佇列多一個 tick 完成投遞。
@@ -949,11 +900,6 @@ export function useChatController({
     setGenerating(null);
     setStreamText("");
   }, []);
-
-  const visibleNotices = useMemo(
-    () => notices.filter((entry) => entry.gen === generation.current),
-    [notices, worldId, scene],
-  );
 
   return useMemo(
     () => ({

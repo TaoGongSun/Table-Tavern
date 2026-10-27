@@ -41,14 +41,14 @@ import {
   type ChatController,
   type TurnFailure,
   useChatController,
-} from "./features/play/useChatController";
-import { nextTurnFailure, TurnFailedDialog } from "./features/play/TurnFailedDialog";
+} from "./features/play/chat/useChatController";
+import { nextTurnFailure, TurnFailedDialog } from "./features/play/chat/TurnFailedDialog";
 import { showWorldInfoNotices } from "./features/play/world-info-notices";
 import { resetWorldInfoTiming } from "./features/play/world-info-reset";
 import { useImportController, type WebSaveImport } from "./features/import/useImportController";
 import { openWebSaveTable as openWebSaveTableFlow } from "./features/import/web-save-table";
 import { useOpeningPost } from "./features/import/useOpeningPost";
-import { useSceneActions } from "./features/play/useSceneActions";
+import { useSceneActions } from "./features/play/scene/useSceneActions";
 import { useGmOnlyTable } from "./features/play/useGmOnlyTable";
 import { type TurnWaitOp, useTurnWait } from "./features/play/useTurnWait";
 import { loadBranchBindings, useTableStateController } from "./features/table-state/useTableStateController";

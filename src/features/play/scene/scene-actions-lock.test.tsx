@@ -16,7 +16,7 @@ vi.mock("@tauri-apps/plugin-opener", () => ({ revealItemInDir: vi.fn(async () =>
 
 import { useRef, useState } from "react";
 import { advanceThenReopen, useSceneActions, type SceneActions } from "./useSceneActions";
-import { useTableOp } from "../lobby/useTableOp";
+import { useTableOp } from "../../lobby/useTableOp";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

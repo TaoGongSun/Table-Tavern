@@ -7,8 +7,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TranscriptEvent } from "../../shared/contracts/backend-contracts";
 import { PlayView } from "./PlayView";
 import { t } from "../../i18n";
-import type { SceneBudgetReply } from "./scene-budget";
-import type { ChatNotice } from "./useChatController";
+import type { SceneBudgetReply } from "./scene/scene-budget";
+import type { ChatNotice } from "./chat/useSmartFreeNotices";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

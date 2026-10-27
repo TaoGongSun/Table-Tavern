@@ -1,11 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { confirm, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import type { SceneLabel, TranscriptEvent } from "../../shared/contracts/backend-contracts";
-import { t } from "../../i18n";
-import { backendCode } from "../../shared/ui/backend-text";
-import { showWorldInfoNotices } from "./world-info-notices";
-import { askWorldInfoReset, offersWorldInfoReset } from "./world-info-reset";
+import type { SceneLabel, TranscriptEvent } from "../../../shared/contracts/backend-contracts";
+import { t } from "../../../i18n";
+import { backendCode } from "../../../shared/ui/backend-text";
+import { showWorldInfoNotices } from "../world-info-notices";
+import { askWorldInfoReset, offersWorldInfoReset } from "../world-info-reset";
 
 interface SceneChatActions {
   events: TranscriptEvent[];

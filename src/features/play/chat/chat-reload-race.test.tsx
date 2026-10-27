@@ -5,7 +5,7 @@
 import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AppConfig, TranscriptEvent } from "../../shared/contracts/backend-contracts";
+import type { AppConfig, TranscriptEvent } from "../../../shared/contracts/backend-contracts";
 
 type Invoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
 const invokeMock = vi.hoisted(() => vi.fn<Invoke>());

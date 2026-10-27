@@ -5,7 +5,7 @@ import { t } from "../../i18n";
 import { IconClose, IconSceneAdvance, IconSend, IconStop } from "../../shared/ui/icons";
 import { type CardChat } from "./card-chat-shim";
 import { type CardMvu } from "./mvu/card-mvu-shim";
-import { wouldOverflow, type SummaryBudget } from "../play/scene-budget";
+import { wouldOverflow, type SummaryBudget } from "../play/scene/scene-budget";
 import { ShellFrames } from "./shell-frames/ShellFrames";
 import { slotWindow, type ShellRegistry } from "./shell-frames/shell-frames-state";
 

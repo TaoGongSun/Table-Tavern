@@ -117,7 +117,7 @@ export interface PlayerAppend {
 }
 
 // 逐字稿事件標頭代碼：與 Rust `EventMarker` 同形（type 為判別欄）。認不得的 type 走 UnknownMarker，
-// 顯示前一律經 features/play/event-text.ts 的 parseMarker 做執行期形狀檢查。
+// 顯示前一律經 shared/ui/event-text.ts 的 parseMarker 做執行期形狀檢查。
 export type KnownMarker =
   | { type: "scene_summary" }
   | { type: "card_arrival"; name: string }

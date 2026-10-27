@@ -1,8 +1,8 @@
 // 收回／復原疊（undo-two-clicks-summary-line）：一下收一樓（後端回傳的那一組），復原整組放回。
 // 全 app 只有一疊，記著它屬於哪桌哪幕：換到別桌別幕時不顯示（比對不上），換回來照常可復原；
 // 收回／放回在途中換桌，疊照發起當時那桌那幕更新——後端已經寫成的事，疊一定要記上。
-import { TranscriptEvent } from "../../shared/contracts/backend-contracts";
-import { parseMarker } from "../../shared/ui/event-text";
+import { TranscriptEvent } from "../../../shared/contracts/backend-contracts";
+import { parseMarker } from "../../../shared/ui/event-text";
 
 /** 有本文，或帶已知標頭代碼（點名事件本文本來就空）才算有內容；空白回合不落地、不放回 */
 export function hasContent(event: TranscriptEvent): boolean {

@@ -3,7 +3,7 @@
 import { Fragment, FormEvent, ReactNode, useEffect, useLayoutEffect, useRef } from "react";
 import { t } from "../../i18n";
 import { TranscriptEvent } from "../../shared/contracts/backend-contracts";
-import type { ChatNotice } from "./useChatController";
+import type { ChatNotice } from "./chat/useSmartFreeNotices";
 import { CharacterMeta } from "../characters/card-model";
 import { noticeText } from "../ai-connection/smart-free-events";
 import { StoryText } from "../../shared/ui/atoms";
@@ -11,7 +11,7 @@ import { eventDisplayText, speakerDisplayName } from "../../shared/ui/event-text
 import gmBook from "../../assets/gm-book.png";
 import { IconSend, IconStop } from "../../shared/ui/icons";
 import { useStickToBottom } from "../story-scroll/useStickToBottom";
-import { capacityHint, wouldOverflow, type SceneBudgetReply } from "./scene-budget";
+import { capacityHint, wouldOverflow, type SceneBudgetReply } from "./scene/scene-budget";
 import { streamDisplayText } from "./stream-display";
 
 // 換場提醒門檻：粗略以字元數估算紀錄長度，不精算 token。

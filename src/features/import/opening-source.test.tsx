@@ -29,7 +29,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 vi.mock("@tauri-apps/plugin-opener", () => ({ revealItemInDir: vi.fn(async () => {}) }));
 
 import { useImportController, type ImportController } from "./useImportController";
-import { useChatController, type ChatController } from "../play/useChatController";
+import { useChatController, type ChatController } from "../play/chat/useChatController";
 import { useOpeningPost } from "./useOpeningPost";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
