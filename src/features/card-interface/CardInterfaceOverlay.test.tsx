@@ -285,6 +285,17 @@ describe("CardInterfaceOverlay 分頁與輸入列", () => {
     expect(onPickCard).toHaveBeenCalledWith("c9");
   });
 
+  it("結構鎖：工具列是覆蓋層第一個直接子層、排在 iframe 區之前（不浮在卡片上；遮擋以截圖驗收）", async () => {
+    await mount({});
+    const overlay = host!.querySelector(".card-interface-overlay")!;
+    const kids = [...overlay.children];
+    const toolbar = overlay.querySelector(".card-interface-toolbar")!;
+    const frames = overlay.querySelector(".card-interface-frames")!;
+    expect(kids.indexOf(toolbar)).toBe(0);
+    expect(kids.indexOf(toolbar)).toBeLessThan(kids.indexOf(frames));
+    expect(toolbar.contains(frames)).toBe(false);
+  });
+
   it("輸入列：打字回報、送出走 onSubmit、停用條件照傳入、錯誤看得到、生成中換停止鈕", async () => {
     const onInputChange = vi.fn();
     const onSubmit = vi.fn((event: { preventDefault: () => void }) => event.preventDefault());

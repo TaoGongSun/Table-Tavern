@@ -9,16 +9,24 @@
   flex-direction: column;
 }
 
+/* 頂列：換幕與關閉獨立一列，卡片拿剩下的矩形，卡片頂列與右上按鈕不會被蓋住。高度隨按鈕（--control-h）自然計算 */
 .card-interface-toolbar {
-  position: absolute;
-  top: 0.6rem;
-  right: 0.6rem;
-  z-index: 1;
+  flex: none;
   display: flex;
+  align-items: center;
+  justify-content: flex-end;
   gap: 0.4rem;
+  padding: 0.3rem 0.6rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-1);
 }
 
-/* 殼雙緩衝：新殼（pending）墊在舊殼下面載，ready 才翻面。z-index: 0 自成疊層，整組留在工具列之下 */
+/* 右側換幕與關閉不被擠窄；窄時只有左邊的分頁縮 */
+.card-interface-toolbar > button {
+  flex: none;
+}
+
+/* 殼雙緩衝：新殼（pending）墊在舊殼下面載，ready 才翻面。z-index: 0 自成疊層，卡片內容的 z-index 不外漏、蓋不到頂列與輸入列 */
 .card-interface-frames {
   position: relative;
   z-index: 0;
@@ -48,12 +56,10 @@
   outline: none;
 }
 
-/* 多卡分頁：在換幕與關閉鈕左邊；卡名長就截字，滑過看全名 */
-.card-interface-toolbar {
-  max-width: calc(100% - 1.2rem);
-}
-
+/* 多卡分頁：頂列左側；卡名長就截字，滑過看全名 */
 .card-interface-tabs {
+  margin-right: auto;
+  min-width: 0;
   background: var(--surface-1);
 }
 
