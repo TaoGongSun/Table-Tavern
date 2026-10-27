@@ -153,3 +153,31 @@ function emptyListMark(before: string): boolean {
   const lines = before.slice(0, -1).split("\n");
   return EMPTY_YAML_KEY.test(lines[lines.length - 1] ?? "");
 }
+
+/**
+ * 骨架拆成集合區段的路徑與區段外的文字（區段整段拿掉，含標記）；區段不成對或巢狀回 null。規則同後端
+ * refactor_ai/shell_sections.rs：開頭 `{{#路徑}}`、收尾 `{{/路徑}}`，酒館註解 `{{// …}}` 不算收尾。
+ */
+export function splitSections(shell: string): { paths: string[]; outside: string } | null {
+  const paths: string[] = [];
+  let outside = "";
+  let cursor = 0;
+  let open: string | null = null;
+  for (const match of shell.matchAll(PLACEHOLDER)) {
+    const token = match[1].trim();
+    const at = match.index ?? 0;
+    if (token.startsWith("#")) {
+      if (open !== null || token.slice(1).trim() === "") return null;
+      outside += shell.slice(cursor, at);
+      open = token.slice(1).trim();
+    } else if (token.startsWith("/") && !token.startsWith("//")) {
+      if (open !== token.slice(1).trim()) return null;
+      paths.push(open);
+      open = null;
+      cursor = at + match[0].length;
+    }
+  }
+  if (open !== null) return null;
+  return { paths, outside: outside + shell.slice(cursor) };
+}
+

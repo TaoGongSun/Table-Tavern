@@ -200,6 +200,9 @@ pub struct RefactorExpandOutcome {
     pub interface: Option<RefactorInterface>,
     #[serde(default)]
     pub raw: String,
+    /// 產物驗證失敗、說得出原因時（例：哪個集合缺什麼）給玩家看的原因；其餘失敗是 None。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 /// 人物展開結果：character＝None 代表 AI 完全沒照 EMOJI／PUBLIC／PRIVATE 任何一個標記輸出

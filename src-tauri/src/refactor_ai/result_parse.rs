@@ -1,6 +1,7 @@
 use super::parse_common::{
     join_trim, parse_blocks, parse_json_block, strip_code_fence, strip_json_fence,
 };
+use super::shell_sections;
 use super::types::{
     EntryKind, GroupKind, RefactorAbsorbOutcome, RefactorExpandOutcome, RefactorNewEntry,
     RefactorPersonExpandOutcome, RefactorRewriteOutcome,
@@ -76,7 +77,30 @@ pub fn parse_person_expand(
 /// interface 展開（兩種 kind 同一份契約）：STATE／SHELL／RULES／GUIDE 四塊都要完整才算產物。
 /// 任何一塊缺席、壞掉或彼此對不上（佔位符引用的路徑不是 STATE 的葉子、或沒有欄位規則）一律回 None，
 /// 呼叫端把這條記成失敗、來源條目不被消耗——絕不落成「只有 STATE」的半套桌。
-fn parse_interface_expand(raw: &str, entry_uid: &str) -> Option<RefactorInterface> {
+/// 驗證失敗有說得出的原因（集合、佔位符）時回 Err(Some(原因))，其餘缺塊、壞 JSON 回 Err(None)。
+fn parse_interface_expand(raw: &str, entry_uid: &str) -> Result<RefactorInterface, Option<String>> {
+    let parsed = parse_interface_blocks(raw).ok_or(None)?;
+    let (state_fields, text, shell, rules, guide) = parsed;
+    check_placeholders(&shell, &state_fields, &rules).map_err(Some)?;
+    Ok(RefactorInterface {
+        state_fields,
+        source_uids: vec![entry_uid.to_owned()],
+        raw: text,
+        shell: Some(shell),
+        rules,
+        guide,
+    })
+}
+
+type InterfaceBlocks = (
+    serde_json::Value,
+    String,
+    String,
+    BTreeMap<String, FieldRule>,
+    String,
+);
+
+fn parse_interface_blocks(raw: &str) -> Option<InterfaceBlocks> {
     let blocks = parse_blocks(raw, &["STATE", "SHELL", "RULES", "GUIDE"]);
     let block = |marker: &str| blocks.iter().find(|block| block.marker == marker);
     let text = join_trim(&block("STATE")?.lines);
@@ -91,18 +115,10 @@ fn parse_interface_expand(raw: &str, entry_uid: &str) -> Option<RefactorInterfac
     }
     let rules: BTreeMap<String, FieldRule> = parse_json_block(Some(rules_block))?;
     let guide = join_trim(&block("GUIDE")?.lines);
-    if shell.is_empty() || guide.is_empty() || !placeholders_complete(&shell, &state_fields, &rules)
-    {
+    if shell.is_empty() || guide.is_empty() {
         return None;
     }
-    Some(RefactorInterface {
-        state_fields,
-        source_uids: vec![entry_uid.to_owned()],
-        raw: text,
-        shell: Some(shell),
-        rules,
-        guide,
-    })
+    Some((state_fields, text, shell, rules, guide))
 }
 
 /// 正文槽：App 每回合拿模型的訊息正文填進去。
@@ -172,43 +188,48 @@ fn leaf_at(state: &serde_json::Value, path: &str) -> bool {
     !node.is_object() && !node.is_array()
 }
 
-/// 骨架裡每個狀態路徑佔位符都要是 STATE 的葉子、且有一條欄位規則；正文槽與已知巨集不算路徑。
-/// 佔位符只認 `{{...}}` 內不含花括號與換行的形式（與前端填值相同），其餘照固定文字看。
-pub(super) fn placeholders_complete(
+/// 骨架的佔位符要對得上 STATE 與 RULES：集合區段照 `shell_sections::check_section`；區段外每個狀態路徑
+/// 佔位符都要是 STATE 的葉子、且有一條欄位規則（正文槽與已知巨集不算路徑）；`kind: list` 欄位不能做成獨佔
+/// 一行的整串字串（那是該做成區段的清單）。不合格回原因。
+pub(super) fn check_placeholders(
     shell: &str,
     state: &serde_json::Value,
     rules: &BTreeMap<String, FieldRule>,
-) -> bool {
-    let mut rest = shell;
-    while let Some(open) = rest.find("{{") {
-        let after = &rest[open + 2..];
-        let Some(close) = after.find("}}") else {
-            break;
-        };
-        let token = &after[..close];
-        rest = &after[close + 2..];
-        if token.contains(['{', '}', '\n']) {
+) -> Result<(), String> {
+    let split = shell_sections::split_sections(shell)?;
+    for section in &split.sections {
+        shell_sections::check_section(section, state, rules)?;
+    }
+    if let Some(path) = shell_sections::whole_line_list(&split.outside, rules) {
+        return Err(format!(
+            "集合 {path}：清單做成了一整行字串，要改成區段 {{{{#{path}}}}}…{{{{/{path}}}}}"
+        ));
+    }
+    for token in shell_sections::outside_tokens(&split.outside) {
+        if classify_placeholder(&token, state) != PlaceholderKind::Path {
             continue;
         }
-        if classify_placeholder(token, state) != PlaceholderKind::Path {
-            continue;
-        }
-        let path = token.trim();
-        if path.is_empty() || !rules.contains_key(path) || !leaf_at(state, path) {
-            return false;
+        if token.is_empty() || !rules.contains_key(&token) || !leaf_at(state, &token) {
+            return Err(format!(
+                "佔位符 {{{{{token}}}}} 不是 STATE 的葉子或缺 RULES"
+            ));
         }
     }
-    true
+    Ok(())
 }
 
 pub fn parse_expand(kind: EntryKind, entry_uid: &str, raw: &str) -> RefactorExpandOutcome {
     let mut outcome = RefactorExpandOutcome {
         interface: None,
         raw: raw.to_owned(),
+        error: None,
     };
     match kind {
         EntryKind::InterfaceShell | EntryKind::InterfaceStatusbar => {
-            outcome.interface = parse_interface_expand(raw, entry_uid)
+            match parse_interface_expand(raw, entry_uid) {
+                Ok(interface) => outcome.interface = Some(interface),
+                Err(error) => outcome.error = error,
+            }
         }
     }
     outcome

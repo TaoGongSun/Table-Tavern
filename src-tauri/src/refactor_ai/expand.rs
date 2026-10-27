@@ -134,6 +134,10 @@ mod tests {
             // 卡原文的傳輸規定不准抄進 GUIDE，固定資產不准做成欄位——兩個實測踩過的坑
             assert!(content.contains("傳輸規定一律"));
             assert!(content.contains("不挖佔位符、不做成 STATE 欄位"));
+            // 清單做成集合區段、STATE 用物件／陣列，不再是整串字串
+            assert!(content.contains("`{{#集合路徑}}` 獨佔一行"));
+            assert!(content.contains("`集合.*.欄位` 規則"));
+            assert!(!content.contains("值一律是**一個字串**"));
             assert!(content.contains("在 RULES 裡都要有一條欄位規則"));
         }
         assert!(playable[1].content.contains("玩家可以完全在裡面遊玩"));

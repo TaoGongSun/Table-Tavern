@@ -1,6 +1,7 @@
 use super::apply_mechanism::{filter_scope, namespace, open_rule_reporting, Candidates};
 use super::card_file::{RefactorApplied, RefactorAppliedCharacter, RefactorCardFile};
 use super::card_png::{AssetKind, CardAsset};
+use super::collections;
 use super::flat_migration;
 use super::interface::{normalize_interface_paths, rebuild_state_fields};
 use super::sources::{new_entry_shape, Sources};
@@ -366,7 +367,13 @@ fn apply_into(
             if !interface.guide.trim().is_empty() {
                 state.mechanism.guide = interface.guide.trim().to_owned();
             }
-            state.mechanism.value_types = value_types_of(state_fields, rules);
+            // 集合（骨架區段）：描述跟規則一起落檔，項目規則每回合注入，具名項目依產物順序補名次
+            let collections = collections::build(state_fields, Some(shell), rules);
+            let paths: BTreeSet<String> = collections.keys().cloned().collect();
+            collections::inject_every_turn(&mut state.mechanism.rules, &paths);
+            collections::stamp_order(&mut state.state.tree, state_fields, &collections);
+            state.mechanism.value_types = value_types_of(state_fields, rules, &paths);
+            state.mechanism.collections = collections;
         }
         // 先貼開場白再重構時開場狀態的單段鍵在平欄：接管後寫不回平欄，對到樹上的刪掉、對不到的搬進樹
         if rebuilt && state.mechanism.incremental {
@@ -621,6 +628,7 @@ pub fn apply(
 fn value_types_of(
     state_fields: &serde_json::Value,
     rules: &BTreeMap<String, FieldRule>,
+    collections: &BTreeSet<String>,
 ) -> BTreeMap<String, String> {
     fn walk(prefix: &str, value: &serde_json::Value, out: &mut BTreeMap<String, String>) {
         match value {
@@ -650,6 +658,8 @@ fn value_types_of(
             out.insert(path.clone(), "list".to_owned());
         }
     }
+    // 集合的型別看集合描述（之後新增的項目也適用），這裡不記
+    out.retain(|path, _| !collections::within(path, collections));
     out
 }
 

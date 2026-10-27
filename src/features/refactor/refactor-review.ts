@@ -3,6 +3,7 @@
 // 型別對照後端 src-tauri/src/refactor.rs 前段的 RefactorOutcome／RefactorSelection 契約。
 import { composeFrames, type RefactorFrameCandidate } from "./refactor-frame";
 import { classifyPlaceholder } from "./refactor-shell";
+import { splitSections } from "./refactor-shell-sections";
 import { resolveContainerSlots, type SourceContainerRoles } from "./refactor-slot";
 import type { RefactorApplied } from "./refactor-card";
 import type { EntryChanges } from "../worldbook/worldbook-model";
@@ -202,6 +203,8 @@ export interface RefactorLocalAssembly {
 export interface RefactorExpandOutcome {
   interface: RefactorInterface | null;
   raw: string;
+  /** 產物驗證失敗、說得出原因時（例：哪個集合缺什麼）的原因 */
+  error?: string;
 }
 
 // 展開階段（人物）：對照後端 RefactorPersonExpandOutcome，一人一次呼叫，結果只有一個角色。
@@ -261,6 +264,15 @@ function mergeStateTree(
     }
   }
   return null;
+}
+
+function valueAt(tree: Record<string, unknown>, path: string): unknown {
+  let node: unknown = tree;
+  for (const key of path.split(".")) {
+    if (!isPlainObject(node) || !(key in node)) return undefined;
+    node = node[key];
+  }
+  return node;
 }
 
 function leafAt(tree: Record<string, unknown>, path: string): boolean {
@@ -324,7 +336,16 @@ export function mergeRefactorInterfaces(
     if (guide && !guides.includes(guide)) guides.push(guide);
   }
   for (const shell of shells) {
-    for (const match of shell.matchAll(/\{\{([^{}\n]+)\}\}/g)) {
+    // 集合區段：集合在合併後的 STATE 裡要是物件或陣列、有規則；區段內相對項目的佔位符各自已在後端驗過
+    const split = splitSections(shell);
+    if (split === null) return { interface: null, conflict: "SHELL", failedFrames: allFramesFailed };
+    for (const path of split.paths) {
+      const container = valueAt(stateFields, path);
+      if (typeof container !== "object" || container === null || !(path in rules)) {
+        return { interface: null, conflict: path, failedFrames: allFramesFailed };
+      }
+    }
+    for (const match of split.outside.matchAll(/\{\{([^{}\n]+)\}\}/g)) {
       if (classifyPlaceholder(match[1], (path) => leafAt(stateFields, path)) !== "path") continue;
       const path = match[1].trim();
       if (!leafAt(stateFields, path) || !(path in rules)) {

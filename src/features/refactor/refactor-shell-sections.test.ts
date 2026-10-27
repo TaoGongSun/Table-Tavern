@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import yaml from "js-yaml";
 import { fillSkeletonPlaceholders, type StateNode } from "./refactor-shell";
-import { orderedItemKeys, type Collections } from "./refactor-shell-sections";
+import { orderedItemKeys, splitSections, type Collections } from "./refactor-shell-sections";
 
 const TAGS = ["Status_block"];
 
@@ -141,5 +141,14 @@ describe("orderedItemKeys", () => {
   it("具名看 _序、序列看索引數值、沒名次的接最後依鍵排，底線鍵不是項目", () => {
     expect(orderedItemKeys({ 乙: { _序: "5" }, 甲: { _序: "2" }, 丙: { x: "1" }, _x: "1" })).toEqual(["甲", "乙", "丙"]);
     expect(orderedItemKeys({ "10": "a", "2": "b", "0": "c" })).toEqual(["0", "2", "10"]);
+  });
+});
+
+describe("splitSections", () => {
+  it("取出集合路徑與區段外文字；不成對、巢狀回 null；酒館註解不算收尾", () => {
+    expect(splitSections("a{{#甲}}x{{y}}{{/甲}}b{{// 註}}{{#乙}}{{/乙}}")).toEqual({ paths: ["甲", "乙"], outside: "ab{{// 註}}" });
+    expect(splitSections("{{#甲}}{{#乙}}{{/乙}}{{/甲}}")).toBeNull();
+    expect(splitSections("{{#甲}}x")).toBeNull();
+    expect(splitSections("x{{/甲}}")).toBeNull();
   });
 });

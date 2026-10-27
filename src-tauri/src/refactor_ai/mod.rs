@@ -6,6 +6,7 @@ mod prompt_common;
 mod result_parse;
 mod rewrite;
 pub(crate) mod session;
+pub(crate) mod shell_sections;
 mod survey;
 mod survey_parse;
 pub(crate) mod types;

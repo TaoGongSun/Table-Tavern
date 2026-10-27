@@ -554,7 +554,7 @@ export function useRefactorWorkflow({
               interfaces.push(result.interface);
               interfaceNames.push(name);
               succeeded.add(task);
-            } else fail("");
+            } else fail(result.error ?? "");
           } else {
             const result = await withRateLimitRetry(
               () =>
@@ -575,7 +575,7 @@ export function useRefactorWorkflow({
               interfaces.push(result.interface);
               interfaceNames.push(name);
               succeeded.add(task);
-            } else fail("");
+            } else fail(result.error ?? "");
           }
         } catch (reason) {
           if (!String(reason).includes("refactor-aborted")) {

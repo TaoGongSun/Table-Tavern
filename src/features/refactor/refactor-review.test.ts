@@ -111,6 +111,19 @@ describe("mergeRefactorInterfaces", () => {
     expect(a.interface?.source_uids).toEqual(["3", "12", "40"]);
   });
 
+  it("集合區段：集合是物件或陣列且有規則就過，區段內相對項目的佔位符不當成狀態路徑", () => {
+    const shell = "<S>\n{{#在場人物}}\n- {{@key}}: {{身份}}\n{{/在場人物}}\n{{#選項}}\n- {{@n}}. {{.}}\n{{/選項}}\n地點: {{地點}}\n</S>";
+    const rules = { 在場人物: rule("list"), "在場人物.*.身份": rule("text"), 選項: rule("list"), "選項.*": rule("text"), 地點: rule("text") };
+    const ok = part("1", { 在場人物: { 林远: { 身份: "驿丞" } }, 選項: ["甲"], 地點: "前院" }, shell, rules, "g");
+    expect(mergeRefactorInterfaces([ok]).conflict).toBeNull();
+    const empty = part("1", { 在場人物: {}, 選項: [], 地點: "前院" }, shell, rules, "g");
+    expect(mergeRefactorInterfaces([empty]).conflict).toBeNull();
+    const asString = part("1", { 在場人物: "- 林远", 選項: [], 地點: "前院" }, shell, rules, "g");
+    expect(mergeRefactorInterfaces([asString]).conflict).toBe("在場人物");
+    const unbalanced = part("1", { 在場人物: {}, 地點: "前院" }, "{{#在場人物}}x", rules, "g");
+    expect(mergeRefactorInterfaces([unbalanced]).conflict).toBe("SHELL");
+  });
+
   it("同一欄位兩份值不同＝衝突，不產介面", () => {
     const first = part("1", { World: { Time: "清晨" } }, "<A>{{World.Time}}</A>", { "World.Time": rule("text") }, "g");
     const second = part("2", { World: { Time: "黃昏" } }, "<A>{{World.Time}}</A>", { "World.Time": rule("text") }, "g");

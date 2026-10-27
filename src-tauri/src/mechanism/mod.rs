@@ -7,7 +7,6 @@ mod collection;
 mod derive;
 pub mod engine_records;
 mod ledger;
-mod list_keys;
 mod note;
 mod parse;
 mod policy;
@@ -37,7 +36,6 @@ mod test_support;
 #[cfg(test)]
 pub use ledger::apply_block;
 pub use ledger::{append_log, apply_block_typed, read_ledger, BlockScope, Ledger};
-pub use list_keys::resolve_list_key_seeds;
 pub use policy::{mvu_source, resolve_numeric_update};
 pub use rules::{has_rule, leaf_shown, rule_for_path};
 pub(crate) use tree::canonical_path;

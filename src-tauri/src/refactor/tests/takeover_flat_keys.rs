@@ -101,7 +101,11 @@ fn table_keys(state: &data::WorldState) -> Vec<&str> {
 }
 
 /// GM 回覆走正式提交入口；回傳提交後的狀態與這輪的拒收／錯誤
-fn commit_reply(root: &Path, world_id: &str, patch: &str) -> (data::WorldState, Vec<String>) {
+pub(super) fn commit_reply(
+    root: &Path,
+    world_id: &str,
+    patch: &str,
+) -> (data::WorldState, Vec<String>) {
     let reply =
         format!("陸辰往前走。\n<UpdateVariable><JSONPatch>{patch}</JSONPatch></UpdateVariable>");
     let block = crate::transport::extract_state_block(&reply);

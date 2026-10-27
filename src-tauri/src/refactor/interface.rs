@@ -1,5 +1,8 @@
 use crate::data::{FieldRule, StateNode};
+use crate::refactor_ai::shell_sections::{outside_tokens, split_sections};
 use crate::ui_msg::UiMsg;
+
+use super::collections::{section_paths, within};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// 介面產物的路徑正規化：模型會把同一份狀態欄輸出成兩套重複結構（頂層一套＋「状态栏」
@@ -21,8 +24,11 @@ pub(super) fn normalize_interface_paths(
     let Some(root_object) = state_fields.as_object() else {
         return Ok((state_fields.clone(), rules.clone()));
     };
+    // 集合（骨架區段標出的）整支當一片葉子：項目不攤平、空集合不消失
+    // 鏡像側（頂層分支底下同名、或剝掉頂層分支）的同一個集合也整支當葉子，兩側才用同樣粒度比對與折疊
+    let containers = with_mirrors(section_paths(shell), root_object);
     let mut leaves = BTreeMap::new();
-    flatten_leaves("", state_fields, &mut leaves);
+    flatten_leaves("", state_fields, &containers, &mut leaves);
     let placeholders = shell.map(shell_placeholders).unwrap_or_default();
 
     let mut merged = leaves.clone();
@@ -133,7 +139,7 @@ pub(super) fn normalize_interface_paths(
 
     let mut normalized_rules: BTreeMap<String, FieldRule> = BTreeMap::new();
     for (path, rule) in rules {
-        let target = alias_of.get(path).cloned().unwrap_or_else(|| path.clone());
+        let target = remap(path, &alias_of);
         if let Some(existing) = normalized_rules.get(&target) {
             if existing != rule {
                 return Err(UiMsg::RefactorRuleMismatch {
@@ -146,7 +152,12 @@ pub(super) fn normalize_interface_paths(
         }
         normalized_rules.insert(target, rule.clone());
     }
-    normalized_rules.retain(|path, _| merged.contains_key(path));
+    // 集合本身與項目的萬用規則不是葉子，照集合（折疊後的路徑）留著
+    let collections: BTreeSet<String> = containers
+        .iter()
+        .map(|container| remap(container, &alias_of))
+        .collect();
+    normalized_rules.retain(|path, _| merged.contains_key(path) || within(path, &collections));
 
     Ok((unflatten(&merged)?, normalized_rules))
 }
@@ -156,9 +167,10 @@ pub(super) fn normalize_interface_paths(
 fn flatten_leaves(
     prefix: &str,
     value: &serde_json::Value,
+    containers: &BTreeSet<String>,
     out: &mut BTreeMap<String, serde_json::Value>,
 ) {
-    match value.as_object() {
+    match value.as_object().filter(|_| !containers.contains(prefix)) {
         Some(object) => {
             for (key, child) in object {
                 let path = if prefix.is_empty() {
@@ -166,7 +178,7 @@ fn flatten_leaves(
                 } else {
                     format!("{prefix}.{key}")
                 };
-                flatten_leaves(&path, child, out);
+                flatten_leaves(&path, child, containers, out);
             }
         }
         None => {
@@ -210,8 +222,48 @@ fn is_empty_value(value: &serde_json::Value) -> bool {
     value.is_null() || value.as_str().is_some_and(|text| text.trim().is_empty())
 }
 
-/// 殼裡所有 `{{路徑}}` 佔位符（trim 過）。
+/// 集合路徑加上它在鏡像分支的對應路徑：`B.集合`（B 是任一頂層分支），以及集合在 `B.` 底下時剝掉 B 的路徑。
+fn with_mirrors(
+    containers: BTreeSet<String>,
+    root: &serde_json::Map<String, serde_json::Value>,
+) -> BTreeSet<String> {
+    let mut out = containers.clone();
+    for container in &containers {
+        for branch in root.keys().filter(|key| root[*key].is_object()) {
+            out.insert(format!("{branch}.{container}"));
+            if let Some(stripped) = container.strip_prefix(&format!("{branch}.")) {
+                out.insert(stripped.to_owned());
+            }
+        }
+    }
+    out
+}
+
+/// 規則路徑跟著別名折疊：整條是別名，或以別名（集合）開頭的萬用規則。
+fn remap(path: &str, alias_of: &BTreeMap<String, String>) -> String {
+    if let Some(target) = alias_of.get(path) {
+        return target.clone();
+    }
+    alias_of
+        .iter()
+        .find_map(|(alias, canon)| {
+            path.strip_prefix(alias.as_str())
+                .filter(|rest| rest.starts_with('.'))
+                .map(|rest| format!("{canon}{rest}"))
+        })
+        .unwrap_or_else(|| path.to_owned())
+}
+
+/// 殼引用的狀態路徑：集合區段算引用集合本身，區段內相對項目的佔位符不算；其餘 `{{路徑}}`（trim 過）。
 fn shell_placeholders(shell: &str) -> BTreeSet<String> {
+    if let Ok(split) = split_sections(shell) {
+        return split
+            .sections
+            .into_iter()
+            .map(|section| section.path)
+            .chain(outside_tokens(&split.outside))
+            .collect();
+    }
     let mut out = BTreeSet::new();
     let mut rest = shell;
     while let Some(start) = rest.find("{{") {
