@@ -1,4 +1,4 @@
-// 卡片自帶介面的覆蓋層：打字狀態列、多卡分頁、換幕與關閉鈕、那支沙盒 iframe、底部輸入列。純 markup——
+// 卡片自帶介面的覆蓋層：多卡分頁、換幕與關閉鈕、那支沙盒 iframe、底部輸入列（含打字提示）。純 markup——
 // 「要不要掛上去」的條件留在 App（只在遊玩畫面出現），殼內容與生成狀態各由自己的 controller 擁有。
 import { type FormEvent, type ReactNode, useCallback, useEffect } from "react";
 import { t } from "../../i18n";
@@ -76,7 +76,7 @@ export function buildOverlayComposer(input: {
 }
 
 interface CardInterfaceOverlayProps {
-  /** 正在生成的那位要顯示的名字；null＝沒人在打字，狀態列不出現 */
+  /** 正在生成的那位要顯示的名字；null＝沒人在打字，輸入列上方的打字提示不出現 */
   generatingName: string | null;
   /** 介面殼的 HTML；null＝還沒備好，不掛 iframe */
   shellDoc: string | null;
@@ -138,16 +138,6 @@ export function CardInterfaceOverlay({
 
   return (
     <div className="card-interface-overlay">
-      {generatingName !== null && (
-        <div className="card-interface-status" role="status">
-          {t("typing", { name: generatingName })}
-          <span className="typing">
-            <i />
-            <i />
-            <i />
-          </span>
-        </div>
-      )}
       <div className="card-interface-toolbar">
         {tabs.length >= 2 && (
           <div className="btn-seg card-interface-tabs" role="group">
@@ -201,6 +191,17 @@ export function CardInterfaceOverlay({
       <form className="card-interface-composer" onSubmit={composer.onSubmit}>
         {composer.notice && <p className="scene-length-hint scene-capacity-hint is-full">{composer.notice}</p>}
         {composer.errorNote && <div className="composer-error">{composer.errorNote}</div>}
+        {/* 打字提示貼在輸入列正上方：介面看不到逐字串流，整段生成都顯示；放輸入列裡不蓋卡片內容 */}
+        {generatingName !== null && (
+          <div className="card-interface-status" role="status">
+            <span className="card-interface-status-text">{t("typing", { name: generatingName })}</span>
+            <span className="typing">
+              <i />
+              <i />
+              <i />
+            </span>
+          </div>
+        )}
         <div className="card-interface-composer-row">
           <input
             className="writebox"

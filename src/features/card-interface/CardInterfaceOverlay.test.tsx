@@ -311,6 +311,37 @@ describe("CardInterfaceOverlay 分頁與輸入列", () => {
     await act(async () => stop.click());
     expect(onStop).toHaveBeenCalledTimes(1);
   });
+
+  it("打字提示：生成中出現在輸入列正上方（容量提示、錯誤之後），帶名字與 status 語意；結束就消失、輸入列不動", async () => {
+    const full = composer({ notice: "容量滿了", errorNote: <p>出錯了</p> });
+    const status = () => host!.querySelector<HTMLElement>(".card-interface-status");
+    await mount({ generatingName: null, composer: full });
+    expect(status()).toBeNull();
+    const form = host!.querySelector("form.card-interface-composer")!;
+    const row = form.querySelector(".card-interface-composer-row")!;
+
+    await mount({ generatingName: "GM", composer: full });
+    const shown = status()!;
+    expect(shown.getAttribute("role")).toBe("status");
+    expect(shown.textContent).toBe("GM 正在打字");
+    expect(shown.querySelectorAll(".typing i")).toHaveLength(3);
+    // 同一個 form、同一條輸入列：提示插在它們之間，順序 容量提示 → 錯誤 → 打字提示 → 輸入列
+    expect(host!.querySelector("form.card-interface-composer")).toBe(form);
+    expect(shown.parentElement).toBe(form);
+    expect([...form.children].map((el) => el.className)).toEqual([
+      "scene-length-hint scene-capacity-hint is-full",
+      "composer-error",
+      "card-interface-status",
+      "card-interface-composer-row",
+    ]);
+    expect(shown.nextElementSibling).toBe(row);
+    // 不在 iframe 區上方浮著
+    expect(host!.querySelector(".card-interface-frames .card-interface-status")).toBeNull();
+
+    await mount({ generatingName: null, composer: full });
+    expect(status()).toBeNull();
+    expect(form.querySelector(".card-interface-composer-row")).toBe(row);
+  });
 });
 
 describe("buildOverlayComposer：與聊天輸入框同一套條件", () => {

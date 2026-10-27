@@ -37,7 +37,6 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 
 - [present-name-interface-lang](tasks/present-name-interface-lang.md) — present 人名一律照介面語言寫，消除與「一律繁體」的指示衝突〔作者裁決 2026-10-27〕 — 下一步：開工先確認狀態路徑鍵要不要也照介面語言（未裁決）
 - [acr-live-observations](tasks/acr-live-observations.md) — 重構案實測兩件事（人物進在場名單太晚、clean-orc 平欄劇情欄位不更新），根因已查、修法方向未裁決 — 下一步：各自開工前先確認修法方向
-- [gm-typing-covers-card-date](tasks/gm-typing-covers-card-date.md) — 卡片介面開著時「GM 正在打字」提示框蓋住頂列日期，算 bug、提示改放輸入框正上方〔作者裁決 2026-10-27〕 — 下一步：未排程；先重現
 - [gm-no-state-fence-worldbook-table](tasks/gm-no-state-fence-worldbook-table.md) — 無介面世界書桌 GM 照世界書狀態欄格式輸出、不附 state 圍欄，時間地點在場為空 — 下一步：未排程；先讀該桌逐字稿查根因
 - [hand-built-card-interface-prompt](tasks/hand-built-card-interface-prompt.md) — 手建角色存檔後誤跳「這張卡自帶介面畫面」，但該桌沒有介面鈕 — 下一步：未排程；先重現
 - [takeover-yaml-key-glyph](tasks/takeover-yaml-key-glyph.md) — 接管桌續聊 GM 把清單欄 YAML 鍵寫成繁體，原卡腳本只認簡體鍵而少欄（ai-card-refactor B5 重現） — 下一步：未排程；先重現
