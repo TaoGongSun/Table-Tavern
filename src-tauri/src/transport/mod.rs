@@ -7,6 +7,7 @@ mod client;
 mod context;
 pub(crate) mod context_overflow;
 pub(crate) mod dispatch;
+mod list_protocol;
 mod messages;
 mod own_prefix;
 mod reply_cleanup;

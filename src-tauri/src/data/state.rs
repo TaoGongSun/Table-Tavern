@@ -205,6 +205,10 @@ pub struct Mechanism {
     /// 收編成數字規則後，樹上只存數字（觸發與增量要比大小），玩家畫面照模板套回原寫法〔作者裁決 2026-10-27〕。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub display_formats: BTreeMap<String, String>,
+    /// 集合（takeover-list-structured）：點分路徑 → 形狀。樹把物件與陣列都存成分支、空的 `{}`／`[]` 分不出來，
+    /// 所以形狀另記在這裡、跟規則一起落檔；由套用重構時從驗證過的產物產生，驗證、套用、GM 狀態、前端填殼共用。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub collections: BTreeMap<String, CollectionSpec>,
     /// 數字欄更新策略：不落檔，由載入層（`mechanism::resolve_numeric_update`）每次算好再交給
     /// 套用與提示詞同一份；沒算過＝DeltaOnly（原規則）。
     #[serde(skip)]
@@ -214,6 +218,38 @@ pub struct Mechanism {
     #[serde(skip)]
     pub list_key_seeds: BTreeMap<Vec<String>, String>,
 }
+
+/// 一個集合的形狀。具名集合以名字為鍵、項目一律是物件（項目帶 app 管的順序葉子 `_序`）；序列集合是 0..n-1。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CollectionSpec {
+    pub keyed: bool,
+    pub item: CollectionItem,
+    /// 物件項目的欄位 → 型別
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub fields: BTreeMap<String, CollectionValueType>,
+    /// 純量項目的型別
+    #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
+    pub value_type: Option<CollectionValueType>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CollectionItem {
+    Object,
+    Scalar,
+}
+
+/// 集合項目欄位的型別：填殼時決定 YAML 裡加不加引號。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CollectionValueType {
+    Text,
+    Number,
+    Bool,
+}
+
+/// 具名集合項目的順序葉子：app 管、GM 唯讀（底線開頭），殼、GM 狀態、狀態欄都照它排、都不顯示。
+pub const COLLECTION_ORDER_KEY: &str = "_序";
 
 /// 數字欄（Number／Counter／Pair）怎麼接受模型的更新。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -234,6 +270,7 @@ impl Default for Mechanism {
         Self {
             value_types: Default::default(),
             display_formats: Default::default(),
+            collections: Default::default(),
             version: mechanism_version(),
             rules: BTreeMap::new(),
             triggers: Vec::new(),
@@ -254,6 +291,7 @@ impl Mechanism {
             && !self.incremental
             && self.guide.is_empty()
             && self.value_types.is_empty()
+            && self.collections.is_empty()
     }
 }
 

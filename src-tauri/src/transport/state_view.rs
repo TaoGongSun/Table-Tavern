@@ -138,7 +138,15 @@ fn render_state_tree(
     path: &mut Vec<String>,
 ) {
     let incremental = render.mechanism.incremental;
-    for (key, node) in ordered(tree) {
+    let collection = is_collection(render.mechanism, path);
+    let in_item = path
+        .split_last()
+        .is_some_and(|(_, parent)| is_collection(render.mechanism, parent));
+    for (key, node) in ordered(tree, collection) {
+        // 具名集合項目的順序葉子是 app 的帳，不給 GM 看
+        if in_item && key == data::COLLECTION_ORDER_KEY {
+            continue;
+        }
         path.push(key.clone());
         let indent = "  ".repeat(path.len() - 1 - render.base);
         let branch_hidden = incremental && !render.align && render.hidden.iter().any(|h| h == path);
@@ -188,21 +196,99 @@ fn render_state_tree(
                     render_state_tree(output, children, render, path);
                     if incremental && output.len() == before + header.len() {
                         output.truncate(before);
+                        // 集合清空了也照印：標頭消失 GM 就不知道這欄還在、可以再新增
+                        if is_collection(render.mechanism, path) {
+                            output.push_str(&empty_collection_line(&indent, key, render.en));
+                        }
                     }
                 }
             }
         }
         path.pop();
     }
+    if incremental {
+        render_missing_collections(output, tree, render, path);
+    }
 }
 
-/// 分支的子節點照印出順序：清單出身的索引分支依數字排（字串排會變成 0,1,10,2…）。
-fn ordered(tree: &BTreeMap<String, StateNode>) -> Vec<(&String, &StateNode)> {
+/// 登記了、卻不在樹上的集合（清空時連分支、甚至祖先分支一起剪掉）照空集合印：本層缺的鍵是集合就印「沒有項目」，
+/// 是集合的祖先就印標頭、往下補。增量桌才有集合。
+fn render_missing_collections(
+    output: &mut String,
+    tree: &BTreeMap<String, StateNode>,
+    render: &TreeRender,
+    path: &mut Vec<String>,
+) {
+    let mut missing: Vec<String> = Vec::new();
+    for name in render.mechanism.collections.keys() {
+        let segments: Vec<&str> = name.split('.').collect();
+        if segments.len() <= path.len() || !segments.iter().zip(path.iter()).all(|(a, b)| a == b) {
+            continue;
+        }
+        let next = segments[path.len()];
+        if !tree.contains_key(next) && !missing.iter().any(|seen| seen == next) {
+            missing.push(next.to_owned());
+        }
+    }
+    for key in missing {
+        path.push(key.clone());
+        let hidden = !render.align && render.hidden.iter().any(|h| h == path);
+        if !hidden {
+            let indent = "  ".repeat(path.len() - 1 - render.base);
+            if is_collection(render.mechanism, path) {
+                output.push_str(&empty_collection_line(&indent, &key, render.en));
+            } else {
+                output.push_str(&match render.en {
+                    true => format!("{indent}{key}:\n"),
+                    false => format!("{indent}{key}：\n"),
+                });
+                render_missing_collections(output, &BTreeMap::new(), render, path);
+            }
+        }
+        path.pop();
+    }
+}
+
+fn is_collection(mechanism: &Mechanism, path: &[String]) -> bool {
+    !path.is_empty() && mechanism.collections.contains_key(&path.join("."))
+}
+
+fn empty_collection_line(indent: &str, key: &str, en: bool) -> String {
+    field_line(
+        indent,
+        key,
+        if en {
+            "(no items yet)"
+        } else {
+            "（目前沒有項目）"
+        },
+        en,
+    )
+}
+
+/// 分支的子節點照印出順序：清單出身的索引分支依數字排（字串排會變成 0,1,10,2…）；集合（`collection`）
+/// 具名項目照 `_序`、序列照索引數字，排不出名次的接最後依鍵排——殼也照這個順序畫，GM 照狀態整份回寫才保序。
+fn ordered(tree: &BTreeMap<String, StateNode>, collection: bool) -> Vec<(&String, &StateNode)> {
     let mut entries: Vec<_> = tree.iter().collect();
-    if data::is_index_branch(tree) {
+    if collection {
+        entries.sort_by_key(|(key, node)| (collection_rank(key, node), (*key).clone()));
+    } else if data::is_index_branch(tree) {
         entries.sort_by_key(|(key, _)| key.parse::<usize>().unwrap_or(usize::MAX));
     }
     entries
+}
+
+fn collection_rank(key: &str, node: &StateNode) -> i64 {
+    let order = match node {
+        StateNode::Branch(children) => match children.get(data::COLLECTION_ORDER_KEY) {
+            Some(StateNode::Leaf(value)) => value.trim().parse::<i64>().ok(),
+            _ => None,
+        },
+        StateNode::Leaf(_) => None,
+    };
+    order
+        .or_else(|| key.parse::<i64>().ok())
+        .unwrap_or(i64::MAX)
 }
 
 /// 全量桌把清單出身的分支印回 YAML 清單（與狀態區塊解析器往返一致）：空的印 `鍵：[]`；
@@ -233,7 +319,7 @@ fn render_items(
     render: &TreeRender,
     path: &mut Vec<String>,
 ) {
-    for (index, node) in ordered(children) {
+    for (index, node) in ordered(children, false) {
         path.push(index.clone());
         match node {
             StateNode::Leaf(value) => {
@@ -538,6 +624,8 @@ fn collect_snapshot_updates(
     }
 }
 
+#[cfg(test)]
+mod collection_tests;
 #[cfg(test)]
 mod list_render_tests;
 #[cfg(test)]

@@ -15,7 +15,7 @@
 - **序列集合**（沒有身分、整批換的：行動選項、日誌行）：JSON 陣列，樹上是 `0..n-1` 索引分支（沿用 `json_to_node` 與 statusbar-yaml-list-flatten 的索引分支）。
 - 序列集合的項目是物件（欄位為純量）或純量。項目內再套清單不做（深度上限 1）：卡若有，項目內那格照舊當文字欄〔模型判斷·未裁決〕。
 - **集合描述（持久化）**：樹把物件與陣列都存成分支（`mechanism/tree.rs:76`），空的 `{}`／`[]` 無從分辨，所以形狀不從樹或模板推，改由一份描述記在 `Mechanism.collections`（點分路徑 → 描述），跟規則一起落檔：`{"keyed": true, "item": "object", "fields": {"身份": "text", "体力": "text", …}}`、`{"keyed": false, "item": "scalar", "type": "text"}`；欄位型別 text／number／bool（填殼時決定加不加引號，取代原本想做的 `value_types` 萬用路徑）。由 app 在套用重構時從驗證過的 STATE＋骨架＋規則產生，不由 AI 寫。驗證、套用、GM 狀態、前端填殼共用這一份。
-- **順序**：樹是 BTreeMap，具名集合會依字碼排（周掌柜、林远、贺铮）。每個具名項目放一片 app 管的 `_序` 葉子（整數）：新增時取最大值＋1（同一批多筆依序遞增）、整份 replace 依 JSON 物件順序（serde_json preserve_order 是本地行為，GM 依「目前狀態」順序寫回即可保序）重編、改名（move）跟著項目走、insert 經字形折疊命中既有項目時保留原 `_序`。輸入值裡帶的 `_序`（或任何底線鍵）一律丟掉，由 app 保留或重建——底線鍵唯讀原本只查 path／from（`apply.rs:345`），整項 replace 會夾帶。殼、GM 的「目前狀態」、狀態欄三處都照 `_序` 排；`_序` 本身三處都不顯示（狀態欄 `StateBar.tsx` 補略過底線鍵）。〔A 已審：Sol、Grok 同意〕
+- **順序**：樹是 BTreeMap，具名集合會依字碼排（周掌柜、林远、贺铮）。每個具名項目放一片 app 管的 `_序` 葉子（整數）：新增時取最大值＋1（同一批多筆依序遞增）、整份 replace 依 JSON 物件順序（serde_json preserve_order 是本地行為，GM 依「目前狀態」順序寫回即可保序）重編、改名（move）跟著項目走、insert 經字形折疊命中既有項目時保留原 `_序`。輸入值裡帶的 `_序`（或任何底線鍵）一律丟掉，由 app 保留或重建——底線鍵唯讀原本只查 path／from（`apply.rs:345`），整項 replace 會夾帶。殼、GM 的「目前狀態」、狀態欄三處都照 `_序` 排；`_序` 本身三處都不顯示（狀態欄 `StateBar.tsx` 只藏 `_序`，其他底線鍵照顯示——MVU 卡的底線變數玩家可能要看）。〔A 已審：Sol、Grok 同意〕
 - 序列集合 remove 照 RFC 6902 往前補位（重編 0..n-1），insert `-` 接在尾端、insert `/i` 插入並後移；最後一項刪掉時集合保留為空分支（現行 `set_tree_value` 會連父分支一起剪掉）；描述在，就算樹上整支不見也照空集合看待。
 
 ### 2. 骨架：區段語法
@@ -47,7 +47,7 @@
 - 序列集合：GUIDE 與協定只教整批 `replace /行動選項` ＋ JSON 陣列（樹上索引從 0、殼上序號從 1，教逐筆 remove 會刪錯）。套用端照樣接受 `insert /-`、`remove /i`（RFC 6902 補位），只是不教。
 - 用語：這是本 app 的自訂協定（`insert` 是本案命名，非 RFC 6902 的 `add`），文件與提示不宣稱照某標準。
 - 系統提示：`push_list_field_reminder`（「寫出整個欄位的完整字串」）改寫成上面這份協定，只在有集合規則的桌出現；`table_update_example` 加一筆項目路徑範例（取第一條 `集合.*.欄位` 萬用規則，`*` 換成樹上第一個項目的鍵）。新文字放新檔 `transport/list_protocol.rs`，`context.rs`（989 行）只留呼叫。凍結快照會變的只有帶集合規則的桌（都是本案之後重構的新桌）。
-- 「目前狀態」：接管桌是增量桌，`render_state_tree` 把分支印成巢狀「鍵：」，GM 直接看到 `在場人物：／林远：／行动：…`。本案改三處（`state_view.rs`）：集合項目照 `_序`／索引數值排，不照 BTreeMap 字碼序（否則 GM 照狀態整份 replace 會把順序蓋掉）；`_序` 不印；描述登記的集合沒有項目時照印 `在場人物：（目前沒有項目）`——現行沒有可見子葉的分支標頭會被刪掉（`state_view.rs:189`），清空後集合會從提示消失。協定段附「目前沒有項目時怎麼新增」的範例（`insert /在場人物/名字` ＋物件）。
+- 「目前狀態」：接管桌是增量桌，`render_state_tree` 把分支印成巢狀「鍵：」，GM 直接看到 `在場人物：／林远：／行动：…`。本案改三處（`state_view.rs`）：集合項目照 `_序`／索引數值排，不照 BTreeMap 字碼序（否則 GM 照狀態整份 replace 會把順序蓋掉）；`_序` 不印；描述登記的集合沒有項目時照印 `在場人物：（目前沒有項目）`（巢狀集合、集合本身或祖先分支被剪掉也照印，祖先印標頭）——現行沒有可見子葉的分支標頭會被刪掉（`state_view.rs:189`），清空後集合會從提示消失。協定段附「目前沒有項目時怎麼新增」的範例（`insert /在場人物/名字` ＋物件）。
 
 ### 4. 本地套用（新檔 `mechanism/collection.rs`，`apply.rs` 只加一處掛勾）
 patch 的 path 或 from 碰到集合本身、項目、項目欄位，或集合的祖先分支時先交給它：
@@ -80,7 +80,7 @@ patch 的 path 或 from 碰到集合本身、項目、項目欄位，或集合�
 ## 分包（逐包做，每包 verify 綠、送審）
 | 包 | 內容 | 主要檔案（目前行數） |
 |---|---|---|
-| 1 前端填殼 | 區段綁定展開（一次替換）、`@key`／`@n`／`.`、依描述排序與型別、空集合補 `[]`；狀態欄略過底線鍵並照 `_序` 排 | 新 `src/features/refactor/refactor-shell-sections.ts`；`refactor-shell.ts` 624、`card-shell-route.ts` 367、`useCardInterfaceController.ts` 672（讀描述）、`StateBar.tsx` 275 |
+| 1 前端填殼 | 區段綁定展開（一次替換）、`@key`／`@n`／`.`、依描述排序與型別、空集合補 `[]`；狀態欄只藏 `_序` 並照 `_序` 排 | 新 `src/features/refactor/refactor-shell-sections.ts`；`refactor-shell.ts` 624、`card-shell-route.ts` 367、`useCardInterfaceController.ts` 672（讀描述）、`StateBar.tsx` 275 |
 | 3 GM 協定 | `Mechanism.collections` 型別、集合報法與空集合範例、「目前狀態」排序／隱藏 `_序`／印空集合 | 新 `transport/list_protocol.rs`；`data/state.rs` 552、`context.rs` 989、`state_view.rs` 544 |
 | 2 套用機制 | `collection.rs`（第 4 節） | 新 `mechanism/collection.rs`；`apply.rs` 743、`apply/hint.rs` 223、`tree.rs` 269、`triggers.rs` 490 |
 | 4 重構契約＋刪 list_keys | 提示詞、驗證（失敗指名集合與原因）、別名判定、產生描述與補 `_序`、撤銷寫回描述；刪 list_keys | 新 `refactor_ai/shell_sections.rs`；`prompt_common.rs` 211、`result_parse.rs` 300、`refactor/interface.rs` 274、`refactor/apply.rs` 888、`types.rs` 96、`mod.rs` 44、`chat_assembly.rs` 568、`receipts.rs` 1174 |

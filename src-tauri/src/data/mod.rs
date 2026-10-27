@@ -54,8 +54,9 @@ pub(crate) use scene::{
 pub(crate) use state::is_false;
 pub use state::{
     is_index_branch, node_at, read_state, set_player_card, set_tree_value, update_state,
-    write_state, Condition, FieldKind, FieldRule, InjectLevel, Mechanism, NumericUpdate, StateNode,
-    TableState, Trigger, TriggerCase, TriggerMode, UpdateMode, WorldState,
+    write_state, CollectionItem, CollectionSpec, Condition, FieldKind, FieldRule, InjectLevel,
+    Mechanism, NumericUpdate, StateNode, TableState, Trigger, TriggerCase, TriggerMode, UpdateMode,
+    WorldState,
 };
 pub use world::{
     create_reset_world, create_sample_world, create_world, delete_world, interface_takeover,
@@ -109,6 +110,7 @@ pub(crate) use format::{remove_reset_build_root, replace_world_from_build, reset
 pub(crate) use paths::{refactor_outcome_path, validate_id};
 #[allow(unused_imports)]
 pub use state::SceneLabel;
+pub use state::COLLECTION_ORDER_KEY;
 
 /// 換幕容量收據的世代（單調遞增、全 app 共用）：換幕、退回、分岔、重寫前情提要、改設定都推進一格，
 /// 之前發出的動作收據一律作廢——只比幕號與設定指紋，退回再進同一幕或設定 A→B→A 會讓舊收據復活。

@@ -3,6 +3,7 @@ use crate::data::{
 };
 use crate::world_scan::{Placed, PromptTexts, WorldScan};
 
+use super::list_protocol::push_list_protocols;
 use super::messages::{language_rule, scaffold_en};
 use super::worldbook::{full_text_members, section_body};
 
@@ -191,7 +192,7 @@ pub(super) fn gm_system_prompt(
                 system.push_str("\n\n");
                 system.push_str(&example);
             }
-            push_list_field_reminder(&mut system, mechanism, lang);
+            push_list_protocols(&mut system, mechanism, lang);
             system.push_str("\n\n");
             system.push_str(interface_owned_notice(lang));
         } else if mechanism.numeric_update == NumericUpdate::DeltaOnly {
@@ -202,31 +203,10 @@ pub(super) fn gm_system_prompt(
                 system.push_str("\n\n");
                 system.push_str(&example);
             }
-            push_list_field_reminder(&mut system, mechanism, lang);
+            push_list_protocols(&mut system, mechanism, lang);
         }
     }
     system
-}
-
-/// 清單欄通用提醒：清單值是多行字串、行內常帶數字，模型會拿 delta 只報變動的那幾行（Transfur
-/// 接管桌實測 3/3）。只看規則有沒有 list、不點名路徑也不讀狀態樹——system 是凍結快照，
-/// 讀樹會讓樹形一變整條 GM 線重開。沒有清單規則的桌逐字不變。
-fn push_list_field_reminder(system: &mut String, mechanism: &Mechanism, lang: &str) {
-    if !mechanism
-        .rules
-        .values()
-        .any(|rule| rule.kind == FieldKind::List)
-    {
-        return;
-    }
-    system.push_str("\n\n");
-    system.push_str(if scaffold_en(lang) {
-        "List fields (values that are multi-line strings) never take delta, even when a line \
-         contains numbers: to change any line, use replace and write the field's complete string \
-         (copy unchanged lines as they are)."
-    } else {
-        "值是多行字串的清單欄，就算行內有數字也不能用 delta；改任何一行都用 replace 寫出整個欄位的完整字串（沒變的行也照抄）。"
-    });
 }
 
 /// GM 側「世界書」段標（system 的 constant 條目與回合尾的 keyword 條目共用），前後各帶換行。
@@ -356,7 +336,7 @@ fn delta_only_protocol(lang: &str) -> &'static str {
 
 /// 本桌專屬的更新區塊範例：通用協定的範例路徑（/Heroes、/World）是示意，模型會照抄（實測 Haiku 踩過），
 /// 這裡用本桌欄位規則的真實路徑示範：delta 取排序最前的數字類欄、replace 取排序最前的文字欄，
-/// 含 `*` 的萬用路徑與清單欄不取（清單欄另由 `push_list_field_reminder` 提醒用整串 replace），
+/// 含 `*` 的萬用路徑與清單欄不取（清單欄與集合的報法另由 `list_protocol::push_list_protocols` 附上），
 /// 找不到就略過那一行。跟著 guide（介面接管桌）或無 guide 的 DeltaOnly 增量桌出現；
 /// 規則只在套用時變，凍結快照照樣穩定。
 fn table_update_example(mechanism: &Mechanism, lang: &str) -> Option<String> {

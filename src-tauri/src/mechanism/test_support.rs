@@ -19,6 +19,7 @@ pub(super) fn rule(kind: FieldKind, min: Option<f64>, max: Option<f64>) -> Field
 
 pub(super) fn mechanism_with(rules: &[(&str, FieldRule)]) -> Mechanism {
     Mechanism {
+        collections: Default::default(),
         value_types: Default::default(),
         display_formats: Default::default(),
         numeric_update: Default::default(),
@@ -92,6 +93,7 @@ pub(super) fn else_case(text: &str) -> data::TriggerCase {
 
 pub(super) fn once_mechanism() -> Mechanism {
     Mechanism {
+        collections: Default::default(),
         value_types: Default::default(),
         display_formats: Default::default(),
         numeric_update: Default::default(),
