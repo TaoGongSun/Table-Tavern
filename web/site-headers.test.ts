@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { siteHeaders } from "./site-headers";
+import { createHash } from "node:crypto";
+import { readZodFrame, siteHeaders, zodFrameCsp } from "./site-headers";
 // 與 e2e／smoke 同一份 Pages 標頭規則模擬（純 JS）
 import { headersFor, parseHeadersFile } from "./e2e/static-server.mjs";
 
@@ -8,6 +9,7 @@ const PROD_CSP =
   "connect-src https://openrouter.ai https://api.github.com; frame-src 'self'; frame-ancestors 'none'; " +
   "object-src 'none'; base-uri 'none'; form-action 'none'";
 const SANDBOX = "frame-ancestors 'self'";
+const ZOD_FRAME = zodFrameCsp(readZodFrame());
 
 describe("site _headers", () => {
   it("writes the exact production file", () => {
@@ -22,6 +24,10 @@ describe("site _headers", () => {
       `  Content-Security-Policy: ${SANDBOX}`,
       "/sandbox.html",
       `  Content-Security-Policy: ${SANDBOX}`,
+      "/mvu-zod",
+      `  Content-Security-Policy: ${ZOD_FRAME}`,
+      "/mvu-zod.html",
+      `  Content-Security-Policy: ${ZOD_FRAME}`,
       "/assets/*",
       "  Cache-Control: public, max-age=31536000, immutable",
       "",
@@ -43,6 +49,21 @@ describe("site _headers", () => {
     }
     expect(headersFor(rules, "/assets/index-abc.js").get("cache-control")).toBe("public, max-age=31536000, immutable");
     expect(headersFor(rules, "/").has("cache-control")).toBe(false);
+  });
+
+  it("pins the zod frame to its one inline boot script, blob: only, no network, always sandboxed", () => {
+    const html = readZodFrame();
+    const boot = /<script>([\s\S]*?)<\/script>/.exec(html)![1];
+    const hash = createHash("sha256").update(boot, "utf8").digest("base64");
+    expect(ZOD_FRAME).toBe(
+      `default-src 'none'; script-src 'sha256-${hash}' blob:; worker-src blob:; connect-src 'none'; frame-ancestors 'self'; ` +
+        "base-uri 'none'; form-action 'none'; sandbox allow-scripts",
+    );
+    const rules = parseHeadersFile(siteHeaders("production", {}));
+    for (const path of ["/mvu-zod", "/mvu-zod.html"]) expect(headersFor(rules, path).get("content-security-policy")).toBe(ZOD_FRAME);
+    // 開機碼一改，hash 跟著變（建置時重算）
+    expect(zodFrameCsp(html.replace("booted = true", "booted = !0"))).not.toBe(ZOD_FRAME);
+    expect(() => zodFrameCsp("<script>a</script><script>b</script>")).toThrow();
   });
 
   it("would stack the host CSP onto the sandbox if it were set on /*", () => {

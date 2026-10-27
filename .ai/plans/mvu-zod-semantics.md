@@ -26,7 +26,7 @@ env.host.fatal?(error) -> boolean                    // 選配：資源類錯誤
 env.emit(name, args, isolate) -> Promise              // MVU 事件
 env.events、env.lodash
 ```
-- iframe 與網頁宿主：`evaluate` 送 Worker（單筆 200 ms 逾時），給 timers；保險在核心，逾時呼叫取消函式並以 eval-timeout 整次失敗。
+- iframe 與網頁宿主：`evaluate` 送 Worker（單筆 200 ms 逾時），給 timers；保險在核心，逾時呼叫取消函式並以 eval-timeout 整次失敗。只適用非 zod 路徑；zod 路徑在 Worker 內同步跑、只靠整批期限（4.2 節）。
 - `fatal`：QuickJS 的記憶體不足、堆疊溢位可被 catch，zod 迴圈會把它當單條拒收；桌面宿主給 `fatal`，zod 驗證與開局的 catch 先問它，真就照拋。判定是 InternalError、堆疊溢位的 RangeError、丟 null（記憶體耗盡到建不出錯誤物件）；已知差異：卡片 transform 自己 throw null／undefined 也算整次失敗（上游是單條拒收）〔模型判斷·三方共識〕。iframe 與網頁不給，行為不變。
 - 純邏輯不變：schema、路徑、指令抽取、套用、上限。
 - 片段規則照舊：不得出現反引號與「錢字號加左大括號」。
@@ -208,17 +208,47 @@ P2 對照清單：上游獨立對照，逐項比對：
 
 Node 與 QuickJS 結果相同，只證明兩個宿主一致，不能當成和上游一致。
 
-P5 驗收清單：
-- 先驗 `script-src 'self'` 與 blob 模組相容；
-- lexer 涵蓋動態 import，含非字面量 specifier；
-- 真瀏覽器測試：schema 與墊片能載入，其他模組與網路被擋。
+P5 驗收清單（`npm run e2e:zod`，WebKit＋本機 Chrome，P5 必跑、不進 verify）：
+- `/mvu-zod` 的 CSP hash 對得上實際送出的開機碼，開發伺服器的 `/mvu-zod`、`/mvu-zod.html` 同；
+- 瀏覽器裡跑 41 案與桌面基準逐項相同（jitless），TestCards 在時三張真卡也比；
+- 第一道防線單獨驗（不剝全域）：存檔讀寫刪、網路、eval、非 blob 模組、二層 blob 偷載都失敗；
+- 整條路：卡片腳本裡巢狀 Worker、存檔、二層 Blob、WebRTC、網路、假結果都失敗；
+- 白名單外的 import、非字面量的動態 import 整次失敗，白名單網址的字面量動態 import 照樣載入；無窮迴圈 5 秒作廢、下次重建可用；
+- 外站直接開頁或嵌入後送開機訊息，惡意引擎不跑；判定看另開的探測伺服器、卡片回報的例外與存檔哨兵，不靠攔截請求。
 
 順序：P1 → P2 → P3 → P4，P6 最後。
 
-## 4. 網頁宿主
-- schema 與 zod 迴圈在 module Worker 裡跑。該路徑由 `site-headers.ts` 給自己的 CSP；開機時刪掉網路 API，只當第二道防線。
-- 卡片的 jsdelivr import 用 es-module-lexer 改寫，指向墊片的 blob URL；其他 import 一律拒絕。
-- 期限到了就 terminate Worker。網頁沒有記憶體硬上限（見 0 節）。
+## 4. 網頁宿主（P5）
+定案經 Sol、Grok 兩輪審查與兩次小驗證（WebKit＋Chrome）〔三方共識〕。只有 zod 桌（卡上有啟用、含 `registerMvuSchema` 的腳本，取第一支；一桌一卡，兩卡衝突不適用）走這條，非 zod 桌照舊在主頁跑核心＋值解析 Worker。
+
+### 4.1 隔離：不透明來源為主、剝除為輔
+- 第一道：`web/public/mvu-zod.html` 掛 `sandbox="allow-scripts"` 的 iframe，來源不透明，瀏覽器不給本站 IndexedDB。標頭 CSP（`site-headers.ts` 建置時算、開發伺服器中介層同一份）：`default-src 'none'; script-src 'sha256-<開機碼>' blob:; worker-src blob:; connect-src 'none'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'; sandbox allow-scripts`。blob Worker 繼承這份 CSP（實測兩家都是）。
+- 開機碼只收一次開機：不在框裡（頂層）就不裝監聽；`event.source === parent`、`event.origin` 是本站、要帶兩個 port；之後只走 port。
+- 引擎是 classic IIFE 文字（`web/mvu-zod-engine-plugin.ts` 打包成 `virtual:mvu-zod-engine`，整支自足）。主頁傳文字進去建 blob Worker，不需要 CORS，CSP 也不必寫站點網址。Chrome 在不透明來源起不了 module 型 blob Worker，所以用 classic 再 `import()` 卡片模組。
+- 第二道：Worker 開機先在閉包抓住 `postMessage`、`URL.createObjectURL`、`Blob`、`JSON`，沿原型鏈把全域剝到白名單（ECMAScript 內建＋TextEncoder／TextDecoder、計時器、structuredClone；`zod/strip.ts`）。失敗即停：indexedDB、caches、fetch、XHR、WebSocket、WebTransport、EventSource、Worker、SharedWorker、RTCPeerConnection、RTCDataChannel、BroadcastChannel、URL、Blob、postMessage、importScripts、navigator 任一還看得到就不載卡片。卡片拿不到 blob 網址，所以二層 Blob 模組建不出來；就算建得出來，CSP 也只准 blob、碰不到同站與外站。
+- 卡片 import：主頁用 es-module-lexer（asm.js 版，宿主 CSP 不准 wasm）切開。只准規格 2.2 的 mvu_zod 網址（同 `is_mvu_zod_url`），在 Worker 裡接成墊片 blob。動態 import 以兩邊一致為準〔模型判斷·主線裁決〕：桌面 QuickJS loader 在執行時比對網址、放行白名單（實測字面量、非字面量、模板字串都放行），網頁只能靜態判定，所以放行白名單網址的字串字面量動態 import，非字面量（含模板字串）拒收；兩邊共同成立的是「白名單字面量載入、白名單外拒收」，非字面量指向白名單網址只有桌面放行（已知差異，桌面不改）。其他 import、source／defer phase 一律載入失敗。卡片全域只放 z、_、`$`、安靜的 console；zod `jitless`。
+- blob 網址：引擎的在 Worker 起來後收回、卡片的在 import 完收回；墊片的留到整支 Worker 回收（非頂層的動態 import 可能晚點才載墊片）。卡片模組跑完後最多等 100 輪事件迴圈讓非頂層 import 完成註冊，仍沒註冊才算載入失敗。
+
+### 4.2 期限與生命週期
+- 一桌一支，暖的跨訊息重用；同一桌依序派工、不重疊。
+- 值解析在 Worker 內同步跑、不給 timers（同 QuickJS），只靠整批期限；1.1 節「單筆 200 ms、給 timers」只描述非 zod 路徑。
+- 開機（取引擎文字＋iframe＋剝除與檢查到 ready）另給 10 秒，卡片腳本這時還沒執行。
+- 派工起算單一 monotonic 5 秒：import 卡片與展開 schema、運算、主頁驗回傳、回成功前最後一次對期限。逾時算 Deadline，丟棄那支之後的所有回傳（關 port、叫 iframe terminate、移除 iframe）。載入途中逾時也算 Deadline，不呼叫核心。
+- 出錯或逾時就回收，等玩家下一次操作再重建，不自動重試。Chrome 對忙碌中的 Worker 下 terminate，約 2 秒後才真停（WebKit 約 0.3 秒），回傳已丟棄，只多耗 CPU。
+- 沒有記憶體硬上限（0 節，另案 web-mvu-memory-cap）。
+
+### 4.3 回傳與提交
+- 宿主端用 `parseMessageDetailed`，表以 JSON 文字往返（同桌面語意）。主頁重驗形狀、results ≤ 1000、changes ≤ 2000、表 ≤ 2 MB（`zod/validate.ts`）。逐條拒收的回饋留到 P6。
+- 開局與桌面同序：世界書 initvar → 開場白 `<initvar>` 覆寫 → cleanUpMetadata → zodInitialize（只一次；續玩、收回不重跑）→ 開場白指令走 zod 迴圈。zod 桌不生成 MVU schema，schema 欄放上游佔位字串。
+- 提示分開：
+  - 初始值讀不懂：沿用舊橫幅。
+  - zodInitialize 沒過：照原值開局，另一句提示。
+  - 整次失敗（載入、逾時、出錯）都是可清除的聊天錯誤、不說整桌沒有變數，下一次成功就清掉，依時機各一句：開局失敗（還沒有開局變數，下一次送出前、組提示之前重試；同一輪回覆後不再試）、開場白指令沒套用（變數停在初始值）、回覆更新失敗（這則不寫變數、停在上一則）。
+- 開發模式：宿主頁本身沒有 CSP，隔離宿主頁照樣帶同一份標頭。
+- 上線後抽查一次 Cloudflare Pages 上 `/mvu-zod`、`/mvu-zod.html`（308）的實際回應標頭（本機託管伺服器的 308 不帶標頭，驗不到）；本包不擋。
+
+### 4.4 已知缺口
+- 卡片 iframe 的 shim 核心沒有 z（1.1 節）：卡片前端自己呼叫 parseMessage 時，zod 桌照樣走 MagVarUpdate 語意，可能接受 zod 路徑會拒收的值（主線另立案）。
 
 ## 5. 結構
 - 已超過 1000 行的檔：parse-source 1047 行，P1 拆；`commands/chat.rs` 1486 行與 `data/scene/transcript.rs` 1248 行，本案只加呼叫，拆檔另立案。

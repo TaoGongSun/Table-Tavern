@@ -37,6 +37,7 @@ mvu-array-index-path 驗收時查到：zod 版 MVU 卡（registerMvuSchema，Tes
 - 等 P5（網頁宿主，另一條子代理）併回 mvu-zod-semantics；主線通知後才開 P6（P6 的 parity json、zod 回饋句會碰網頁那邊）。開工先讀規格 3 節 P6 列。
 - P5 併回後：initvar 解析合併小函式（`quickjs-entry.ts` 與 `web/src/features/mvu/initvar.ts` 各一份）搬進共用核心。
 - 發版前要驗 Windows MSVC 編譯（規格 0 節）。
+- 上線後抽查 Cloudflare Pages 上 `/mvu-zod` 與 `/mvu-zod.html`（308）的回應標頭（規格 4.3）。
 
 ## 本機驗證
 - 上游 zod 對照：

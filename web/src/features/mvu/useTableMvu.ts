@@ -1,6 +1,6 @@
 // 一桌的卡片變數：載 MVU 的卡（判定同桌面版卡片介面）開局照 MVU 初始化、每則 AI 回覆照 MVU 更新變數，
 // 酒館助手類巨集在送模前與顯示時代換；卡片 iframe 讀寫各層。chat、global 兩層就是 ST 的聊天變數。
-// 執行期（lodash、yaml…）只有載 MVU 或用到類巨集的卡才載。
+// 執行期（lodash、yaml…）只有載 MVU 或用到類巨集的卡才載。卡上有註冊 schema 的腳本（zod 卡）另開隔離引擎。
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CardMvu } from "@desktop/features/card-interface/mvu/card-mvu-shim";
 import { parseEvalRequest } from "@desktop/features/card-interface/mvu/card-mvu-eval-host";
@@ -11,6 +11,8 @@ import type { ChatMessage } from "../openrouter/stream-chat";
 import type { ChatVariables } from "../sillytavern/variables";
 import { createEvaluator, type Evaluator } from "./evaluate";
 import type { MvuRuntime } from "./runtime";
+import type { ZodRunner } from "./zod/frame-host";
+import { findSchemaScript } from "./zod/schema-script";
 import {
   cardMvuBase,
   cardWrite,
@@ -63,7 +65,14 @@ export interface TableMvu {
   evaluate: (data: Record<string, unknown>, reply: (message: Record<string, unknown>) => void) => void;
   /** 開局初始化失敗（哪一條 initvar 讀不懂） */
   initError: string | null;
+  /** zod 桌：初始值沒過卡片的變數規則，照原值開局 */
+  zodInitInvalid: boolean;
+  /** zod 桌整次失敗（載入規則、逾時、出錯），下次成功就清掉：init＝開局失敗、還沒有卡片變數（玩家下一次送出前重試）；
+   *  opening＝開場白的指令沒套用、變數停在初始值；update＝最近一則回覆沒寫變數、停在上一則 */
+  zodFailure: ZodFailure;
 }
+
+export type ZodFailure = "init" | "opening" | "update" | null;
 
 const isObject = (value: unknown): value is VarsTable => typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -94,6 +103,11 @@ function replaceValues(into: Record<string, unknown>, table: VarsTable): void {
 export function useTableMvu(input: TableMvuInput): TableMvu {
   const { card, userName, variables, saved, resumed, entriesRef, setEntries } = input;
   const active = loadsMvu(card);
+  const schema = useMemo(() => {
+    if (!active) return null;
+    const shell = card.shell as VarsTable;
+    return findSchemaScript(isObject(shell?.data) ? shell.data : shell);
+  }, [active, card.shell]);
   const needsRuntime = useMemo(() => active || JSON.stringify(card.shell).includes("_variable::"), [active, card.shell]);
   const macros = useMemo(() => saved?.macros ?? { user: userName, char: card.text.name || null }, [saved, userName, card.text.name]);
   const seedRef = useRef<VarsTable | null>(saved?.seed ?? null);
@@ -107,6 +121,8 @@ export function useTableMvu(input: TableMvuInput): TableMvu {
   // 變數一動（卡片寫入）就換新快照推給 iframe
   const [version, setVersion] = useState(0);
   const [initError, setInitError] = useState<string | null>(null);
+  const [zodInitInvalid, setZodInitInvalid] = useState(false);
+  const [zodFailure, setZodFailure] = useState<ZodFailure>(null);
   const revisions = useMemo(() => new Revisions(), []);
   // 值解析 Worker：跟著這桌掛載（StrictMode 重掛也是新的一支）；執行期拿的是轉交的這一層
   const evaluatorRef = useRef<Evaluator | null>(null);
@@ -127,41 +143,87 @@ export function useTableMvu(input: TableMvuInput): TableMvu {
   );
   const inputRef = useRef(input);
   inputRef.current = input;
+  // zod 桌的隔離引擎：用到才建（執行期那一包裡），跟著這桌卸載回收；回收後再用就建新的
+  const zodRef = useRef<ZodRunner | null>(null);
+  useEffect(
+    () => () => {
+      zodRef.current?.dispose();
+      zodRef.current = null;
+    },
+    [],
+  );
 
-  // 載執行期，載 MVU 的卡再開局（照 MVU：接著玩時只在存檔裡一張有效表都沒有才初始化）。一桌只做一次，
-  // 開局用的是那時的卡與逐字稿
-  const readyRef = useRef<Promise<void> | null>(null);
-  const ready = useCallback(() => {
-    readyRef.current ??= !needsRuntime
+  // 開局（照 MVU：接著玩時只在存檔裡一張有效表都沒有才初始化）。zod 桌開局整次失敗就留到玩家下一次送出、組提示之前再試
+  const initRetryRef = useRef(false);
+  const initialize = useCallback(
+    async (module: RuntimeModule, loaded: MvuRuntime) => {
+      initRetryRef.current = false;
+      if (!active || seedRef.current !== null || entriesRef.current.some((entry) => isMvuData(entry.vars))) return;
+      const first = entriesRef.current[0];
+      const opening = !resumed && first?.opening ? first : null;
+      let outcome: Awaited<ReturnType<RuntimeModule["initializeVariables"]>>;
+      try {
+        outcome = await module.initializeVariables(loaded, card, opening?.text ?? null, inputRef.current.substitute);
+      } catch (error) {
+        if (!(error instanceof module.ZodRunError)) throw error;
+        console.error("[table-tavern] 卡片變數規則執行失敗", error);
+        initRetryRef.current = true;
+        setZodFailure("init");
+        return;
+      }
+      if (!outcome.ok) {
+        setInitError(outcome.comment);
+        return;
+      }
+      seedRef.current = outcome.table;
+      if (outcome.zodInitInvalid) setZodInitInvalid(true);
+      setZodFailure(outcome.openingFailed === true ? "opening" : null);
+      // 開場那一樓（接著玩則是最後一樓）掛上這張表；zod 桌開場白更新失敗時那一樓不寫
+      const targetId = opening?.id ?? entriesRef.current[entriesRef.current.length - 1]?.id;
+      const vars = opening ? outcome.opening : outcome.table;
+      if (targetId !== undefined && vars !== null) {
+        entriesRef.current = entriesRef.current.map((entry) => (entry.id === targetId ? { ...entry, vars } : entry));
+        setEntries((previous) => previous.map((entry) => (entry.id === targetId ? { ...entry, vars } : entry)));
+      }
+    },
+    [active, entriesRef, resumed, card, setEntries],
+  );
+
+  // 載執行期，載 MVU 的卡再開局。一桌只載一次，開局用的是那時的卡與逐字稿
+  const loadRef = useRef<Promise<void> | null>(null);
+  const load = useCallback(() => {
+    loadRef.current ??= !needsRuntime
       ? Promise.resolve()
       : import("./runtime").then(async (module) => {
           runtimeModule.current = module;
-          const loaded = module.createRuntime(evaluator, macros);
+          const zod =
+            schema === null
+              ? null
+              : () => (zodRef.current ??= module.createZodRunner({ schema }));
+          const loaded = module.createRuntime(evaluator, macros, zod);
           runtimeRef.current = loaded;
-          if (active && seedRef.current === null && !entriesRef.current.some((entry) => isMvuData(entry.vars))) {
-            const first = entriesRef.current[0];
-            const opening = !resumed && first?.opening ? first : null;
-            const outcome = await module.initializeVariables(loaded, card, opening?.text ?? null, inputRef.current.substitute);
-            if (!outcome.ok) {
-              setInitError(outcome.comment);
-            } else {
-              seedRef.current = outcome.table;
-              // 開場那一樓（接著玩則是最後一樓）掛上這張表
-              const targetId = opening?.id ?? entriesRef.current[entriesRef.current.length - 1]?.id;
-              if (targetId !== undefined) {
-                const vars = outcome.opening ?? outcome.table;
-                entriesRef.current = entriesRef.current.map((entry) => (entry.id === targetId ? { ...entry, vars } : entry));
-                setEntries((previous) => previous.map((entry) => (entry.id === targetId ? { ...entry, vars } : entry)));
-              }
-            }
-          }
+          await initialize(module, loaded);
           setRuntimeLoaded(true);
         });
-    return readyRef.current;
-  }, [needsRuntime, evaluator, macros, active, entriesRef, resumed, card, setEntries]);
+    return loadRef.current;
+  }, [needsRuntime, evaluator, macros, schema, initialize]);
+  // 送模前：第一次是載入與開局；之後若 zod 桌開局整次失敗過，就在這裡（組提示之前）重試一次，同一輪的 afterReply 不再試
+  const retryRef = useRef<Promise<void> | null>(null);
+  const ready = useCallback(() => {
+    if (loadRef.current === null) return load();
+    return load().then(() => {
+      const module = runtimeModule.current;
+      const loaded = runtimeRef.current;
+      if (!initRetryRef.current || !module || !loaded) return;
+      retryRef.current ??= initialize(module, loaded).finally(() => {
+        retryRef.current = null;
+      });
+      return retryRef.current;
+    });
+  }, [load, initialize]);
   useEffect(() => {
-    ready().catch((error: unknown) => console.error("[table-tavern] 卡片變數執行期載入失敗", error));
-  }, [ready]);
+    load().catch((error: unknown) => console.error("[table-tavern] 卡片變數執行期載入失敗", error));
+  }, [load]);
 
   // 類巨集讀的變數：送模時是該發組提示用的副本（setvar 的副作用照這一發，換模第二發不讀第一發提交的值）
   const reader = useCallback(
@@ -204,15 +266,25 @@ export function useTableMvu(input: TableMvuInput): TableMvu {
   const afterReply = useCallback(
     async (entries: ChatEntry[]) => {
       if (!active) return entries;
-      await ready();
+      await load();
       const module = runtimeModule.current;
       const loaded = runtimeRef.current;
       const last = entries[entries.length - 1];
       if (!module || !loaded || !last || last.role !== "char" || last.opening) return entries;
-      const updated = await module.processReply(loaded, entries, entries.length - 1, seedRef.current);
-      return updated === null ? entries : [...entries.slice(0, -1), updated];
+      let updated: ChatEntry | null;
+      try {
+        updated = await module.processReply(loaded, entries, entries.length - 1, seedRef.current);
+      } catch (error) {
+        if (!(error instanceof module.ZodRunError)) throw error;
+        console.error("[table-tavern] 這則回覆的卡片變數更新失敗", error);
+        setZodFailure("update");
+        return entries;
+      }
+      if (updated === null) return entries;
+      if (loaded.zod) setZodFailure(null);
+      return [...entries.slice(0, -1), updated];
     },
-    [active, ready],
+    [active, load],
   );
 
   const forSave = useCallback((): SavedMvu | null => {
@@ -280,7 +352,7 @@ export function useTableMvu(input: TableMvuInput): TableMvu {
   );
 
   return useMemo(
-    () => ({ active, ready, afterReply, prepareMessages, display, forSave, frontend, write, evaluate, initError }),
-    [active, ready, afterReply, prepareMessages, display, forSave, frontend, write, evaluate, initError],
+    () => ({ active, ready, afterReply, prepareMessages, display, forSave, frontend, write, evaluate, initError, zodInitInvalid, zodFailure }),
+    [active, ready, afterReply, prepareMessages, display, forSave, frontend, write, evaluate, initError, zodInitInvalid, zodFailure],
   );
 }

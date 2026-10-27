@@ -197,6 +197,16 @@ export function ChatView({
           {t("mvuInitFailed", { comment: chat.mvu.initError })}
         </p>
       )}
+      {chat.mvu.zodInitInvalid && (
+        <p className="chat-error" role="alert" data-testid="mvu-zod-init-invalid">
+          {t("mvuZodInitInvalid")}
+        </p>
+      )}
+      {chat.mvu.zodFailure !== null && (
+        <p className="chat-error" role="alert" data-testid="mvu-zod-failed">
+          {t(ZOD_FAILURE_TEXT[chat.mvu.zodFailure])}
+        </p>
+      )}
       {chat.saveFailed && (
         <p className="chat-error" role="alert">
           {t("autosaveFailed")}
@@ -270,3 +280,6 @@ export function ChatView({
     </section>
   );
 }
+
+/** zod 桌整次失敗的提示（可清除）：開局失敗沒有「上一則」，各給一句 */
+const ZOD_FAILURE_TEXT = { init: "mvuInitRunFailed", opening: "mvuOpeningFailed", update: "mvuUpdateFailed" } as const;

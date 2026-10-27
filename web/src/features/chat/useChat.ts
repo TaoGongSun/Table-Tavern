@@ -106,7 +106,7 @@ export interface ChatController {
   /** 卡片介面存的設定（沙盒 localStorage 的整份快照），跟著存檔走 */
   cardStorage: Record<string, string>;
   /** 卡片變數（MVU、酒館助手變數層） */
-  mvu: Pick<TableMvu, "frontend" | "write" | "evaluate" | "display" | "initError">;
+  mvu: Pick<TableMvu, "frontend" | "write" | "evaluate" | "display" | "initError" | "zodInitInvalid" | "zodFailure">;
   setCardStorage: (entries: Record<string, string>) => void;
 }
 

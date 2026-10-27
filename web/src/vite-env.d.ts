@@ -13,3 +13,9 @@ declare module "virtual:mvu-engine" {
     env: import("@desktop/features/mvu-engine/host-contract").MvuCoreEnv,
   ): import("@desktop/features/mvu-engine/host-contract").MvuCore;
 }
+
+/** 建置時由 mvu-zod-engine-plugin.ts 打成 classic IIFE 的 zod 引擎原始碼（文字），交給不透明來源的 iframe 建 Worker */
+declare module "virtual:mvu-zod-engine" {
+  const source: string;
+  export default source;
+}

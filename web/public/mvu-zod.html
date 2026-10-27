@@ -1,0 +1,51 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      zod 卡的隔離宿主（mvu-zod-semantics 規格 4 節）：iframe 掛 sandbox="allow-scripts"，標頭另有 CSP sandbox，
+      來源永遠不透明、讀不到本站儲存。下面這段開機碼的 sha256 由 web/site-headers.ts 算進 CSP（改了會自動重算）；
+      CSP 只准它與 blob:，不准連線。開機只收一次：要在框裡、來源是父頁、origin 是本站；引擎原始碼由父頁送來，
+      在這裡建 blob Worker，Worker 與父頁之後只走轉交的 MessagePort。
+    -->
+    <script>
+      (function () {
+        if (window.origin !== "null" || window.parent === window) return;
+        var trusted = new URL(location.href).origin;
+        var booted = false;
+        function boot(event) {
+          var data = event.data;
+          if (booted || event.source !== window.parent || event.origin !== trusted) return;
+          if (!data || data.type !== "tt-mvu-zod-boot" || typeof data.engine !== "string" || event.ports.length !== 2) return;
+          booted = true;
+          removeEventListener("message", boot);
+          var control = event.ports[1];
+          var url = URL.createObjectURL(new Blob([data.engine], { type: "text/javascript" }));
+          var worker;
+          try {
+            worker = new Worker(url);
+          } catch (error) {
+            URL.revokeObjectURL(url);
+            control.postMessage({ type: "worker-error", detail: String(error) });
+            return;
+          }
+          worker.onmessage = function () {
+            URL.revokeObjectURL(url);
+          };
+          worker.onerror = function (error) {
+            control.postMessage({ type: "worker-error", detail: String(error && error.message) });
+          };
+          control.onmessage = function (message) {
+            if (message.data === "kill") {
+              worker.terminate();
+              control.close();
+            }
+          };
+          worker.postMessage(null, [event.ports[0]]);
+        }
+        addEventListener("message", boot);
+      })();
+    </script>
+  </head>
+  <body></body>
+</html>

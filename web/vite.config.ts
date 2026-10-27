@@ -2,11 +2,13 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
 import { mvuEnginePlugin } from "./mvu-engine-plugin";
-import { siteHeadersPlugin } from "./site-headers";
+import { mvuZodEnginePlugin } from "./mvu-zod-engine-plugin";
+import { siteHeadersPlugin, zodFrameDevPlugin } from "./site-headers";
 
 export default defineConfig(({ mode }) => ({
-  // 宿主 CSP 走建置產生的 `_headers`（site-headers.ts）；開發伺服器不加（HMR 需要行內腳本）
-  plugins: [react(), siteHeadersPlugin(mode), mvuEnginePlugin()],
+  // 宿主 CSP 走建置產生的 `_headers`（site-headers.ts）；開發伺服器不加（HMR 需要行內腳本），
+  // 但 zod 卡的隔離宿主頁在開發伺服器也帶同一份 CSP（zodFrameDevPlugin）
+  plugins: [react(), siteHeadersPlugin(mode), zodFrameDevPlugin(), mvuEnginePlugin(), mvuZodEnginePlugin()],
   resolve: {
     // D2：直接共用桌面版的純 TS 模組
     alias: { "@desktop": fileURLToPath(new URL("../src", import.meta.url)) },
