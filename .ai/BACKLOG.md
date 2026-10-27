@@ -51,6 +51,7 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 [sponsor-features](handoffs/sponsor-features.md) 的 AI 生圖（梯 2 第 8）、[image-model-picker](handoffs/image-model-picker.md)（第 21）、[image-model-free-tier-hide](handoffs/image-model-free-tier-hide.md)（第 22）先實測；之後 vn-mode 前置實測 a／b／c（已有[實測報告](plans/vn-mode-image-spike.md)，待作者三項決定）。
 
 ## 階段 G：整理與立案
+- [lifecycle-tests-split](tasks/lifecycle-tests-split.md) — data/scene/lifecycle.rs 979 行，測試搬到 lifecycle/tests.rs（純搬檔） — 下一步：未排程
 - [ai-workspace-tidy](tasks/ai-workspace-tidy.md) — .ai/tasks/ 累積到 62 檔，逐檔判斷該留該刪該封存 — 下一步：未排程；開工首步＝比對 tasks/ 與 BACKLOG.md 列出三類清單，狀態不明的逐條問使用者。
 - [vn-audio](tasks/vn-audio.md) — VN 音訊 — 下一步：未排程，細節開工時定
 - [vn-story-flags](tasks/vn-story-flags.md) — 劇情旗標規格 — 下一步：未排程，細節開工時定
