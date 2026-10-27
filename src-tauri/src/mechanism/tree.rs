@@ -189,3 +189,42 @@ pub(super) fn numeric_value(raw: &str) -> Option<f64> {
     }
     None
 }
+
+/// 模型寫的路徑對回樹上的寫法：逐段走，原文鍵存在就用原文；不存在時找同層「只差簡繁字形」的鍵，
+/// 唯一一個才採用，多個＝歧義回 Err（那一層的候選鍵）。走到樹上沒有的位置就把其餘段原樣接上。
+/// `fold_last=false` 時最後一段不折（insert／move 目的地的新鍵不能被當成拼錯的舊鍵）。
+pub(super) fn canonical_path(
+    tree: &BTreeMap<String, StateNode>,
+    path: &[String],
+    fold_last: bool,
+) -> Result<Vec<String>, Vec<String>> {
+    let mut out = Vec::with_capacity(path.len());
+    let mut branch = Some(tree);
+    for (index, segment) in path.iter().enumerate() {
+        let Some(children) = branch else {
+            out.push(segment.clone());
+            continue;
+        };
+        let key = if children.contains_key(segment) {
+            segment.clone()
+        } else if index + 1 < path.len() || fold_last {
+            let folded: Vec<&String> = children
+                .keys()
+                .filter(|key| data::glyph_equal(key, segment))
+                .collect();
+            match folded.as_slice() {
+                [] => segment.clone(),
+                [key] => (*key).clone(),
+                many => return Err(many.iter().map(|key| (*key).clone()).collect()),
+            }
+        } else {
+            segment.clone()
+        };
+        branch = match children.get(&key) {
+            Some(StateNode::Branch(next)) => Some(next),
+            _ => None,
+        };
+        out.push(key);
+    }
+    Ok(out)
+}

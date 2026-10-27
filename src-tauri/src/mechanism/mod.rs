@@ -19,6 +19,8 @@ mod block_scope_tests;
 #[cfg(test)]
 mod feedback_e2e_tests;
 #[cfg(test)]
+mod glyph_path_tests;
+#[cfg(test)]
 mod list_block_tests;
 #[cfg(test)]
 mod parse_feedback_tests;

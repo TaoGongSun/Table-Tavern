@@ -13,32 +13,43 @@ use super::messages::player_fallback_name;
 /// 公開事件一律用公開環境代換。
 pub type NeutralFill<'a> = &'a dyn Fn(&str, Option<&CharacterCard>, bool) -> String;
 
-/// present 欄斷詞／在場名字比對現在是 `data::split_present_names`／`data::name_matches`
-/// （包 4b 拉出去給角色卡換幕結算共用，data 層不能反過來依賴 transport）；
-/// `state_scope` 是凍結 system 的一部分不能動，仍照舊獨立一份、邏輯保持同步而非重寫。
+/// present 欄斷詞／在場名字比對是 `data::split_present_names`／`data::match_present`（原文優先、簡繁折疊兜底；
+/// 放 data 層給角色卡換幕結算共用）；`state_scope` 用同一套的單向包含版 `match_present_with`。
 ///
 /// 這一輪新面孔：`is_person && !disabled` 條目裡，present 名單比對得上、且不在
 /// `already_appeared` 裡的那些，依世界書順序回傳；呼叫端逐一 append 成登場事件。
+/// `card_names`：桌上全部角色卡的名字，只拿來判折疊歧義——present 寫的其實是角色卡「沈郁」時，
+/// 人物條目「沈鬱」不能因為折疊後同名就登場、送出全文（整桌人物同一個候選池）。
 ///
 /// - `present` 是 `None`（table 沒有這個鍵）：退回正文比對，`reply_body` 包含 title 即命中。
 /// - `present` 是 `Some("")`（鍵存在但空／裁完是空清單）：只信 present，不做正文比對。
 pub fn detect_new_arrivals<'a>(
     worldbook: &'a [WorldbookEntry],
+    card_names: &[String],
     present: Option<&str>,
     reply_body: &str,
     already_appeared: &BTreeSet<String>,
 ) -> Vec<&'a WorldbookEntry> {
-    let present_names = present.map(data::split_present_names);
-    worldbook
+    let pool: Vec<&WorldbookEntry> = worldbook
         .iter()
         .filter(|entry| entry.is_person && !entry.disabled)
-        .filter(|entry| !already_appeared.contains(&entry.title))
-        .filter(|entry| match &present_names {
-            Some(names) => names
-                .iter()
-                .any(|name| data::name_matches(name, &entry.title)),
+        .collect();
+    let titles: Vec<&str> = pool
+        .iter()
+        .map(|entry| entry.title.as_str())
+        .chain(card_names.iter().map(String::as_str))
+        .collect();
+    let present_match =
+        present.map(|raw| data::match_present(&data::split_present_names(raw), &titles));
+    pool.into_iter()
+        .enumerate()
+        .filter(|(_, entry)| !already_appeared.contains(&entry.title))
+        // 折疊歧義的不送全文（data::match_present）
+        .filter(|(index, entry)| match &present_match {
+            Some(found) => found.matched.contains(index),
             None => reply_body.contains(&entry.title),
         })
+        .map(|(_, entry)| entry)
         .collect()
 }
 
@@ -66,22 +77,31 @@ pub fn person_arrival(entry: &WorldbookEntry, fill: NeutralFill<'_>) -> (EventMa
 /// 這一輪新回歸的角色卡：`auto_hidden && !archived` 的卡裡，present 名單比對得上（缺席退回
 /// 正文比對）、且本幕還沒回歸過的，依卡片清單順序回傳；呼叫端逐一 append 成回歸事件。
 /// 鏡射 `detect_new_arrivals`，鍵從世界書 title 換成卡片 name。
+/// `other_names`：桌上其他人物的名字（主區與封存的卡、`is_person && !disabled` 的人物條目），只拿來判
+/// 折疊歧義——present 寫的其實是主區那張或某個人物條目時，隱藏卡不能因為折疊後同名就被當成回歸、送出全文。
 pub fn detect_new_card_arrivals<'a>(
     cards: &'a [CharacterCard],
+    other_names: &[String],
     present: Option<&str>,
     reply_body: &str,
     already_appeared: &BTreeSet<String>,
 ) -> Vec<&'a CharacterCard> {
-    let present_names = present.map(data::split_present_names);
+    let names: Vec<&str> = cards
+        .iter()
+        .map(|card| card.name.as_str())
+        .chain(other_names.iter().map(String::as_str))
+        .collect();
+    let present_match =
+        present.map(|raw| data::match_present(&data::split_present_names(raw), &names));
     cards
         .iter()
-        .filter(|card| !already_appeared.contains(&card.name))
-        .filter(|card| match &present_names {
-            Some(names) => names
-                .iter()
-                .any(|name| data::name_matches(name, &card.name)),
+        .enumerate()
+        .filter(|(_, card)| !already_appeared.contains(&card.name))
+        .filter(|(index, card)| match &present_match {
+            Some(found) => found.matched.contains(index),
             None => reply_body.contains(&card.name),
         })
+        .map(|(_, card)| card)
         .collect()
 }
 
@@ -239,9 +259,79 @@ mod tests {
         };
         let entries = [alexander];
         let already = BTreeSet::new();
-        let arrivals = detect_new_arrivals(&entries, Some("亞歷山大、船長"), "", &already);
+        let arrivals = detect_new_arrivals(&entries, &[], Some("亞歷山大、船長"), "", &already);
         assert_eq!(arrivals.len(), 1);
         assert_eq!(arrivals[0].title, "亞歷山大・馮・史特勞斯");
+    }
+
+    /// 簡繁折疊：繁體 present 也能讓簡體標題登場；折疊後分不出是誰（沈郁／沈鬱）就誰都不送全文
+    #[test]
+    fn detect_new_arrivals_folds_glyphs_but_sends_nobody_on_ambiguity() {
+        let person = |uid: u64, title: &str| WorldbookEntry {
+            is_person: true,
+            ..worldbook_entry(uid, title, &[], true, 0, false, Visibility::Gm)
+        };
+        let entries = [
+            person(1, "阿古拉"),
+            person(2, "铁三"),
+            person(3, "沈郁"),
+            person(4, "沈鬱"),
+        ];
+        let already = BTreeSet::new();
+        let titles: Vec<&str> =
+            detect_new_arrivals(&entries, &[], Some("林遠、鐵三、瀋鬱"), "", &already)
+                .into_iter()
+                .map(|entry| entry.title.as_str())
+                .collect();
+        assert_eq!(titles, vec!["铁三"]);
+        let titles: Vec<&str> = detect_new_arrivals(&entries, &[], Some("沈鬱"), "", &already)
+            .into_iter()
+            .map(|entry| entry.title.as_str())
+            .collect();
+        assert_eq!(titles, vec!["沈鬱"], "原文精確優先");
+    }
+
+    /// 整桌一個候選池：角色卡 沈郁 被點名時，人物條目 沈鬱 不登場；人物條目 沈郁 被點名時，
+    /// 隱藏卡 沈鬱 不回歸——兩邊都不替錯的人送全文。
+    #[test]
+    fn person_and_card_arrivals_share_one_name_pool() {
+        let person = WorldbookEntry {
+            is_person: true,
+            ..worldbook_entry(1, "沈鬱", &[], true, 0, false, Visibility::Gm)
+        };
+        let entries = [person];
+        let already = BTreeSet::new();
+        assert!(
+            detect_new_arrivals(&entries, &["沈郁".to_owned()], Some("沈郁"), "", &already)
+                .is_empty()
+        );
+        assert_eq!(
+            detect_new_arrivals(&entries, &["沈郁".to_owned()], Some("沈鬱"), "", &already).len(),
+            1
+        );
+        let hidden = [card("hidden", "沈鬱", "", "")];
+        assert!(detect_new_card_arrivals(
+            &hidden,
+            &["沈郁".to_owned()],
+            Some("沈郁"),
+            "",
+            &already
+        )
+        .is_empty());
+    }
+
+    /// 主區的 沈郁 被點名時，隱藏的 沈鬱 不能因為折疊後同名被當成回歸（不可替錯的人送全文）
+    #[test]
+    fn card_arrival_does_not_steal_a_name_that_exactly_matches_a_visible_card() {
+        let hidden = [card("hidden", "沈鬱", "", ""), card("iron", "铁三", "", "")];
+        let others = ["沈郁".to_owned()];
+        let already = BTreeSet::new();
+        let names: Vec<&str> =
+            detect_new_card_arrivals(&hidden, &others, Some("沈郁、鐵三"), "", &already)
+                .into_iter()
+                .map(|card| card.name.as_str())
+                .collect();
+        assert_eq!(names, vec!["铁三"]);
     }
 
     /// 規格 (d)：本幕已登場過的人（already_appeared 裡有）就算 present 再報也不重複回傳。
@@ -253,7 +343,7 @@ mod tests {
         };
         let entries = [alice];
         let already: BTreeSet<String> = BTreeSet::from(["愛麗絲".to_owned()]);
-        let arrivals = detect_new_arrivals(&entries, Some("愛麗絲"), "", &already);
+        let arrivals = detect_new_arrivals(&entries, &[], Some("愛麗絲"), "", &already);
         assert!(arrivals.is_empty());
     }
 
@@ -275,12 +365,12 @@ mod tests {
         let already_this_scene = data::appeared_person_titles(&this_scene_events);
         assert_eq!(already_this_scene, BTreeSet::from(["愛麗絲".to_owned()]));
 
-        let repeat = detect_new_arrivals(&entries, Some("愛麗絲"), "", &already_this_scene);
+        let repeat = detect_new_arrivals(&entries, &[], Some("愛麗絲"), "", &already_this_scene);
         assert!(repeat.is_empty());
 
         let next_scene_events: [TranscriptEvent; 0] = [];
         let already_next_scene = data::appeared_person_titles(&next_scene_events);
-        let reappear = detect_new_arrivals(&entries, Some("愛麗絲"), "", &already_next_scene);
+        let reappear = detect_new_arrivals(&entries, &[], Some("愛麗絲"), "", &already_next_scene);
         assert_eq!(reappear.len(), 1);
     }
 
@@ -316,10 +406,11 @@ mod tests {
         let entries = [alice];
         let already = BTreeSet::new();
 
-        let via_body = detect_new_arrivals(&entries, None, "愛麗絲推門進來。", &already);
+        let via_body = detect_new_arrivals(&entries, &[], None, "愛麗絲推門進來。", &already);
         assert_eq!(via_body.len(), 1);
 
-        let empty_present = detect_new_arrivals(&entries, Some(""), "愛麗絲推門進來。", &already);
+        let empty_present =
+            detect_new_arrivals(&entries, &[], Some(""), "愛麗絲推門進來。", &already);
         assert!(empty_present.is_empty());
     }
 
@@ -354,7 +445,7 @@ mod tests {
         let alexander = card("alex-id", "亞歷山大・馮・史特勞斯", "", "");
         let hidden = [alexander];
         let already = BTreeSet::new();
-        let arrivals = detect_new_card_arrivals(&hidden, Some("亞歷山大、船長"), "", &already);
+        let arrivals = detect_new_card_arrivals(&hidden, &[], Some("亞歷山大、船長"), "", &already);
         assert_eq!(arrivals.len(), 1);
         assert_eq!(arrivals[0].name, "亞歷山大・馮・史特勞斯");
     }
@@ -365,7 +456,7 @@ mod tests {
         let fox = card("fox-id", "狐狸", "", "");
         let hidden = [fox];
         let already: BTreeSet<String> = BTreeSet::from(["狐狸".to_owned()]);
-        let arrivals = detect_new_card_arrivals(&hidden, Some("狐狸"), "", &already);
+        let arrivals = detect_new_card_arrivals(&hidden, &[], Some("狐狸"), "", &already);
         assert!(arrivals.is_empty());
     }
 
@@ -377,11 +468,12 @@ mod tests {
         let hidden = [fox];
         let already = BTreeSet::new();
 
-        let via_body = detect_new_card_arrivals(&hidden, None, "狐狸從陰影裡走出來。", &already);
+        let via_body =
+            detect_new_card_arrivals(&hidden, &[], None, "狐狸從陰影裡走出來。", &already);
         assert_eq!(via_body.len(), 1);
 
         let empty_present =
-            detect_new_card_arrivals(&hidden, Some(""), "狐狸從陰影裡走出來。", &already);
+            detect_new_card_arrivals(&hidden, &[], Some(""), "狐狸從陰影裡走出來。", &already);
         assert!(empty_present.is_empty());
     }
 

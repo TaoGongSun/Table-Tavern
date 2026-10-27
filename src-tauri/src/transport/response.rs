@@ -40,7 +40,7 @@ pub fn narrate_instruction(
         "(Director instruction) Insert a narration: describe scene changes, the world's response, or plot progress. \
          Use any length the story needs. You may portray supporting characters without character cards, but do not speak for listed characters or the player. \
          After the narration, start a new line and output one ```state fence. Inside it, write one `key: value` field per line. \
-         Always output `time`, `place`, and `present`; write values in the player's language, separate multiple present characters with `、`, and repeat unchanged values too. \
+         Always output `time`, `place`, and `present`; write `time` and `place` in the player's language, write each `present` name exactly as it appears in the cast or setting (same characters, no translation or script change), separate multiple present characters with `、`, and repeat unchanged values too. \
          Do not add any explanation outside the narration and fence."
             .to_owned()
     } else {
@@ -48,7 +48,8 @@ pub fn narrate_instruction(
          篇幅不設限，依劇情需要自由發揮。沒有角色卡的配角由你扮演，可以出場與說話；\
          不要替「登場角色」名單上的角色或玩家說話。旁白本文結束後另起一行，輸出一個 ```state 圍欄，\
          圍欄內一行一欄、格式為「鍵: 值」，固定輸出 time、place、present 三個鍵；\
-         值用玩家的語言寫，present 的多人用頓號分隔，沒有變化的欄位也照抄目前值。\
+         time、place 用玩家的語言寫；present 的名字照登場角色名單或設定裡的原字逐字寫，不翻譯、不換簡繁字形；\
+         present 的多人用頓號分隔，沒有變化的欄位也照抄目前值。\
          圍欄以外不要有多餘說明。"
             .to_owned()
     };
@@ -121,6 +122,7 @@ pub fn takeover_instruction(
         "(Director instruction) Write this turn's story: describe scene changes, the world's response, or plot progress. \
          Use any length the story needs. You may portray supporting characters without character cards, but do not speak for listed characters or the player. \
          After the story, start a new line and output the `<UpdateVariable>` update block, writing only the fields that changed this turn; if nothing changed, omit the block. \
+         Copy every path and every key inside values exactly as they appear in the current state (same characters, no translation or script change). \
          The app draws the status display itself: do not output a ```state fence, do not reprint any status block, and add no explanation outside the story and the update block."
             .to_owned()
     } else {
@@ -128,6 +130,7 @@ pub fn takeover_instruction(
          篇幅不設限，依劇情需要自由發揮。沒有角色卡的配角由你扮演，可以出場與說話；\
          不要替「登場角色」名單上的角色或玩家說話。正文結束後另起一行，輸出 `<UpdateVariable>` 更新區塊，\
          只寫這一回合有變動的欄位；沒有任何變動就不要輸出更新區塊。\
+         路徑與值裡的鍵名一律照目前狀態裡的原字逐字抄，不翻譯、不換簡繁字形。\
          狀態畫面由 App 自己畫：不要輸出 ```state 圍欄，不要重印任何狀態區塊，正文與更新區塊以外不要有多餘說明。"
             .to_owned()
     };

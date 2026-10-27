@@ -313,6 +313,7 @@ pub struct StateScope {
 /// 認得出來的角色分支有兩種：綁到角色卡的，以及**與它同一個容器的手足**——
 /// 一張 MVU 卡的 15 個英雄只會有幾張角色卡，剩下的手足照樣是人、照樣該裁。
 /// 手足規則只在容器不是樹根時生效：頂層放的是 World／Player 這類桌級分支，掃進去會把整桌裁掉。
+/// `table_names`：整桌人物名字（全部卡名＋人物條目標題），只拿來判折疊歧義。
 pub fn state_scope(
     state: &TableState,
     mechanism: &Mechanism,
@@ -320,20 +321,13 @@ pub fn state_scope(
     player: Option<&CharacterCard>,
     bindings: &BTreeMap<String, Vec<String>>,
     align: bool,
+    table_names: &[String],
 ) -> StateScope {
     if !mechanism.incremental {
         return StateScope::default();
     }
-    let present: Vec<String> = state
-        .table
-        .get("present")
-        .map(String::as_str)
-        .unwrap_or("")
-        .split(['、', '，', ',', '／', '/', '；', ';'])
-        .map(str::trim)
-        .filter(|item| !item.is_empty())
-        .map(str::to_owned)
-        .collect();
+    let present =
+        data::split_present_names(state.table.get("present").map(String::as_str).unwrap_or(""));
     if present.is_empty() {
         return StateScope {
             hidden: Vec::new(),
@@ -341,13 +335,9 @@ pub fn state_scope(
         };
     }
     let player_id = player.map(|player| player.id.as_str());
-    let is_present = |name: &str| {
-        present
-            .iter()
-            .any(|item| item == name || item.contains(name))
-    };
-    let mut hidden: Vec<Vec<String>> = Vec::new();
-    let mut keep: Vec<Vec<String>> = Vec::new(); // 玩家那支永遠送，手足規則也不准碰
+    // 先收齊候選（有卡的分支＝卡名、同容器手足＝分支鍵），再整批比對在場名單：單向包含（在場項目含名字），
+    // 原文命中優先、簡繁折疊兜底；折疊後多個候選分不出是誰（沈郁／沈鬱）就都留，寧可多送不裁瞎。
+    let mut carded: Vec<(Vec<String>, &str, bool)> = Vec::new(); // (分支, 名字, 是玩家)
     let mut containers: Vec<Vec<String>> = Vec::new();
     for card in cards {
         let Some(branch) = resolve_branch(&state.tree, bindings, &card.id, &card.name) else {
@@ -359,13 +349,13 @@ pub fn state_scope(
                 containers.push(container);
             }
         }
-        if Some(card.id.as_str()) == player_id {
-            keep.push(branch);
-        } else if !is_present(&card.name) {
-            hidden.push(branch);
-        }
+        carded.push((
+            branch,
+            card.name.as_str(),
+            Some(card.id.as_str()) == player_id,
+        ));
     }
-    // 手足：同容器裡沒有角色卡的分支，名字沒出現在在場名單就一起裁
+    let mut siblings: Vec<(Vec<String>, &str)> = Vec::new();
     for container in &containers {
         let Some(StateNode::Branch(children)) = data::node_at(&state.tree, container) else {
             continue;
@@ -376,10 +366,31 @@ pub fn state_scope(
             }
             let mut path = container.clone();
             path.push(name.clone());
-            if keep.contains(&path) || hidden.contains(&path) || is_present(name) {
+            if carded.iter().any(|(branch, _, _)| *branch == path) {
                 continue;
             }
-            hidden.push(path);
+            siblings.push((path, name.as_str()));
+        }
+    }
+    // 整桌人物名字（隱藏與封存的卡、人物條目）也進候選池但不對應分支：present 精確寫的是人物條目「沈郁」時，
+    // 只剩「沈鬱」一支的樹不會因為折疊唯一命中就把那支當在場送出（與登場、換幕結算同一個名字池）
+    let names: Vec<&str> = carded
+        .iter()
+        .map(|(_, name, _)| *name)
+        .chain(siblings.iter().map(|(_, name)| *name))
+        .chain(table_names.iter().map(String::as_str))
+        .collect();
+    let found = data::match_present_with(&present, &names, |item, name| item.contains(name));
+    let shown = |index: usize| found.matched.contains(&index) || found.ambiguous.contains(&index);
+    let mut hidden: Vec<Vec<String>> = Vec::new();
+    for (index, (branch, _, is_player)) in carded.iter().enumerate() {
+        if !is_player && !shown(index) {
+            hidden.push(branch.clone()); // 玩家那支永遠送
+        }
+    }
+    for (offset, (path, _)) in siblings.iter().enumerate() {
+        if !shown(carded.len() + offset) && !hidden.contains(path) {
+            hidden.push(path.clone());
         }
     }
     StateScope { hidden, align }

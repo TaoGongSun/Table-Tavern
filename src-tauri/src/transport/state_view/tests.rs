@@ -374,6 +374,7 @@ fn state_scope_hides_absent_characters_keeps_player_and_present_and_is_disabled_
         Some(&player),
         &bindings,
         false,
+        &[],
     );
     assert_eq!(scope.hidden, vec![vec!["鴉".to_owned()]]);
     assert!(!scope.align);
@@ -390,6 +391,7 @@ fn state_scope_hides_absent_characters_keeps_player_and_present_and_is_disabled_
         Some(&player),
         &bindings,
         true,
+        &[],
     );
     assert!(scope.hidden.is_empty());
     assert!(scope.align);
@@ -402,9 +404,176 @@ fn state_scope_hides_absent_characters_keeps_player_and_present_and_is_disabled_
         None,
         &bindings,
         true,
+        &[],
     );
     assert!(scope.hidden.is_empty());
     assert!(!scope.align);
+}
+
+/// 在場名單寫成另一種字形（亞瑟→亚瑟）也不裁那支；仍是單向包含（在場項目含卡名）
+#[test]
+fn state_scope_keeps_branches_named_in_another_script() {
+    let arthur = card("arthur-id", "亚瑟", "", "");
+    let crow = card("crow-id", "鸦", "", "");
+    let leaf_branch = |hp: &str| {
+        StateNode::Branch(BTreeMap::from([(
+            "HP".to_owned(),
+            StateNode::Leaf(hp.to_owned()),
+        )]))
+    };
+    let mut state = TableState {
+        tree: BTreeMap::from([
+            ("亚瑟".to_owned(), leaf_branch("100")),
+            ("鸦".to_owned(), leaf_branch("50")),
+        ]),
+        ..TableState::default()
+    };
+    state
+        .table
+        .insert("present".to_owned(), "亞瑟・晨光".to_owned());
+    let mechanism = Mechanism {
+        incremental: true,
+        ..Mechanism::default()
+    };
+    let scope = state_scope(
+        &state,
+        &mechanism,
+        &[arthur, crow],
+        None,
+        &BTreeMap::new(),
+        false,
+        &[],
+    );
+    assert_eq!(scope.hidden, vec![vec!["鸦".to_owned()]]);
+}
+
+/// 候選集合層級的原文優先：present 寫 沈郁 時只有 沈郁 那支留，折疊後同形的 沈鬱 照裁；
+/// present 寫 瀋鬱（原文誰都不是、折疊後兩個都像）就分不出是誰，兩支都留。
+#[test]
+fn state_scope_prefers_raw_names_and_keeps_all_on_glyph_ambiguity() {
+    let cards = [card("a-id", "沈郁", "", ""), card("b-id", "沈鬱", "", "")];
+    let hp = || {
+        StateNode::Branch(BTreeMap::from([(
+            "HP".to_owned(),
+            StateNode::Leaf("10".to_owned()),
+        )]))
+    };
+    let mechanism = Mechanism {
+        incremental: true,
+        ..Mechanism::default()
+    };
+    let scope_for = |present: &str| {
+        let mut state = TableState {
+            tree: BTreeMap::from([("沈郁".to_owned(), hp()), ("沈鬱".to_owned(), hp())]),
+            ..TableState::default()
+        };
+        state.table.insert("present".to_owned(), present.to_owned());
+        state_scope(
+            &state,
+            &mechanism,
+            &cards,
+            None,
+            &BTreeMap::new(),
+            false,
+            &[],
+        )
+        .hidden
+    };
+    assert_eq!(scope_for("沈郁"), vec![vec!["沈鬱".to_owned()]]);
+    assert_eq!(scope_for("沈鬱"), vec![vec!["沈郁".to_owned()]]);
+    assert!(scope_for("瀋鬱").is_empty());
+}
+
+/// 整桌名字池：present 精確寫人物條目「沈郁」、樹上同容器只剩隱藏卡「沈鬱」那支時，那支要裁掉，
+/// 不能靠折疊唯一命中送給 GM；寫「瀋鬱」分不出是誰就留。
+#[test]
+fn state_scope_counts_person_entries_and_hidden_cards_in_the_name_pool() {
+    let hp = || {
+        StateNode::Branch(BTreeMap::from([(
+            "HP".to_owned(),
+            StateNode::Leaf("10".to_owned()),
+        )]))
+    };
+    let mechanism = Mechanism {
+        incremental: true,
+        ..Mechanism::default()
+    };
+    let cards = [card("arthur-id", "亞瑟", "", "")];
+    let pool = ["沈郁".to_owned(), "沈鬱".to_owned()];
+    let scope_for = |present: &str| {
+        let mut state = TableState {
+            tree: BTreeMap::from([(
+                "人物".to_owned(),
+                StateNode::Branch(BTreeMap::from([
+                    ("亞瑟".to_owned(), hp()),
+                    ("沈鬱".to_owned(), hp()),
+                ])),
+            )]),
+            ..TableState::default()
+        };
+        state.table.insert("present".to_owned(), present.to_owned());
+        state_scope(
+            &state,
+            &mechanism,
+            &cards,
+            None,
+            &BTreeMap::new(),
+            false,
+            &pool,
+        )
+        .hidden
+    };
+    let shen = vec!["人物".to_owned(), "沈鬱".to_owned()];
+    assert_eq!(scope_for("亞瑟、沈郁"), vec![shen.clone()]);
+    assert!(scope_for("亞瑟、瀋鬱").is_empty());
+    assert!(scope_for("亞瑟、沈鬱").is_empty());
+}
+
+/// 分支名與名字池同名（人物分支「铁三叔」＝人物條目標題）只算一個候選：present 寫「鐵三叔」只留铁三叔，
+/// 不在場的「铁三」照裁；精確寫「铁三叔」也不因包含而留「铁三」
+#[test]
+fn state_scope_counts_a_name_shared_by_branch_and_pool_once() {
+    let hp = || {
+        StateNode::Branch(BTreeMap::from([(
+            "HP".to_owned(),
+            StateNode::Leaf("10".to_owned()),
+        )]))
+    };
+    let mechanism = Mechanism {
+        incremental: true,
+        ..Mechanism::default()
+    };
+    let cards = [card("arthur-id", "亞瑟", "", "")];
+    let pool = ["亞瑟".to_owned(), "铁三叔".to_owned()];
+    for present in ["亞瑟、鐵三叔", "亞瑟、铁三叔"] {
+        let mut state = TableState {
+            tree: BTreeMap::from([(
+                "人物".to_owned(),
+                StateNode::Branch(BTreeMap::from([
+                    ("亞瑟".to_owned(), hp()),
+                    ("铁三".to_owned(), hp()),
+                    ("铁三叔".to_owned(), hp()),
+                ])),
+            )]),
+            ..TableState::default()
+        };
+        state.table.insert("present".to_owned(), present.to_owned());
+        let hidden = state_scope(
+            &state,
+            &mechanism,
+            &cards,
+            None,
+            &BTreeMap::new(),
+            false,
+            &pool,
+        )
+        .hidden;
+        assert_eq!(
+            hidden,
+            vec![vec!["人物".to_owned(), "铁三".to_owned()]],
+            "{present}"
+        );
+    }
 }
 
 /// 手足規則：容器裡有一支綁到角色卡，同容器其餘分支就一律當人看——
@@ -450,6 +619,7 @@ fn state_scope_hides_uncarded_siblings_in_the_same_container_but_never_at_the_to
         None,
         &BTreeMap::new(),
         false,
+        &[],
     );
     assert!(scope
         .hidden

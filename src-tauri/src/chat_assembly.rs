@@ -207,6 +207,16 @@ pub(crate) fn gm_neutral_session(
     )
 }
 
+/// 整桌人物名字：全部角色卡（含隱藏、封存）＋未停用的人物條目，在場比對判折疊歧義用。
+fn table_names(materials: &GmMaterials) -> Vec<String> {
+    materials
+        .metas
+        .iter()
+        .map(|meta| meta.name.clone())
+        .chain(materials.book.person_titles())
+        .collect()
+}
+
 /// GM 回合的狀態可見範圍：換幕後第一輪送整棵樹對齊，之後每輪只送在場分支＋變動標記（狀態欄二期包 5）。
 /// 回傳 (scope, 這輪是不是對齊輪)。
 pub(crate) fn gm_scope(materials: &GmMaterials) -> (transport::StateScope, bool) {
@@ -219,6 +229,7 @@ pub(crate) fn gm_scope(materials: &GmMaterials) -> (transport::StateScope, bool)
         materials.player.as_ref(),
         &materials.state.branch_bindings,
         align,
+        &table_names(materials),
     );
     (scope, align)
 }

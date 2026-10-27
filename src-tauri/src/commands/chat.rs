@@ -290,18 +290,22 @@ pub(crate) async fn chat_with_character(
 
 /// 這一桌自動隱藏、且未手動封存的角色卡（回合登場檢測用，AI 卡重構包 4b）；
 /// 與 load_active_cards 互補，present 名單命中就是「回歸」。
+/// 自動隱藏中的卡（回歸候選）＋桌上其餘卡的名字（只拿來判折疊歧義）。
 fn load_hidden_cards(
     root: &std::path::Path,
     world_id: &str,
-) -> Result<Vec<data::CharacterCard>, String> {
-    data::list_characters(root, world_id)
+) -> Result<(Vec<data::CharacterCard>, Vec<String>), String> {
+    let (hidden, others): (Vec<_>, Vec<_>) = data::list_characters(root, world_id)
         .map_err(|error| error.to_string())?
         .into_iter()
-        .filter(|meta| meta.auto_hidden && !meta.archived)
+        .partition(|meta| meta.auto_hidden && !meta.archived);
+    let hidden = hidden
+        .into_iter()
         .map(|meta| {
             data::read_character(root, world_id, &meta.id).map_err(|error| error.to_string())
         })
-        .collect()
+        .collect::<Result<_, _>>()?;
+    Ok((hidden, others.into_iter().map(|meta| meta.name).collect()))
 }
 
 /// GM lane 的一輪：凍結 system（GM 指示＋world.md＋全 constant＋全卡）＋回合尾段
@@ -658,15 +662,27 @@ pub(crate) async fn gm_narrate(
         };
         // 人物在場登場（AI 卡重構包 4a）：present 套用後檢查新面孔，
         // 命中就把世界書全文記進歷史，system 那邊只留一行名冊。
+        // 精簡條目照編輯器顯示順序（登場事件的先後跟著它）；讀不到就不記登場（本來就盡力而為）
+        let worldbook = data::read_worldbook(&root, &world_id).unwrap_or_else(|error| {
+            log::warn!("偵測人物登場時讀世界書失敗，這輪不記登場：{error}");
+            Vec::new()
+        });
+        let cards = load_hidden_cards(&root, &world_id);
+        // 整桌人物名字（角色卡＋人物條目）一個候選池判折疊歧義，人物登場與卡回歸互不搶錯人
+        let card_names: Vec<String> = match &cards {
+            Ok((hidden, others)) => hidden
+                .iter()
+                .map(|card| card.name.clone())
+                .chain(others.iter().cloned())
+                .collect(),
+            Err(_) => Vec::new(),
+        };
         arrived_persons = record_person_arrivals(
             &root,
             &world_id,
             scene,
-            // 精簡條目照編輯器顯示順序（登場事件的先後跟著它）；讀不到就不記登場（本來就盡力而為）
-            &data::read_worldbook(&root, &world_id).unwrap_or_else(|error| {
-                log::warn!("偵測人物登場時讀世界書失敗，這輪不記登場：{error}");
-                Vec::new()
-            }),
+            &worldbook,
+            &card_names,
             &materials.events,
             present,
             &display,
@@ -676,12 +692,19 @@ pub(crate) async fn gm_narrate(
         );
         // 角色卡自動回歸（AI 卡重構包 4b）：鏡射人物登場，鍵換成卡名；
         // auto_hidden 欄位本身不在這裡動，只在換幕結算（data::begin_next_scene）。
-        if let Ok(hidden_cards) = load_hidden_cards(&root, &world_id) {
+        if let Ok((hidden_cards, mut other_names)) = cards {
+            other_names.extend(
+                worldbook
+                    .iter()
+                    .filter(|entry| entry.is_person && !entry.disabled)
+                    .map(|entry| entry.title.clone()),
+            );
             arrived_characters = record_card_arrivals(
                 &root,
                 &world_id,
                 scene,
                 &hidden_cards,
+                &other_names,
                 &materials.events,
                 present,
                 &display,
@@ -844,6 +867,7 @@ fn record_person_arrivals(
     world_id: &str,
     scene: u64,
     worldbook: &[data::WorldbookEntry],
+    card_names: &[String],
     events: &[data::TranscriptEvent],
     present: Option<&str>,
     reply_body: &str,
@@ -852,7 +876,8 @@ fn record_person_arrivals(
     action: Option<&str>,
 ) -> Vec<String> {
     let already = data::appeared_person_titles(events);
-    let arrivals = transport::detect_new_arrivals(worldbook, present, reply_body, &already);
+    let arrivals =
+        transport::detect_new_arrivals(worldbook, card_names, present, reply_body, &already);
     if arrivals.is_empty() {
         return Vec::new();
     }
@@ -899,6 +924,7 @@ fn record_card_arrivals(
     world_id: &str,
     scene: u64,
     hidden_cards: &[data::CharacterCard],
+    other_names: &[String],
     events: &[data::TranscriptEvent],
     present: Option<&str>,
     reply_body: &str,
@@ -907,7 +933,13 @@ fn record_card_arrivals(
     action: Option<&str>,
 ) -> Vec<String> {
     let already = data::appeared_card_names(events);
-    let arrivals = transport::detect_new_card_arrivals(hidden_cards, present, reply_body, &already);
+    let arrivals = transport::detect_new_card_arrivals(
+        hidden_cards,
+        other_names,
+        present,
+        reply_body,
+        &already,
+    );
     if arrivals.is_empty() {
         return Vec::new();
     }
@@ -1089,6 +1121,7 @@ mod tests {
             materials.player.as_ref(),
             &materials.state.branch_bindings,
             false,
+            &[],
         );
         let system = crate::transport::gm_lane_system(
             &materials.cards,
@@ -1150,6 +1183,7 @@ mod tests {
             0,
             &worldbook,
             &[],
+            &[],
             Some("愛麗絲"),
             "",
             &crate::transport::test_support::plain_fill("阿濤"),
@@ -1177,6 +1211,7 @@ mod tests {
             &world_id,
             0,
             &worldbook,
+            &[],
             &scene0,
             Some("愛麗絲"),
             "",
@@ -1192,6 +1227,7 @@ mod tests {
             &world_id,
             1,
             &worldbook,
+            &[],
             &[],
             Some("愛麗絲"),
             "",
@@ -1240,6 +1276,7 @@ mod tests {
             0,
             &hidden_cards,
             &[],
+            &[],
             Some("狐狸、貓頭鷹"),
             "",
             &crate::transport::test_support::plain_fill("阿濤"),
@@ -1279,6 +1316,7 @@ mod tests {
             &world_id,
             0,
             &hidden_cards,
+            &[],
             &scene0,
             Some("狐狸、貓頭鷹"),
             "",
@@ -1330,6 +1368,7 @@ mod tests {
             &world_id,
             0,
             &worldbook,
+            &[],
             &[],
             Some("密探"),
             "",

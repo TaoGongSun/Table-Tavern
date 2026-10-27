@@ -98,6 +98,14 @@ impl TableBook {
         Self::from_parts(entries, &[])
     }
 
+    /// 未停用的人物條目標題（在場比對的整桌名字池用）。
+    pub fn person_titles(&self) -> impl Iterator<Item = String> + '_ {
+        self.entries
+            .iter()
+            .filter(|entry| entry.view.is_person && !entry.view.disabled)
+            .map(|entry| entry.view.title.clone())
+    }
+
     pub fn world_card_name(&self) -> Option<&str> {
         self.world_card.as_deref()
     }

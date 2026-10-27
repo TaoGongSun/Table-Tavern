@@ -4,7 +4,8 @@ use std::collections::BTreeMap;
 use super::note::{build_notes, shown_pointer, snippet};
 use super::rules::rule_for;
 use super::tree::{
-    format_num, insert_node, json_to_node, leaf_value, split_pair, take_node, value_as_f64,
+    canonical_path, format_num, insert_node, json_to_node, leaf_value, split_pair, take_node,
+    value_as_f64,
 };
 use super::types::{Outcome, Parsed, Patch, PatchOp, Record, RecordKind};
 use super::upstream_set::{is_vwd, upstream_set, TypedView, Val};
@@ -46,6 +47,14 @@ pub(super) fn apply_updates_typed(
                 continue;
             }
         };
+        let canonical = match canonicalize(tree, patch) {
+            Ok(canonical) => canonical,
+            Err(record) => {
+                records.push(record);
+                continue;
+            }
+        };
+        let patch = &canonical;
         if !view.is_active() {
             apply_one(tree, mechanism, patch, view, &mut records, &mut changes);
             continue;
@@ -74,6 +83,36 @@ pub(super) fn apply_updates_typed(
         changes,
         typed: None,
     }
+}
+
+/// 路徑對回樹上的寫法（模型把「驻守天数」寫成「駐守天數」也對得上）：精確優先、同層唯一折疊兜底，
+/// 歧義整筆拒收。insert 與 move 目的地的最後一段是新鍵，不折；move 來源整條都折。
+fn canonicalize(tree: &BTreeMap<String, StateNode>, patch: &Patch) -> Result<Patch, Record> {
+    let ambiguous = |path: &[String], keys: Vec<String>| {
+        Record::new(
+            RecordKind::Rejected,
+            path.join("."),
+            format!(
+                "{} 對到好幾個只差字形的欄位（{}），請照狀態裡的原字寫路徑。",
+                shown_pointer(path),
+                keys.join("、")
+            ),
+        )
+    };
+    let new_key = matches!(patch.op, PatchOp::Insert | PatchOp::Move);
+    let path =
+        canonical_path(tree, &patch.path, !new_key).map_err(|keys| ambiguous(&patch.path, keys))?;
+    let from = if patch.op == PatchOp::Move {
+        canonical_path(tree, &patch.from, true).map_err(|keys| ambiguous(&patch.from, keys))?
+    } else {
+        patch.from.clone()
+    };
+    Ok(Patch {
+        op: patch.op,
+        path,
+        from,
+        value: patch.value.clone(),
+    })
 }
 
 /// 回傳 true＝這一筆是 move 而且搬成功（其餘一律 false）。

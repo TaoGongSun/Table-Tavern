@@ -1,4 +1,4 @@
-use crate::data::{Condition, Mechanism, StateNode, TriggerMode};
+use crate::data::{self, Condition, Mechanism, StateNode, TriggerMode};
 use std::collections::BTreeMap;
 
 use super::tree::{leaf_at, resolve_path, split_pair, PathValue};
@@ -91,7 +91,12 @@ fn condition_holds(tree: &BTreeMap<String, StateNode>, condition: &Condition) ->
                 PathValue::Missing => "",
                 PathValue::Branch => return false,
             };
-            any.iter().any(|needle| text.contains(needle.as_str()))
+            // 原文單向包含；對不上且針至少兩個字時，再用簡繁折疊比（單字折疊誤撞太多：於／于、發／髮）
+            any.iter().any(|needle| {
+                text.contains(needle.as_str())
+                    || (needle.chars().count() >= 2
+                        && data::fold_glyphs(text).contains(data::fold_glyphs(needle).as_ref()))
+            })
         }
         Condition::Flag { path, expect } => {
             let actual = match resolve_path(tree, path) {
@@ -249,6 +254,31 @@ mod tests {
             any: vec!["雪原".to_owned()],
         };
         assert!(!condition_holds(&tree, &missing));
+    }
+
+    /// 簡繁折疊只當兜底、仍是單向包含；單字針不折（於／于、發／髮 這類誤撞太多）
+    #[test]
+    fn contains_condition_folds_glyphs_only_for_needles_of_two_or_more_chars() {
+        let tree = tree_from(&[("地點", "西邊牧民冬营地"), ("頭", "于是剪了发")]);
+        let folded = Condition::Contains {
+            path: "地點".to_owned(),
+            any: vec!["冬營地".to_owned()],
+        };
+        assert!(condition_holds(&tree, &folded));
+        // 單字針維持原文比對：「發」不會命中「发」、「於」不會命中「于」
+        for needle in ["髮", "於"] {
+            let single = Condition::Contains {
+                path: "頭".to_owned(),
+                any: vec![needle.to_owned()],
+            };
+            assert!(!condition_holds(&tree, &single), "{needle}");
+        }
+        // 單向：值比針短不算包含
+        let reverse = Condition::Contains {
+            path: "地點".to_owned(),
+            any: vec!["西邊牧民冬營地以北".to_owned()],
+        };
+        assert!(!condition_holds(&tree, &reverse));
     }
 
     #[test]

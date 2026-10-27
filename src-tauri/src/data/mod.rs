@@ -47,7 +47,10 @@ pub use scene::{
     set_last_transcript_state, settle_pending_turn, sync_scene_state_tree, write_imported_scene,
     ImportedEvent, ImportedScene, TranscriptEvent, TranscriptKind,
 };
-pub(crate) use scene::{lang_key, name_matches, player_fallback_name, split_present_names};
+pub(crate) use scene::{
+    fold_glyphs, glyph_equal, lang_key, match_present, match_present_with, name_matches,
+    player_fallback_name, split_present_names,
+};
 pub(crate) use state::is_false;
 pub use state::{
     is_index_branch, node_at, read_state, set_player_card, set_tree_value, update_state,

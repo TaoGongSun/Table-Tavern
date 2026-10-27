@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::path::Path;
 
 use super::super::character::{list_characters, set_character_auto_hidden};
@@ -15,6 +16,111 @@ pub(crate) fn split_present_names(raw: &str) -> Vec<String> {
 /// 在場名字跟標題比對：雙向包含，「亞歷山大」對得上「亞歷山大・馮・史特勞斯」。
 pub(crate) fn name_matches(name: &str, title: &str) -> bool {
     title.contains(name) || name.contains(title)
+}
+
+/// 在場名單對一組候選名字（卡名或人物條目標題，索引＝候選位置）的比對結果。
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct PresenceMatch {
+    /// 確定在場：原文精確或原文包含命中，或折疊後唯一命中
+    pub matched: BTreeSet<usize>,
+    /// 折疊後多個候選同時命中、又分不出哪一個：結算不隱藏它們，但也不替任何一個送全文
+    pub ambiguous: BTreeSet<usize>,
+}
+
+/// 每個在場名字依序比：原文精確相等 → 原文雙向包含（既有語意，可多個）→ 簡繁折疊後雙向包含。
+/// 折疊這一步命中多個時，只認折疊後與名字完全相等的那一個；沒有或不只一個＝歧義。
+/// 折疊會誤撞（沈郁／沈鬱），所以原文命中時不再看折疊。
+pub(crate) fn match_present(names: &[String], candidates: &[&str]) -> PresenceMatch {
+    match_present_with(names, candidates, name_matches)
+}
+
+/// `match_present` 的本體，包含比對可換：`matches(在場名字, 候選)`。狀態樹裁切用單向包含
+/// （在場項目含卡名），登場與換幕結算用雙向包含；原文優先與折疊歧義的判法兩邊同一套。
+///
+/// 同一個原文名字（人物分支名與人物條目標題、角色卡名常常同名）只算一個候選：判完再映回每個位置，
+/// 否則「铁三叔」出現兩次會讓折疊後的唯一完全相等變成假歧義。不同原文之間的折疊歧義照留。
+pub(crate) fn match_present_with(
+    names: &[String],
+    candidates: &[&str],
+    matches: impl Fn(&str, &str) -> bool,
+) -> PresenceMatch {
+    let mut unique: Vec<&str> = Vec::new();
+    let mut slot_of: Vec<usize> = Vec::with_capacity(candidates.len());
+    for candidate in candidates {
+        let slot = unique
+            .iter()
+            .position(|seen| seen == candidate)
+            .unwrap_or_else(|| {
+                unique.push(candidate);
+                unique.len() - 1
+            });
+        slot_of.push(slot);
+    }
+    let found = match_unique(names, &unique, matches);
+    let spread = |slots: &BTreeSet<usize>| -> BTreeSet<usize> {
+        (0..candidates.len())
+            .filter(|&index| slots.contains(&slot_of[index]))
+            .collect()
+    };
+    PresenceMatch {
+        matched: spread(&found.matched),
+        ambiguous: spread(&found.ambiguous),
+    }
+}
+
+/// `match_present_with` 的比對本體，候選已去重。
+fn match_unique(
+    names: &[String],
+    candidates: &[&str],
+    matches: impl Fn(&str, &str) -> bool,
+) -> PresenceMatch {
+    let mut result = PresenceMatch::default();
+    for name in names {
+        let exact: Vec<usize> = (0..candidates.len())
+            .filter(|&index| candidates[index] == name.as_str())
+            .collect();
+        let raw = if exact.is_empty() {
+            (0..candidates.len())
+                .filter(|&index| matches(name, candidates[index]))
+                .collect()
+        } else {
+            exact
+        };
+        if !raw.is_empty() {
+            result.matched.extend(raw);
+            continue;
+        }
+        let folded_name = super::glyph::fold_glyphs(name);
+        let folded: Vec<(usize, String)> = candidates
+            .iter()
+            .enumerate()
+            .map(|(index, candidate)| (index, super::glyph::fold_glyphs(candidate).into_owned()))
+            .filter(|(_, candidate)| matches(&folded_name, candidate))
+            .collect();
+        match folded.as_slice() {
+            [] => {}
+            [(index, _)] => {
+                result.matched.insert(*index);
+            }
+            many => {
+                let equal: Vec<usize> = many
+                    .iter()
+                    .filter(|(_, candidate)| *candidate == folded_name.as_ref())
+                    .map(|(index, _)| *index)
+                    .collect();
+                if let [index] = equal.as_slice() {
+                    result.matched.insert(*index);
+                } else {
+                    result
+                        .ambiguous
+                        .extend(many.iter().map(|(index, _)| *index));
+                }
+            }
+        }
+    }
+    let matched = result.matched.clone();
+    result.ambiguous.retain(|index| !matched.contains(index));
+    result
 }
 
 /// 換幕結算角色卡自動隱藏（AI 卡重構包 4b；鐵律：auto_hidden 這個持久欄位只在換幕動，
@@ -50,14 +156,29 @@ pub(super) fn settle_card_visibility(
     let events = read_transcript(root, world_id, ended_scene).unwrap_or_default();
     let arrived = super::marker::appeared_card_names(&events);
     let present_names = present.map(split_present_names).unwrap_or_default();
-    for meta in characters {
+    // 整桌人物名字一個候選池（角色卡＋人物條目，與登場比對同一套）〔作者裁決 2026-10-27〕：
+    // present 寫的是人物條目「沈郁」時，角色卡「沈鬱」不會因為折疊後同名就被當成出現過。
+    // 世界書讀不到就只比卡名（結算本來就盡力而為）。
+    let person_titles: Vec<String> = crate::data::read_worldbook(root, world_id)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|entry| entry.is_person && !entry.disabled)
+        .map(|entry| entry.title)
+        .collect();
+    let names: Vec<&str> = characters
+        .iter()
+        .map(|meta| meta.name.as_str())
+        .chain(person_titles.iter().map(String::as_str))
+        .collect();
+    // 歧義（折疊後分不出是誰）的卡一律當出現過：寧可留在主區，不誤收進隱藏區
+    let present_match = match_present(&present_names, &names);
+    for (index, meta) in characters.iter().enumerate() {
         if meta.archived {
             continue;
         }
         let appeared = arrived.iter().any(|name| name_matches(name, &meta.name))
-            || present_names
-                .iter()
-                .any(|name| name_matches(name, &meta.name));
+            || present_match.matched.contains(&index)
+            || present_match.ambiguous.contains(&index);
         let _ = set_character_auto_hidden(root, world_id, &meta.id, !appeared);
     }
 }
@@ -178,6 +299,116 @@ mod tests {
                 |id: &str| metas.iter().find(|meta| meta.id == id).unwrap().auto_hidden;
             assert_eq!(auto_hidden_of(&host.id), host_hidden_after, "{label}");
             assert!(auto_hidden_of(&hidden.id), "{label}");
+        }
+    }
+
+    fn present(raw: &str) -> Vec<String> {
+        split_present_names(raw)
+    }
+
+    /// 原文精確或原文包含命中就不看折疊：沈郁／沈鬱 折疊後相同，但寫哪個就是哪個
+    #[test]
+    fn match_present_prefers_raw_hits_over_glyph_folding() {
+        let cards = ["沈郁", "沈鬱", "贺铮"];
+        let found = match_present(&present("沈郁、賀錚"), &cards);
+        assert_eq!(found.matched.into_iter().collect::<Vec<_>>(), vec![0, 2]);
+        assert!(found.ambiguous.is_empty());
+        let found = match_present(&present("沈鬱先生"), &cards);
+        assert_eq!(found.matched.into_iter().collect::<Vec<_>>(), vec![1]);
+    }
+
+    /// 只靠折疊命中多張卡：折疊後與名字完全相等的唯一一張勝出；分不出來＝歧義，不算確定在場
+    #[test]
+    fn match_present_resolves_or_flags_fold_only_collisions() {
+        let found = match_present(&present("鍾"), &["钟", "钟离"]);
+        assert_eq!(found.matched.into_iter().collect::<Vec<_>>(), vec![0]);
+        let found = match_present(&present("瀋鬱"), &["沈郁", "沈鬱"]);
+        assert!(found.matched.is_empty());
+        assert_eq!(found.ambiguous.into_iter().collect::<Vec<_>>(), vec![0, 1]);
+    }
+
+    /// 同一個原文名字出現在多個位置（分支名＝人物條目標題）只算一個候選：「鐵三叔」折疊後唯一完全相等的
+    /// 仍是「铁三叔」（兩個位置都命中），不連帶「铁三」；精確寫「铁三叔」也一樣，不因包含而留「铁三」
+    #[test]
+    fn duplicate_raw_candidates_count_once() {
+        let pool = ["铁三", "铁三叔", "铁三叔"];
+        for raw in ["鐵三叔", "铁三叔"] {
+            let found = match_present_with(&present(raw), &pool, |item, name| item.contains(name));
+            assert_eq!(
+                found.matched.into_iter().collect::<Vec<_>>(),
+                vec![1, 2],
+                "{raw}"
+            );
+            assert!(found.ambiguous.is_empty(), "{raw}");
+        }
+        let found = match_present(&present("瀋鬱"), &["沈郁", "沈鬱", "沈郁"]);
+        assert_eq!(
+            found.ambiguous.into_iter().collect::<Vec<_>>(),
+            vec![0, 1, 2]
+        );
+    }
+
+    /// 換幕結算：繁體 present 讓簡體卡名留在主區；折疊歧義的兩張都不隱藏
+    #[test]
+    fn settlement_keeps_cards_named_in_another_script_and_never_hides_ambiguous_ones() {
+        let root = TestRoot::new("card-settlement-glyph");
+        let world_id = create_world(root.path(), "桌").unwrap();
+        let he = character_card(&new_id(), "贺铮");
+        let iron = character_card(&new_id(), "铁三");
+        let shen_a = character_card(&new_id(), "沈郁");
+        let shen_b = character_card(&new_id(), "沈鬱");
+        let absent = character_card(&new_id(), "秦岚");
+        for card in [&he, &iron, &shen_a, &shen_b, &absent] {
+            write_character(root.path(), &world_id, card).unwrap();
+            set_character_auto_hidden(root.path(), &world_id, &card.id, false).unwrap();
+        }
+        let mut state = read_state(root.path(), &world_id).unwrap();
+        state
+            .state
+            .table
+            .insert("present".to_owned(), "林遠、賀錚、鐵三、瀋鬱".to_owned());
+        write_state(root.path(), &world_id, &state).unwrap();
+
+        begin_next_scene(root.path(), &world_id, "摘要", None).unwrap();
+
+        let metas = list_characters(root.path(), &world_id).unwrap();
+        let hidden = |id: &str| metas.iter().find(|meta| meta.id == id).unwrap().auto_hidden;
+        assert!(!hidden(&he.id) && !hidden(&iron.id));
+        assert!(!hidden(&shen_a.id) && !hidden(&shen_b.id), "歧義不隱藏");
+        assert!(hidden(&absent.id));
+    }
+
+    /// 換幕結算與登場共用整桌名字池：present 寫人物條目「沈郁」時，角色卡「沈鬱」照常收進隱藏區；
+    /// 寫「瀋鬱」（卡與人物條目折疊後都像）分不出是誰，卡留主區。
+    #[test]
+    fn settlement_shares_the_name_pool_with_person_entries() {
+        for (present, card_hidden_after) in [("沈郁", true), ("瀋鬱", false)] {
+            let root = TestRoot::new("card-settlement-person-pool");
+            let world_id = create_world(root.path(), "桌").unwrap();
+            let card = character_card(&new_id(), "沈鬱");
+            write_character(root.path(), &world_id, &card).unwrap();
+            set_character_auto_hidden(root.path(), &world_id, &card.id, false).unwrap();
+            upsert_worldbook_entry(
+                root.path(),
+                &world_id,
+                WorldbookEntry {
+                    is_person: true,
+                    constant: true,
+                    ..worldbook_entry(1, "沈郁")
+                },
+            )
+            .unwrap();
+            let mut state = read_state(root.path(), &world_id).unwrap();
+            state
+                .state
+                .table
+                .insert("present".to_owned(), present.to_owned());
+            write_state(root.path(), &world_id, &state).unwrap();
+
+            begin_next_scene(root.path(), &world_id, "摘要", None).unwrap();
+
+            let metas = list_characters(root.path(), &world_id).unwrap();
+            assert_eq!(metas[0].auto_hidden, card_hidden_after, "present={present}");
         }
     }
 }
