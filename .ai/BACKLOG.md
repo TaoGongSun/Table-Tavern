@@ -41,6 +41,7 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [desktop-csp](tasks/desktop-csp.md) — 桌面版 CSP 是 null，訊息渲染只靠 DOMPurify 一層 — 下一步：未排程；先盤點 app 需要的來源
 - [refactor-rule-conflict-same-field](tasks/refactor-rule-conflict-same-field.md) — 兩條機制條目寫同一欄規則（clean-orc 驻守天数），全部套用整次被擋（同卡第二次真重構未重現，非必然） — 下一步：未排程；先重現
 - [gm-reprints-retired-statusbar](tasks/gm-reprints-retired-statusbar.md) — 重構淘汰狀態欄後 GM 仍模仿開場白每回合重印 <details> 狀態欄，多花輸出 — 下一步：未排程；先多模型重現量輸出
+- [refactor-trigger-overlap](tasks/refactor-trigger-overlap.md) — 多條機制條目對同一欄的觸發並存，同回合可能重複命中 — 下一步：未排程；先重現看 GM 提示實際長相
 
 ## 階段 E：成本
 [api-shared-lane](handoffs/api-shared-lane.md) 四路成對測試先做；以下三案依其數據決定做不做：
