@@ -18,7 +18,6 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [mvu-command-syntax](tasks/mvu-command-syntax.md) — 未重構 MVU 卡指令式更新（_.set）被靜默略過 — 下一步：等出現實卡再開工〔模型判斷·未裁決〕（2026-10-27 掃 TestCards 全部 55 項無一張教指令式語法）；開工時優先讓非 zod 路徑重用共用核心 source-commands.ts
 - [mvu-meta-schema](tasks/mvu-meta-schema.md) — 非 zod MVU 卡的 schema 檢查（可擴充、必填鍵、模板） — 下一步：等出現帶 $meta 的非 zod 實卡再開工〔作者裁決 2026-10-27〕
 - [web-mvu-memory-cap](tasks/web-mvu-memory-cap.md) — 網頁版 MVU 引擎補記憶體硬上限（現只有時間上限；可選 quickjs-emscripten） — 下一步：作者裁決先當例外、記待辦〔作者裁決 2026-10-27〕；排在 mvu-zod-semantics 合併之後
-- [mvu-memory-bomb-flaky](tasks/mvu-memory-bomb-flaky.md) — mvu_engine 記憶體炸彈測試負載下 Deadline 搶在 Memory 前，verify 假紅 — 下一步：未排程；用 abandoned-threads 案的負載腳本重現
 - [mvu-desktop-alloc-bombs](tasks/mvu-desktop-alloc-bombs.md) — 桌面 MVU 引擎補累加配置與 TypedArray 炸彈測項（確認 64MB 上限沒漏） — 下一步：等 mvu-memory-bomb-flaky 合併
 
 ## 階段 C：卡片介面接管

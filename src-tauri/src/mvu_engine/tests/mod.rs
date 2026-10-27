@@ -9,6 +9,9 @@ use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::{Duration, Instant};
 
+/// 上限（記憶體、期限、堆疊）與輸入大小：tests/limits.rs
+mod limits;
+
 const MVU_ZOD: &str =
     "https://testingcf.jsdelivr.net/gh/StageDog/tavern_resource/dist/util/mvu_zod.js";
 
@@ -29,14 +32,30 @@ fn table(stat: Value) -> Map<String, Value> {
     json!({ "stat_data": stat }).as_object().cloned().unwrap()
 }
 
-/// 測試用的期限：cargo test 全套並行時機器很忙，debug 版建 runtime 可能超過 1 秒，留足餘裕。
-/// 量時間的測試先把 runtime 建好（`counter`），期限只花在要測的那一步
-fn quick() -> Limits {
+/// 測試引擎一律用這組上限：期限 30 秒只當安全網，給預期不是 Deadline 的呼叫（暖機、收尾、重建、載入失敗；
+/// 負載衝高時 debug 版建 runtime 會超過 5 秒）。預期 Deadline 或要量時間的那一次另用 `measured()` 或自訂期限，
+/// 要量時間的先用同桌同 schema 的無害值暖機（建 runtime 不算在裡面）
+fn roomy() -> Limits {
     Limits {
-        batch: Duration::from_millis(3000),
-        outer_grace: Duration::from_millis(1000),
+        batch: Duration::from_secs(30),
         ..Limits::default()
     }
+}
+
+/// 會炸記憶體的測試引擎：上限縮成 32 MB（觸頂快一倍；正式值見 `Limits::default`）
+fn bomb_engine() -> MvuEngine {
+    MvuEngine::new(Limits {
+        memory_bytes: 32 * 1024 * 1024,
+        ..roomy()
+    })
+}
+
+/// 受測那一次的期限長度
+const MEASURED: Duration = Duration::from_millis(3000);
+
+/// 受測那一次的期限（runtime 已暖機）
+fn measured() -> Instant {
+    Instant::now() + MEASURED
 }
 
 /// 期限加上忙碌機器的排程誤差
@@ -51,14 +70,18 @@ fn batch(
     message: &str,
     stat: Value,
 ) -> Result<BatchOutput, EngineFailure> {
-    engine.run_batch(
-        name,
-        schema,
-        message,
-        &table(stat),
-        &macros(),
-        engine.deadline(),
-    )
+    batch_until(engine, name, schema, message, stat, engine.deadline())
+}
+
+fn batch_until(
+    engine: &MvuEngine,
+    name: &str,
+    schema: &Arc<SchemaScript>,
+    message: &str,
+    stat: Value,
+    deadline: Instant,
+) -> Result<BatchOutput, EngineFailure> {
+    engine.run_batch(name, schema, message, &table(stat), &macros(), deadline)
 }
 
 /// 等作廢的執行緒自己結束（卡住的測試操作做完）
@@ -115,13 +138,13 @@ fn counter(engine: &MvuEngine, name: &str, schema: &Arc<SchemaScript>) -> Value 
 #[test]
 fn corpus_matches_node_golden() {
     let golden: Value = serde_json::from_str(include_str!(
-        "../../../src/features/mvu-engine/fixtures/zod-corpus-golden.json"
+        "../../../../src/features/mvu-engine/fixtures/zod-corpus-golden.json"
     ))
     .unwrap();
     let schema = Arc::new(SchemaScript::new(
-        include_str!("../../../src/features/mvu-engine/fixtures/clean-zod-schema.txt").into(),
+        include_str!("../../../../src/features/mvu-engine/fixtures/clean-zod-schema.txt").into(),
     ));
-    let engine = MvuEngine::new(Limits::default());
+    let engine = MvuEngine::new(roomy());
     let init = engine
         .initialize("corpus", &schema, &golden["initvar"], engine.deadline())
         .unwrap();
@@ -161,7 +184,7 @@ fn real_cards_match_node_golden() {
         return;
     };
     let golden: Value = serde_json::from_str(&text).unwrap();
-    let engine = MvuEngine::new(Limits::default());
+    let engine = MvuEngine::new(roomy());
     for card in golden.as_array().unwrap() {
         let name = card["name"].as_str().unwrap();
         let schema = Arc::new(SchemaScript::new(card["schema"].as_str().unwrap().into()));
@@ -183,183 +206,12 @@ fn real_cards_match_node_golden() {
     }
 }
 
-// ---- 上限 ----
-
-#[test]
-fn memory_bombs_fail_the_whole_batch_and_the_runtime_is_rebuilt() {
-    let engine = MvuEngine::new(quick());
-    for bomb in [
-        "a.push('x'.repeat(1 << 20) + i)",
-        "a.push({ i: i, s: [i, i, i] })",
-    ] {
-        let schema = script(&format!(
-            "registerMvuSchema(z.object({{ a: z.any().transform(v => {{ if (v === '炸') {{ const a = []; for (let i = 0; ; i++) {bomb}; }} return v; }}), b: z.any() }}));"
-        ));
-        let failure = batch(
-            &engine,
-            "bomb",
-            &schema,
-            "_.set('b', 1);_.set('a', '炸');",
-            json!({ "a": 0, "b": 0 }),
-        )
-        .unwrap_err();
-        assert_eq!(failure.kind, FailureKind::Memory, "{bomb}: {failure}");
-        let after = batch(
-            &engine,
-            "bomb",
-            &schema,
-            "_.set('a', 2);",
-            json!({ "a": 0, "b": 0 }),
-        )
-        .unwrap();
-        assert_eq!(after.detailed.table["stat_data"]["a"], json!(2));
-    }
-}
-
-#[test]
-fn transform_infinite_loop_is_a_whole_failure_not_a_rejection() {
-    let engine = MvuEngine::new(quick());
-    let schema = script("registerMvuSchema(z.object({ a: z.any().transform(v => { if (v === '轉') { while (true) {} } return v; }), b: z.any() }));");
-    batch(&engine, "loop", &schema, "", json!({ "a": 0, "b": 0 })).unwrap();
-    let started = Instant::now();
-    let failure = batch(
-        &engine,
-        "loop",
-        &schema,
-        "_.set('b', 1);_.set('a', '轉');_.set('b', 2);",
-        json!({ "a": 0, "b": 0 }),
-    )
-    .unwrap_err();
-    assert_eq!(failure.kind, FailureKind::Deadline, "{failure}");
-    assert!(
-        started.elapsed() < quick().batch + slack(),
-        "{:?}",
-        started.elapsed()
-    );
-    // 中斷後重建，照常可用
-    assert!(batch(
-        &engine,
-        "loop",
-        &schema,
-        "_.set('a', 1);",
-        json!({ "a": 0, "b": 0 })
-    )
-    .is_ok());
-}
-
-#[test]
-fn unbounded_recursion_hits_the_stack_limit() {
-    let engine = MvuEngine::new(quick());
-    let schema = script("function f(n) { return f(n + 1) + 1; }\nregisterMvuSchema(z.object({ a: z.any().transform(v => v === '遞迴' ? f(0) : v) }));");
-    let failure = batch(
-        &engine,
-        "stack",
-        &schema,
-        "_.set('a', '遞迴');",
-        json!({ "a": 0 }),
-    )
-    .unwrap_err();
-    assert_eq!(failure.kind, FailureKind::Stack, "{failure}");
-}
-
-#[test]
-fn initialize_fails_on_resource_errors_but_reports_validation_failures() {
-    let engine = MvuEngine::new(quick());
-    let bomb = script("registerMvuSchema(z.object({ a: z.any().transform(v => { const a = []; for (let i = 0; ; i++) a.push('x'.repeat(1 << 20) + i); }) }));");
-    assert_eq!(
-        engine
-            .initialize("init", &bomb, &json!({ "a": 1 }), engine.deadline())
-            .unwrap_err()
-            .kind,
-        FailureKind::Memory
-    );
-    let strict = script("registerMvuSchema(z.object({ a: z.number() }));");
-    let invalid = engine
-        .initialize(
-            "init",
-            &strict,
-            &json!({ "a": "x", "$meta": { "extensible": true } }),
-            engine.deadline(),
-        )
-        .unwrap();
-    let (issues, count) = invalid.invalid.unwrap();
-    assert_eq!((issues.len(), count), (1, 1));
-    // 驗不過：照原值（元資料已清）
-    assert_eq!(invalid.stat_data, json!({ "a": "x" }));
-}
-
-#[test]
-fn one_deadline_spans_every_request_of_a_run() {
-    let engine = MvuEngine::new(quick());
-    let schema = script("registerMvuSchema(z.object({ a: z.any().transform(v => { if (v === '轉') { while (true) {} } return v; }) }));");
-    batch(&engine, "shared", &schema, "", json!({ "a": 0 })).unwrap();
-    // 前一步用掉大半期限，後一步不重新起算
-    let deadline = Instant::now() + Duration::from_millis(1500);
-    engine
-        .run_op(
-            "shared",
-            &schema,
-            Op::Stall(Duration::from_millis(600)),
-            deadline,
-        )
-        .unwrap();
-    let started = Instant::now();
-    let failure = engine
-        .run_batch(
-            "shared",
-            &schema,
-            "_.set('a', '轉');",
-            &table(json!({ "a": 0 })),
-            &macros(),
-            deadline,
-        )
-        .unwrap_err();
-    assert_eq!(failure.kind, FailureKind::Deadline);
-    assert!(
-        started.elapsed() < Duration::from_millis(900) + slack() / 2,
-        "{:?}",
-        started.elapsed()
-    );
-    // 期限已過：不進引擎
-    let started = Instant::now();
-    let late = engine
-        .run_batch(
-            "shared",
-            &schema,
-            "_.set('a', 1);",
-            &table(json!({ "a": 0 })),
-            &macros(),
-            deadline,
-        )
-        .unwrap_err();
-    assert_eq!(late.kind, FailureKind::Deadline);
-    assert!(started.elapsed() < Duration::from_millis(50));
-}
-
-#[test]
-fn inputs_over_parse_limits_never_reach_the_engine() {
-    let engine = MvuEngine::new(quick());
-    let schema = script("registerMvuSchema(z.object({}));");
-    let message = "a".repeat(256 * 1024 + 1);
-    assert_eq!(
-        batch(&engine, "big", &schema, &message, json!({}))
-            .unwrap_err()
-            .kind,
-        FailureKind::InputTooLarge
-    );
-    let huge = json!({ "s": "字".repeat(700 * 1024) });
-    assert_eq!(
-        batch(&engine, "big", &schema, "", huge).unwrap_err().kind,
-        FailureKind::InputTooLarge
-    );
-    assert!(engine.tables().is_empty());
-}
-
 // ---- schema 載入 ----
 
 #[test]
 fn schema_load_failures_stop_before_the_core_runs() {
-    let engine = MvuEngine::new(quick());
+    let engine = MvuEngine::new(roomy());
+    let bombs = bomb_engine();
     let cases = [
         ("拋錯", "throw new Error('壞掉');"),
         ("沒註冊", "export const Schema = z.object({});"),
@@ -382,12 +234,19 @@ fn schema_load_failures_stop_before_the_core_runs() {
         ),
     ];
     for (name, body) in cases {
-        let failure = batch(
-            &engine,
+        // 預期逾時的那條只給 3 秒；記憶體那條用 32 MB 引擎
+        let (engine, deadline) = match name {
+            "無窮迴圈" => (&engine, measured()),
+            "記憶體" => (&bombs, bombs.deadline()),
+            _ => (&engine, engine.deadline()),
+        };
+        let failure = batch_until(
+            engine,
             "load",
             &script(body),
             "_.set('a', 1);",
             json!({ "a": 0 }),
+            deadline,
         )
         .unwrap_err();
         // 載入時逾時歸期限（可重試），其餘歸載入失敗；兩者都不呼叫核心
@@ -402,7 +261,7 @@ fn schema_load_failures_stop_before_the_core_runs() {
 
 #[test]
 fn imports_outside_the_whitelist_fail_to_load() {
-    let engine = MvuEngine::new(quick());
+    let engine = MvuEngine::new(roomy());
     for specifier in [
         "fs",
         "os",
@@ -447,7 +306,7 @@ fn mvu_zod_url_whitelist() {
 
 #[test]
 fn sandbox_has_no_host_apis_and_no_engine_handles() {
-    let engine = MvuEngine::new(quick());
+    let engine = MvuEngine::new(roomy());
     let schema = script("registerMvuSchema(z.object({}));");
     let probe = "JSON.stringify({ \
         present: ['fetch','XMLHttpRequest','WebSocket','require','process','Deno','std','os','importScripts','navigator','document','window','Worker','WebAssembly','TTMvu','__ttRegisterMvuSchema'].filter(k => typeof globalThis[k] !== 'undefined'), \
@@ -484,7 +343,7 @@ fn sandbox_has_no_host_apis_and_no_engine_handles() {
 
 #[test]
 fn duplicate_registrations_are_counted() {
-    let engine = MvuEngine::new(quick());
+    let engine = MvuEngine::new(roomy());
     let schema =
         script("registerMvuSchema(z.object({ a: z.number() }));\nregisterMvuSchema(z.object({}));");
     let init = engine
@@ -511,7 +370,7 @@ fn abandoned_threads_are_capped_and_counted_until_they_exit() {
     let limits = Limits {
         outer_grace: Duration::from_millis(200),
         max_busy_threads: 2,
-        ..Limits::default()
+        ..roomy()
     };
     let engine = MvuEngine::new(limits);
     let schema = script(COUNTER);
@@ -570,7 +429,7 @@ fn overlapping_stalls_on_many_tables_never_exceed_the_global_cap() {
     // 收尾用寬鬆期限；受測的三個卡住操作各給 1.5 秒期限
     let engine = Arc::new(MvuEngine::new(Limits {
         outer_grace: Duration::from_millis(200),
-        ..Limits::default()
+        ..roomy()
     }));
     let schema = script("registerMvuSchema(z.object({}));");
     let mut jobs = vec![];
@@ -610,7 +469,7 @@ fn schema_counter() -> Arc<SchemaScript> {
 /// 一般使用：多桌輪流、兩桌同時，都不會被名額誤擋
 #[test]
 fn rotating_and_two_concurrent_tables_are_not_blocked() {
-    let engine = Arc::new(MvuEngine::new(quick()));
+    let engine = Arc::new(MvuEngine::new(roomy()));
     let schema = schema_counter();
     for name in ["a", "b", "c", "d", "a", "b", "c", "d"] {
         assert!(counter(&engine, name, &schema).is_number(), "{name}");
@@ -634,7 +493,7 @@ fn respawns_after_abandoning_are_capped_per_table_and_window() {
         outer_grace: Duration::from_millis(100),
         max_busy_threads: 10,
         max_respawns: 2,
-        ..Limits::default()
+        ..roomy()
     };
     let engine = MvuEngine::new(limits);
     let schema = script(COUNTER);
@@ -662,7 +521,7 @@ fn an_evicted_worker_that_times_out_is_still_abandoned_and_counted() {
     let limits = Limits {
         outer_grace: Duration::from_millis(200),
         max_tables: 1,
-        ..Limits::default()
+        ..roomy()
     };
     let engine = Arc::new(MvuEngine::new(limits));
     let schema = script(COUNTER);
@@ -697,7 +556,7 @@ fn an_evicted_worker_that_times_out_is_still_abandoned_and_counted() {
 fn back_to_back_requests_beside_a_held_slot_are_never_busy() {
     let engine = Arc::new(MvuEngine::new(Limits {
         max_busy_threads: 2,
-        ..Limits::default()
+        ..roomy()
     }));
     let schema = script(COUNTER);
     counter(&engine, "a", &schema);
@@ -728,7 +587,7 @@ fn back_to_back_requests_beside_a_held_slot_are_never_busy() {
 
 #[test]
 fn a_reply_after_the_deadline_is_not_a_success() {
-    let engine = MvuEngine::new(quick());
+    let engine = MvuEngine::new(roomy());
     let schema = script(COUNTER);
     // 先把 runtime 建好，期限只花在操作本身
     counter(&engine, "late", &schema);
@@ -760,9 +619,9 @@ fn interrupts_are_not_caught_by_any_js_construct() {
     ];
     let schema = script("registerMvuSchema(z.object({}));");
     let guard = Guard::default();
-    let far = || Instant::now() + Duration::from_secs(5);
+    let far = || Instant::now() + roomy().batch;
     guard.arm(far());
-    let runtime = EngineRuntime::build(&schema, &Limits::default(), &guard).unwrap();
+    let runtime = EngineRuntime::build(&schema, &roomy(), &guard).unwrap();
     for (name, code) in cases {
         guard.arm(far());
         runtime
@@ -783,7 +642,7 @@ fn interrupts_are_not_caught_by_any_js_construct() {
 #[test]
 fn key_insertion_order_survives_store_and_read_round_trips() {
     // 背包只留最後 3 件（照插入順序）；鍵名排序與插入順序相反
-    let engine = MvuEngine::new(quick());
+    let engine = MvuEngine::new(roomy());
     let schema = script("registerMvuSchema(z.object({ 背包: z.record(z.string(), z.number()).transform(bag => Object.fromEntries(Object.entries(bag).slice(-3))), 備註: z.any() }));");
     let names: Vec<String> = (0..12).rev().map(|i| format!("物品{i:02}")).collect();
     let bag: String = names
@@ -820,7 +679,7 @@ fn key_insertion_order_survives_store_and_read_round_trips() {
 
 #[test]
 fn a_panic_fails_the_batch_and_the_table_keeps_working() {
-    let engine = MvuEngine::new(quick());
+    let engine = MvuEngine::new(roomy());
     let schema = script(COUNTER);
     assert_eq!(
         engine
@@ -834,7 +693,7 @@ fn a_panic_fails_the_batch_and_the_table_keeps_working() {
 
 #[test]
 fn tables_are_evicted_least_recently_used() {
-    let engine = MvuEngine::new(quick());
+    let engine = MvuEngine::new(roomy());
     let schema = script(COUNTER);
     for name in ["a", "b", "c"] {
         counter(&engine, name, &schema);
@@ -849,7 +708,7 @@ fn tables_are_evicted_least_recently_used() {
 fn runtime_is_kept_across_batches_and_rebuilt_on_failure_schema_change_and_idle() {
     let limits = Limits {
         idle: Duration::from_millis(300),
-        ..quick()
+        ..roomy()
     };
     let engine = MvuEngine::new(limits);
     let schema = script(COUNTER);
@@ -871,7 +730,7 @@ fn runtime_is_kept_across_batches_and_rebuilt_on_failure_schema_change_and_idle(
 
 #[test]
 fn core_failures_carry_the_parse_failure_code() {
-    let engine = MvuEngine::new(quick());
+    let engine = MvuEngine::new(roomy());
     let schema = script("registerMvuSchema(z.object({}));");
     let message = "_.set('a', 1);".repeat(1001);
     let failure = batch(&engine, "code", &schema, &message, json!({})).unwrap_err();
@@ -882,36 +741,6 @@ fn core_failures_carry_the_parse_failure_code() {
         },
         "{failure}"
     );
-}
-
-#[test]
-fn spike_limits_on_raw_runtime_code() {
-    let engine = MvuEngine::new(quick());
-    let schema = script("registerMvuSchema(z.object({}));");
-    let eval = |code: &str| engine.run_op("raw", &schema, Op::Eval(code.into()), engine.deadline());
-    let kind = |code: &str| eval(code).map(|_| ()).unwrap_err().kind;
-    assert_eq!(
-        kind("String(new ArrayBuffer(512 * 1024 * 1024).byteLength)"),
-        FailureKind::Memory
-    );
-    assert_eq!(
-        kind("let s = 'a'; for (let i = 0; i < 40; i++) s = s + s; String(s.length)"),
-        FailureKind::Memory
-    );
-    let started = Instant::now();
-    assert_eq!(
-        kind("(async function () { for (;;) { await null; } })()"),
-        FailureKind::Deadline
-    );
-    assert!(started.elapsed() < quick().batch + slack());
-    assert_eq!(
-        kind("new Promise(function () {})"),
-        FailureKind::Script {
-            code: Some("never-settled".into())
-        }
-    );
-    // 觸限、中斷之後照常可用
-    assert_eq!(eval("String(1 + 1)").unwrap(), "2");
 }
 
 /// P4 會放進 Tauri state、在 spawn_blocking 裡用
@@ -944,7 +773,7 @@ fn empty_zod_script() -> Arc<SchemaScript> {
 
 #[test]
 fn plain_runtime_seeds_without_a_schema_and_reports_applied() {
-    let engine = MvuEngine::new(quick());
+    let engine = MvuEngine::new(roomy());
     let applied = plain_seed(
         &engine,
         "plain",
@@ -971,7 +800,7 @@ fn plain_runtime_seeds_without_a_schema_and_reports_applied() {
 
 #[test]
 fn switching_between_plain_and_zod_on_one_table_rebuilds_the_runtime() {
-    let engine = MvuEngine::new(quick());
+    let engine = MvuEngine::new(roomy());
     let schema = script(COUNTER);
     assert_eq!(counter(&engine, "t", &schema), json!(1));
     assert!(
@@ -993,7 +822,7 @@ fn switching_between_plain_and_zod_on_one_table_rebuilds_the_runtime() {
 fn zod_runtime_rebuilds_after_a_plain_table_evicts_it() {
     let engine = MvuEngine::new(Limits {
         max_tables: 1,
-        ..quick()
+        ..roomy()
     });
     let schema = script(COUNTER);
     assert_eq!(counter(&engine, "zod", &schema), json!(1));
