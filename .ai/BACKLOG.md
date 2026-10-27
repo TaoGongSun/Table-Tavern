@@ -32,7 +32,6 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 
 - [card-field-overlaps-fixed-keys](tasks/card-field-overlaps-fixed-keys.md) — 卡欄位（当前环境、驻留/交涉角色）與 place／present 同義，GM 只報固定鍵、卡欄位凍住 — 下一步：先提做法選項，與 character-presence 一併評估
 - [interface-table-state-report](tasks/interface-table-state-report.md) — 未重構的真介面桌走中性版指示，不保證回報 time／place／present — 下一步：未排程；先量測缺欄頻率，動中性版需作者裁決
-- [takeover-fence-scene-keys](tasks/takeover-fence-scene-keys.md) — 接管桌回覆不收圍欄，平欄 time／place／present 凍住 — 下一步：未排程；先重現
 - [multichar-next-speaker-silent](tasks/multichar-next-speaker-silent.md) — 多角色（非介面）桌 GM 每輪寫「下一位：X」但角色不接話 — 下一步：未排程；先重現
 - [play-folder-split](tasks/play-folder-split.md) — src/features/play/ 27 檔、useChatController.ts 約 1,011 行，依功能分子資料夾 — 下一步：未排程
 - [agy-conversation-isolation](tasks/agy-conversation-isolation.md) — agy 對話寫進使用者 ~/.gemini、含私設的角色線出現在使用者 /resume 清單 — 下一步：未排程；先查能否指定資料目錄

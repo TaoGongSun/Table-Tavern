@@ -8,7 +8,7 @@ use crate::data::{self, FieldKind, FieldRule, InjectLevel, StateNode, UpdateMode
 use std::collections::BTreeMap;
 use std::path::Path;
 
-fn rule(kind: FieldKind) -> FieldRule {
+pub(super) fn rule(kind: FieldKind) -> FieldRule {
     FieldRule {
         kind,
         min: None,
@@ -37,7 +37,7 @@ fn key(text: &str) -> Vec<String> {
     text.split('.').map(str::to_owned).collect()
 }
 
-fn interface_outcome(
+pub(super) fn interface_outcome(
     state_fields: serde_json::Value,
     rules: &[(&str, FieldRule)],
 ) -> RefactorOutcome {
@@ -75,7 +75,7 @@ fn interface_outcome(
     }
 }
 
-fn interface_selection() -> RefactorSelection {
+pub(super) fn interface_selection() -> RefactorSelection {
     RefactorSelection {
         apply_interface: true,
         ..no_player_selection(Vec::new())
@@ -184,7 +184,7 @@ fn same_named_flat_fields_leave_one_copy_that_updates() {
     );
     apply(root.path(), &world_id, &outcome, &interface_selection()).unwrap();
     let state = data::read_state(root.path(), &world_id).unwrap();
-    assert_eq!(table_keys(&state), vec!["place"]);
+    assert!(table_keys(&state).is_empty(), "寫殼時平欄 place 一併清掉");
     assert_eq!(
         state.state.tree.get("体力"),
         Some(&leaf("60")),
@@ -210,7 +210,7 @@ fn same_named_flat_fields_leave_one_copy_that_updates() {
     assert_eq!(state2.state.tree.get("体力"), Some(&leaf("40")));
     assert_eq!(state2.state.tree.get("驻守天数"), Some(&leaf("第 3 天")));
     assert_eq!(state2.state.tree.len(), 3, "{:?}", state2.state.tree);
-    assert_eq!(table_keys(&state2), vec!["place"]);
+    assert!(table_keys(&state2).is_empty());
 }
 
 /// 非物件產物不重建樹，平欄也不搬不刪。
@@ -253,7 +253,7 @@ fn narration(root: &Path, world_id: &str, text: &str) {
     .unwrap();
 }
 
-/// 連續收回兩次：整幕事件快照的平欄已同步拿掉，舊平欄不復活；收據復原回到套用前（平欄回來、殼與樹退掉）。
+/// 連續收回兩次：整幕事件快照的平欄（含寫殼清掉的 place）已同步拿掉，舊平欄不復活；收據復原回到套用前（平欄回來、殼與樹退掉）。
 #[test]
 fn retracting_and_undo_do_not_revive_the_flat_copy() {
     let root = TestRoot::new("takeover-flat-retract");
@@ -281,7 +281,10 @@ fn retracting_and_undo_do_not_revive_the_flat_copy() {
     for _ in 0..2 {
         assert!(data::pop_transcript(root.path(), &world_id, 0).unwrap());
         let state = data::read_state(root.path(), &world_id).unwrap();
-        assert_eq!(table_keys(&state), vec!["place"]);
+        assert!(
+            table_keys(&state).is_empty(),
+            "快照的 place 也同步拿掉，收回不復活"
+        );
         assert_eq!(state.state.tree, expected);
     }
 

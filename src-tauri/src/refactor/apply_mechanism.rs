@@ -6,7 +6,8 @@ use crate::data::{self, DataResult, FieldKind, FieldRule, StateNode, WorldState}
 use crate::mechanism;
 use std::collections::{BTreeMap, BTreeSet};
 
-/// 平欄裡固定由 ```state 圍欄回報的三個鍵：不當規則欄位搬進樹。
+/// 平欄裡由 ```state 圍欄回報的三個鍵：不當規則欄位搬進樹。接管桌不收圍欄，寫殼時整組清掉
+/// （`flat_migration::clear_scene_keys`）。
 pub(super) const BASE_TABLE_KEYS: [&str; 3] = ["time", "place", "present"];
 
 /// 對齊用的命名空間：套用前的樹，加上開場狀態平欄裡 time／place／present 以外的鍵（當頂層葉子）。

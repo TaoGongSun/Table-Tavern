@@ -11,6 +11,8 @@
 //!   精確／字形命中與未收編；「/」前段、末段與衝突照舊留平欄，免得刪掉後下一輪圍欄又寫回來。
 //!
 //! 先建整張清單再一次套用，唯一性看整張清單。回傳離開平欄的鍵，呼叫端同步整幕事件快照。
+//!
+//! time／place／present 另由 `clear_scene_keys` 處理：接管後沒有管道更新，留著只會凍在開場值。
 
 use super::apply_mechanism::{explicit_number, slash_head_match, turn_rule, BASE_TABLE_KEYS};
 use crate::data::{self, FieldKind, FieldRule, StateNode, WorldState};
@@ -117,6 +119,17 @@ pub(super) fn migrate_flat_table(
         moved.push(key);
     }
     moved
+}
+
+/// 本次寫入接管殼時清掉平欄 time／place／present：接管回覆不收圍欄，留著就凍在開場值，在場判定
+/// （登場、狀態裁切、換幕結算）與 GM「目前狀態」會一直讀舊值。刪鍵而不寫空字串——present 缺席才是
+/// 接管桌設計上的「未知」，空字串會被當成「沒人在場」照樣結算。回傳刪掉的鍵，呼叫端同步整幕事件快照。
+pub(super) fn clear_scene_keys(state: &mut WorldState) -> Vec<String> {
+    BASE_TABLE_KEYS
+        .iter()
+        .filter(|key| state.state.table.remove(**key).is_some())
+        .map(|key| (*key).to_owned())
+        .collect()
 }
 
 fn classify(tree: &BTreeMap<String, StateNode>, key: &str) -> Fate {

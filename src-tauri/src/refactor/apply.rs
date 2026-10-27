@@ -383,6 +383,9 @@ fn apply_into(
                 new_shell.is_none(),
             );
         }
+        if new_shell.is_some() {
+            moved_table_keys.extend(flat_migration::clear_scene_keys(&mut state));
+        }
         interface_applied = true;
     }
 

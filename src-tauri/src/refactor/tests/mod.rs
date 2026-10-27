@@ -10,6 +10,7 @@ mod rule_reporting;
 mod shell_cleanup;
 mod statusbar_flow;
 mod takeover_collections;
+mod takeover_fence_scene_keys;
 mod takeover_flat_keys;
 mod takeover_opening;
 mod tree_authority;
