@@ -15,6 +15,7 @@ mod tree;
 mod triggers;
 mod types;
 pub(crate) mod upstream_set;
+mod value_keys;
 
 #[cfg(test)]
 mod block_scope_tests;
@@ -26,6 +27,8 @@ mod feedback_e2e_tests;
 mod glyph_path_tests;
 #[cfg(test)]
 mod list_block_tests;
+#[cfg(test)]
+mod object_key_glyph_tests;
 #[cfg(test)]
 mod parse_feedback_tests;
 #[cfg(test)]

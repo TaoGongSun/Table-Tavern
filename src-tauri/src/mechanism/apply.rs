@@ -10,6 +10,7 @@ use super::tree::{
 };
 use super::types::{Outcome, Parsed, Patch, PatchOp, Record, RecordKind};
 use super::upstream_set::{is_vwd, upstream_set, TypedView, Val};
+use super::value_keys::fold_object_keys;
 
 mod array;
 mod hint;
@@ -89,6 +90,7 @@ pub(super) fn apply_updates_typed(
 /// 路徑對回樹上的寫法（模型把「驻守天数」寫成「駐守天數」也對得上）：精確優先、同層唯一折疊兜底，
 /// 歧義整筆拒收。insert 與 move 目的地的最後一段是新鍵，不折；move 來源整條都折。
 /// 單段 insert 例外：只差字形的是「有精確登記規則的頂層葉子」（系統管的欄位）就接到它，免得長出第二份。
+/// replace／insert 的物件值，巢狀鍵也對回樹上的寫法（見 `value_keys`），對不了的整筆拒收。
 fn canonicalize(
     tree: &BTreeMap<String, StateNode>,
     mechanism: &Mechanism,
@@ -120,11 +122,22 @@ fn canonicalize(
     } else {
         patch.from.clone()
     };
+    let value = match (&patch.op, &patch.value) {
+        (PatchOp::Replace | PatchOp::Insert, Some(serde_json::Value::Object(map)))
+            if !collection::claims(mechanism, &path) =>
+        {
+            Some(serde_json::Value::Object(
+                fold_object_keys(tree, &path, map)
+                    .map_err(|detail| Record::new(RecordKind::Rejected, path.join("."), detail))?,
+            ))
+        }
+        _ => patch.value.clone(),
+    };
     Ok(Patch {
         op: patch.op,
         path,
         from,
-        value: patch.value.clone(),
+        value,
     })
 }
 

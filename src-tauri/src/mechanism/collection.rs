@@ -62,6 +62,11 @@ fn covered_collection<'a>(mechanism: &'a Mechanism, path: &[String]) -> Option<&
         })
 }
 
+/// 路徑落在集合裡或是集合的祖先：形狀與鍵由集合的描述管（`route`），一般物件值的鍵折疊不插手。
+pub(super) fn claims(mechanism: &Mechanism, path: &[String]) -> bool {
+    locate(mechanism, path).is_some() || covered_collection(mechanism, path).is_some()
+}
+
 pub(super) fn route(
     tree: &mut BTreeMap<String, StateNode>,
     mechanism: &Mechanism,
