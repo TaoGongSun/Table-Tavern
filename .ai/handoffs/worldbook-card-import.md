@@ -28,7 +28,7 @@
 - 空桌回收：`cargo test` 151 passed, 0 failed；`reclaims_only_untouched_worlds` 補兩個回歸情境（匯了世界書的新桌不回收、worldbook.json 損毀的桌不回收）。`cargo clippy --all-targets` 新增行零警告（既有 7 個警告不在改動範圍）。
 
 ## Remaining / Next action
-- 使用者實機（長度限制刪除＋配角／心理描寫解禁）：用新打的 release 包跑世界書卡（如 TestCards/WestFantsy.png）確認 GM 旁白篇幅放開、配角會開口說話、角色回覆有內心戲。過了就結案。
+- 實聊已過（測試通道 2026-10-27，claude CLI Haiku 5.5；改用同卡無介面版 TestCards/WestFantasy_NOUI.png，有介面版會走卡片格式、測不到一般旁白）：GM 旁白 990／1080 字、接待員與傷兵等配角開口；自建角色「艾琳」回覆含心理描寫並用到私設。可結案。
 
 ## Constraints
 - 匯入併進當前開啟的桌，不自動開新桌（2026-07-30 與使用者確認現狀即此，如要「一鍵成新桌」另開任務）。

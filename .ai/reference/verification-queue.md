@@ -7,7 +7,7 @@
 
 0. [desktop-tour](../handoffs/desktop-tour.md)：2026-10-23 完成——WebKit `npm run e2e`、`npm run smoke:dist` 全過；main 7f686cb 已部署，站上 `/#download` 十張圖 200、桌機深色與手機淺色版面正常。
 
-1. [hide-first-action](../handoffs/archive/hide-first-action.md)：桌上角色卡直接「⋯→轉成世界書條目」只跳一次確認即轉成（AI 回應中按轉換顯示忙碌、不轉那半段排梯 2 第 9 項順手看）。
+1. [hide-first-action](../handoffs/archive/hide-first-action.md)：2026-10-27 測試通道過（一次確認即轉成；回應中顯示忙碌不轉）。桌上角色卡直接「⋯→轉成世界書條目」只跳一次確認即轉成（AI 回應中按轉換顯示忙碌、不轉那半段排梯 2 第 9 項順手看）。
 
 4. [card-mvu-shim](../handoffs/card-mvu-shim.md) 包 1（2026-10-03 已用測試通道代測通過，步驟留作回歸；只讀墊片，test-harness 獨立 root、零 AI 派送）：①匯入 `TestCards/bcd368…png` 開新桌，空桌打開卡片介面：MVU 前端畫出 initvar 的值（用户数据：名称「未知」、资金 100000）　②`post_opening` 寫兩則假 GM 訊息（文字自帶 `<StatusPlaceHolderImpl/>`，因為開場事件不補占位；`<UpdateVariable>` 的 JSONPatch 數字欄用 delta，replace 絕對值會被拒收）：面板顯示第二則的值；收回 → 第一則；復原 → 第二則　③面板開著時寫一則玩家句，再在狀態欄手改资金：面板不重掛、數值自動換　④匯入 `TestCards/DongeonMaster.png`：開場是「开局」畫面、沒被狀態欄搶走；同②③改基础信息.时间　⑤抓兩卡 GM 回合實際送出的提示（只看提示、不送出），看 `<UpdateVariable>` 規定是否還在、有沒有被「不要輸出格式以外的狀態欄」壓掉　⑥ai-log 零派送，quit 後兩個正式目錄 hash 不變。
 
@@ -33,15 +33,15 @@
 | 5 | [refactor-mode-split](../handoffs/archive/refactor-mode-split.md) 已結案（2026-10-27） | 實測全過；下游 [interface-takeover-spike](../handoffs/archive/interface-takeover-spike.md) 逐型驗卡可開始 |
 | 6 | [ai-card-refactor](../handoffs/archive/ai-card-refactor.md)＋[person-promote](../handoffs/archive/person-promote.md)＋[state-values-mvu](../handoffs/archive/state-values-mvu.md) 真桌 | 已驗、已結案（2026-10-27）：person-promote 與 state-values 增量／全量過；ai-card-refactor 三紅修完後測試通道重跑 C2、C4、D2 全綠（Haiku 5.5 共 7 次） |
 | 8 | [sponsor-features](../handoffs/sponsor-features.md) AI 生圖 | 三個來源各實跑一次＋構圖二選一（選「半身」要出腰以上特寫、2:3 不變、記住上次選擇） |
-| 9 | [ui-redesign](../handoffs/ui-redesign.md) 實聊名牌與打字指示 | 自 ui-overhaul 併入：dialogue 事件的名牌版式、串流中打字指示；另順手驗 [hide-first-action](../handoffs/archive/hide-first-action.md) 回應中按「⋯→轉成世界書條目」顯示忙碌、不轉；可搭任一梯 2 項目順手看 |
-| 10 | [worldbook-card-import](../handoffs/worldbook-card-import.md) 篇幅與配角解禁 | 用新打的 release 包，同一張世界書卡確認 GM 旁白篇幅放開、配角會開口、角色回覆有內心戲 |
-| 11 | [ai-response-stop](../plans/ai-response-stop.md) 順手驗 | 已結案，不專程測。之後實聊（或介面重新設計後整體重測）時，GM 旁白／角色對話各按一次停止：半截有「回應中斷」、下一輪正常 |
-| 12 | [ui-redesign](../handoffs/ui-redesign.md) 要 AI 的對話窗 | 重構三窗（進行中、二選一、結果含已取消／部分失敗）、一句話開桌有綱要後底列；可併梯 2 第 5 順手看 |
+| 9 | [ui-redesign](../handoffs/ui-redesign.md) 實聊名牌與打字指示 | 2026-10-27 測試通道過：名牌版式、打字指示、回應中轉換顯示忙碌。 自 ui-overhaul 併入：dialogue 事件的名牌版式、串流中打字指示；另順手驗 [hide-first-action](../handoffs/archive/hide-first-action.md) 回應中按「⋯→轉成世界書條目」顯示忙碌、不轉；可搭任一梯 2 項目順手看 |
+| 10 | [worldbook-card-import](../handoffs/worldbook-card-import.md) 篇幅與配角解禁 | 2026-10-27 測試通道過（用 WestFantasy_NOUI）：篇幅放開、配角開口、角色有內心戲。 用新打的 release 包，同一張世界書卡確認 GM 旁白篇幅放開、配角會開口、角色回覆有內心戲 |
+| 11 | [ai-response-stop](../plans/ai-response-stop.md) 順手驗 | 2026-10-27 測試通道過：GM 旁白與角色對話各停一次，半截標「回應被中途中斷」，下一輪正常。 已結案，不專程測。之後實聊（或介面重新設計後整體重測）時，GM 旁白／角色對話各按一次停止：半截有「回應中斷」、下一輪正常 |
+| 12 | [ui-redesign](../handoffs/ui-redesign.md) 要 AI 的對話窗 | 2026-10-27 測試通道過：進行中、二選一、結果含已取消、一句話開桌底列；部分失敗未遇到。 重構三窗（進行中、二選一、結果含已取消／部分失敗）、一句話開桌有綱要後底列；可併梯 2 第 5 順手看 |
 | 14 | [api-shared-lane](../handoffs/api-shared-lane.md) | 錯認前言者（只有 API 測得到）＋四路快取成對測試（同角色／換角色 × 冷／暖），記絕對 cached tokens；[vendor-prefix-floor](../tasks/vendor-prefix-floor.md) 排在這批數據之後 |
-| 15 | [card-arrival-private-leak](../handoffs/card-arrival-private-leak.md) | 多角色桌：回歸事件私設只到 GM |
+| 15 | [card-arrival-private-leak](../handoffs/card-arrival-private-leak.md) | 2026-10-27 測試通道過。 多角色桌：回歸事件私設只到 GM |
 | 17 | [test-harness](../handoffs/archive/test-harness.md) 智慧免費真供應商 | 用 OpenRouter 免費模型桌送一輪：`route` 的智慧免費預覽有值、`ai-log` 的 `api-smart-free` 派送後有同 id 的 `responder` 事件且模型是實際回應者。2026-10-04 代測：route 預覽有值（gemma-4-31b-it:free）過；穩定第一、二名整段被上游限流 429，`responder` 事件未能驗，等穩定第一名可用時重跑一輪 |
-| 18 | [card-chat-messages-shim](../handoffs/archive/card-chat-messages-shim.md) 面板開著換值 | NorthHall-structure 桌（沒重構）用低階模型跑一回合：面板開著時 GM 新回覆進來，狀態欄自動換成新回覆的值；可搭任一梯 2 實聊順手看 |
-| 19 | [refactor-statusbar-skeleton](../handoffs/archive/refactor-statusbar-skeleton.md) 狀態欄骨架桌 | 已結案、單元測試覆蓋，剩實機觀察，可搭任一梯 2 實聊順手看：①結果框「匯出」（6b）上一輪 AI 重構後沒寫檔、畫面沒報錯，零額度重放正常；下次有授權的 AI 重構時，匯出前後讀 statusMessage 與 `refactor_export_outcome` 回傳定位原因　②文字欄被下 delta 已由 [takeover-text-field-delta](../plans/takeover-text-field-delta.md) 改成拒收回饋＋提示詞清單欄提醒；剩 `<UpdateVariable>` 的 JSON 字串尾巴多跳脫引號（被容錯跳過），看頻率決定要不要加強提示　③生成中按套用重構／貼開場等排隊時再按停止生成：等待提示照常、截斷回覆落檔後才執行　④真模型一回合佐證排隊套用在 GM 旁白落檔後才執行（這筆回覆留在套用前的桌況）　⑤待查證：酒館 regex 替換字串與訊息顯示會不會替換 `{{user}}`／`{{char}}`，會的話面板也應替換（只查規格） |
+| 18 | [card-chat-messages-shim](../handoffs/archive/card-chat-messages-shim.md) 面板開著換值 | 2026-10-27 測試通道過：面板開著 GM 回覆後時辰／地點／人物欄自動換新。 NorthHall-structure 桌（沒重構）用低階模型跑一回合：面板開著時 GM 新回覆進來，狀態欄自動換成新回覆的值；可搭任一梯 2 實聊順手看 |
+| 19 | [refactor-statusbar-skeleton](../handoffs/archive/refactor-statusbar-skeleton.md) 狀態欄骨架桌 | 已結案、單元測試覆蓋，剩實機觀察，可搭任一梯 2 實聊順手看（2026-10-27：①過、②0/15 塊解析失敗、③④的「套用重構」那半現況到不了——已有遊玩紀錄的桌拒收重構，生成中套用重構的排隊情境無從觸發；③「貼開場」那半未試、⑤酒館 regex 替換字串最後會跑 substituteParams，會換 {{user}}／{{char}}）：①結果框「匯出」（6b）上一輪 AI 重構後沒寫檔、畫面沒報錯，零額度重放正常；下次有授權的 AI 重構時，匯出前後讀 statusMessage 與 `refactor_export_outcome` 回傳定位原因　②文字欄被下 delta 已由 [takeover-text-field-delta](../plans/takeover-text-field-delta.md) 改成拒收回饋＋提示詞清單欄提醒；剩 `<UpdateVariable>` 的 JSON 字串尾巴多跳脫引號（被容錯跳過），看頻率決定要不要加強提示　③生成中按套用重構／貼開場等排隊時再按停止生成：等待提示照常、截斷回覆落檔後才執行　④真模型一回合佐證排隊套用在 GM 旁白落檔後才執行（這筆回覆留在套用前的桌況）　⑤待查證：酒館 regex 替換字串與訊息顯示會不會替換 `{{user}}`／`{{char}}`，會的話面板也應替換（只查規格） |
 | 21 | [image-model-picker](../handoffs/image-model-picker.md) 生圖統一 PNG 真打 | 單元測試只用 mock：①付費生圖模型回 JPEG／WebP／遠端 URL 時真打一次，圖進圖庫且是 PNG（看圖庫檔頭）　②codex／agy／grok 真生圖一次，走「讀進記憶體→清工作目錄→轉 PNG→進圖庫」新流程；可併第 8 項一起跑 |
 | 22 | [image-model-free-tier-hide](../handoffs/image-model-free-tier-hide.md) 免費層藏生圖模型 | 測試通道只用本機假 `/key`：①真 OpenRouter 免費 key 與付費 key 各開一次設定頁「AI 連線」，免費隱藏生圖模型、付費顯示　②整個關掉設定視窗再開，快取首屏不閃；可併第 21 項一起跑 |
 
@@ -63,4 +63,4 @@
 | [claude-1h-cache](../handoffs/archive/claude-1h-cache.md) 真超額與邊界 | ①Claude 訂閱真的用到超額：跳一次超額提示，文案對到該輪實得時效（本帳號超額未開通）　②玩家 `~/.claude/settings.json` 的 `env` 帶 `FORCE_PROMPT_CACHING_5M=1` 時，`--safe-mode` 下續聊線是否被壓成 5m（帳本 `created_1h_tokens=0`、lanes.json 壽命 300）　③同一條 claude 線閒置超過 1 小時，下一輪改走 rebased　④Windows 上述各項 |
 | [test-harness](../handoffs/archive/test-harness.md) 正式包 listener | 要確實隔離資料的環境（獨立 macOS 帳號或 VM）：正式包帶 `TT_HARNESS_ROOT` 啟動不產 harness.json、`lsof` 看不到 listener |
 | [long-prompt-scene-hint](../handoffs/archive/long-prompt-scene-hint.md) Windows 真 CLI 讀檔 | 等有 Windows 機且 claude／grok／agy 已登入：中文卡加世界書超過 3 萬字的桌各送一輪——claude 讀 `--system-prompt-file`、grok 讀 `--agent` profile 與 `--prompt-file`、agy 吃 stdin，都回得出話；`cli-prompts/` 呼叫後是空的。原生假 .exe 版已在 Windows CI 過，三家真 CLI 未跑 |
-| [interface-takeover-spike](../handoffs/archive/interface-takeover-spike.md) 既有 lane 續聊 | 已有 GM 續聊線的接管桌升級後送一輪：凍結 system 開頭換成唯一敘事者版後續聊照常（snapshot 補丁或重開線都行）、GM 不寫「下一位」、介面不被蓋 |
+| [interface-takeover-spike](../handoffs/archive/interface-takeover-spike.md) 既有 lane 續聊 | 2026-10-27 測試通道過：舊版開的接管桌（GM 線已送 14 則）升級後送一輪，system-changed 重開線換成唯一敘事者版、無「下一位」、介面數值照更新。已有 GM 續聊線的接管桌升級後送一輪：凍結 system 開頭換成唯一敘事者版後續聊照常（snapshot 補丁或重開線都行）、GM 不寫「下一位」、介面不被蓋 |

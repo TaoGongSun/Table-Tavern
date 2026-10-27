@@ -20,8 +20,9 @@ Updated: 2026-10-02T19:52:00+08:00
 - 程式落點：大廳 `src/features/lobby/`、陣容欄 `src/features/characters/Cast{Rail,Cards,Archive}.tsx`、故事貼底 `src/features/story-scroll/`；編輯頁共用頁框 `src/shared/ui/EditPage.tsx`、世界書工具列 `src/features/worldbook/WorldbookSection.tsx`；設定外框 `src/features/settings/SettingsWindow.tsx`、AI 表單與儲存列 `src/features/settings/SettingsForm.tsx`、連線方式 `src/features/settings/TransportChoice.tsx`、外部指定分頁 `src/features/settings/useRequestedTab.ts`、外框樣式 `src/styles/settings-window.css`；對話窗共用外框 `src/shared/ui/Dialog.tsx`（原生 `<dialog>`）、裁切與 AI 生圖 `src/features/characters/CardImageDialogs.tsx`、對話窗樣式 `src/styles/dialogs.css`。
 - 已實機驗（macOS release 800×600）：分包 1–4 見各自 commit 訊息；分包 5 俄文＋最大字級：一句話開桌、設定＋巢狀 CLI 權限提示（Esc 只關上層）、AI 生圖、裁切（框內按下框外放開不關）、燈箱、匯入身分／路由、開場白面板、介面卡關閉鈕，Esc／遮罩／焦點歸還照表；系統確認窗俄文按鈕（未儲存離開）不截字。
 - 2026-10-02 實機過：範例桌詢問（en 三鈕 Cancel, pick a language again／No thanks／Create，取消後語言退回）。⋯ 鍵盤不正常，另立案 menu-keyboard-webkit 處理。
-- 未實機驗：重構三窗（要 AI）、一句話開桌有綱要後的底列（梯 2）；格式轉換更新窗（要有含格式轉換的新版）、設定外部指定分頁與齒輪紅點（要有新版）、換幕提醒＋錯誤＋狀態同時（要真出錯）、WebView2 連按 Esc 與 Windows 外觀（無 Windows 機）（梯 3）。十語系長字只以俄文代表。
-- 自 ui-overhaul 併入（未實機驗）：實聊時 dialogue 事件的名牌版式、串流中打字指示。
+- 已實機驗（測試通道 2026-10-27，claude CLI Haiku 5.5）：重構三窗——進行中（盤點中／整理中 i/n）、二選一（照建議＋自己選）、結果含「已取消（部分產出）」；一句話開桌有綱要後底列（重骰／照這份開桌）。部分失敗結果窗未遇到，無法驗。
+- 未實機驗：格式轉換更新窗（要有含格式轉換的新版）、設定外部指定分頁與齒輪紅點（要有新版）、換幕提醒＋錯誤＋狀態同時（要真出錯）、WebView2 連按 Esc 與 Windows 外觀（無 Windows 機）（梯 3）。十語系長字只以俄文代表。
+- 自 ui-overhaul 併入，已實機驗（測試通道 2026-10-27，claude CLI Haiku 5.5）：dialogue 事件名牌版式（角色色塊名牌＋分隔線）、打字指示（聊天名牌下 ●●●、卡片介面左上「GM 正在打字」）。
 - 自 desktop-update-detect 移交（未處理）：畫面位置與為過按鈕寬度選的譯詞要重定——法文「更新」Installer、德文 Updaten／Nochmal、西葡「重試」Repetir〔作者裁決 2026-10-02〕。
 - 觀察（範圍外、未處理）：牌桌工具列有「介面卡」鈕時，俄文 800px 下桌名 wedge 縮到只剩一字。
 

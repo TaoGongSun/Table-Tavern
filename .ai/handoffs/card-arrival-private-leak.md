@@ -10,4 +10,4 @@ Status: awaiting-verification。規格與拍板見 [plans/card-arrival-private-l
 - 已知限制：已經生成的換幕摘要若寫進了私設，無法辨認修復。
 
 ## 下一步
-實機（排在[實測佇列](../reference/verification-queue.md)梯 2）：自動隱藏一張有私設的卡→GM 回覆讓牠回來→逐字稿出現私設＋公開兩則；換別的角色發言，診斷或 session 檔看不到私設；GM 下一輪仍用得到私設。過了就結案。
+實機已過（測試通道 2026-10-27，claude CLI Haiku 5.5）：NorthHall-structure 重構桌，秦岚加私設後設 auto_hidden，GM 回覆 present 帶到她→逐字稿先私設（gm_only）再公開回歸兩則；周掌柜、贺铮角色回合後角色線 session 檔零私設字樣、只見「（角色回歸）〈秦岚〉」前綴，GM 線 session 有私設且下一輪續用同一條線。可結案。
