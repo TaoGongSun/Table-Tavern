@@ -1,21 +1,21 @@
 # Task handoff
 Task-ID: refactor-mode-split
-Updated: 2026-08-14T09:24:48.977395+00:00
-Status: awaiting-verification
+Updated: 2026-10-27
+Status: ready-to-close
 
 ## Goal
 重構雙軌定向落地：介面優先 vs 角色優先（兩段式選擇＋模式專屬解析），四包完成（路由＋三態偵測＋二選一 UI／兩段 session／模式行為／穩定性驗收矩陣）。
 
 ## Current state
-程式面四包＋2026-08-14 GUI 回歸四洞修復（d8f8f1c）都在 main。2026-10-02 用 test-harness 測試包（Claude CLI claude-sonnet-5-5，正式資料零差異）跑完五卡矩陣：
-- WestFantsy 連跑 3 次：皆完成、可套用、可載入，產物一致（11×7、23 佔位符、五棵狀態子樹、mode=interface）；第 3 次殼多包一層外框，屬變異。
-- Transfur：完成，接管（有殼）。
-- bcd368：完成，判 playable: no，沒建殼。
-- TrainEmperor：送 AI 前擋下，零派送。
-- NorthHall：Sonnet 5.5 以內容理由在初判拒答，已撤出測試流程、不再使用；改用 `TestCards/NorthHall-structure.png`（同結構、成年非情色內容），判 playable: no，沒建殼。
-- 取消路：初判後在二選一框取消，無產物落地；重構進行中取消未測。
-- 第二段 resume：同一 CLI session，盤點快取命中 83～89%（小卡 59%），展開 69～97%。
-- 沒建殼的桌（bcd368、NorthHall-structure）改成不給面板，已由 [refactor-noshell-panel](archive/refactor-noshell-panel.md) 結案。
+程式面四包＋四洞修復（d8f8f1c）都在 main，實測全數通過，只剩下方兩件小事即可結案。
+- 2026-10-02 測試包五卡矩陣（Claude CLI claude-sonnet-5-5）：WestFantsy 連跑 3 次皆可套用；Transfur 接管；bcd368、NorthHall-structure 判 playable: no 不建殼（沒殼的桌不給面板，見 [refactor-noshell-panel](archive/refactor-noshell-panel.md)）；TrainEmperor 零派送擋下；二選一取消無產物；第二段 resume 快取命中 83～89%。
+- 2026-10-27 測試包重測（獨立 root，Sonnet 5.5 重構／Haiku 5.5 回合，13 次呼叫）：
+  - 洞①過：Transfur-safe 選多角色，「格式」(rule 5)「COT」(rule 1) 進已淘汰；套用後兩條掛「停用中」、`worldbook.json` 為 `disable: true`；無「卡片介面」鈕；GM 一回合出對話正文，無 `<mainPage>`／`prop|`／`skill|`。
+  - 洞②過：匯入 `C2-mode-Characters.json` 套用，摘要「新增 18 個角色・新增 34 條世界書條目」無「介面已套用」；`state.json` 只有 `state.table: {}`、無 mechanism／介面狀態樹，`refactor_mode: "characters"`，無殼檔。
+  - 洞④過：TrainEmperor 擋下訊息 top 366px，在按鈕列（297–327）正下方、第一條條目（431）之上，零派送。
+  - 洞③由「重跑重構」定案取代（[refactor-statusbar-skeleton](archive/refactor-statusbar-skeleton.md) 定案結論 1），改驗新路徑並通過：NorthHall-structure 零額度匯入舊產物→面板有值→按重構跳「會用原卡重新重構」→確認後殼、產物、mechanism-log、mode 全清，世界書回 23 條→選保留原卡玩法重構→狀態樹單套、殼的佔位符全對得上樹路徑→Haiku 一回合 `<UpdateVariable>` 更新時間／地點／天氣／行動選項，面板跟著變。
+  - 重構中取消過：WestFantsy 盤點串流中按取消，該呼叫無完成紀錄、無殘留子程序、無 refactor-outcome、世界書 38 條不動；重按重構可重新初判。
+- 證據截圖在當次子代理 scratchpad（未入庫）。
 
 ## Completed
 - 包 1：三態偵測＋二選一對話框＋unsupported 擋下＋refactor_recommend／survey 帶 mode＋i18n。
@@ -24,8 +24,7 @@ Status: awaiting-verification
 - GUI 回歸四洞修復（d8f8f1c）：apply 停用整條 dropped＋rewritten_entries 快照；effective apply_interface 閘門（含來源消耗判定）；normalize_interface_paths 正規化（鏡像分支折疊／值合併／rules remap／dangling 剔除，preflight 在任何寫入前）；INTERFACE_STATE_RULES 加單一路徑鐵則；worldbookMessage 置頂。
 
 ## Verification
-- cargo test 500（+6：characters 跳介面留來源、整條 dropped 停用＋undo、NorthHall 縮小版折疊、衝突與雙綁拒套、無殼鏡像判定、preflight 零落檔）；vitest 137；npm run build ✓；check:i18n 十語系 OK。
-- 未實機：四洞修復後的 GUI 重測＋包 4 矩陣剩餘項（實跑歸使用者）。
+- cargo test 500；vitest 137；npm run build ✓；check:i18n 十語系 OK；GUI 實測見上。
 
 ## Plan files
 - .ai/plans/refactor-mode-split.md
@@ -38,13 +37,11 @@ Status: awaiting-verification
 - Dirty fingerprint: 4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945
 
 ## Remaining
-- 四洞①②④ GUI 重測：A 桌（characters）套用後「格式」「COT」掛停用徽章、GM 出對話正文；C2 匯入後 state.json 無介面狀態樹、無 incremental；E1 擋下訊息出現在按鈕列正下方。
-- 四洞③「重跑重構後面板佔位符更新」：2026-10-03 在 refactor-statusbar-skeleton 測試包驗——NorthHall-structure 第一次重構已產殼（狀態欄型），同桌第二次重構因介面來源條目在第一次套用時已被消耗，產物沒有介面，套用後殼被清掉、面板消失（現場重構沒有收據、無法 undo）。③ 的原始情境（同桌重跑時還找得到介面來源）在現行「消耗即刪除」規則下已不會發生；重跑清殼的處理待作者裁決，見 [refactor-statusbar-skeleton](refactor-statusbar-skeleton.md) 待問 1。
-- 重構進行中取消。
-- 驗完刪 lib.rs `[survey-persons]` eprintln（診斷水印，順路）。
+- 刪 `src-tauri/src/commands/refactor.rs:218` 的 `[survey-persons]` eprintln（診斷水印）。
+- 輕：匯入的 characters 重構卡若帶介面產物，結果框仍顯示並預勾「遊戲介面搬進 app」（`src/features/refactor/refactor-review.ts:692`、`:710` 只看 `outcome.interface`，沒看 mode）；後端閘門已擋、套用不會落介面，只是預覽說法不實。只有匯入異常產物會遇到〔模型判斷·未裁決〕。
 
 ## Next action
-用測試包重測四洞①②④與重構中取消；③ 等 refactor-statusbar-skeleton 待問 1 裁決後再定還要不要驗。
+處理上面兩件後結案。
 
 ## Constraints
 - 快取紅線：survey／expand 共用 system 逐位元組相同（既有測試把關）。
