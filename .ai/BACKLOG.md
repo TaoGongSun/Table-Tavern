@@ -9,7 +9,8 @@
 
 ## 階段 A：先拍板
 - 梯 2 第 5、6 項（refactor-mode-split、ai-card-refactor＋person-promote＋state-values-mvu）已驗已結案（2026-10-27），不再列。
-- 剩兩件要作者拍：mvu-zod-semantics 決策（已拍板，見階段 B 註記）、revert／fork 補 `auto_hidden` 的做法（尚無任務檔）。
+- 剩兩件要作者拍：mvu-zod-semantics 決策（已拍板，見階段 B 註記）、revert／fork 補 `auto_hidden` 的做法（見下）。
+- [revert-fork-auto-hidden](tasks/revert-fork-auto-hidden.md) — revert／fork 不復原換幕結算寫下的 auto_hidden — 下一步：未排程；開工先提做法選項給作者
 
 ## 階段 B：MVU 相容
 mvu-zod-semantics 施工中（`mvu-zod-semantics` 分支，已登記 HANDOFF），順序第一：zod 施工 → command-syntax → meta-schema → shim-flaky-test（已結案）→ card-mvu-shim 4d（作者手點，見[實測佇列](reference/verification-queue.md)）。
@@ -18,6 +19,8 @@ mvu-zod-semantics 施工中（`mvu-zod-semantics` 分支，已登記 HANDOFF）�
 - [import-tests-folder](tasks/import-tests-folder.md) — import/ 24 檔（11 支測試）超過資料夾上限，測試收進子資料夾 — 下一步：MVU 相容段開工前結構體檢時一併做
 - [mvu-command-syntax](tasks/mvu-command-syntax.md) — 未重構 MVU 卡指令式更新（_.set）被靜默略過 — 下一步：未排程，先找實卡確認
 - [mvu-meta-schema](tasks/mvu-meta-schema.md) — 非 zod MVU 卡的 schema 檢查（可擴充、必填鍵、模板） — 下一步：未排程
+- [card-shim-no-zod](tasks/card-shim-no-zod.md) — 卡片 iframe 的 shim 沒有 z，zod 桌的 parseMessage 仍走 MagVarUpdate 語意 — 下一步：未排程；見 mvu-zod-semantics 規格 §4.4，排在該案合併之後
+- [initvar-nonzod-overwrite](tasks/initvar-nonzod-overwrite.md) — 非 zod 桌開場白 `<initvar>` 不覆寫初始值（只有 zod 路徑補了） — 下一步：未排程；排在 mvu-zod-semantics 合併之後
 - [web-mvu-memory-cap](tasks/web-mvu-memory-cap.md) — 網頁版 MVU 引擎補記憶體硬上限（現只有時間上限；可選 quickjs-emscripten） — 下一步：作者裁決先當例外、記待辦〔作者裁決 2026-10-27〕；排在 mvu-zod-semantics 合併之後
 
 ## 階段 C：卡片介面接管
@@ -27,11 +30,18 @@ mvu-zod-semantics 施工中（`mvu-zod-semantics` 分支，已登記 HANDOFF）�
 - ①的做法：介面桌停用角色點名（不做回合聚合正文；代價是介面桌失去多角色開口）。〔作者裁決 2026-10-27〕
 
 - [character-presence](tasks/character-presence.md) — 卡片自訂名冊欄位（如駐留角色）接到既有在場機制（順序④） — 下一步：延後到 VN 前再評估〔作者裁決 2026-10-27〕（①②做完後受益桌型少：純介面桌不拆人物）；屆時做法 Sol／Grok 已共識：重構時標名冊路徑＋沒重構桌嚴格欄位名比對退路（只認唯一、形狀合法候選，否則當未知）＋依桌型決定信 present 或名冊；在場規則搬出 chat.rs 跟著本案做
+- [shell-swap-flash-multicard](tasks/shell-swap-flash-multicard.md) — 多卡桌跟著最新 GM 樓自動換卡時，介面殼硬切閃白（見 [shell-update-flash](plans/shell-update-flash.md)「已知邊界」） — 下一步：未排程
 
 ## 階段 D：引擎行為實聊
 已在 HANDOFF／實測佇列，不重列任務檔：[card-arrival-private-leak](handoffs/card-arrival-private-leak.md)、[worldbook-card-import](handoffs/worldbook-card-import.md)、[ui-redesign](handoffs/ui-redesign.md)（9、12）、順手驗梯 2 第 11／18／19、[hide-first-action](handoffs/archive/hide-first-action.md)。
 
-- [acr-live-observations](tasks/acr-live-observations.md) — 重構案實測看到的三件事（在場名單字形、人物進在場名單太晚、clean-orc 平欄劇情欄位不更新），尚未查根因 — 下一步：實聊時一併觀察，再各自查根因
+- [present-name-interface-lang](tasks/present-name-interface-lang.md) — present 人名一律照介面語言寫，消除與「一律繁體」的指示衝突〔作者裁決 2026-10-27〕 — 下一步：開工先確認狀態路徑鍵要不要也照介面語言（未裁決）
+- [acr-live-observations](tasks/acr-live-observations.md) — 重構案實測兩件事（人物進在場名單太晚、clean-orc 平欄劇情欄位不更新），根因已查、修法方向未裁決 — 下一步：各自開工前先確認修法方向
+- [gm-typing-covers-card-date](tasks/gm-typing-covers-card-date.md) — 卡片介面開著時「GM 正在打字」提示框蓋住頂列日期，算 bug〔作者裁決 2026-10-27〕 — 下一步：未排程；先重現
+- [gm-no-state-fence-worldbook-table](tasks/gm-no-state-fence-worldbook-table.md) — 無介面世界書桌 GM 照世界書狀態欄格式輸出、不附 state 圍欄，時間地點在場為空 — 下一步：未排程；先讀該桌逐字稿查根因
+- [hand-built-card-interface-prompt](tasks/hand-built-card-interface-prompt.md) — 手建角色存檔後誤跳「這張卡自帶介面畫面」，但該桌沒有介面鈕 — 下一步：未排程；先重現
+- [takeover-yaml-key-glyph](tasks/takeover-yaml-key-glyph.md) — 接管桌續聊 GM 把清單欄 YAML 鍵寫成繁體，原卡腳本只認簡體鍵而少欄（ai-card-refactor B5 重現） — 下一步：未排程；先重現
+- [refactor-preview-ellipsis](tasks/refactor-preview-ellipsis.md) — 重構進行中預覽文字夾雜「⋯」，純外觀、低優先 — 下一步：未排程
 - [branch-glyph-match](tasks/branch-glyph-match.md) — 分支綁定 auto_match_branch 只認精確同名，卡名與分支鍵字形不同要手動指認 — 下一步：未排程；先確認實際會不會遇到
 
 ## 階段 E：成本
@@ -45,7 +55,9 @@ mvu-zod-semantics 施工中（`mvu-zod-semantics` 分支，已登記 HANDOFF）�
 
 ## 階段 G：整理與立案
 - [ai-workspace-tidy](tasks/ai-workspace-tidy.md) — .ai/tasks/ 累積到 62 檔，逐檔判斷該留該刪該封存 — 下一步：未排程；開工首步＝比對 tasks/ 與 BACKLOG.md 列出三類清單，狀態不明的逐條問使用者。
-- 待立案（尚無任務檔）：vn-audio、旗標規格、全自動雙軌。
+- [vn-audio](tasks/vn-audio.md) — VN 音訊 — 下一步：未排程，細節開工時定
+- [vn-story-flags](tasks/vn-story-flags.md) — 劇情旗標規格 — 下一步：未排程，細節開工時定
+- [vn-full-auto-dual-track](tasks/vn-full-auto-dual-track.md) — 全自動雙軌 — 下一步：未排程，細節開工時定
 - [vn-prestructure-split](tasks/vn-prestructure-split.md) — VN v1 開工前結構案：commands/chat.rs 1525、transport/response.rs 1114、data/scene/transcript.rs 1257 行；另列 App.tsx 1049、useChatController.ts 1017、features/play（23 檔）、transport/（25 檔） — 下一步：未排程；開工前重量行數，commands 應只做邊界
 
 ## 階段 H：VN 模式

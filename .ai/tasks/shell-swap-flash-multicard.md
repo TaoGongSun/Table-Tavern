@@ -1,0 +1,13 @@
+# shell-swap-flash-multicard — 多卡桌自動換卡時介面殼硬切閃白
+
+## Summary
+多卡桌跟著最新 GM 樓自動換卡時，卡片介面殼會硬切而閃白。
+
+## 已知線索
+- 見 [shell-update-flash](../plans/shell-update-flash.md)「已知邊界」。
+
+## Next action
+未排程。
+
+## 驗收方向
+多卡桌自動換卡時介面不出現空白幀。
