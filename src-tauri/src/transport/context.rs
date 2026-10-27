@@ -770,6 +770,7 @@ mod tests {
             trim_strings: Vec::new(),
             min_depth: None,
             max_depth: None,
+            opening_only: false,
         }]
     }
 

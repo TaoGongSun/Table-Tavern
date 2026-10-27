@@ -359,18 +359,11 @@ pub fn is_interface_takeover(root: &Path, world_id: &str, refactor_mode: Option<
 }
 
 /// 這桌的 GM 回合有沒有被要求報 present（回合格式＝一般旁白＋```state 圍欄）。判定與
-/// `chat_assembly::gm_turn_instruction` 同一份：可用顯示腳本、接管、玩法標記餵 `transport::gm_turn_format`。
+/// `chat_assembly::gm_turn_instruction` 同一份：`import::reply_format_scripts`、接管、玩法標記餵 `transport::gm_turn_format`。
 /// 換幕結算靠它分辨「沒被要求報 present」與「報了、沒人在場」。
 pub fn requires_present_report(root: &Path, world_id: &str, refactor_mode: Option<&str>) -> bool {
-    let card_scripts: Vec<crate::import::InterfaceScript> =
-        crate::import::read_card_interfaces(root, world_id)
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|interface| interface.unsupported.is_none())
-            .flat_map(|interface| interface.scripts)
-            .collect();
     crate::transport::gm_turn_format(
-        !card_scripts.is_empty(),
+        !crate::import::reply_format_scripts(root, world_id).is_empty(),
         is_interface_takeover(root, world_id, refactor_mode),
         refactor_mode,
     ) == crate::transport::GmTurnFormat::Narration

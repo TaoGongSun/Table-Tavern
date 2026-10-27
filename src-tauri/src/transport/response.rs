@@ -41,23 +41,24 @@ pub fn narrate_instruction(
     let mut instruction = if scaffold_en(lang) {
         "(Director instruction) Insert a narration: describe scene changes, the world's response, or plot progress. \
          Use any length the story needs. You may portray supporting characters without character cards, but do not speak for listed characters or the player. \
-         After the narration, start a new line and output one ```state fence. Inside it, write one `key: value` field per line. \
+         If the worldbook or character settings require extra content in every reply (such as a status bar or suggested actions), add it after the narration in the format they specify. When all of that is written, start a new line and output one ```state fence. Inside it, write one `key: value` field per line. \
          Always output `time`, `place`, and `present`; write `time` and `place` in the player's language and repeat them if unchanged. \
          Output `present` in full every turn: based on this turn's story as it stands at the end of the narration, list only the people who are actually at `place` at that moment. \
          The character roster only identifies who people are; it is not a list of who is here, so do not list anyone just because they are on the roster, were mentioned, or are expected to come. \
          If nobody is there, leave `present:` empty. As an exception to the language rule, write each `present` name exactly as it appears in the cast or setting (same characters, no translation, transliteration, or script change), separated by `、`. \
-         Do not add any explanation outside the narration and fence."
+         Do not add any explanation beyond the content above."
             .to_owned()
     } else {
         "（導演指示）請插入一段旁白：描述場景變化、世界反應或劇情推進，\
          篇幅不設限，依劇情需要自由發揮。沒有角色卡的配角由你扮演，可以出場與說話；\
-         不要替「登場角色」名單上的角色或玩家說話。旁白本文結束後另起一行，輸出一個 ```state 圍欄，\
+         不要替「登場角色」名單上的角色或玩家說話。世界書或角色設定若規定每回合回覆要附的內容（例如狀態欄、推薦行動），\
+         照它的格式附在旁白本文之後。全部寫完後另起一行，輸出一個 ```state 圍欄，\
          圍欄內一行一欄、格式為「鍵: 值」，固定輸出 time、place、present 三個鍵；\
          time、place 用玩家的語言寫，沒有變化就照抄目前值。\
          present 每一回合都要完整輸出：依本輪敘事、以旁白結束當下為準，只列此刻確實身在 place 的人物；\
          人物名冊只供辨識是誰，不是在場名單，不因列在名冊、被提到或約好要見就列；沒有人在場就寫「present:」後面留空。\
          present 的名字照登場角色名單或設定裡的原字逐字寫，不翻譯、不音譯、不換簡繁字形（這是語言規範的例外）；多人用頓號分隔。\
-         圍欄以外不要有多餘說明。"
+         除了上述內容，不要有多餘說明。"
             .to_owned()
     };
     if updates {
@@ -193,10 +194,10 @@ pub fn gm_closing(format: GmTurnFormat, has_roster: bool, lang: &str) -> &'stati
             "Now, as the GM, carry out the director instruction above. Output only the story and, if anything changed, the update block. Do not add a name prefix."
         }
         (true, GmTurnFormat::Narration, false) => {
-            "Now, as the GM, carry out the director instruction above. Output only the narration and the required state fence. Do not add a name prefix."
+            "Now, as the GM, carry out the director instruction above. Output only the narration, any content the settings require, and the required state fence. Do not add a name prefix."
         }
         (true, GmTurnFormat::Narration, true) => {
-            "Now, as the GM, carry out the director instruction above. Output only the narration, the required state fence, and the `Next:` line. Do not add a name prefix."
+            "Now, as the GM, carry out the director instruction above. Output only the narration, any content the settings require, the required state fence, and the `Next:` line. Do not add a name prefix."
         }
         (false, GmTurnFormat::CardFormat, _) => {
             "現在請以 GM 身分，完全依照上述輸出格式產生本回合的回覆，不要加名字前綴，也不要輸出格式以外的任何內容。"
@@ -208,10 +209,10 @@ pub fn gm_closing(format: GmTurnFormat, has_roster: bool, lang: &str) -> &'stati
             "現在請以 GM 身分執行上述導演指示，只輸出劇情正文與有變動時的更新區塊，不要加名字前綴。"
         }
         (false, GmTurnFormat::Narration, false) => {
-            "現在請以 GM 身分執行上述導演指示，只輸出旁白本文與要求的狀態欄，不要加名字前綴。"
+            "現在請以 GM 身分執行上述導演指示，只輸出旁白本文、設定規定要附的內容與要求的狀態欄，不要加名字前綴。"
         }
         (false, GmTurnFormat::Narration, true) => {
-            "現在請以 GM 身分執行上述導演指示，只輸出旁白本文、要求的狀態欄與「下一位」行，不要加名字前綴。"
+            "現在請以 GM 身分執行上述導演指示，只輸出旁白本文、設定規定要附的內容、要求的狀態欄與「下一位」行，不要加名字前綴。"
         }
     }
 }
@@ -228,10 +229,10 @@ pub fn narration_update_note(lang: &str) -> &'static str {
 /// `narration_update_note` 那種桌的收尾句：允許更新區塊。
 pub fn narration_closing_with_updates(has_roster: bool, lang: &str) -> &'static str {
     match (scaffold_en(lang), has_roster) {
-        (true, false) => "Now, as the GM, carry out the director instruction above. Output only the narration, the required state fence, and the update block if anything else changed. Do not add a name prefix.",
-        (true, true) => "Now, as the GM, carry out the director instruction above. Output only the narration, the required state fence, the update block if anything else changed, and the `Next:` line. Do not add a name prefix.",
-        (false, false) => "現在請以 GM 身分執行上述導演指示，只輸出旁白本文、要求的狀態欄與其他欄位有變動時的更新區塊，不要加名字前綴。",
-        (false, true) => "現在請以 GM 身分執行上述導演指示，只輸出旁白本文、要求的狀態欄、其他欄位有變動時的更新區塊與「下一位」行，不要加名字前綴。",
+        (true, false) => "Now, as the GM, carry out the director instruction above. Output only the narration, any content the settings require, the required state fence, and the update block if anything else changed. Do not add a name prefix.",
+        (true, true) => "Now, as the GM, carry out the director instruction above. Output only the narration, any content the settings require, the required state fence, the update block if anything else changed, and the `Next:` line. Do not add a name prefix.",
+        (false, false) => "現在請以 GM 身分執行上述導演指示，只輸出旁白本文、設定規定要附的內容、要求的狀態欄與其他欄位有變動時的更新區塊，不要加名字前綴。",
+        (false, true) => "現在請以 GM 身分執行上述導演指示，只輸出旁白本文、設定規定要附的內容、要求的狀態欄、其他欄位有變動時的更新區塊與「下一位」行，不要加名字前綴。",
     }
 }
 
@@ -689,469 +690,4 @@ pub fn pick_speaker(reply: &str, roster: &[String], player_name: Option<&str>) -
 }
 
 #[cfg(test)]
-mod tests {
-    #[allow(unused_imports)]
-    use super::super::arrivals::*;
-    #[allow(unused_imports)]
-    use super::super::assemble::*;
-    #[allow(unused_imports)]
-    use super::super::client::*;
-    #[allow(unused_imports)]
-    use super::super::context::*;
-    #[allow(unused_imports)]
-    use super::super::messages::*;
-    #[allow(unused_imports)]
-    use super::super::state_view::*;
-    #[allow(unused_imports)]
-    use super::super::test_support::{card, event, worldbook_entry};
-    #[allow(unused_imports)]
-    use super::super::turns::*;
-    use super::*;
-    #[allow(unused_imports)]
-    use crate::data::{
-        self, AppConfig, CharacterCard, DataResult, FieldKind, FieldRule, InjectLevel, Mechanism,
-        StateNode, TableState, Tier, TranscriptEvent, TranscriptKind, Visibility, WorldbookEntry,
-    };
-    #[allow(unused_imports)]
-    use crate::mechanism;
-    #[allow(unused_imports)]
-    use std::collections::{BTreeMap, BTreeSet};
-
-    /// 卡片格式導演指示只給「卡有顯示腳本、介面沒被 App 接管」的桌；有骨架的桌走接管指示（正文＋
-    /// UpdateVariable），角色優先桌與沒有顯示腳本的桌走一般旁白。
-    #[test]
-    fn gm_turn_format_follows_shell_and_mode() {
-        use GmTurnFormat::*;
-        // 沒重構過的卡（含 MVU 桌：開了增量但沒有骨架）照卡片格式
-        assert_eq!(gm_turn_format(true, false, None), CardFormat);
-        assert_eq!(gm_turn_format(true, false, Some("interface")), CardFormat);
-        // 有骨架＝App 接管，不管卡有沒有顯示腳本
-        assert_eq!(
-            gm_turn_format(true, true, Some("interface")),
-            InterfaceTakeover
-        );
-        assert_eq!(gm_turn_format(false, true, None), InterfaceTakeover);
-        // 角色優先桌、卡片沒有顯示腳本都走一般旁白
-        assert_eq!(gm_turn_format(true, true, Some("characters")), Narration);
-        assert_eq!(gm_turn_format(true, false, Some("characters")), Narration);
-        assert_eq!(gm_turn_format(false, false, None), Narration);
-    }
-
-    /// 接管指示要 UpdateVariable、不要 state 圍欄；只走 GM 敘事線：不點名、名單角色由 GM 演
-    #[test]
-    fn takeover_instruction_asks_for_update_block_not_state_fence() {
-        for lang in ["zh-TW", "en"] {
-            let text = takeover_instruction(lang).content;
-            assert!(text.contains("<UpdateVariable>"));
-            assert!(!text.contains("present"));
-            assert!(!text.contains("time"));
-            assert!(!text.contains("下一位") && !text.contains("Next:"));
-            assert!(!text.contains(PLAYER_SENTINEL));
-            let closing = gm_closing(GmTurnFormat::InterfaceTakeover, true, lang);
-            assert!(!closing.contains("下一位") && !closing.contains("Next:"));
-        }
-        assert!(takeover_instruction("zh-TW")
-            .content
-            .contains("登場角色」名單上的角色）都由你扮演"));
-    }
-
-    /// 卡片自帶介面時的導演指示：點名世界書那條格式規定的標題，且不再要求舊版的
-    /// state 圍欄／下一位點名——那是兩邊指令打架的根因。
-    #[test]
-    fn card_format_instruction_points_to_worldbook_entry_and_drops_old_format_asks() {
-        let zh_with_title = card_format_instruction("zh-TW", Some("回复规则")).content;
-        assert!(zh_with_title.contains("回复规则"));
-        assert!(!zh_with_title.contains("```state"));
-        assert!(!zh_with_title.contains("下一位"));
-
-        let zh_without_title = card_format_instruction("zh-TW", None).content;
-        assert!(!zh_without_title.contains("見世界書"));
-
-        let en_with_title = card_format_instruction("en", Some("Response Rules")).content;
-        assert!(en_with_title.contains("Response Rules"));
-        assert!(!en_with_title.contains("```"));
-        assert!(!en_with_title.contains("Next:"));
-
-        let en_without_title = card_format_instruction("en", None).content;
-        assert!(!en_without_title.contains("see the worldbook entry"));
-    }
-
-    #[test]
-    fn extract_next_speaker_strips_trailing_line_and_tolerates_variants() {
-        // 標準形：旁白＋狀態欄剝除後尾端剩點名行
-        let (name, display) = extract_next_speaker("夜更深了。\n下一位：狐狸");
-        assert_eq!(name.as_deref(), Some("狐狸"));
-        assert_eq!(display, "夜更深了。");
-        // 英文標記與半形冒號、前後空白
-        let (name, display) = extract_next_speaker("The night deepens.\nNext:  Fox ");
-        assert_eq!(name.as_deref(), Some("Fox"));
-        assert_eq!(display, "The night deepens.");
-        // 玩家哨兵原文帶回，由 pick_speaker 對回代號
-        let (name, _) =
-            extract_next_speaker(format!("門開了。\n下一位：{PLAYER_SENTINEL}").as_str());
-        assert_eq!(name.as_deref(), Some(PLAYER_SENTINEL));
-        // 沒有點名行＝原樣返回；行首是普通英文 Next 不誤判
-        let plain = "夜更深了。\nNext, the door opened.";
-        assert_eq!(extract_next_speaker(plain), (None, plain.to_owned()));
-    }
-
-    /// 驗收：換幕順手取幕名——有標題行／無標題行／en 前綴，都不能報錯
-    #[test]
-    fn extract_scene_title_reads_zh_and_en_prefixes_and_falls_back_without_one() {
-        let (title, rest) = extract_scene_title("標題：酒館夜話\n\n地點與時間：酒館");
-        assert_eq!(title.as_deref(), Some("酒館夜話"));
-        assert_eq!(rest, "地點與時間：酒館");
-
-        let (title_en, rest_en) = extract_scene_title("Title: Tavern Talk\n\nLocation: the tavern");
-        assert_eq!(title_en.as_deref(), Some("Tavern Talk"));
-        assert_eq!(rest_en, "Location: the tavern");
-
-        // 大小寫寬鬆
-        let (title_mixed, _) = extract_scene_title("title: Mixed Case\n\nbody");
-        assert_eq!(title_mixed.as_deref(), Some("Mixed Case"));
-
-        // 沒有標題行：整段原文當摘要，不報錯
-        let (none_title, whole) = extract_scene_title("地點與時間：酒館\n關鍵事件：無");
-        assert_eq!(none_title, None);
-        assert_eq!(whole, "地點與時間：酒館\n關鍵事件：無");
-    }
-
-    /// 英文骨架下的非中文回覆：state 圍欄鍵、`Next:` 點名、`Title:` 幕名都照固定標記解析，
-    /// 內容是該語系母語也一樣；骨架也不把固定標記翻成該語系。
-    #[test]
-    fn english_scaffold_markers_parse_native_language_replies() {
-        let roster = vec!["Renard".to_owned()];
-        for (lang, body, place, title) in [
-            ("ja", "雨が止んだ。", "旧港", "酒場の夜"),
-            ("fr", "La pluie cesse.", "Vieux port", "Nuit à la taverne"),
-            ("ru", "Дождь стих.", "Старый порт", "Ночь в таверне"),
-        ] {
-            let instruction = narrate_instruction(lang, &roster, None, false).content;
-            assert!(instruction.contains("`Next: <name>`") && instruction.contains("```state"));
-            let reply = format!(
-                "{body}\n```state\ntime: 0:00\nplace: {place}\npresent: Renard\n```\nNext: {PLAYER_SENTINEL}"
-            );
-            let StateBlock {
-                fields, display, ..
-            } = extract_state_block(&reply);
-            assert_eq!(fields[1], (vec!["place".to_owned()], place.to_owned()));
-            let (name, display) = extract_next_speaker(&display);
-            assert_eq!(name.as_deref(), Some(PLAYER_SENTINEL));
-            assert_eq!(display, body);
-            assert_eq!(
-                pick_speaker(&name.unwrap(), &roster, None).unwrap(),
-                PLAYER_SENTINEL
-            );
-
-            let (parsed, rest) = extract_scene_title(&format!("Title: {title}\n\n- {body}"));
-            assert_eq!(parsed.as_deref(), Some(title));
-            assert_eq!(rest, format!("- {body}"));
-        }
-    }
-
-    #[test]
-    fn pick_speaker_handles_exact_verbose_and_player_sentinel() {
-        let roster = vec!["狐狸".to_owned(), "騎士".to_owned()];
-        assert_eq!(pick_speaker("狐狸", &roster, None).unwrap(), "狐狸");
-        assert_eq!(pick_speaker("「騎士」。", &roster, None).unwrap(), "騎士");
-        assert_eq!(
-            pick_speaker("玩家", &roster, None).unwrap(),
-            PLAYER_SENTINEL
-        );
-        // 輪到玩家時 GM 怎麼講都算：代號本身、「玩家」、英文 Player、玩家卡上的名字
-        for reply in [PLAYER_SENTINEL, "玩家", "Player", "阿濤"] {
-            assert_eq!(
-                pick_speaker(reply, &roster, Some("阿濤")).unwrap(),
-                PLAYER_SENTINEL
-            );
-        }
-        // 模型多話：取回覆中最先出現的候選名
-        assert_eq!(
-            pick_speaker("下一位應該由騎士發言，逼問狐狸。", &roster, None).unwrap(),
-            "騎士"
-        );
-        assert_eq!(pick_speaker("酒保", &roster, None), None);
-    }
-
-    #[test]
-    fn extract_state_fence_returns_fields_and_hides_fence() {
-        let StateBlock {
-            fields, display, ..
-        } = extract_state_block(
-            "雨停了。\n```state\ntime: 午夜\nplace：舊碼頭\npresent: 阿濤、船長\n```",
-        );
-        assert_eq!(
-            fields,
-            vec![
-                (vec!["time".to_owned()], "午夜".to_owned()),
-                (vec!["place".to_owned()], "舊碼頭".to_owned()),
-                (vec!["present".to_owned()], "阿濤、船長".to_owned()),
-            ]
-        );
-        assert_eq!(display, "雨停了。");
-    }
-
-    /// 單一清單項底下帶子層 → 清單（`World/0/城市`）；項目裡清單項與具名鍵混用 → 照舊攤平成具名鍵，
-    /// 純量項丟掉。
-    #[test]
-    fn extract_state_block_collects_nested_yaml_and_flattens_mixed_items() {
-        let block = extract_state_block(
-            "<Status_block>World:\n  - 城市:\n      名稱: \"晨港\"\n      - 純清單項\n      人口: '1200'\n</Status_block>",
-        );
-        let path = |segments: &[&str]| segments.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-        assert_eq!(
-            block.fields,
-            vec![
-                (path(&["World", "0", "城市", "名稱"]), "晨港".to_owned()),
-                (path(&["World", "0", "城市", "人口"]), "1200".to_owned()),
-            ]
-        );
-        assert_eq!(block.lists, vec![path(&["World"])]);
-        assert!(block.maps.contains(&path(&["World", "0", "城市"])));
-    }
-
-    /// 縮排行與空字典都要保留成分支標記，葉子則保留實際值。
-    #[test]
-    fn parse_indented_fields_marks_branch_lines() {
-        assert_eq!(
-            parse_indented_fields("World:\n  Time: 清晨\n  Inventory: {}"),
-            vec![
-                (vec!["World".to_owned()], None),
-                (
-                    vec!["World".to_owned(), "Time".to_owned()],
-                    Some("清晨".to_owned()),
-                ),
-                (vec!["World".to_owned(), "Inventory".to_owned()], None),
-            ]
-        );
-    }
-
-    #[test]
-    fn extract_state_discards_bad_lines_without_losing_valid_fields() {
-        let StateBlock {
-            fields, display, ..
-        } = extract_state_block(
-            "旁白\n```state\n- time: 清晨\n沒有冒號\nplace:   \n# 自訂：有效\n```",
-        );
-        assert_eq!(
-            fields,
-            vec![
-                (vec!["time".to_owned()], "清晨".to_owned()),
-                (vec!["自訂".to_owned()], "有效".to_owned()),
-            ]
-        );
-        assert_eq!(display, "旁白");
-    }
-
-    #[test]
-    fn extract_state_details_summary_is_parsed_and_hidden() {
-        let StateBlock {
-            fields, display, ..
-        } = extract_state_block(
-            "港口傳來鐘聲。<details><summary>状态栏</summary>时间：黃昏\n地点：港口</details>",
-        );
-        assert_eq!(
-            fields,
-            vec![
-                (vec!["time".to_owned()], "黃昏".to_owned()),
-                (vec!["place".to_owned()], "港口".to_owned()),
-            ]
-        );
-        assert_eq!(display, "港口傳來鐘聲。");
-    }
-
-    #[test]
-    fn extract_status_tag_is_parsed_and_hidden() {
-        let StateBlock {
-            fields, display, ..
-        } = extract_state_block("門開了。<STATUS>time: 午夜\nplace: 走廊</status>剩下的話。");
-        assert_eq!(
-            fields,
-            vec![
-                (vec!["time".to_owned()], "午夜".to_owned()),
-                (vec!["place".to_owned()], "走廊".to_owned()),
-            ]
-        );
-        assert_eq!(display, "門開了。剩下的話。");
-    }
-
-    #[test]
-    fn extract_update_variable_hides_json_without_parsing_it() {
-        let StateBlock {
-            fields,
-            updates,
-            display,
-            ..
-        } = extract_state_block("她點頭。<UpdateVariable>{\"time\":\"午夜\"}</UpdateVariable>");
-        assert!(fields.is_empty());
-        assert_eq!(updates, vec!["{\"time\":\"午夜\"}".to_owned()]);
-        assert_eq!(display, "她點頭。");
-    }
-
-    /// 各家標籤名不同（donass 的 `<StatusData>`、鎮北王府的 `<Status_block>`），
-    /// 開頭是 status 就認；同名才配對，`<statusdata>` 不會被 `</status_block>` 收掉。
-    #[test]
-    fn extract_state_accepts_any_status_prefixed_tag() {
-        let StateBlock {
-            fields, display, ..
-        } = extract_state_block(
-            "地下城。<StatusData>体力:60\n好感:20</StatusData>之後。\
-             <Status_block>时间: 戌时\n地点: 浴房</Status_block>",
-        );
-        assert_eq!(
-            fields,
-            vec![
-                (vec!["体力".to_owned()], "60".to_owned()),
-                (vec!["好感".to_owned()], "20".to_owned()),
-                (vec!["time".to_owned()], "戌时".to_owned()),
-                (vec!["place".to_owned()], "浴房".to_owned()),
-            ]
-        );
-        assert_eq!(display, "地下城。之後。");
-    }
-
-    /// 沒有配對收尾的標籤整段留著：寧可讓玩家看到半截標籤，也不吞掉後面的旁白。
-    #[test]
-    fn extract_state_leaves_unclosed_status_tag_alone() {
-        let reply = "他開口。<StatusData>体力:60\n後面還有很多話。";
-        assert_eq!(
-            extract_state_block(reply),
-            StateBlock {
-                fields: Vec::new(),
-                updates: Vec::new(),
-                display: reply.to_owned(),
-                ..Default::default()
-            }
-        );
-    }
-
-    /// 名字裡帶 status 但不是開頭的（`<combatStatus>`）是卡片自訂欄位，不能當狀態區塊剝掉。
-    #[test]
-    fn extract_state_ignores_tags_merely_containing_status() {
-        let reply = "他喘著氣。<combatStatus>負傷</combatStatus>";
-        assert_eq!(
-            extract_state_block(reply),
-            StateBlock {
-                fields: Vec::new(),
-                updates: Vec::new(),
-                display: reply.to_owned(),
-                ..Default::default()
-            }
-        );
-    }
-
-    #[test]
-    fn extract_state_unwraps_maintext_into_narration() {
-        let StateBlock {
-            fields, display, ..
-        } = extract_state_block(
-            "<maintext>\n夜色濃重。\n</maintext>\n<Status_block>时间: 戌时</Status_block>",
-        );
-        assert_eq!(fields, vec![(vec!["time".to_owned()], "戌时".to_owned())]);
-        assert_eq!(display, "\n夜色濃重。");
-    }
-
-    /// 只有正文外殼、沒有狀態區塊時，一樣要拆掉外殼。
-    #[test]
-    fn extract_state_unwraps_maintext_without_state_block() {
-        let StateBlock {
-            fields, display, ..
-        } = extract_state_block("<mainText>夜色濃重。</mainText>");
-        assert!(fields.is_empty());
-        assert_eq!(display, "夜色濃重。");
-    }
-
-    #[test]
-    fn extract_state_keeps_unwrapped_narration_byte_for_byte() {
-        let reply = "純旁白\n保留尾端空行\n\n";
-        assert_eq!(
-            extract_state_block(reply),
-            StateBlock {
-                fields: Vec::new(),
-                updates: Vec::new(),
-                display: reply.to_owned(),
-                ..Default::default()
-            }
-        );
-    }
-
-    #[test]
-    fn extract_state_keeps_middle_code_fence_but_removes_trailing_plain_fence() {
-        let reply = "提示：\n```rust\nlet time = 1;\n```\n旁白\n```\ntime: 午夜\n```";
-        let StateBlock {
-            fields, display, ..
-        } = extract_state_block(reply);
-        assert_eq!(fields, vec![(vec!["time".to_owned()], "午夜".to_owned())]);
-        assert_eq!(display, "提示：\n```rust\nlet time = 1;\n```\n旁白");
-    }
-
-    /// 增量的旁白桌：更新區塊的說明插在「下一位」那句之前，收尾句也允許更新區塊
-    #[test]
-    fn narration_with_updates_asks_for_the_block_before_the_next_speaker_line() {
-        for lang in ["zh-TW", "en"] {
-            let text = narrate_instruction(lang, &["狐狸".to_owned()], None, true).content;
-            let note = text.find("UpdateVariable").expect(lang);
-            let next = text
-                .find(if lang == "en" { "Next:" } else { "下一位" })
-                .expect(lang);
-            assert!(note < next, "{lang}");
-            assert!(!narrate_instruction(lang, &[], None, false)
-                .content
-                .contains("UpdateVariable"));
-            assert!(
-                narration_closing_with_updates(true, lang).contains(if lang == "en" {
-                    "update block"
-                } else {
-                    "更新區塊"
-                })
-            );
-        }
-    }
-
-    /// present 指示：每輪重判、名冊只供辨識、可留空；名字照原字（語言規範的例外，顯示字形由 app 轉）
-    #[test]
-    fn narration_present_rule_recomputes_each_turn_and_keeps_original_names() {
-        let zh = narrate_instruction("zh-CN", &[], None, false).content;
-        assert!(zh.contains("time、place 用玩家的語言寫，沒有變化就照抄目前值"));
-        assert!(zh.contains("以旁白結束當下為準") && zh.contains("人物名冊只供辨識是誰"));
-        assert!(
-            zh.contains("「present:」後面留空")
-                && zh.contains("不換簡繁字形（這是語言規範的例外）")
-        );
-        assert!(!zh.contains("沒有變化的欄位也照抄目前值"));
-        for lang in ["en", "ja", "ru"] {
-            let en = narrate_instruction(lang, &[], None, false).content;
-            assert!(
-                en.contains("repeat them if unchanged")
-                    && en.contains("at the end of the narration")
-            );
-            assert!(
-                en.contains("it is not a list of who is here")
-                    && en.contains("leave `present:` empty")
-            );
-            assert!(
-                en.contains("exception to the language rule")
-                    && en.contains("no translation, transliteration, or script change")
-            );
-            assert!(!en.contains("repeat unchanged values too"));
-        }
-    }
-
-    /// 在場人物寫成裸空值＝沒有人在場：進平欄成空字串；時地與其他鍵照舊只標空分支
-    #[test]
-    fn bare_empty_present_clears_the_table_field_but_other_keys_keep_their_meaning() {
-        let StateBlock { fields, maps, .. } =
-            extract_state_block("人都走了。\n```state\ntime: 夜\n地點:\n在場人物:\n状态栏:\n```");
-        assert_eq!(
-            fields,
-            vec![
-                (vec!["time".to_owned()], "夜".to_owned()),
-                (vec!["present".to_owned()], String::new()),
-            ]
-        );
-        assert_eq!(
-            maps,
-            vec![vec!["地點".to_owned()], vec!["状态栏".to_owned()]]
-        );
-    }
-}
+mod tests;

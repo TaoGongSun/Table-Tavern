@@ -270,7 +270,7 @@ pub(crate) fn gm_scope(materials: &GmMaterials) -> (transport::StateScope, bool)
 }
 
 /// 這一輪 GM 回合尾的導演指示與收尾句（四態見 transport::GmTurnFormat）：
-/// - 卡片自帶介面、還沒被 App 接管：讓路給卡片自己規定的輸出格式——格式條目全文真的在本輪
+/// - 卡片自帶介面（`import::reply_format_scripts` 非空：有會作用在回覆上的顯示腳本，開場白美化不算）、還沒被 App 接管：讓路給卡片自己規定的輸出格式——格式條目全文真的在本輪
 ///   提示裡才點名它（CardFormat），否則用不指向缺席格式的中性版（CardFormatAbsent）；
 /// - 介面已由 App 接管（桌上有重構產的介面骨架）：正文＋只寫變動的 `<UpdateVariable>`，不要 ```state
 ///   圍欄——再叫它照卡片格式就是要它每回合重印整份狀態區塊，要圍欄又和 system 的增量協定互斥
@@ -285,12 +285,7 @@ pub(crate) fn gm_turn_instruction(
     player_name: Option<&str>,
     lang: &str,
 ) -> (transport::ChatMessage, &'static str) {
-    let card_scripts: Vec<import::InterfaceScript> = import::read_card_interfaces(root, world_id)
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|interface| interface.unsupported.is_none())
-        .flat_map(|interface| interface.scripts)
-        .collect();
+    let card_scripts: Vec<import::InterfaceScript> = import::reply_format_scripts(root, world_id);
     match transport::gm_turn_format(
         !card_scripts.is_empty(),
         materials.takeover,
