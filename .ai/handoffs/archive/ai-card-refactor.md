@@ -7,7 +7,7 @@ Status: 已結案（2026-10-27 合併 main，與 person-promote、state-values-m
 - 做法要點：
   - 字形：`data/scene/glyph.rs` 以 OpenCC `TSCharacters.txt` 折成簡體再比（版本與授權見 `data/scene/opencc/README.md`，LICENSE／NOTICE 由 `bundle.resources` 帶進發佈物）。在場比對 `data::match_present_with`：原文優先、折疊兜底、同一原文名字只算一次、折疊歧義不隱藏也不送全文；回合尾裁切、人物登場、角色卡回歸、換幕結算共用整桌名字池（全部卡名＋人物條目）。狀態路徑 `mechanism::canonical_path` 逐段精確優先、同層唯一折疊、歧義拒收。
   - 人物整併〔作者裁決 2026-10-27〕：沒勾的人成 `constant:true` 的 is_person 條目；一項都沒勾就不動桌子〔作者裁決 2026-10-27〕（兩顆套用鈕反灰、`apply_to_table` 回 `refactor-empty-selection`）。
-  - 收編機制：`refactor/apply_mechanism.rs` 對齊路徑（字形歧義或衝突整次拒套）、`{{state:…}}` 佔位一起對齊、開 incremental 標 `incremental_by_refactor`、平欄搬進樹備初值；`Mechanism.display_formats` 記「第 {} 天」，狀態列照模板顯示、輸入照模板解析回數字〔作者裁決 2026-10-27〕。
+  - 收編機制：`refactor/apply_mechanism.rs` 對齊路徑（字形歧義整次拒套；同欄多份規則改合併／裁決，見 refactor-rule-conflict-same-field）、`{{state:…}}` 佔位一起對齊、開 incremental 標 `incremental_by_refactor`、平欄搬進樹備初值；`Mechanism.display_formats` 記「第 {} 天」，狀態列照模板顯示、輸入照模板解析回數字〔作者裁決 2026-10-27〕。
 - 實測看到、未在本案處理（主線立案）：Haiku 寫的 present 一律簡體（GM 指示要照原字抄）；人物條目的人在劇情出場後好幾輪才進 present，登場事件延後；clean-orc 平欄劇情欄位（剧情阶段、当前环境）GM 用增量更新時因不在樹上被拒收，一直停在開場值。
 
 ## Completed

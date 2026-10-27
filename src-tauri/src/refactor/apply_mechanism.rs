@@ -1,6 +1,7 @@
-//! 重構套用的機制部分：規則／觸發候選（路徑對齊、篩選、衝突檢查），以及收編後開回報管道
+//! 重構套用的機制部分：規則／觸發候選（路徑對齊、篩選、同欄多份規則的合併裁決），以及收編後開回報管道
 //! （incremental＋把規則與觸發讀的欄位在樹上備好初值）。人物落檔不在這裡（apply.rs）。
 
+use super::rule_merge::{min_uid, reconcile, RuleCandidate};
 use super::types::{RefactorOutcome, RefactorSelection};
 use crate::data::{self, DataResult, FieldKind, FieldRule, StateNode, WorldState};
 use crate::mechanism;
@@ -75,23 +76,22 @@ pub(super) fn slash_head_match(
     }
 }
 
+/// 對齊後的規則：對齊路徑 → 落到這裡的原始候選（原路徑, 規則），依原路徑字典序。同條目兩種字形
+/// 對到同一路徑時兩份都留著，等 `Candidates::collect` 整欄收齊後一次裁決。
+type AlignedRules = BTreeMap<String, Vec<(String, FieldRule)>>;
+
 fn align_rules(
     rules: &BTreeMap<String, FieldRule>,
     namespace: &BTreeMap<String, StateNode>,
-) -> DataResult<BTreeMap<String, FieldRule>> {
-    let mut out: BTreeMap<String, FieldRule> = BTreeMap::new();
+) -> DataResult<AlignedRules> {
+    let mut grouped = AlignedRules::new();
     for (path, rule) in rules {
-        let aligned = align_path(path, namespace, true)?;
-        if let Some(existing) = out.get(&aligned) {
-            if existing != rule {
-                return Err(data::invalid_data(format!(
-                    "refactor rules conflict on {aligned}"
-                )));
-            }
-        }
-        out.insert(aligned, rule.clone());
+        grouped
+            .entry(align_path(path, namespace, true)?)
+            .or_default()
+            .push((path.clone(), rule.clone()));
     }
-    Ok(out)
+    Ok(grouped)
 }
 
 fn align_triggers(
@@ -211,7 +211,9 @@ pub(super) struct Candidates {
 
 impl Candidates {
     /// 先把路徑對齊到這桌既有的寫法（`namespace`：套用前的樹＋開場狀態平欄），再依 `scope` 篩；
-    /// 對齊遇字形歧義、或對齊後兩條不同規則落到同一路徑＝整次拒套（呼叫端在任何寫入之前）。
+    /// 對齊遇字形歧義＝整次拒套（呼叫端在任何寫入之前）。同一路徑的所有原始候選（跨條目、同條目
+    /// 不同字形）整欄收齊後只合併或裁決一次（`rule_merge::reconcile`），結果寫回每一份，呼叫端依序
+    /// extend 時誰後寫都一樣。
     pub(super) fn collect(
         outcome: &RefactorOutcome,
         selection: &RefactorSelection,
@@ -220,46 +222,46 @@ impl Candidates {
     ) -> DataResult<Self> {
         let scope = scope.as_ref();
         let mut dropped = (0usize, 0usize);
-        let mut filter = |rules: &BTreeMap<String, FieldRule>, triggers: &[data::Trigger]| {
-            let kept_rules: BTreeMap<String, FieldRule> = rules
-                .iter()
+        let mut filter = |rules: AlignedRules, triggers: Vec<data::Trigger>| {
+            let total = rules.values().map(Vec::len).sum::<usize>();
+            let kept_rules: AlignedRules = rules
+                .into_iter()
                 .filter(|(path, _)| keep_rule(path, scope))
-                .map(|(path, rule)| (path.clone(), rule.clone()))
                 .collect();
             let kept_triggers: Vec<data::Trigger> = triggers
                 .iter()
                 .filter(|trigger| keep_trigger(trigger, scope))
                 .cloned()
                 .collect();
-            dropped.0 += rules.len() - kept_rules.len();
+            dropped.0 += total - kept_rules.values().map(Vec::len).sum::<usize>();
             dropped.1 += triggers.len() - kept_triggers.len();
             (kept_rules, kept_triggers)
         };
-        let mut entries = BTreeMap::new();
+        let mut aligned_entries = BTreeMap::new();
         for &index in &selection.entry_indices {
             let Some(entry) = outcome.entries.get(index) else {
                 continue;
             };
             if entry.kind == "mechanism" {
-                entries.insert(
+                aligned_entries.insert(
                     index,
                     filter(
-                        &align_rules(&entry.rules, namespace)?,
-                        &align_triggers(&entry.triggers, namespace)?,
+                        align_rules(&entry.rules, namespace)?,
+                        align_triggers(&entry.triggers, namespace)?,
                     ),
                 );
             }
         }
-        let mut mechanisms = BTreeMap::new();
+        let mut aligned_mechanisms = BTreeMap::new();
         for &index in &selection.mechanism_indices {
             let Some(mechanism) = outcome.mechanisms.get(index) else {
                 continue;
             };
-            mechanisms.insert(
+            aligned_mechanisms.insert(
                 index,
                 filter(
-                    &align_rules(&mechanism.rules, namespace)?,
-                    &align_triggers(&mechanism.triggers, namespace)?,
+                    align_rules(&mechanism.rules, namespace)?,
+                    align_triggers(&mechanism.triggers, namespace)?,
                 ),
             );
         }
@@ -270,18 +272,62 @@ impl Candidates {
                 dropped.1
             );
         }
-        let mut merged: BTreeMap<&String, &FieldRule> = BTreeMap::new();
-        for (rules, _) in entries.values().chain(mechanisms.values()) {
-            for (path, rule) in rules {
-                if let Some(previous) = merged.insert(path, rule) {
-                    if previous != rule {
-                        return Err(data::invalid_data(format!(
-                            "refactor rules conflict on {path}"
-                        )));
-                    }
+        // 整欄收齊：每份原始候選帶來源 uid，先後＝條目 index、機制 index、條目內原路徑字典序
+        let mut grouped: BTreeMap<String, Vec<RuleCandidate>> = BTreeMap::new();
+        let mut gather = |rules: &AlignedRules, uid: Option<u64>, origin: &str| {
+            for (path, originals) in rules {
+                for (original, rule) in originals {
+                    grouped
+                        .entry(path.clone())
+                        .or_default()
+                        .push(RuleCandidate {
+                            rule: rule.clone(),
+                            uid,
+                            origin: format!("{origin} 的 {original}"),
+                        });
                 }
             }
+        };
+        for (index, (rules, _)) in &aligned_entries {
+            let entry = &outcome.entries[*index];
+            gather(
+                rules,
+                min_uid(&entry.source_uids),
+                &format!("條目「{}」", entry.title),
+            );
         }
+        for (index, (rules, _)) in &aligned_mechanisms {
+            let mechanism = &outcome.mechanisms[*index];
+            gather(
+                rules,
+                min_uid([&mechanism.source_uid]),
+                &format!("機制（來源 {}）", mechanism.source_uid),
+            );
+        }
+        let resolved: BTreeMap<String, FieldRule> = grouped
+            .into_iter()
+            .map(|(path, candidates)| {
+                let rule = reconcile(&path, &candidates);
+                (path, rule)
+            })
+            .collect();
+        let settle = |aligned: BTreeMap<usize, (AlignedRules, Vec<data::Trigger>)>| {
+            aligned
+                .into_iter()
+                .map(|(index, (rules, triggers))| {
+                    let rules = rules
+                        .into_keys()
+                        .map(|path| {
+                            let rule = resolved[&path].clone();
+                            (path, rule)
+                        })
+                        .collect();
+                    (index, (rules, triggers))
+                })
+                .collect::<BTreeMap<usize, RuleSet>>()
+        };
+        let entries = settle(aligned_entries);
+        let mechanisms = settle(aligned_mechanisms);
         Ok(Self {
             entries,
             mechanisms,

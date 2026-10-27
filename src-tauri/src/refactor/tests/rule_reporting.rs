@@ -6,7 +6,7 @@ use super::super::*;
 use crate::data::{self, Condition, FieldKind, FieldRule, Trigger, TriggerCase, TriggerMode};
 use crate::receipts;
 
-fn mechanism_entry(
+pub(super) fn mechanism_entry(
     title: &str,
     source_uid: u64,
     rules: &[(&str, FieldRule)],
@@ -26,7 +26,7 @@ fn mechanism_entry(
     }
 }
 
-fn once_at_day(day: f64, path: &str, flag: &str) -> Trigger {
+pub(super) fn once_at_day(day: f64, path: &str, flag: &str) -> Trigger {
     Trigger {
         id: format!("day{day}"),
         title: format!("第{day}天"),
@@ -48,7 +48,9 @@ fn once_at_day(day: f64, path: &str, flag: &str) -> Trigger {
     }
 }
 
-fn characters_outcome(entries: Vec<crate::refactor_ai::RefactorNewEntry>) -> RefactorOutcome {
+pub(super) fn characters_outcome(
+    entries: Vec<crate::refactor_ai::RefactorNewEntry>,
+) -> RefactorOutcome {
     RefactorOutcome {
         mode: Some("characters".to_owned()),
         characters: Vec::new(),
@@ -65,7 +67,7 @@ fn characters_outcome(entries: Vec<crate::refactor_ai::RefactorNewEntry>) -> Ref
     }
 }
 
-fn select_entries(n: usize) -> RefactorSelection {
+pub(super) fn select_entries(n: usize) -> RefactorSelection {
     RefactorSelection {
         character_indices: Vec::new(),
         apply_interface: false,
@@ -75,7 +77,7 @@ fn select_entries(n: usize) -> RefactorSelection {
     }
 }
 
-fn set_table(root: &std::path::Path, world_id: &str, pairs: &[(&str, &str)]) {
+pub(super) fn set_table(root: &std::path::Path, world_id: &str, pairs: &[(&str, &str)]) {
     let mut state = data::read_state(root, world_id).unwrap();
     for (key, value) in pairs {
         state
@@ -257,9 +259,10 @@ fn trigger_only_tables_get_rules_for_read_paths_and_keep_played_values() {
     ));
 }
 
-/// 兩條規則對齊後落在同一路徑、內容不同＝產物自相矛盾：整次拒套，什麼都不寫。
+/// 兩條規則對齊後落在同一路徑、真矛盾（counter 對 text）且來源 uid 相同：不整次拒套，依產物先後取先出現那份
+/// （合併與裁決細節見 tests/rule_merge.rs）。
 #[test]
-fn aligned_rule_collision_rejects_the_whole_apply() {
+fn aligned_rule_collision_with_one_source_takes_the_first_entry() {
     let root = TestRoot::new("rule-reporting-collision");
     let world_id = data::create_world(root.path(), "要塞").unwrap();
     let source_uid = seed_entry(root.path(), &world_id, "天數規則", "原文");
@@ -278,16 +281,14 @@ fn aligned_rule_collision_rejects_the_whole_apply() {
             Vec::new(),
         ),
     ]);
-    let before = data::read_worldbook(root.path(), &world_id).unwrap();
 
-    assert!(apply(root.path(), &world_id, &outcome, &select_entries(2)).is_err());
+    apply(root.path(), &world_id, &outcome, &select_entries(2)).unwrap();
 
-    assert_eq!(
-        data::read_worldbook(root.path(), &world_id).unwrap(),
-        before
-    );
     let state = data::read_state(root.path(), &world_id).unwrap();
-    assert!(!state.mechanism.incremental && state.mechanism.rules.is_empty());
+    assert_eq!(
+        state.mechanism.rules.get("驻守天数"),
+        Some(&FieldRule::for_kind(FieldKind::Counter))
+    );
 }
 
 /// 樹上同層同時有 人物.沈郁 與 人物.沈鬱，規則寫 人物.瀋鬱：折疊後兩個都像，分不出是誰——

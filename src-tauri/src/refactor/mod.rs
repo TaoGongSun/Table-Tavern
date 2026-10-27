@@ -13,6 +13,7 @@ mod collections;
 mod flat_migration;
 mod interface;
 mod reset;
+mod rule_merge;
 mod sources;
 mod types;
 

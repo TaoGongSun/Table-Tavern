@@ -7,6 +7,7 @@ mod mechanism;
 mod mechanism_filter;
 mod played_gate;
 mod rerun;
+mod rule_merge;
 mod rule_reporting;
 mod shell_cleanup;
 mod statusbar_flow;
