@@ -118,6 +118,7 @@ fn claimed_assets_survive_close_and_new_card() {
     let result = apply_with_assets(
         root.path(),
         &world_id,
+        "zh-TW",
         &outcome,
         &no_player_selection(vec![0, 1]),
         &claimed.assets,
@@ -189,6 +190,7 @@ fn images_land_on_mapped_characters() {
     let result = apply_with_assets(
         root.path(),
         &world_id,
+        "zh-TW",
         &outcome,
         &RefactorSelection {
             ..no_player_selection(vec![0, 2])
@@ -232,6 +234,7 @@ fn second_image_failure_does_not_stop_the_rest() {
         apply_with_assets(
             root.path(),
             &world_id,
+            "zh-TW",
             &outcome,
             &no_player_selection(vec![0, 1, 2]),
             &assets,
@@ -297,6 +300,7 @@ fn portrait_carrying_card_text_is_stored_without_it() {
     let result = apply_with_assets(
         root.path(),
         &world_id,
+        "zh-TW",
         &outcome,
         &no_player_selection(vec![0]),
         &assets,

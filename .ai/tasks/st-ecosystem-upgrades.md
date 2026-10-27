@@ -33,7 +33,7 @@ Updated: 2026-08-04T12:05:00+08:00
 - 其餘巨集（`{{random}}`、`{{roll}}`、`{{getvar}}` 等）原樣保留——樣本用量極低，需求再起再加。
 驗收：樣本卡的 `{{user}}` 在提示詞與畫面都變玩家名；cargo test 蓋替換（含大小寫）。
 
-後續：clean-orc 重構後玩家卡名稱顯示字面 `{{user}}`，見 [refactor-player-card-user-macro](refactor-player-card-user-macro.md)。
+後續：clean-orc 重構後玩家卡名稱顯示字面 `{{user}}`，見 [refactor-player-card-user-macro](../handoffs/archive/refactor-player-card-user-macro.md)。
 
 ## 第三項：訊息 Markdown 渲染（中，約一天）
 現況：三個顯示點（`src/App.tsx` 角色對話、旁白、串流氣泡）都是 `<span className="text">` 純文字＋pre-wrap。多數模型本來就輸出 `*動作*` 這類 ST 慣例記號，目前有寶沒顯示。

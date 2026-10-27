@@ -684,6 +684,7 @@ fn apply_failure_after_source_deletion_rolls_back_with_raw_fields() {
         super::super::apply_and_record(
             root.path(),
             &world_id,
+            "zh-TW",
             &outcome,
             &entries_selection(1),
             &[],

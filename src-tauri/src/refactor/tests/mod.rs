@@ -11,4 +11,5 @@ mod shell_cleanup;
 mod statusbar_flow;
 mod takeover_opening;
 mod tree_authority;
+mod user_macro_names;
 mod visibility;

@@ -33,6 +33,14 @@ pub(crate) async fn refactor_apply(
         Ok(root) => root,
         Err(error) => return Err(refactor::return_assets(claimed, error)),
     };
+    // 建卡時 {{user}} 的退路稱呼（卡沒給玩家名字時）照介面語系
+    let config = match config_root(&app)
+        .and_then(|config_root| data::read_config(&config_root).map_err(|error| error.to_string()))
+    {
+        Ok(config) => config,
+        Err(error) => return Err(refactor::return_assets(claimed, error)),
+    };
+    let lang = transport::ui_language(&config);
     let assets = claimed
         .as_ref()
         .map_or(&[][..], |staged| &staged.assets[..]);
@@ -40,6 +48,7 @@ pub(crate) async fn refactor_apply(
     refactor::apply_to_table(
         &root,
         &world_id,
+        &lang,
         &outcome,
         &selection,
         assets,

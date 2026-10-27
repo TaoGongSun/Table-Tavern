@@ -74,6 +74,7 @@ pub const REFACTOR_EMPTY_SELECTION: &str = "refactor-empty-selection";
 pub fn apply_to_table(
     root: &Path,
     world_id: &str,
+    lang: &str,
     outcome: &super::RefactorOutcome,
     selection: &super::RefactorSelection,
     assets: &[super::card_png::CardAsset],
@@ -91,6 +92,7 @@ pub fn apply_to_table(
     let result = super::apply_and_record(
         root,
         world_id,
+        lang,
         outcome,
         selection,
         assets,

@@ -15,6 +15,7 @@ use std::path::Path;
 pub fn apply_and_record(
     root: &Path,
     world_id: &str,
+    lang: &str,
     outcome: &RefactorOutcome,
     selection: &RefactorSelection,
     assets: &[CardAsset],
@@ -23,7 +24,7 @@ pub fn apply_and_record(
 ) -> DataResult<RefactorApplySummary> {
     let before = receipts::snapshot_refactor(root, world_id)?;
     let label = UiMsg::ReceiptRefactorApply.to_string();
-    match apply_with_assets(root, world_id, outcome, selection, assets) {
+    match apply_with_assets(root, world_id, lang, outcome, selection, assets) {
         Ok(result) => {
             if record_receipt {
                 receipts::record_refactor_apply(

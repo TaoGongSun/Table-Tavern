@@ -13,6 +13,7 @@ use crate::data::{
 use crate::import;
 use crate::mechanism;
 use crate::receipts::undo_changes;
+use crate::transport::replace_st_macros;
 use crate::ui_msg::UiMsg;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::Path;
@@ -43,12 +44,21 @@ const NEW_ENTRY_UID: u64 = u64::MAX;
 pub fn apply_with_assets(
     root: &Path,
     world_id: &str,
+    lang: &str,
     outcome: &RefactorOutcome,
     selection: &RefactorSelection,
     assets: &[CardAsset],
 ) -> Result<RefactorApplyResult, ApplyFailure> {
     let mut progress = ApplyProgress::default();
-    match apply_into(root, world_id, outcome, selection, assets, &mut progress) {
+    match apply_into(
+        root,
+        world_id,
+        lang,
+        outcome,
+        selection,
+        assets,
+        &mut progress,
+    ) {
         Ok(summary) => Ok(RefactorApplyResult {
             summary,
             character_ids: progress.character_ids,
@@ -63,6 +73,7 @@ pub fn apply_with_assets(
 fn apply_into(
     root: &Path,
     world_id: &str,
+    lang: &str,
     outcome: &RefactorOutcome,
     selection: &RefactorSelection,
     assets: &[CardAsset],
@@ -76,6 +87,7 @@ fn apply_into(
     if player_index.is_some() && state.player_card_id.is_some() {
         return Err(UiMsg::PlayerCardExists.into_error());
     }
+    let names = resolved_names(root, world_id, lang, outcome, player_index);
     let existing_characters = data::list_characters(root, world_id)?;
     let existing_character_count = existing_characters.len();
 
@@ -253,7 +265,7 @@ fn apply_into(
                 world_id,
                 WorldbookEntry {
                     uid: NEW_ENTRY_UID,
-                    title: character.name.clone(),
+                    title: names[index].clone(),
                     keys: Vec::new(),
                     content: character.solo_entry_md.clone(),
                     constant: true,
@@ -270,7 +282,7 @@ fn apply_into(
 
         let card = CharacterCard {
             id: data::new_id(),
-            name: character.name.clone(),
+            name: names[index].clone(),
             color: PALETTE
                 [(existing_character_count + progress.character_ids.len()) % PALETTE.len()]
             .to_owned(),
@@ -523,7 +535,7 @@ fn apply_into(
             Ok(()) => images_applied += 1,
             Err(error) => {
                 log::warn!("refactor card image write failed: {error}");
-                let name = &outcome.characters[asset.outcome_index].name;
+                let name = &names[asset.outcome_index];
                 if !images_failed.contains(name) {
                     images_failed.push(name.clone());
                 }
@@ -546,6 +558,41 @@ fn apply_into(
     })
 }
 
+/// 這次建卡／恆定人物條目用的名字：人名裡的 `{{user}}`（大小寫不分）落檔前換成玩家名，否則
+/// 玩家卡名本身是 `{{user}}` 時，注入、點名都拿它代換自己。玩家名依序取：本次指定玩家卡的名字
+/// （它自己的巨集換成退路稱呼）、桌上既有玩家卡的名字、`player_fallback_name`。先定玩家名再統一換，
+/// 結果與角色排列順序無關。產物本身不改：落檔的重構卡留巨集，換桌、換語系再套用各自解析。
+fn resolved_names(
+    root: &Path,
+    world_id: &str,
+    lang: &str,
+    outcome: &RefactorOutcome,
+    player_index: Option<usize>,
+) -> Vec<String> {
+    let fallback = data::player_fallback_name(lang);
+    let user_name = match player_index.and_then(|index| outcome.characters.get(index)) {
+        Some(player) => replace_st_macros(&player.name, fallback, None),
+        None => data::read_player_card(root, world_id)
+            .ok()
+            .flatten()
+            .map(|card| replace_st_macros(&card.name, fallback, None))
+            .unwrap_or_else(|| fallback.to_owned()),
+    };
+    // 玩家卡本身直接用上面算好的名字：再代換一次會把部分巨集展開兩次（`{{user}}的化身`→「玩家的化身的化身」）
+    outcome
+        .characters
+        .iter()
+        .enumerate()
+        .map(|(index, character)| {
+            if Some(index) == player_index {
+                user_name.clone()
+            } else {
+                replace_st_macros(&character.name, &user_name, None)
+            }
+        })
+        .collect()
+}
+
 /// 不附角色圖的套用（測試用簡寫）。
 #[cfg(test)]
 pub fn apply(
@@ -554,7 +601,8 @@ pub fn apply(
     outcome: &RefactorOutcome,
     selection: &RefactorSelection,
 ) -> DataResult<RefactorApplyResult> {
-    apply_with_assets(root, world_id, outcome, selection, &[]).map_err(|failure| failure.error)
+    apply_with_assets(root, world_id, "zh-TW", outcome, selection, &[])
+        .map_err(|failure| failure.error)
 }
 
 /// 骨架填值用的欄位型別表（點分路徑→"number"｜"bool"｜"list"）。狀態樹會把值轉成字串，型別只能在套用時

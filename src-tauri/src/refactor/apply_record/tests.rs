@@ -39,6 +39,7 @@ fn second_character_failure_rolls_back_to_zero_writes() {
         apply_and_record(
             root.path(),
             &world_id,
+            "zh-TW",
             &outcome,
             &selection,
             &[],
@@ -65,6 +66,7 @@ fn second_character_failure_rolls_back_to_zero_writes() {
     apply_and_record(
         root.path(),
         &world_id,
+        "zh-TW",
         &outcome,
         &selection,
         &[],
@@ -92,6 +94,7 @@ fn rejection_before_writes_keeps_earlier_receipt() {
     apply_and_record(
         root.path(),
         &world_id,
+        "zh-TW",
         &outcome,
         &with_player,
         &[],
@@ -102,6 +105,7 @@ fn rejection_before_writes_keeps_earlier_receipt() {
     let error = apply_and_record(
         root.path(),
         &world_id,
+        "zh-TW",
         &outcome,
         &with_player,
         &[],
@@ -138,6 +142,7 @@ fn rollback_failure_keeps_receipt_and_reports_partial() {
         apply_and_record(
             root.path(),
             &world_id,
+            "zh-TW",
             &outcome,
             &selection,
             &[],
@@ -158,6 +163,7 @@ fn rollback_failure_keeps_receipt_and_reports_partial() {
     apply_and_record(
         root.path(),
         &world_id,
+        "zh-TW",
         &outcome,
         &selection,
         &[],
@@ -180,6 +186,7 @@ fn unrecorded_failure_does_not_touch_the_earlier_receipt() {
     apply_and_record(
         root.path(),
         &world_id,
+        "zh-TW",
         &outcome_of(&["前一次"]),
         &no_player_selection(vec![0]),
         &[],
@@ -199,6 +206,7 @@ fn unrecorded_failure_does_not_touch_the_earlier_receipt() {
         apply_and_record(
             root.path(),
             &world_id,
+            "zh-TW",
             &outcome_of(&["甲", "乙"]),
             &no_player_selection(vec![0, 1]),
             &[],
@@ -235,6 +243,7 @@ fn applied_with_deleted_sources(label: &str) -> (TestRoot, String, [u64; 2]) {
     let summary = apply_and_record(
         root.path(),
         &world_id,
+        "zh-TW",
         &outcome,
         &selection,
         &[],
@@ -358,6 +367,7 @@ fn refactor_receipt_append_failure_keeps_earlier_receipts_intact() {
     apply_and_record(
         root.path(),
         &world_id,
+        "zh-TW",
         &outcome_of(&["前一次"]),
         &no_player_selection(vec![0]),
         &[],

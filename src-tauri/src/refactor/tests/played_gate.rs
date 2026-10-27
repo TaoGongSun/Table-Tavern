@@ -94,6 +94,7 @@ fn apply_here(root: &Path, world_id: &str) -> Result<RefactorApplySummary, Strin
     apply_to_table(
         root,
         world_id,
+        "zh-TW",
         &outcome(),
         &selection(),
         &[],
@@ -371,6 +372,7 @@ fn empty_selection_is_refused_without_touching_the_table() {
     let error = apply_to_table(
         root.path(),
         &world_id,
+        "zh-TW",
         &outcome(),
         &no_player_selection(Vec::new()),
         &[],
