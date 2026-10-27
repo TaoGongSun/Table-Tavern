@@ -1,6 +1,7 @@
 use crate::data::{self, FieldKind, FieldRule, Mechanism, NumericUpdate, StateNode, UpdateMode};
 use std::collections::BTreeMap;
 
+use super::collection::{self, Routed};
 use super::list_keys::{BatchKeys, Prepared};
 use super::note::{build_notes, shown_pointer, snippet};
 use super::rules::rule_for;
@@ -209,6 +210,16 @@ fn apply_one(
         ));
         return false;
     }
+    // 集合（接管桌清單欄）：形狀、項目、改名在這裡；項目欄位折好路徑後照一般流程套規則
+    let delegated;
+    let patch = match collection::route(tree, mechanism, patch, records, changes) {
+        Routed::Handled => return false,
+        Routed::Delegate(field) => {
+            delegated = field;
+            &delegated
+        }
+        Routed::NotCollection => patch,
+    };
     // 沒重構 MVU 卡：路徑進到陣列（`/HP/0`、`/清單/-`）照上游在帶型別視圖上操作，整個陣列寫回葉子
     if patch.op != PatchOp::Move {
         if let Some(base) = array::array_field(tree, view, &patch.path) {

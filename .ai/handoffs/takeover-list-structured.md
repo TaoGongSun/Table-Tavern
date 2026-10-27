@@ -5,10 +5,11 @@
 
 ## 現況
 - 計畫兩輪審查共識（Opus、Sol、Grok），見 [plans/takeover-list-structured.md](../plans/takeover-list-structured.md)。
-- 包 1（前端填殼：`refactor-shell-sections.ts`、狀態欄）、包 3（`Mechanism.collections` 型別、`transport/list_protocol.rs`、「目前狀態」排序與空集合）已在分支上，verify 綠，待驗收。
+- 包 1（前端填殼：`refactor-shell-sections.ts`、狀態欄）、包 3（`Mechanism.collections` 型別、`transport/list_protocol.rs`、「目前狀態」排序與空集合）已驗收通過、留在分支上。
+- 包 2（`mechanism/collection.rs`：集合寫入的形狀把關、具名項目與 `_序`、序列補位、改名、寫入邊界；觸發條件 contains 認集合）已在分支上，verify 綠，待驗收。
 
 ## Next action
-包 2、4 等 takeover-flat-nonfixed-keys 合進 main 後 rebase 再做；測試通道要用時先問主線。
+包 2 驗收後做包 4（重構契約、產生描述與補 `_序`、撤銷寫回描述與回歸測試、刪 list_keys）；測試通道要用時先問主線。
 
 ## 驗收方向
 GM 每輪輸出只含變動值；介面殼照原卡 YAML 呈現。

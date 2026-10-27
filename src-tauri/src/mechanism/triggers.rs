@@ -1,6 +1,7 @@
 use crate::data::{self, Condition, Mechanism, StateNode, TriggerMode};
 use std::collections::BTreeMap;
 
+use super::collection;
 use super::tree::{leaf_at, resolve_path, split_pair, PathValue};
 
 // ---------------------------------------------------------------------
@@ -30,7 +31,7 @@ pub fn evaluate_triggers(
         let Some(case) = trigger.cases.iter().find(|case| {
             case.when
                 .iter()
-                .all(|condition| condition_holds(tree, condition))
+                .all(|condition| holds(tree, mechanism, condition))
         }) else {
             continue;
         };
@@ -52,7 +53,12 @@ pub fn evaluate_triggers(
 
 /// 條件求值：值一律從樹上讀葉子字串；路徑指到分支（不是葉子）一律不成立，
 /// 不論條件型別、不論 `default`／`expect` 怎麼設。
+#[cfg(test)]
 fn condition_holds(tree: &BTreeMap<String, StateNode>, condition: &Condition) -> bool {
+    holds(tree, &Mechanism::default(), condition)
+}
+
+fn holds(tree: &BTreeMap<String, StateNode>, mechanism: &Mechanism, condition: &Condition) -> bool {
     match condition {
         Condition::Range {
             path,
@@ -86,9 +92,19 @@ fn condition_holds(tree: &BTreeMap<String, StateNode>, condition: &Condition) ->
             true
         }
         Condition::Contains { path, any } => {
+            // 指到集合時比對項目名與項目內的值（在場人物有沒有某人）；其他分支照舊不成立
+            let listed;
             let text = match resolve_path(tree, path) {
                 PathValue::Leaf(text) => text,
                 PathValue::Missing => "",
+                PathValue::Branch if mechanism.collections.contains_key(path) => {
+                    let segments: Vec<String> = path.split('.').map(str::to_owned).collect();
+                    let Some(StateNode::Branch(items)) = data::node_at(tree, &segments) else {
+                        return false;
+                    };
+                    listed = collection::contains_text(items);
+                    listed.as_str()
+                }
                 PathValue::Branch => return false,
             };
             // 原文單向包含；對不上且針至少兩個字時，再用簡繁折疊比（單字折疊誤撞太多：於／于、發／髮）
