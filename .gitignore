@@ -2,6 +2,8 @@
 node_modules
 dist
 src-tauri/target
+# 桌面 MVU 引擎 bundle（npm run build:mvu-bundle 產生）
+src-tauri/gen/mvu-engine.js
 # codex CLI 生圖時會把圖落在這裡（本機暫存，非產物）
 src-tauri/output
 

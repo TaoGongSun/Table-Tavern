@@ -4,7 +4,7 @@
   "version": "0.3.0",
   "identifier": "com.tabletavern.app",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "npm run build:mvu-bundle && npm run dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"

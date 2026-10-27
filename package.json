@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "tsc && vite build && npm run build:mvu-bundle",
+    "build:mvu-bundle": "node scripts/build-mvu-bundle.mjs",
     "test": "vitest run",
     "check:i18n": "node scripts/check-i18n.mjs",
     "check:structure": "node scripts/check-structure.mjs",
@@ -38,6 +39,7 @@
   "devDependencies": {
     "@tauri-apps/cli": "~2.12.1",
     "@types/js-yaml": "4.0.9",
+    "@types/lodash": "4.17.25",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",

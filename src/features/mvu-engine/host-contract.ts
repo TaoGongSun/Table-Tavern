@@ -1,6 +1,16 @@
 // MVU 共用核心與宿主之間的介面（engine-source.ts 的 `createMvuCore(env)`）。
 import type { EvalOp } from "./value-parser";
 
+/** MVU 事件名（MagVarUpdate variable_def.ts）：網頁與桌面宿主沒有監聽器，只是片段要用到 */
+export const MVU_EVENTS = {
+  VARIABLE_INITIALIZED: "mag_variable_initialized",
+  VARIABLE_UPDATE_STARTED: "mag_variable_update_started",
+  COMMAND_PARSED: "mag_command_parsed",
+  VARIABLE_UPDATE_ENDED: "mag_variable_update_ended",
+  BEFORE_MESSAGE_UPDATE: "mag_before_message_update",
+  SINGLE_VARIABLE_UPDATED: "mag_variable_updated",
+};
+
 /** 值解析結果；`error` 由核心轉成字串 */
 export type EvalReply = { ok: true; value: unknown } | { ok: false; error: unknown };
 
@@ -14,6 +24,9 @@ export interface MvuHost {
   utf8Length: (text: string) => number;
   /** 目前的巨集代換值；每次抽指令時讀 */
   macros: () => { user: string; char: string | null } | null | undefined;
+  /** 選配：資源類錯誤（記憶體、堆疊觸限）判定。QuickJS 的這類錯誤可被 catch，zod 迴圈不得把它當單條拒收；
+   *  判定為真就照拋、整次失敗。沒給（iframe、網頁）就照常當單條拒收 */
+  fatal?: (error: unknown) => boolean;
 }
 
 export interface MvuCoreEnv {

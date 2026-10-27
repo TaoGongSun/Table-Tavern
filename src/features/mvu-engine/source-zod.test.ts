@@ -1,13 +1,14 @@
 // zod 版 MVU 卡（mvu_zod）：開局驗證、逐條套用與回傳契約。預期值照上游 StageDog/tavern_resource `util/mvu_zod.ts`
 // （29becf3）逐案推導後手寫，不是拿本實作的輸出回填；另在本機直接執行上游程式比對過（上游授權不能入版控，對照
 // 程式不在 repo）。夾具是自製的乾淨 schema（fixtures/，構件照真卡）。
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import YAML from "yaml";
 import { z } from "zod";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { buildMvuEngineSource } from "./engine-source";
 import type { MvuCore, MvuDetailedResult } from "./host-contract";
 import { runEval } from "./value-parser";
+import { REAL_CARDS, dongeonAdventurer, hasRealCards, realCard } from "./fixtures/real-cards";
 
 const lodashName = "lodash";
 const lodash = ((await import(/* @vite-ignore */ lodashName)) as { default: unknown }).default;
@@ -448,40 +449,13 @@ describe("回傳契約與收尾", () => {
 });
 
 // TestCards/ 是 gitignore 的本機測試卡：有才跑，CI 上略過
-const cardsDir = new URL("../../../TestCards/", import.meta.url);
-const CARDS = ["DongeonMaster.png", "bcd368cacbc56b2cc29010e0cbad5f09.png", "HeroTrainingUnderSide_stats.png"];
-const hasCards = CARDS.every((file) => existsSync(new URL(file, cardsDir)));
-
-/** 原卡的「变量结构」腳本與 [initvar] 條目 */
-function realCard(file: string): { schema: string; initvar: string } {
-  const bytes = readFileSync(new URL(file, cardsDir));
-  let offset = 8;
-  let json = "";
-  while (offset < bytes.length) {
-    const length = bytes.readUInt32BE(offset);
-    const type = bytes.toString("latin1", offset + 4, offset + 8);
-    if (type === "tEXt") {
-      const chunk = bytes.subarray(offset + 8, offset + 8 + length);
-      const split = chunk.indexOf(0);
-      const key = chunk.toString("latin1", 0, split);
-      if (key === "ccv3" || (key === "chara" && json === "")) json = Buffer.from(chunk.toString("latin1", split + 1), "base64").toString("utf8");
-    }
-    offset += 12 + length;
-  }
-  const data = (JSON.parse(json) as { data: Table }).data;
-  const scripts = data.extensions.tavern_helper.scripts as Table[];
-  const schema = scripts.find((script) => String(script.content).includes("registerMvuSchema"))!.content as string;
-  const entries = data.character_book.entries as Table[];
-  const initvar = entries.find((entry) => /initvar/i.test(String(entry.comment ?? entry.name)))!.content as string;
-  return { schema, initvar };
-}
-
-describe.skipIf(!hasCards)("真卡 schema（TestCards 本機限定）", () => {
-  async function run(file: string, message: (stat: Table) => string) {
+describe.skipIf(!hasRealCards)("真卡 schema（TestCards 本機限定）", () => {
+  async function run(file: string) {
     const card = realCard(file);
+    const message = REAL_CARDS.find((entry) => entry.file === file)!.message;
     const core = newCore();
     loadSchemaScript(core, card.schema);
-    const stat = YAML.parse(card.initvar.replace(/<\/?Initial_Variables>/g, "").replace(/\{\{user\}\}/g, "玩家")) as Table;
+    const stat = card.initvar;
     core.cleanUpMetadata(stat);
     const variables: Table = { stat_data: stat };
     expect(core.zodInitialize(variables)).toMatchObject({ ok: true, zod: true });
@@ -490,34 +464,20 @@ describe.skipIf(!hasCards)("真卡 schema（TestCards 本機限定）", () => {
   }
 
   it("DongeonMaster：夾值、字串欄拒收數字、轉不成數字拒收、巢狀未列鍵沒變", async () => {
-    let adventurer = "";
-    const { stat, status } = await run("DongeonMaster.png", (start) => {
-      adventurer = Object.keys(start.冒险者 ?? {})[0] ?? "测试冒险者";
-      const create = start.冒险者?.[adventurer] ? "" : `_.insert('冒险者', '${adventurer}', {});`;
-      return `${create}_.add('冒险者.${adventurer}.生理与心理数值.恶堕值', 500);_.set('基础信息.时间', 7);_.set('基础信息.已覆灭小队数', 'x');_.insert('冒险者.${adventurer}.穿着', '披风', 'y');`;
-    });
+    const { stat, status, start } = await run("DongeonMaster.png");
+    const adventurer = dongeonAdventurer(start);
     expect(status.slice(-4)).toEqual(["applied", "rejected", "rejected", "no-change"]);
     expect(stat.冒险者[adventurer].生理与心理数值.恶堕值).toBe(100);
   });
 
   it("bcd368：漏必填與 enum 錯拒收、0–5 夾值、數字字串轉型", async () => {
-    const { stat, status } = await run(
-      "bcd368cacbc56b2cc29010e0cbad5f09.png",
-      () =>
-        "_.insert('便器数据库', 'T999', {基础档案: {姓名: 'a'}});_.set('便器数据库.T001.基础档案.评级', '普通');_.set('便器数据库.T001.配种信息.开发阶段', 9);_.set('用户数据.积分', 'abc');_.set('用户数据.积分', '250');",
-    );
+    const { stat, status } = await run("bcd368cacbc56b2cc29010e0cbad5f09.png");
     expect(status).toEqual(["rejected", "rejected", "applied", "rejected", "applied"]);
     expect([stat.便器数据库.T001.配种信息.开发阶段, stat.用户数据.积分]).toEqual([5, 250]);
   });
 
   it("HeroTraining：兩個自訂 transform（物品整理、xx/xx 數值）與夾值", async () => {
-    const items = Object.fromEntries(Array.from({ length: 11 }, (_, i) => [`杂物${i + 1}`, { 描述: "x", 数量: 1 }]));
-    const inventory = JSON.stringify({ 金龙: { 描述: "钱", 数量: 5 }, 破布: { 描述: "y", 数量: 0 }, ...items });
-    const { stat, status } = await run(
-      "HeroTrainingUnderSide_stats.png",
-      () =>
-        `_.set('Player.HP', '12000/10000');_.set('Player.MP', 500);_.set('Player.Inventory', ${inventory});_.add('World.Invasion', 500);_.set('World.Roll20', 'abc');_.insert('Heroes', '新勇者', {Name: 'A'});_.set('Player._hidden', 1);`,
-    );
+    const { stat, status } = await run("HeroTrainingUnderSide_stats.png");
     expect(status).toEqual(["applied", "applied", "applied", "applied", "rejected", "applied", "ignored"]);
     expect([stat.Player.HP, stat.Player.MP, stat.World.Invasion]).toEqual(["10000/10000", "500/500", 100]);
     expect(Object.keys(stat.Player.Inventory)).toEqual(["金龙", ...Array.from({ length: 10 }, (_, i) => `杂物${i + 2}`)]);

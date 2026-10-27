@@ -11,6 +11,9 @@ mod import;
 mod inflight;
 mod lanes;
 mod mechanism;
+// P4 接線前只有測試在用：接線時拿掉
+#[allow(dead_code, unused_imports)]
+mod mvu_engine;
 mod openrouter_oauth;
 mod receipts;
 mod refactor;

@@ -83,6 +83,10 @@ export const SOURCE_ZOD = String.raw`
     return clipText(error && error.name ? error.name + ": " + error.message : String(error));
   }
 
+  // 宿主判定的資源類錯誤（記憶體、堆疊觸限）照拋、整次失敗，不當單條拒收
+  function rethrowFatal(error) {
+    if (host.fatal && host.fatal(error)) throw error;
+  }
   // 整份 stat_data 過 schema：成功回 { data }，失敗回 { issues, issueCount }（transform 拋錯也算失敗）
   function zodCheck(schema, data) {
     try {
@@ -90,6 +94,7 @@ export const SOURCE_ZOD = String.raw`
       if (result.success) return { data: result.data };
       return zodIssues(result.error);
     } catch (error) {
+      rethrowFatal(error);
       return { issues: [exceptionText(error)], issueCount: 1 };
     }
   }
@@ -297,6 +302,7 @@ export const SOURCE_ZOD = String.raw`
     try {
       check = zodCheck(zodSchema(), lodash.get(variables, "stat_data", {}));
     } catch (error) {
+      rethrowFatal(error);
       return { ok: false, zod: true, issues: [exceptionText(error)], issueCount: 1 };
     }
     if (check.data === undefined) return { ok: false, zod: true, issues: check.issues, issueCount: check.issueCount };

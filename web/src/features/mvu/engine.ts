@@ -2,18 +2,9 @@
 // 初始化時的 schema 生成與元資料清理。值解析交給 Worker（evaluate.ts）。
 import lodash from "lodash";
 import { createMvuCore } from "virtual:mvu-engine";
+import { MVU_EVENTS } from "@desktop/features/mvu-engine/host-contract";
 import { isEvalOp } from "@desktop/features/mvu-engine/value-parser";
 import type { Evaluator } from "./evaluate";
-
-/** MVU 事件名（MagVarUpdate variable_def.ts）；宿主這邊沒有監聽器，只是片段要用到 */
-const EVENTS = {
-  VARIABLE_INITIALIZED: "mag_variable_initialized",
-  VARIABLE_UPDATE_STARTED: "mag_variable_update_started",
-  COMMAND_PARSED: "mag_command_parsed",
-  VARIABLE_UPDATE_ENDED: "mag_variable_update_ended",
-  BEFORE_MESSAGE_UPDATE: "mag_before_message_update",
-  SINGLE_VARIABLE_UPDATED: "mag_variable_updated",
-};
 
 export interface MvuMacros {
   user: string;
@@ -32,7 +23,7 @@ export interface HostMvu {
 export function createHostMvu(evaluator: Evaluator, macros: MvuMacros): HostMvu {
   const created = createMvuCore({
     emit: async () => {},
-    events: EVENTS,
+    events: MVU_EVENTS,
     lodash,
     host: {
       evaluate: (op, text, done) => {

@@ -530,7 +530,30 @@ pub fn summary_request_estimate(
 
 /// 設定世代：設定檔整份的指紋。換傳輸、換模型、換檔位都會變；前端據此丟掉舊世代的容量。
 pub fn config_generation(config: &AppConfig) -> String {
-    crate::usage::log::text_hash(&serde_json::to_string(config).unwrap_or_default())
+    let value = serde_json::to_value(config)
+        .map(sorted_keys)
+        .unwrap_or_default();
+    crate::usage::log::text_hash(&serde_json::to_string(&value).unwrap_or_default())
+}
+
+/// 物件鍵遞迴照名稱排序：serde_json 開了 preserve_order，同樣內容換了鍵序不該換世代（只用在算指紋，不動存檔）
+fn sorted_keys(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(map) => {
+            let mut entries: Vec<_> = map.into_iter().collect();
+            entries.sort_by(|a, b| a.0.cmp(&b.0));
+            serde_json::Value::Object(
+                entries
+                    .into_iter()
+                    .map(|(key, child)| (key, sorted_keys(child)))
+                    .collect(),
+            )
+        }
+        serde_json::Value::Array(items) => {
+            serde_json::Value::Array(items.into_iter().map(sorted_keys).collect())
+        }
+        other => other,
+    }
 }
 
 /// 前端認定的「目前設定」是不是就是這次量測用的那份快照（前端樂觀更新還沒寫成時就不是）。

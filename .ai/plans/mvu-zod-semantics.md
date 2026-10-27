@@ -5,7 +5,8 @@ zod 卡照上游 mvu_zod，用真 zod 執行卡片自帶的 schema；桌面與�
 
 ## 0. 定案
 - 桌面宿主用 rquickjs `=0.14.0`（內含 quickjs-ng 0.16.2），預設 allocator，不開 `rust-alloc`〔三方共識，依 QuickJS 短驗證〕。短驗證證據：mathjs、json5、yaml、jsonrepair、zod 4.6.7 原樣跑通；三份卡片 schema 的輸出與 Node 逐字相同；記憶體、時間、堆疊上限實測生效；沒有網路與檔案 API；觸限後 runtime 可能壞掉，所以觸限就重建。
-- 新依賴：npm `zod`、crate `rquickjs`；網頁另加 `es-module-lexer`。三者都是 MIT。
+- 新依賴：npm `zod`、crate `rquickjs`；網頁另加 `es-module-lexer`。三者都是 MIT。根目錄另加開發依賴 `@types/lodash` 4.17.25（同網頁）。
+- 發版前要驗：Windows（MSVC）第一次編 quickjs-ng 的 C 程式碼（rquickjs-sys 有預先產生的 bindings，不需要 libclang）。
 - 網頁版先用 Worker，只有時間上限；記憶體硬上限尚未符合裁決要求，記在 BACKLOG〔作者裁決 2026-10-27〕。
 - 整批 5 秒期限不放寬〔三方共識〕。大表（100 千字元級）每條約 25 ms，5 秒約可跑 200 條。
 - 同一桌有兩張卡都呼叫 `registerMvuSchema`：用先匯入的那份；第二份拒絕，並明白告知玩家〔模型判斷·未裁決，主線裁〕。
@@ -21,10 +22,12 @@ env.host.evaluate(op, text, done) -> 取消函式 | null   // done({ok:true, val
 env.host.timers?: { set(fn, ms), clear(id) }          // 選配、成對：有就設值解析保險逾時
 env.host.utf8Length(text) -> number
 env.host.macros() -> { user, char } | null
+env.host.fatal?(error) -> boolean                    // 選配：資源類錯誤（記憶體、堆疊）判定，真就照拋、整次失敗
 env.emit(name, args, isolate) -> Promise              // MVU 事件
 env.events、env.lodash
 ```
 - iframe 與網頁宿主：`evaluate` 送 Worker（單筆 200 ms 逾時），給 timers；保險在核心，逾時呼叫取消函式並以 eval-timeout 整次失敗。
+- `fatal`：QuickJS 的記憶體不足、堆疊溢位可被 catch，zod 迴圈會把它當單條拒收；桌面宿主給 `fatal`，zod 驗證與開局的 catch 先問它，真就照拋。判定是 InternalError、堆疊溢位的 RangeError、丟 null（記憶體耗盡到建不出錯誤物件）；已知差異：卡片 transform 自己 throw null／undefined 也算整次失敗（上游是單條拒收）〔模型判斷·三方共識〕。iframe 與網頁不給，行為不變。
 - 純邏輯不變：schema、路徑、指令抽取、套用、上限。
 - 片段規則照舊：不得出現反引號與「錢字號加左大括號」。
 
@@ -43,7 +46,9 @@ env.events、env.lodash
 | `source-zod.ts` | zod 迴圈、開局驗證、變動清單 |
 | `value-parser.ts` | 原 `card-mvu-parse-engine.ts` |
 | `host-contract.ts` | host 介面與回傳契約型別 |
-| `quickjs-entry.ts` | P3 新增，桌面 bundle 入口 |
+| `quickjs-entry.ts` | 桌面 bundle 入口：`boot()` 補 TextEncoder、安靜的 console 與卡片用的 z、_、$，回 JSON 字串介面（register、status、parse、initialize） |
+| `fixtures/zod-corpus-golden.json` | 入口在 Node 跑 41 案的完整輸出，cargo 拿同一份比 QuickJS；重產 `UPDATE_ZOD_GOLDEN=1` |
+| `fixtures/real-cards.ts` | 三張真卡的取材與對照指令（vitest 兩檔共用；真卡基準寫到 `TestCards/zod-cards-golden.json` 給 cargo） |
 
 `card-interface/mvu/` 留 shim、eval-host、eval worker、write。
 
@@ -87,7 +92,8 @@ status 四種：
 ### 1.5 schema 載入與選擇規則（P2 定版）
 - 偵測：tavern_helper 腳本裡 `enabled` 不為 false、內容含 `registerMvuSchema` 的那一支，存原文。停用的腳本不算，照上游不跑，該桌就是非 zod 桌。
 - 同一桌有兩張卡都偵測到：用先匯入的那張；後面那張不執行，明白告知玩家〔模型判斷·未裁決，主線裁〕。同一張卡有多支：取腳本順序的第一支。
-- 下列情況都算載入失敗：腳本執行拋錯、逾時、觸限、import 白名單外的模組、執行完沒呼叫 `registerMvuSchema`、`registerMvuSchema` 展開 schema 時拋錯（核心照上游在註冊時就展開一次）。載入失敗時，該桌 MVU 更新整次失敗並回饋，不退回 MagVarUpdate〔模型判斷·未裁決，主線裁〕。
+- 下列情況都算載入失敗：腳本執行拋錯、觸限、import 白名單外的模組、執行完沒呼叫 `registerMvuSchema`、`registerMvuSchema` 展開 schema 時拋錯（核心照上游在註冊時就展開一次）。載入失敗時，該桌 MVU 更新整次失敗並回饋，不退回 MagVarUpdate〔模型判斷·未裁決，主線裁〕。
+- 載入途中逾時歸期限失敗（Deadline），同樣整次失敗、不呼叫核心；「可重試」指玩家重 Roll 時再試，宿主不自動重試〔模型判斷·三方共識〕。
 - 腳本內重複呼叫 `registerMvuSchema`：只認第一次，其餘只計入 `zodStatus().duplicates`。
 - 執行環境只放 `z`、`_`、`$`。QuickJS 的 loader 白名單只把 mvu_zod 的網址對應到墊片模組，墊片轉呼叫核心的 `registerMvuSchema`。
 
@@ -101,14 +107,22 @@ status 四種：
 ### 2.1 `src-tauri/src/mvu_engine/`
 四個檔各管一件事：`host.rs` 執行緒與通道、`runtime.rs` 上限／loader／bundle、`contract.rs` 輸入輸出型別、`tests.rs` 測試；`mod.rs` 對外。
 - 測試要涵蓋：記憶體炸彈、逾時、無限遞迴、import 白名單、三卡對照。
+- 對外（P3 定版）：`MvuEngine::new(Limits)`；`deadline()` 起算一次整次期限；`run_batch(桌, schema, 訊息, 舊表, 巨集, 期限)` 回 `BatchOutput`（契約＋重複註冊數）；`initialize(桌, schema, stat_data, 期限)` 回清掉元資料、過完 schema 的表或驗證錯誤。同步 API，P4 在 async 裡用 `spawn_blocking` 包。失敗一律 `EngineFailure { kind, detail }`：InputTooLarge、SchemaLoad、Deadline、Memory、Stack、Script{code}、Busy、Crashed、BadOutput。
+- 與 JS 之間傳 JSON 字串；回來後 Rust 再驗結果筆數與表大小（卡片腳本與核心同一個 realm，核心自己的上限可能被卡片改掉）。
 
 ### 2.2 執行緒與生命週期
 - runtime 不是 `Send`：開一條專用 OS 執行緒（stack 8 MB），收 mpsc 請求，用 oneshot 回覆，外層逾時 6 秒。
-- 每桌一個 runtime，最多 2 桌，LRU 淘汰。
+- 每桌一個 runtime，最多 2 桌，LRU 淘汰。一桌一條執行緒，runtime 在該執行緒上建立。
+- 卡片 import 白名單：StageDog/tavern_resource 的 `dist/util/mvu_zod.js`，jsdelivr 三個鏡像（testingcf、cdn、fastly），可帶 `@版本`；對應到墊片，從不連網〔模型判斷·三方共識〕。
 - 以下情況重建 runtime：觸限、例外、schema 雜湊變了、閒置 10 分鐘。
 - 上限：記憶體 64 MB、整批 5 秒、堆疊 1 MB。
 - 單一 monotonic deadline 涵蓋整次處理：schema 載入、解析、逐條驗證、後處理後的第二次驗證、輸出；第二次驗證不重新起算 5 秒。
 - 逾時復原：外層逾時一到，就把執行緒標成作廢、改開新的接手。未回收的作廢執行緒有數量上限，重建也有次數上限，超過就整次失敗並回饋，不可無限作廢再開。
+  - 全域名額 2：「執行中（含排隊）＋作廢未結束」的請求總數。送出請求前取得名額，執行緒做完才歸還，卡死的一直握著，所以作廢卡死的執行緒不會超過 2 條（被 LRU 淘汰後才逾時的也算在內）。名額滿了新請求一律 Busy：兩條卡死期間所有桌都收到 Busy，回饋要寫明；平常多桌輪流、兩桌同時都不受影響。10 分鐘內作廢重開最多 3 次（每桌計算）：一張卡連續逾時只擋它自己那一桌〔模型判斷·三方共識〕。作廢時把該執行緒的期限設成現在，JS 下一次輪詢就中斷。
+  - 被 LRU 淘汰但還在跑的執行緒，呼叫端仍握著它的追蹤，逾時照樣作廢、計數；作廢與執行緒結束誰先都只計一次。
+  - 期限一到就整次失敗：worker 跑完（含 GC）、主執行緒收到回覆、Rust 驗完輸出，回成功前都再對一次期限。
+  - 中斷處理器觸發過，就算 JS 照常回了結果也不認（整次失敗）。
+  - 載入 schema 途中逾時歸 Deadline、其餘載入問題歸 SchemaLoad（1.5 節）。
 - panic 用 `catch_unwind` 包住，轉成整次失敗。
 - 輸入在進引擎前先照 `PARSE_LIMITS` 擋大小。
 - QuickJS 宿主不給 timers，`evaluate` 在同一個 context 直接呼叫 `runEval`，每次都必須回覆（呼叫 done）或拋錯：
@@ -119,8 +133,8 @@ status 四種：
   - zod 迴圈用 try/catch 把 schema／transform 拋的錯當單條拒收；QuickJS 的 interrupt 是不可捕捉的錯誤，應穿過 catch 變成整次失敗。P3 要有測試釘住這點（transform 裡無窮迴圈 → 整次失敗，不是單條拒收）。
 
 ### 2.3 bundle
-- npm script `build:mvu-bundle` 產生 `src-tauri/gen/mvu-engine.js`（gitignore）。
-- verify 的 cargo 步驟前、tauri 的 before 指令都先跑它。
+- npm script `build:mvu-bundle`（`scripts/build-mvu-bundle.mjs`，用 vite 的建置 API 打 IIFE、全域名 TTMvu）產生 `src-tauri/gen/mvu-engine.js`（gitignore）。
+- 併進 `npm run build`，所以 verify 的 cargo 步驟前、tauri 的 beforeBuildCommand、windows-install-smoke 都會先產生；beforeDevCommand 另外先跑它。
 - `build.rs` 檢查檔案存在；缺了就停下，提示要先跑哪個指令。
 
 ### 2.4 提交契約
@@ -149,6 +163,11 @@ zod 桌改成三段：
 - initvar 的 safeParse 在建 `init_source` 時做一次；`scene_seed_for_next` 不重跑。
 - 收回讀已存快照，不重跑 transform。
 - 整次失敗：狀態整批不提交，正文照常落檔，回饋「變數更新失敗，可能需要重 Roll」。
+
+### 2.4a 物件鍵順序
+- 保留寫入順序〔作者裁決 2026-10-27〕：上游在 JS 保留插入順序，依順序的 transform（HeroTraining 物品只留最後 10 個、背包 takeRight）要和上游一致。
+- P3 已做：serde_json 開 `preserve_order`（全 crate），引擎進出與存讀往返都保序（cargo 測試 `key_insertion_order_survives_store_and_read_round_trips`）；Node 對照改成逐項完全相同。`Map` 的相等比較本來就不看順序；`ui_msg` 的參數文字、`scene_budget` 的設定世代指紋都照名稱排序，維持原行為（不動存檔順序）。
+- P4 接線要守：zod 桌的表不經 `StateNode` 的 `BTreeMap`（依鍵名排序）存讀，或改成保序結構；刪鍵用 `shift_remove`（`Map::remove` 開了 preserve_order 後是 swap_remove，會換順序）。
 
 ### 2.5 判定
 - zod 桌＝未重構桌（Upstream），且有卡註冊 schema。

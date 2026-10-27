@@ -520,8 +520,11 @@ fn generic_ai_text(msg: &UiMsg, depth: usize) -> String {
     if let Some(first) = text.get(..1) {
         text.replace_range(..1, &first.to_ascii_uppercase());
     }
+    // 參數照名稱排序（serde_json 開了 preserve_order，Map 改成照欄位宣告順序）
+    let mut fields: Vec<_> = fields.iter().collect();
+    fields.sort_by(|a, b| a.0.cmp(b.0));
     let params: Vec<String> = fields
-        .iter()
+        .into_iter()
         .filter(|(name, _)| name.as_str() != "code")
         .map(|(name, value)| {
             let value = match value {

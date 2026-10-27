@@ -790,6 +790,34 @@ fn snapshot_must_equal_the_frontend_config() {
     assert_ne!(config_generation(&disk), config_generation(&optimistic));
 }
 
+/// serde_json 開了 preserve_order：同樣的偏好換了鍵序（含巢狀），世代不變；內容變了才變
+#[test]
+fn config_generation_ignores_key_order() {
+    let mut first = AppConfig::default();
+    first
+        .preferences
+        .insert("transport".into(), serde_json::json!("agy"));
+    first
+        .preferences
+        .insert("models".into(), serde_json::json!({ "b": 1, "a": 2 }));
+    let mut second = AppConfig::default();
+    second
+        .preferences
+        .insert("models".into(), serde_json::json!({ "a": 2, "b": 1 }));
+    second
+        .preferences
+        .insert("transport".into(), serde_json::json!("agy"));
+    assert_ne!(
+        serde_json::to_string(&first).unwrap(),
+        serde_json::to_string(&second).unwrap()
+    );
+    assert_eq!(config_generation(&first), config_generation(&second));
+    second
+        .preferences
+        .insert("transport".into(), serde_json::json!("cli"));
+    assert_ne!(config_generation(&first), config_generation(&second));
+}
+
 /// 世界書量測（worldbook-st-trigger-parity 三之 2）：組裝裡依傳入的事件掃，固定部分（事件清空）不帶本輪觸發的
 /// 關鍵字條目；量測一律唯讀——不寫計時檔、不動未結的 pending（以落地前的表算）。
 #[test]
