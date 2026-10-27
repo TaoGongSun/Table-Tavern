@@ -212,13 +212,6 @@ pub(crate) async fn refactor_survey(
     refactor_ai::normalize_survey_for_mode(&mut outcome);
     outcome.frame_candidates = frame_candidates(&entries, &outcome.interface_uids);
     outcome.source_fingerprints = source_fingerprints;
-    // 臨時水印（驗完即刪）：判官對每個人實際寫的 mode，分辨「沒寫」與「明判 tangled」。
-    for person in &outcome.persons {
-        eprintln!(
-            "[survey-persons] name={} mode={:?} uids={:?} spans={:?}",
-            person.name, person.mode, person.uids, person.spans
-        );
-    }
     Ok(outcome)
 }
 

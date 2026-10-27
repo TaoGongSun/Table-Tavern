@@ -1,6 +1,6 @@
 # 重構雙軌定向：介面優先 vs 角色優先（兩段式選擇）
 
-本檔存放 [refactor-mode-split](../handoffs/refactor-mode-split.md) 的規格細節，由任務檔 Summary 連回。2026-08-13 立案；2026-08-14 使用者五項拍板＋Sol 第 1 輪覆核結論併入（逐字稿在 Codex app 的 companion 串；三條關鍵技術主張經主線抽驗屬實）；同日使用者拍板文案稿與初判失敗預設，全案無待拍板。
+本檔存放 [refactor-mode-split](../handoffs/archive/refactor-mode-split.md) 的規格細節，由任務檔 Summary 連回。2026-08-13 立案；2026-08-14 使用者五項拍板＋Sol 第 1 輪覆核結論併入（逐字稿在 Codex app 的 companion 串；三條關鍵技術主張經主線抽驗屬實）；同日使用者拍板文案稿與初判失敗預設，全案無待拍板。
 
 ## 問題定調（2026-08-13 使用者）
 

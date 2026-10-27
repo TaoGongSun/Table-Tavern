@@ -1,7 +1,7 @@
 # refactor-noshell-panel — 重構沒產殼的桌不給卡片介面
 
 ## 現象
-2026-10-02 跑五卡矩陣（[refactor-mode-split](../refactor-mode-split.md)）時，bcd368、NorthHall-structure 重構判 playable: no、沒建殼，但桌子 refactor_mode=interface，卡片介面鈕照樣出現。面板退回原卡 HTML：空桌停在「加载中...」，跑一回合後按鈕消失。NorthHall 型卡的頁面底部還多出字面 ```。
+2026-10-02 跑五卡矩陣（[refactor-mode-split](refactor-mode-split.md)）時，bcd368、NorthHall-structure 重構判 playable: no、沒建殼，但桌子 refactor_mode=interface，卡片介面鈕照樣出現。面板退回原卡 HTML：空桌停在「加载中...」，跑一回合後按鈕消失。NorthHall 型卡的頁面底部還多出字面 ```。
 
 ## 裁決
 重構判定不接管介面（沒有重構殼）時不給面板，狀態看頂部狀態欄〔作者裁決 2026-10-02〕。理由：原卡 HTML 靠 TavernHelper 的 getChatMessages／getCurrentMessageId 讀訊息，app 沒提供，畫不出值。大改前建立的桌不必相容〔作者裁決 2026-10-02〕。

@@ -689,11 +689,16 @@ export function defaultRefactorSelection(
   const playerIndex = outcome.characters.findIndex((character) => character.suspected_player);
   return {
     character_indices: outcome.characters.map((_, index) => index),
-    apply_interface: outcome.interface !== null,
+    apply_interface: outcomeAppliesInterface(outcome),
     mechanism_indices: outcome.mechanisms.map((_, index) => index),
     entry_indices: outcome.entries.map((_, index) => index),
     player_index: playerIndex === -1 ? null : playerIndex,
   };
+}
+
+/** 介面產物會不會被套用：與後端 apply 閘門同語意（mode 去空白後為 characters 就整段不套）。 */
+export function outcomeAppliesInterface(outcome: RefactorOutcome): boolean {
+  return outcome.interface !== null && outcome.mode?.trim() !== "characters";
 }
 
 export interface RefactorSummaryCounts {
@@ -707,7 +712,7 @@ export interface RefactorSummaryCounts {
 export function refactorSummaryCounts(outcome: RefactorOutcome): RefactorSummaryCounts {
   return {
     characters: outcome.characters.length,
-    hasInterface: outcome.interface !== null,
+    hasInterface: outcomeAppliesInterface(outcome),
     mechanisms: outcome.mechanisms.length,
     entries: outcome.entries.length,
   };

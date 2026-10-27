@@ -35,7 +35,7 @@
 
 ## 待辦（依序）
 ### 1. 拆角色 vs 保留介面交給玩家選擇——已移交
-2026-08-13 升級成獨立任務 [refactor-mode-split](refactor-mode-split.md)（兩段式定向＋模式專屬解析），本案不再追蹤。
+2026-08-13 升級成獨立任務 [refactor-mode-split](archive/refactor-mode-split.md)（兩段式定向＋模式專屬解析），本案不再追蹤。
 
 ### 2. 其他型別的卡驗證——已驗
 結果見 [plans/interface-takeover-card-types.md](../plans/interface-takeover-card-types.md)：狀態欄型過、整頁型大致過；MVU 型（DongeonMaster-safe）與 RPGImmortal 於 2026-10-12 修正後重驗皆過（patch 全數套用，見該檔「重驗（2026-10-12）」一節）。維持接管、重構加提醒〔作者裁決 2026-10-11〕。

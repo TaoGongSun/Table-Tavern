@@ -24,7 +24,7 @@
 
 | 順位 | 項目 | 為何排這個位置 |
 |---|---|---|
-| 5 | [refactor-mode-split](../handoffs/refactor-mode-split.md) **實測全過（2026-10-27）**，待刪診斷 eprintln 後結案 | 四洞①②④、重構中取消過；③ 改驗「未遊玩已重構桌用原卡清回再重構、面板跟回合更新」也過。下游 [interface-takeover-spike](../handoffs/interface-takeover-spike.md) 逐型驗卡可開始 |
+| 5 | [refactor-mode-split](../handoffs/archive/refactor-mode-split.md) 已結案（2026-10-27） | 實測全過；下游 [interface-takeover-spike](../handoffs/interface-takeover-spike.md) 逐型驗卡可開始 |
 | 6 | [ai-card-refactor](../handoffs/ai-card-refactor.md) B 段→A 段 ＋ [person-promote](../handoffs/person-promote.md) ＋ [state-values-mvu](../handoffs/state-values-mvu.md) 真桌 | 三案一鏈，跑一輪同時收。**前置已解除**：`refactor-output-redesign` 已於 2026-08-11 結案，B 段可直接真跑 orc-cave 卡；產物存檔後 A 段走零額度重放，額度只花一次 |
 | 8 | [sponsor-features](../handoffs/sponsor-features.md) AI 生圖 | 三個來源各實跑一次＋構圖二選一（選「半身」要出腰以上特寫、2:3 不變、記住上次選擇） |
 | 9 | [ui-redesign](../handoffs/ui-redesign.md) 實聊名牌與打字指示 | 自 ui-overhaul 併入：dialogue 事件的名牌版式、串流中打字指示；另順手驗 [hide-first-action](../handoffs/archive/hide-first-action.md) 回應中按「⋯→轉成世界書條目」顯示忙碌、不轉；可搭任一梯 2 項目順手看 |

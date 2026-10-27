@@ -19,7 +19,6 @@
 - [state-values-mvu](handoffs/state-values-mvu.md) — 狀態欄二期：八包完成、三處面板 2026-10-02 實機過，剩真桌實跑（併在 ai-card-refactor 之後）
 - [worldbook-card-import](handoffs/worldbook-card-import.md) — 世界書卡匯入：本地操作 2026-10-02 實機過，剩篇幅／配角解禁實聊排梯 2 第 10
 - [sponsor-features](handoffs/sponsor-features.md) — 贊助三項：贊助狀態與作者頁 2026-10-02 實機過，剩 AI 生圖排梯 2 第 8
-- [refactor-mode-split](handoffs/refactor-mode-split.md) — 重構雙軌定向：2026-10-27 實測全過，刪診斷 eprintln 後結案
 - [ai-card-refactor](handoffs/ai-card-refactor.md) — AI 卡重構按鈕：產出重設計與匯出重構卡都已結案，前置已解除；等 B 段→A 段並與 person-promote／state-values-mvu 合併真桌驗收
 - [person-promote](handoffs/person-promote.md) — AI 認人並合併升格：實作完成四項自驗綠，與 ai-card-refactor 合併實機驗收
 - [refactor-survey-spans](handoffs/refactor-survey-spans.md) — 盤點四分類＋照搬零輸出：T4 三項過，API 退 GM 檔那項延到真用 API 模式時驗

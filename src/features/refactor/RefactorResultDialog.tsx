@@ -3,6 +3,7 @@ import { backendText } from "../../shared/ui/backend-text";
 import { Dialog, SwapLabel } from "../../shared/ui/Dialog";
 import {
   defaultRefactorSelection,
+  outcomeAppliesInterface,
   refactorSummaryCounts,
   setPlayerIndex,
   sourceEntryTitle,
@@ -287,7 +288,7 @@ export function RefactorResultDialog({ refactor, entries }: RefactorResultDialog
               </div>
             </section>
           )}
-          {outcome.interface && (
+          {outcome.interface && outcomeAppliesInterface(outcome) && (
             <section>
               <h3>{t("refactorSectionInterface")}</h3>
               <div className="mechanism-ledger-list">

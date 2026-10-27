@@ -5,6 +5,7 @@ import {
   defaultRefactorSelection,
   localConvertPerson,
   mergeRefactorInterfaces,
+  outcomeAppliesInterface,
   parseRefactorOutcome,
   refactorTaskUids,
   unfinishedSourceUids,
@@ -415,6 +416,16 @@ describe("defaultRefactorSelection", () => {
       entry_indices: [0],
       player_index: null,
     });
+  });
+
+  it("characters 模式的介面產物（含前後空白）不預勾、摘要不列介面", () => {
+    const outcome = makeOutcome({
+      interface: { state_fields: {}, source_uids: ["8"], raw: "" },
+      mode: " characters ",
+    });
+    expect(defaultRefactorSelection(outcome).apply_interface).toBe(false);
+    expect(refactorSummaryCounts(outcome).hasInterface).toBe(false);
+    expect(outcomeAppliesInterface({ ...outcome, mode: "interface" })).toBe(true);
   });
 
   it("沒有介面產物＝ apply_interface 預設不勾", () => {
