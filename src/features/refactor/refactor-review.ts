@@ -696,6 +696,17 @@ export function defaultRefactorSelection(
   };
 }
 
+/** 展開細看一項都沒勾：套用鈕反灰、桌子不動〔作者裁決 2026-10-27〕。沒勾的人照規則會整併成人物條目，
+ * 全不勾時若照常套用，玩家以為什麼都沒選、桌子卻被改了。 */
+export function selectionIsEmpty(selection: RefactorSelection): boolean {
+  return (
+    selection.character_indices.length === 0 &&
+    !selection.apply_interface &&
+    selection.mechanism_indices.length === 0 &&
+    selection.entry_indices.length === 0
+  );
+}
+
 /** 介面產物會不會被套用：與後端 apply 閘門同語意（mode 去空白後為 characters 就整段不套）。 */
 export function outcomeAppliesInterface(outcome: RefactorOutcome): boolean {
   return outcome.interface !== null && outcome.mode?.trim() !== "characters";

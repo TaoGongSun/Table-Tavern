@@ -26,6 +26,7 @@ import {
   type RefactorSelection,
   type RefactorSplitGroup,
   type RefactorSurveyOutcome,
+  selectionIsEmpty,
 } from "./refactor-review";
 import {
   parseRefactorCardValue,
@@ -76,6 +77,8 @@ interface UseRefactorWorkflowOptions {
 
 // 後端拒套已遊玩桌的錯誤（refactor/reset.rs REFACTOR_PLAYED），一字不差。
 const REFACTOR_PLAYED = "refactor-played";
+// 後端拒收空選取的錯誤（refactor/reset.rs REFACTOR_EMPTY_SELECTION）：前端已先擋，萬一打到後端也換成玩家看得懂的話
+const REFACTOR_EMPTY_SELECTION = "refactor-empty-selection";
 
 // 重構卡存檔對話框預設檔名：桌名可能含檔名非法字元，一律代換成 -；空桌名就不接前綴，只用在地化字尾。
 // 尾碼只給玩家分辨三階（不含圖／含角色圖），格式判定只認檔內 chunk。
@@ -783,7 +786,8 @@ export function useRefactorWorkflow({
   // 回合進行中會排在它後面（後端持整桌獨占）；排隊期間換桌或關掉世界設定，套用照樣在原桌完成，
   // 但 live() 為 false 就不關結果卡、不刷新、不跳訊息
   async function applyRefactor(nextSelection: RefactorSelection) {
-    if (!outcome || busy) return;
+    // 一項都沒勾＝不動桌子〔作者裁決 2026-10-27〕：摘要與展開兩個入口都經過這裡
+    if (!outcome || busy || selectionIsEmpty(nextSelection)) return;
     setStatusMessage("");
     setBusy(true);
     applyPhase.current = "waiting";
@@ -826,6 +830,8 @@ export function useRefactorWorkflow({
             kind: "warning",
             okLabel: t("dialogAck"),
           });
+        } else if (live() && String(reason).includes(REFACTOR_EMPTY_SELECTION)) {
+          setStatusMessage(t("refactorEmptySelection"));
         } else if (live()) setStatusMessage(String(reason));
       } finally {
         // 按鈕鎖一律放開（卸載後 React 不會套用），換桌後留著的面板不能永遠鎖死

@@ -389,6 +389,29 @@ describe("套用重構卡產物的桌況閘門（與 AI 重構同一套）", () 
 describe("套用重構排在進行中的回合後面", () => {
   const OUTCOME = JSON.stringify({ characters: [{ name: "阿福", source_uids: ["1"] }] });
 
+  it("後端回空選取拒收：狀態列顯示玩家看得懂的話，不露代碼", async () => {
+    await mount();
+    await act(async () => controller!.pickRefactorOutcome(new File([OUTCOME], "card.json")));
+    backend.handlers.refactor_apply = () => Promise.reject("refactor-empty-selection");
+    await act(async () => controller!.applyRefactor(controller!.selection!));
+    expect(statuses[statuses.length - 1]).toBe(t("refactorEmptySelection"));
+  });
+
+  it("一項都沒勾：不送後端、桌子不動〔作者裁決 2026-10-27〕", async () => {
+    await mount();
+    await act(async () => controller!.pickRefactorOutcome(new File([OUTCOME], "card.json")));
+    const empty = {
+      character_indices: [],
+      apply_interface: false,
+      mechanism_indices: [],
+      entry_indices: [],
+      player_index: null,
+    };
+    await act(async () => controller!.applyRefactor(empty));
+    expect(commands()).not.toContain("refactor_apply");
+    expect(controller!.busy).toBe(false);
+  });
+
   it("回合進行中按套用：回合結束前不送後端，等待提示亮到後端回來，期間再按不會送第二次", async () => {
     await mount();
     await act(async () => controller!.pickRefactorOutcome(new File([OUTCOME], "card.json")));

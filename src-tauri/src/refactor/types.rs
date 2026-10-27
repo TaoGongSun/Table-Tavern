@@ -103,6 +103,16 @@ pub struct RefactorSelection {
     pub player_index: Option<usize>,
 }
 
+impl RefactorSelection {
+    /// 四區（人物、介面、機制、條目）一項都沒勾；玩家卡指定不算一項。
+    pub fn is_empty(&self) -> bool {
+        self.character_indices.is_empty()
+            && !self.apply_interface
+            && self.mechanism_indices.is_empty()
+            && self.entry_indices.is_empty()
+    }
+}
+
 /// 套用摘要，前端顯示用。
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct RefactorApplySummary {

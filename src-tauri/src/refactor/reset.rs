@@ -65,6 +65,9 @@ pub(crate) fn played(root: &Path, world_id: &str, state: &data::WorldState) -> D
 /// 已遊玩的桌拒套重構時回的錯（前端靠它換成提醒文案，一字不差）。
 pub const REFACTOR_PLAYED: &str = "refactor-played";
 
+/// 一項都沒勾就套用時回的錯：桌子不動〔作者裁決 2026-10-27〕。前端已把套用鈕反灰，這裡守前端以外的入口。
+pub const REFACTOR_EMPTY_SELECTION: &str = "refactor-empty-selection";
+
 /// 重構套用的後端關卡（呼叫端已持整桌獨占）：已遊玩就回 `REFACTOR_PLAYED`，什麼都不寫、不換世代
 /// （回合紀錄照留，等著落檔的回覆不受影響）；否則照 `apply_and_record` 套用，之後整桌交換（清回合紀錄、
 /// 世代加一，舊殼的在途卡寫被擋）。
@@ -77,6 +80,9 @@ pub fn apply_to_table(
     record_receipt: bool,
     held: &data::WorldExclusive,
 ) -> Result<super::RefactorApplySummary, String> {
+    if selection.is_empty() {
+        return Err(REFACTOR_EMPTY_SELECTION.to_owned());
+    }
     let state = data::read_state(root, world_id).map_err(|error| error.to_string())?;
     if played(root, world_id, &state).map_err(|error| error.to_string())? {
         return Err(REFACTOR_PLAYED.to_owned());

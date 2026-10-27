@@ -3,6 +3,7 @@ import {
   assembleRefactorOutcome,
   buildRefactorPersonPlan,
   defaultRefactorSelection,
+  selectionIsEmpty,
   localConvertPerson,
   mergeRefactorInterfaces,
   outcomeAppliesInterface,
@@ -570,5 +571,23 @@ describe("restoreDropped", () => {
     expect(result.selection).not.toBe(selection);
     expect(outcome.dropped).toHaveLength(1);
     expect(selection.entry_indices).toEqual([]);
+  });
+});
+
+describe("selectionIsEmpty", () => {
+  it("四區都沒勾才算空（玩家卡指定不算一項）；任一區有勾就不空", () => {
+    const empty = {
+      character_indices: [],
+      apply_interface: false,
+      mechanism_indices: [],
+      entry_indices: [],
+      player_index: null,
+    };
+    expect(selectionIsEmpty(empty)).toBe(true);
+    expect(selectionIsEmpty({ ...empty, player_index: 0 })).toBe(true);
+    expect(selectionIsEmpty({ ...empty, character_indices: [0] })).toBe(false);
+    expect(selectionIsEmpty({ ...empty, apply_interface: true })).toBe(false);
+    expect(selectionIsEmpty({ ...empty, mechanism_indices: [1] })).toBe(false);
+    expect(selectionIsEmpty({ ...empty, entry_indices: [2] })).toBe(false);
   });
 });

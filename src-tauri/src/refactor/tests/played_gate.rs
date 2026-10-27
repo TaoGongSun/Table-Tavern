@@ -1,6 +1,6 @@
 //! 重構只在未遊玩的桌做〔作者裁決 2026-10-11〕：已遊玩判定（開場白不算、待落的 GM 回覆算、網頁存檔匯入的桌
 //! 一律算〔作者裁決 2026-10-12〕）、`rerun_status` 先看已遊玩、`apply_to_table` 擋下時什麼都不寫也不換世代。
-use super::super::reset::REFACTOR_PLAYED;
+use super::super::reset::{REFACTOR_EMPTY_SELECTION, REFACTOR_PLAYED};
 use super::super::test_support::*;
 use super::super::*;
 use crate::data::{self, StateNode};
@@ -359,4 +359,26 @@ fn unplayed_table_applies_normally() {
         state.state.tree.get("地點"),
         Some(&StateNode::Leaf("前院".to_owned()))
     );
+}
+
+/// 一項都沒勾：後端也拒收，整桌、世代都不動〔作者裁決 2026-10-27〕
+#[test]
+fn empty_selection_is_refused_without_touching_the_table() {
+    let root = TestRoot::new("played-empty-selection");
+    let (world_id, _) = imported(&root);
+    let before = fingerprint(root.path(), &world_id);
+    let generation_before = generation(root.path(), &world_id);
+    let error = apply_to_table(
+        root.path(),
+        &world_id,
+        &outcome(),
+        &no_player_selection(Vec::new()),
+        &[],
+        true,
+        &data::test_exclusive(&world_id),
+    )
+    .unwrap_err();
+    assert_eq!(error, REFACTOR_EMPTY_SELECTION);
+    assert_eq!(fingerprint(root.path(), &world_id), before);
+    assert_eq!(generation(root.path(), &world_id), generation_before);
 }

@@ -29,11 +29,10 @@ const NEW_ENTRY_UID: u64 = u64::MAX;
 /// 套用一份重構產物。落檔規則：
 /// - 勾中的人合併成一張卡（emoji 進頭像欄，其餘欄位比照舊有預設）；同時指定為玩家的人設玩家卡
 ///   （沿用一桌一張限制：桌上已有玩家卡就整批失敗、不寫入，讓玩家看得懂為什麼沒套用）。
-/// - 勾中的人名下每條來源條目：只他專屬（沒有別人共用）的整條刪除；跟別人共用的合集條目，
-///   只有收尾階段判斷「刪了只剩殘渣」且所有共用這條的人都被勾了才刪，其餘一律原樣保留
-///   （要點 7：基準是優先保留而非刪除，判斷不出來或還有人沒勾就不動）。
-/// - 沒勾的人：維持現行機制，各自新增一條獨立世界書條目（is_person=true，內容是 solo_entry_md），
-///   來源條目不動——即使他的資料原本散在好幾條裡，未升格就不觸碰原始條目。
+/// - 每個人（勾或沒勾）名下每條來源條目：只他專屬（沒有別人共用）的整條刪除；跟別人共用的合集條目，
+///   只有收尾階段判斷「刪了只剩殘渣」才刪，其餘一律原樣保留（要點 7：基準是優先保留而非刪除）。
+/// - 沒勾的人：各自整併成一條恆定的獨立世界書條目（is_person=true，內容是 solo_entry_md），來源條目
+///   跟勾選的人一樣處置（專屬的刪、共用合集照上一點）〔作者裁決 2026-10-27〕。
 /// - 勾中的重寫條目直接新增；帶規則／觸發表的機制條目同時併入本地機制。
 /// - 來源條目只在所有引用它的產物都已套用時整條刪除，絕不再停用留墓地。
 /// - 勾中介面時，狀態樹整份重建為新欄位集；同名頂層鍵保留目前遊玩中的整支節點。
@@ -155,8 +154,10 @@ fn apply_into(
             deletion_candidates.insert(uid);
         }
     };
-    for (index, character) in outcome.characters.iter().enumerate() {
-        let applied = selection.character_indices.contains(&index);
+    // 人物一律整併〔作者裁決 2026-10-27〕：勾選的升成角色卡、沒勾的成一條人物條目，兩種都算
+    // 「這個人的來源已被消耗」。專屬條目刪除；共用合集只有收尾判定「刪了只剩殘渣」才刪，
+    // 其餘消費者（條目、機制、介面）有沒套用的照樣保留。
+    for character in &outcome.characters {
         for uid in &character.source_uids {
             let Some(actual_uid) = sources.resolve(uid) else {
                 continue;
@@ -165,12 +166,8 @@ fn apply_into(
                 .get(&actual_uid)
                 .map(Vec::as_slice)
                 .unwrap_or_default();
-            let character_deletable = owners.len() <= 1
-                || (deletable_shared.contains(&actual_uid)
-                    && owners
-                        .iter()
-                        .all(|owner| selection.character_indices.contains(owner)));
-            add_consumer(uid, applied, applied && character_deletable);
+            let character_deletable = owners.len() <= 1 || deletable_shared.contains(&actual_uid);
+            add_consumer(uid, true, character_deletable);
         }
     }
     for (index, entry) in outcome.entries.iter().enumerate() {
@@ -245,7 +242,8 @@ fn apply_into(
 
     for (index, character) in outcome.characters.iter().enumerate() {
         if !selection.character_indices.contains(&index) {
-            // 沒勾：維持現行機制，獨立成一條 is_person 條目；來源條目不動，資料不會憑空消失。
+            // 沒勾：整併成一條恆定的 is_person 條目（來源刪除與勾選的人同一套，見上方 source_consumers）。
+            // 恆定人物條目只進 GM 的名冊行（「這桌還有這些人」），全文等 present 點名時由登場事件送。
             // uid 用 NEW_ENTRY_UID 哨兵，實際落檔的 uid 由 upsert_worldbook_entry 分配。
             data::upsert_worldbook_entry(
                 root,
@@ -255,7 +253,7 @@ fn apply_into(
                     title: character.name.clone(),
                     keys: Vec::new(),
                     content: character.solo_entry_md.clone(),
-                    constant: false,
+                    constant: true,
                     order: 100,
                     disabled: false,
                     visibility: Visibility::Gm,

@@ -122,10 +122,10 @@ fn apply_rejects_second_player_card_and_writes_nothing() {
         .iter()
         .any(|entry| entry.uid == uid)); // 沒被刪
 }
-/// (c) 沒勾的人一律維持現行機制，各自生一條獨立 is_person 條目；勾了的人專屬來源條目
-/// 整條刪除。兩件事對每個人各自獨立成立，不因為同一次套用裡有人選中有人沒選就互相影響。
+/// (c) 人一律整併〔作者裁決 2026-10-27〕：勾了的人升成角色卡、沒勾的人成一條恆定的 is_person 條目，
+/// 兩人的專屬來源條目都整條刪除，同一人的設定不會在世界書裡留兩份。
 #[test]
-fn apply_unselected_person_gets_independent_person_entry_selected_persons_source_deleted() {
+fn apply_unselected_person_gets_constant_person_entry_and_both_sources_are_consumed() {
     let root = TestRoot::new("zero-selected");
     let world_id = data::create_world(root.path(), "酒館").unwrap();
     let picked_uid = seed_entry(root.path(), &world_id, "被選中的條目", "會被升格的人");
@@ -150,21 +150,34 @@ fn apply_unselected_person_gets_independent_person_entry_selected_persons_source
     let selection = no_player_selection(vec![0]); // 只勾阿明；小華（index 1）沒勾
 
     let before_len = data::read_worldbook(root.path(), &world_id).unwrap().len();
-    let result = apply(root.path(), &world_id, &outcome, &selection).unwrap();
+    let result = apply_recorded(root.path(), &world_id, &outcome, &selection);
     assert_eq!(result.summary.new_characters, 1);
-    assert_eq!(result.summary.new_entries, 1); // 小華獨立成一條 is_person 條目
-    assert_eq!(result.summary.deleted_entries, 1); // 阿明的專屬來源條目整條刪除
+    assert_eq!(result.summary.new_entries, 1); // 小華成一條人物條目
+    assert_eq!(result.summary.deleted_entries, 2); // 兩人的專屬來源都整併掉
 
     let entries = data::read_worldbook(root.path(), &world_id).unwrap();
-    assert_eq!(entries.len(), before_len); // 少一條（阿明來源刪除）多一條（小華新增），淨零
-    assert!(!entries.iter().any(|entry| entry.uid == picked_uid));
-    let ignored_entry = entries
+    assert_eq!(entries.len(), before_len - 1);
+    assert!(!entries
+        .iter()
+        .any(|entry| entry.uid == picked_uid || entry.uid == ignored_uid));
+    let person_entry = entries.iter().find(|entry| entry.is_person).unwrap();
+    assert_eq!(person_entry.title, "小華");
+    assert!(person_entry.constant, "恆定人物條目才進 GM 名冊行");
+
+    receipts::undo_last_import(
+        root.path(),
+        &world_id,
+        &crate::data::test_exclusive(&world_id),
+    )
+    .unwrap();
+    let after_undo = data::read_worldbook(root.path(), &world_id).unwrap();
+    assert_eq!(after_undo.len(), before_len);
+    let restored = after_undo
         .iter()
         .find(|entry| entry.uid == ignored_uid)
         .unwrap();
-    assert_eq!(ignored_entry.content, "沒人被勾的人"); // 小華的原始專屬條目原樣不動
-    let person_entry = entries.iter().find(|entry| entry.is_person).unwrap();
-    assert_eq!(person_entry.title, "小華");
+    assert_eq!(restored.content, "沒人被勾的人");
+    assert!(!after_undo.iter().any(|entry| entry.is_person));
 }
 /// (b2) 七人共用一條合集，只勾兩人：兩張角色卡＋五條獨立 is_person 條目；沒有收尾判定，
 /// 合集條目原樣保留（基準是優先保留）→ undo → 角色卡與新條目都回原樣。
@@ -234,38 +247,64 @@ fn apply_partial_group_selection_creates_person_entries_for_the_rest_and_keeps_s
     let after_undo = data::read_worldbook(root.path(), &world_id).unwrap();
     assert_eq!(after_undo.len(), before_entries);
 }
-/// (h) 共用合集條目，finishing 判定可刪，但只有一位共用者被勾：條目原樣保留
-/// （要點 7：判斷不出來或還有人沒勾就不動）。
+/// (h) 共用合集條目，finishing 判定可刪、只勾一人：沒勾的人也整併成人物條目，合集照判定整條刪；
+/// 同一條還有沒套用的其他消費者（這裡是沒勾的重寫條目）就保留。
 #[test]
-fn apply_shared_uid_kept_when_not_all_owners_selected() {
-    let root = TestRoot::new("shared-uid-partial");
-    let world_id = data::create_world(root.path(), "酒館").unwrap();
-    let shared_uid = seed_entry(root.path(), &world_id, "角色速览", "霍玄：……長老：……");
+fn apply_shared_uid_follows_finishing_verdict_regardless_of_selection_but_waits_for_other_consumers(
+) {
+    for (label, entry_selected, kept) in [
+        ("only-people", None, false),
+        ("entry-unselected", Some(false), true),
+    ] {
+        let root = TestRoot::new(&format!("shared-uid-partial-{label}"));
+        let world_id = data::create_world(root.path(), "酒館").unwrap();
+        let shared_uid = seed_entry(root.path(), &world_id, "角色速览", "霍玄：……長老：……");
 
-    let outcome = RefactorOutcome {
-        mode: None,
-        characters: vec![
-            character("霍玄", &[shared_uid]),
-            character("長老", &[shared_uid]),
-        ],
-        interface: None,
-        mechanisms: Vec::new(),
-        entries: Vec::new(),
-        deletable_shared_uids: vec![shared_uid.to_string()],
-        dropped: Vec::new(),
-        unabsorbed: Vec::new(),
-        audit: Vec::new(),
-        preserve_source_uids: Vec::new(),
-        source_fingerprints: Default::default(),
-    };
-    let selection = no_player_selection(vec![0]); // 只勾霍玄
+        let entries = match entry_selected {
+            Some(_) => vec![crate::refactor_ai::RefactorNewEntry {
+                title: "驛站概要".to_owned(),
+                kind: "setting".to_owned(),
+                content: "驛站概要全文".to_owned(),
+                source_uids: vec![shared_uid.to_string()],
+                rules: Default::default(),
+                triggers: Vec::new(),
+                meta: None,
+            }],
+            None => Vec::new(),
+        };
+        let outcome = RefactorOutcome {
+            mode: None,
+            characters: vec![
+                character("霍玄", &[shared_uid]),
+                character("長老", &[shared_uid]),
+            ],
+            interface: None,
+            mechanisms: Vec::new(),
+            entries,
+            deletable_shared_uids: vec![shared_uid.to_string()],
+            dropped: Vec::new(),
+            unabsorbed: Vec::new(),
+            audit: Vec::new(),
+            preserve_source_uids: Vec::new(),
+            source_fingerprints: Default::default(),
+        };
+        let selection = no_player_selection(vec![0]); // 只勾霍玄；重寫條目也沒勾
 
-    let result = apply(root.path(), &world_id, &outcome, &selection).unwrap();
-    assert_eq!(result.summary.deleted_entries, 0);
-    assert!(data::read_worldbook(root.path(), &world_id)
-        .unwrap()
-        .iter()
-        .any(|entry| entry.uid == shared_uid));
+        let result = apply(root.path(), &world_id, &outcome, &selection).unwrap();
+        assert_eq!(
+            result.summary.deleted_entries,
+            usize::from(!kept),
+            "{label}"
+        );
+        assert_eq!(
+            data::read_worldbook(root.path(), &world_id)
+                .unwrap()
+                .iter()
+                .any(|entry| entry.uid == shared_uid),
+            kept,
+            "{label}"
+        );
+    }
 }
 /// (i) 共用合集條目，finishing 判定可刪、全部共用者都被勾：整條刪除，且只刪一次
 /// （兩人都指到同一 uid，不因此刪兩次）。

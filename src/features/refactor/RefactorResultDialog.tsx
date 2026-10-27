@@ -5,6 +5,7 @@ import {
   defaultRefactorSelection,
   outcomeAppliesInterface,
   refactorSummaryCounts,
+  selectionIsEmpty,
   setPlayerIndex,
   sourceEntryTitle,
   sourceEntryTitles,
@@ -77,12 +78,14 @@ export function RefactorResultDialog({ refactor, entries }: RefactorResultDialog
       {t("refactorDismiss")}
     </button>
   );
+  // 摘要的套用＝預設勾選；預設就全空（例：純介面卡選 characters、產物只剩已淘汰）時跟展開一樣反灰
+  const summarySelection = defaultRefactorSelection(outcome, applied);
   const applyAllButton = (
     <button
       type="button"
       className={cancelled ? "btn" : "btn btn-primary"}
-      disabled={busy}
-      onClick={() => void applyRefactor(defaultRefactorSelection(outcome, applied))}
+      disabled={busy || selectionIsEmpty(summarySelection)}
+      onClick={() => void applyRefactor(summarySelection)}
     >
       <SwapLabel
         labels={[t(applied ? "refactorApplyFromSource" : "refactorApplyAll"), t("turnQueuedWait")]}
@@ -135,7 +138,7 @@ export function RefactorResultDialog({ refactor, entries }: RefactorResultDialog
           <button
             type="button"
             className="btn btn-primary"
-            disabled={busy}
+            disabled={busy || selectionIsEmpty(selection)}
             onClick={() => void applyRefactor(selection)}
           >
             <SwapLabel
@@ -171,6 +174,7 @@ export function RefactorResultDialog({ refactor, entries }: RefactorResultDialog
           {outcome.characters.length > 0 && (
             <section>
               <h3>{t("refactorSectionCharacters")}</h3>
+              <p className="mechanism-ledger-detail">{t("refactorCharactersHint")}</p>
               <div className="mechanism-ledger-list">
                 {outcome.characters.map((character, index) => (
                   <div className="mechanism-ledger-row" key={index}>

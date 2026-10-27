@@ -58,4 +58,36 @@ describe("refactor result dialog", () => {
     expect(alerts).toContain(t("refactorCancelledNotice"));
     expect(alerts.some((text) => text?.includes("Alice") && text.includes("timeout"))).toBe(true);
   });
+
+  // 一項都沒勾：展開細看的套用鈕反灰、點了也不套，桌子不動〔作者裁決 2026-10-27〕
+  it("disables detail apply when nothing is selected", () => {
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    const refactor = controller(true, false);
+    act(() => root!.render(<RefactorResultDialog refactor={refactor} entries={[]} />));
+
+    const apply = [...document.querySelectorAll("button")].find((button) =>
+      button.textContent?.includes(t("refactorApplyBtn")),
+    );
+    expect(apply?.disabled).toBe(true);
+    act(() => apply?.click());
+    expect(refactor.applyRefactor).not.toHaveBeenCalled();
+  });
+
+  // 摘要入口同一條：預設勾選就全空時主鈕反灰、點了不套
+  it("disables summary apply when the default selection is empty", () => {
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    const refactor = controller(false, false);
+    act(() => root!.render(<RefactorResultDialog refactor={refactor} entries={[]} />));
+
+    const apply = [...document.querySelectorAll("button")].find((button) =>
+      button.textContent?.includes(t("refactorApplyAll")),
+    );
+    expect(apply?.disabled).toBe(true);
+    act(() => apply?.click());
+    expect(refactor.applyRefactor).not.toHaveBeenCalled();
+  });
 });
