@@ -20,9 +20,13 @@ mod card_image_tests;
 #[cfg(test)]
 mod card_view_tests;
 #[cfg(test)]
+mod clean_cards_tests;
+#[cfg(test)]
 mod foreign_ids_tests;
 #[cfg(test)]
 mod initvar_list_tests;
+#[cfg(test)]
+mod ledger_route_tests;
 #[cfg(test)]
 mod mvu_replace_tests;
 #[cfg(test)]

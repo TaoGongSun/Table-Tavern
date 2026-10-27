@@ -180,9 +180,14 @@ pub(super) fn import_mechanism_strict(root: &Path, world_id: &str, book: &Value)
 
     let initial_tree = extract_initial_tree(&entries);
     let (rules, mvu_seen) = extract_field_rules(&entries);
-    let (triggers, skipped) = extract_triggers(&entries);
+    let (triggers, ledger) = extract_triggers(&entries);
     let incremental = initial_tree.is_some() || mvu_seen;
     if initial_tree.is_none() && rules.is_empty() && triggers.is_empty() && !incremental {
+        // 只有認不出的 EJS：狀態不用動，但判決照記，帳本才看得到哪些腳本沒接管
+        let scene = data::read_state(root, world_id)
+            .map(|world| world.current_scene)
+            .unwrap_or(0);
+        mechanism::append_log(root, world_id, scene, &ledger);
         return Ok(());
     }
 
@@ -231,14 +236,15 @@ pub(super) fn import_mechanism_strict(root: &Path, world_id: &str, book: &Value)
         world.mechanism.incremental = true;
     }
     data::write_state(root, world_id, &world)?;
-    mechanism::append_log(root, world_id, world.current_scene, &skipped);
+    mechanism::append_log(root, world_id, world.current_scene, &ledger);
     Ok(())
 }
 
-/// EJS 原文從不送模型：可辨識的才轉成觸發表，其餘留一筆記帳讓玩家知道沒有偷偷執行。
+/// EJS 原文從不送模型：可辨識的才轉成觸發表。含 `<%` 的條目一律在這裡記一筆帳（認得記接管、
+/// 認不得記跳過），是 EJS 條目在帳本上唯一的判決來源；世界書匯入那邊不替 `<%` 條目記帳。
 fn extract_triggers(entries: &[&Value]) -> (Vec<data::Trigger>, Vec<Record>) {
     let mut triggers = Vec::new();
-    let mut skipped = Vec::new();
+    let mut ledger = Vec::new();
     for entry in entries {
         let Some(content) = entry.get("content").and_then(Value::as_str) else {
             continue;
@@ -260,8 +266,14 @@ fn extract_triggers(entries: &[&Value]) -> (Vec<data::Trigger>, Vec<Record>) {
             } else {
                 triggers.push(trigger);
             }
+            ledger.push(Record {
+                kind: RecordKind::Absorbed,
+                path: title.to_owned(),
+                detail: UiMsg::LedgerScaffoldAbsorbed.to_string(),
+                group: None,
+            });
         } else {
-            skipped.push(Record {
+            ledger.push(Record {
                 kind: RecordKind::Skipped,
                 path: title.to_owned(),
                 detail: UiMsg::LedgerScriptUnrecognized.to_string(),
@@ -269,7 +281,7 @@ fn extract_triggers(entries: &[&Value]) -> (Vec<data::Trigger>, Vec<Record>) {
             });
         }
     }
-    (triggers, skipped)
+    (triggers, ledger)
 }
 
 fn entry_marker(entry: &Value) -> Option<String> {

@@ -147,7 +147,8 @@ pub fn import_worldbook_as(
                 placed.push((key, kept_uid));
                 continue;
             }
-            if is_mechanism_scaffold(&entry) {
+            // 含 `<%` 的條目由機制匯入（extract_triggers）判認得與否後記帳，這裡只記非 EJS 鷹架
+            if is_mechanism_scaffold(&entry) && !entry_content(&entry).contains("<%") {
                 let title = entry
                     .get("comment")
                     .and_then(serde_json::Value::as_str)
@@ -402,6 +403,13 @@ fn merge_entry_into(kept: &mut serde_json::Value, incoming: &serde_json::Value) 
 /// 本地已接管或原本就不會交給模型的內容，不該再送進模型上下文燒字數。
 /// `[mvu_update]` 只認抽得出欄位規則的規則表；同前綴的輸出格式說明 app 沒接手，照原卡啟停
 /// （沒重構的卡照酒館做）。
+fn entry_content(entry: &serde_json::Value) -> &str {
+    entry
+        .get("content")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default()
+}
+
 fn is_mechanism_scaffold(entry: &serde_json::Value) -> bool {
     let marker = entry
         .get("comment")
@@ -410,10 +418,7 @@ fn is_mechanism_scaffold(entry: &serde_json::Value) -> bool {
         .unwrap_or_default()
         .trim()
         .to_ascii_lowercase();
-    let content = entry
-        .get("content")
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or_default();
+    let content = entry_content(entry);
     if marker.starts_with("[initvar]") {
         return true;
     }

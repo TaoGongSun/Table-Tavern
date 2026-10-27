@@ -1,0 +1,165 @@
+## worldbook: 57 entries
+  uid=0 disabled=false constant=true keys=[] title=基调与文风
+  uid=1 disabled=false constant=true keys=[] title=世界背景
+  uid=2 disabled=true constant=false keys=["裂隙之主", "决战", "裂隙之心"] title=[Event]规则_裂隙决战判定
+  uid=3 disabled=true constant=false keys=[] title=[Event]北境圣城事件
+  uid=4 disabled=false constant=false keys=["北境", "白垒城", "北方"] title=北境圣城白垒城
+  uid=5 disabled=false constant=false keys=["东方", "星辉学都", "东方学都"] title=东方学都星辉城
+  uid=6 disabled=false constant=false keys=["南港", "金帆港", "南方"] title=南方商港金帆港
+  uid=7 disabled=false constant=false keys=["西方", "红土荒原", "西方荒原"] title=西方荒原红土原
+  uid=8 disabled=false constant=false keys=["裂隙", "裂隙之心", "中心"] title=裂隙之心
+  uid=9 disabled=false constant=true keys=["勇者", "等阶", "等级"] title=勇者等阶
+  uid=10 disabled=false constant=true keys=[] title=主角核心设定
+  uid=11 disabled=true constant=false keys=[] title=[Event]南方商港事件
+  uid=12 disabled=false constant=false keys=[] title=---剧透警告！下方条目涉及剧透，请谨慎观看。---
+  uid=13 disabled=false constant=true keys=["墨丘", "公会书记官"] title=墨丘
+  uid=14 disabled=false constant=false keys=["艾德温·晨盾", "艾德温", "晨盾"] title=艾德温·晨盾
+  uid=15 disabled=false constant=false keys=["塞拉斯·星砂", "塞拉斯", "星砂"] title=塞拉斯·星砂
+  uid=16 disabled=false constant=false keys=["波比·铜铃", "波比", "铜铃"] title=波比·铜铃
+  uid=17 disabled=false constant=false keys=["隼", "荒原猎手"] title=隼
+  uid=18 disabled=false constant=false keys=["诺德", "初代勇者"] title=诺德
+  uid=19 disabled=false constant=false keys=[] title=---角色---
+  uid=20 disabled=false constant=false keys=[] title=---世界观---
+  uid=21 disabled=false constant=false keys=["卢西安·余烬", "卢西安", "余烬"] title=卢西安·余烬
+  uid=22 disabled=false constant=false keys=[] title=---系统与规则---
+  uid=23 disabled=true constant=false keys=[] title=[initvar]变量初始化勿开
+  uid=24 disabled=true constant=true keys=[] title=[mvu_update]变量更新规则
+  uid=25 disabled=true constant=true keys=[] title=变量列表
+  uid=26 disabled=false constant=true keys=[] title=[mvu_update]变量输出格式
+  uid=27 disabled=false constant=true keys=[] title=[mvu_update]变量输出格式强调
+  uid=28 disabled=true constant=true keys=[] title=[Environment]环境_魔潮侵蚀度
+  uid=29 disabled=true constant=true keys=[] title=[Environment]环境_公会声望度
+  uid=30 disabled=true constant=true keys=[] title=[Script]概率事件触发器
+  uid=31 disabled=true constant=true keys=[] title=[Script]状态_体能
+  uid=32 disabled=false constant=false keys=[] title=---势力---
+  uid=33 disabled=true constant=false keys=["危机事件触发"] title=危机事件库
+  uid=34 disabled=true constant=true keys=[] title=[Script]系统_区域自动加载
+  uid=35 disabled=false constant=true keys=[] title=角色概览
+  uid=36 disabled=false constant=false keys=["艾因", "创世者"] title=艾因
+  uid=37 disabled=false constant=true keys=[] title=职阶概览
+  uid=38 disabled=false constant=false keys=[] title=---职阶---
+  uid=39 disabled=false constant=false keys=["圣盾侍从", "圣盾骑士", "审判骑士"] title=圣盾侍从
+  uid=40 disabled=false constant=false keys=["符文学徒", "符文学者", "元素术士"] title=符文学徒
+  uid=41 disabled=false constant=true keys=[] title=职阶晋升规则
+  uid=42 disabled=true constant=true keys=[] title=[Script]决心值阶段监测
+  uid=43 disabled=false constant=true keys=[] title=战斗轮核心规则
+  uid=44 disabled=false constant=false keys=["公会理事会", "[系统:激活南方商港设定]"] title=公会理事会
+  uid=45 disabled=true constant=false keys=["艾德温·晨盾", "艾德温", "晨盾"] title=[Script]艾德温关系阶段
+  uid=46 disabled=true constant=false keys=["波比·铜铃", "波比", "铜铃"] title=[Script]波比关系阶段
+  uid=47 disabled=true constant=false keys=["塞拉斯·星砂", "塞拉斯", "星砂"] title=[Script]塞拉斯关系阶段
+  uid=48 disabled=true constant=false keys=["隼", "荒原猎手"] title=[Script]隼关系阶段
+  uid=49 disabled=true constant=false keys=["诺德", "初代勇者"] title=[Script]诺德关系阶段
+  uid=50 disabled=false constant=false keys=["维格·熔铁", "维格", "熔铁"] title=维格·熔铁
+  uid=51 disabled=false constant=false keys=["雷昂·断岩", "雷昂", "断岩"] title=雷昂·断岩
+  uid=52 disabled=false constant=false keys=["西蒙·碧潮", "西蒙", "碧潮"] title=西蒙·碧潮
+  uid=53 disabled=false constant=false keys=["莱斯·灰羽", "莱斯", "灰羽"] title=莱斯·灰羽
+  uid=54 disabled=false constant=false keys=["乔安·裂风", "乔安", "裂风"] title=乔安·裂风
+  uid=55 disabled=false constant=false keys=["卡洛·断岩", "卡洛", "断岩"] title=卡洛·断岩
+  uid=56 disabled=false constant=false keys=["塞缪·颂歌", "塞缪", "颂歌"] title=塞缪·颂歌
+## mechanism: incremental=true
+## tree
+  Enemies_List: [EnemyA, EnemyB, EnemyC]
+  Heroes: [乔安·裂风, 卡洛·断岩, 卢西安·余烬, 塞拉斯·星砂, 塞缪·颂歌, 墨丘, 待定, 波比·铜铃, 维格·熔铁, 艾德温·晨盾, 莱斯·灰羽, 西蒙·碧潮, 诺德, 隼, 雷昂·断岩]
+  NPCs: []
+  Player: [Ability, Affection, Class, Corruption, Emotion, HP, Help, Injury, Inventory, Level, MP, Name, Outfit, Personality, Race, SP, Status]
+  World: [Enemies_Summary, Invasion, Location, Progress, RelicShards, Roll100, Roll20, Summary, Time, Title, Weather]
+  leaf Player.Name = {{user}}
+  leaf Heroes.艾德温·晨盾.HP = 500/500
+  leaf Heroes.艾德温·晨盾.Affection = 5
+  leaf World.Title = 序章: 公会的新人
+  leaf Player.Inventory = <branch>
+  leaf World.Invasion = 1
+## rules: 21
+  Events.Harbor_Strike_Triggered => {"kind":"read_only","update":"reject","inject":"rare","branch":"Events"}
+  Events.Northhold_Siege_Triggered => {"kind":"read_only","update":"reject","inject":"rare","branch":"Events"}
+  Heroes.*.Affection => {"kind":"number","min":0.0,"max":200.0,"update":"delta","inject":"turn","branch":"Heroes"}
+  Heroes.*.Corruption => {"kind":"number","min":0.0,"max":100.0,"update":"delta","inject":"turn","branch":"Heroes"}
+  Heroes.*.Determination => {"kind":"number","min":0.0,"max":100.0,"update":"delta","inject":"turn","branch":"Heroes"}
+  Heroes.*.HP => {"kind":"pair","update":"delta","inject":"turn","branch":"Heroes"}
+  Heroes.*.MP => {"kind":"pair","update":"delta","inject":"turn","branch":"Heroes"}
+  Heroes.*.Relationship => {"kind":"text","update":"replace","inject":"snapshot","branch":"Heroes"}
+  Heroes.*.RelationshipBranch => {"kind":"text","update":"replace","inject":"snapshot","branch":"Heroes"}
+  Heroes.*.Rivalry => {"kind":"number","min":0.0,"max":100.0,"update":"delta","inject":"turn","branch":"Heroes"}
+  Heroes.*.SP => {"kind":"pair","update":"delta","inject":"turn","branch":"Heroes"}
+  Player.Corruption => {"kind":"number","min":0.0,"max":100.0,"update":"delta","inject":"turn","branch":"Player"}
+  Player.HP => {"kind":"pair","update":"delta","inject":"turn","branch":"Player"}
+  Player.Level => {"kind":"text","update":"replace","inject":"snapshot","branch":"Player"}
+  Player.MP => {"kind":"pair","update":"delta","inject":"turn","branch":"Player"}
+  Player.SP => {"kind":"pair","update":"delta","inject":"turn","branch":"Player"}
+  World.Invasion => {"kind":"number","min":0.0,"max":100.0,"update":"delta","inject":"turn","branch":"World"}
+  World.Progress => {"kind":"number","min":0.0,"max":100.0,"update":"delta","inject":"turn","branch":"World"}
+  World.RelicShards => {"kind":"number","min":0.0,"max":11.0,"update":"delta","inject":"turn","branch":"World"}
+  World.Roll100 => {"kind":"roll","min":1.0,"max":100.0,"update":"local","inject":"turn","branch":"World"}
+  World.Roll20 => {"kind":"roll","min":1.0,"max":20.0,"update":"local","inject":"turn","branch":"World"}
+## triggers: 9
+  id=北境圣城事件 mode=Once cases=1 flag=Some("Events.Northhold_Siege_Triggered") scope=[] preamble_len=0
+  id=南方商港事件 mode=Once cases=1 flag=Some("Events.Harbor_Strike_Triggered") scope=[] preamble_len=0
+  id=环境_魔潮侵蚀度 mode=Range cases=6 flag=None scope=["World"] preamble_len=113
+  id=环境_公会声望度 mode=Range cases=4 flag=None scope=["World"] preamble_len=113
+  id=艾德温关系阶段 mode=Range cases=13 flag=None scope=["Heroes", "艾德温·晨盾"] preamble_len=0
+  id=波比关系阶段 mode=Range cases=13 flag=None scope=["Heroes", "波比·铜铃"] preamble_len=0
+  id=塞拉斯关系阶段 mode=Range cases=13 flag=None scope=["Heroes", "塞拉斯·星砂"] preamble_len=0
+  id=隼关系阶段 mode=Range cases=13 flag=None scope=["Heroes", "隼"] preamble_len=0
+  id=诺德关系阶段 mode=Range cases=13 flag=None scope=["Heroes", "诺德"] preamble_len=0
+## ledger: absorbed=12 skipped=6
+  Absorbed uid=29 sent=false [Environment]环境_公会声望度
+  Absorbed uid=28 sent=false [Environment]环境_魔潮侵蚀度
+  Absorbed uid=3 sent=false [Event]北境圣城事件
+  Absorbed uid=11 sent=false [Event]南方商港事件
+  Absorbed uid=47 sent=false [Script]塞拉斯关系阶段
+  Absorbed uid=46 sent=false [Script]波比关系阶段
+  Absorbed uid=45 sent=false [Script]艾德温关系阶段
+  Absorbed uid=49 sent=false [Script]诺德关系阶段
+  Absorbed uid=48 sent=false [Script]隼关系阶段
+  Absorbed uid=23 sent=false [initvar]变量初始化勿开
+  Absorbed uid=24 sent=false [mvu_update]变量更新规则
+  Absorbed uid=25 sent=false 变量列表
+  Skipped uid=2 sent=false [Event]规则_裂隙决战判定
+  Skipped uid=42 sent=false [Script]决心值阶段监测
+  Skipped uid=30 sent=false [Script]概率事件触发器
+  Skipped uid=31 sent=false [Script]状态_体能
+  Skipped uid=34 sent=false [Script]系统_区域自动加载
+  Skipped uid=33 sent=false 危机事件库
+## prescan signals: 22
+  24#s1 百分比數值
+  24#s2 代碼或標籤
+  25#s1 模板變數
+  26#s1 rule:
+  26#s1 代碼或標籤
+  27#s1 rule:
+  27#s1 代碼或標籤
+  28#s4 百分比數值
+  28#s5 百分比數值
+  28#s6 百分比數值
+  28#s7 百分比數值
+  28#s8 百分比數值
+  28#s9 百分比數值
+  29#s4 百分比數值
+  29#s5 百分比數值
+  29#s6 百分比數值
+  29#s7 百分比數值
+  45#s11 逐日樣式
+  46#s11 逐日樣式
+  47#s11 逐日樣式
+  48#s11 逐日樣式
+  49#s11 逐日樣式
+## round 1 records
+  Absorbed Events.Northhold_Siege_Triggered
+  leaf Heroes.艾德温·晨盾.Affection = 60
+  leaf Heroes.艾德温·晨盾.Rivalry = 20
+  leaf World.Invasion = 56
+  leaf World.Location = 北境 · 白垒城
+  leaf Events.Northhold_Siege_Triggered = true
+  hit 北境圣城事件: ⚠️ **[突发事件] 白垒城的围城**
+  hit 塞拉斯关系阶段: 当前关系 (Relationship): 观察对象
+  hit 波比关系阶段: 当前关系 (Relationship): 观察对象
+  hit 环境_公会声望度: [系统指令：当前世界公会声望度为 0%。请将以下对应阶段的环境设定作为隐藏背景，
+  hit 环境_魔潮侵蚀度: [系统指令：当前世界魔潮侵蚀度为 56%。请将以下对应阶段的环境设定作为隐藏背景
+  hit 艾德温关系阶段: 当前关系 (Relationship): 互相较劲
+  hit 诺德关系阶段: 当前关系 (Relationship): 观察对象
+  hit 隼关系阶段: 当前关系 (Relationship): 观察对象
+## round 2 hits: ["塞拉斯关系阶段", "波比关系阶段", "环境_公会声望度", "环境_魔潮侵蚀度", "艾德温关系阶段", "诺德关系阶段", "隼关系阶段"]
+## interface via character
+  scripts=2 mvu=true unsupported=None opening=true
+## interface via worldbook
+  scripts=2 mvu=true unsupported=None opening=true

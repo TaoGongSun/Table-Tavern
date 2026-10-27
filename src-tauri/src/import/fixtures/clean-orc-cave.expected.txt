@@ -1,0 +1,40 @@
+## worldbook: 18 entries
+  uid=0 disabled=false constant=true keys=[] title=Toren
+  uid=1 disabled=true constant=true keys=[] title=Toren (EN VER.)
+  uid=2 disabled=false constant=true keys=[] title=URSINE LORE
+  uid=3 disabled=false constant=true keys=[] title=Bram
+  uid=4 disabled=false constant=true keys=[] title=Gil
+  uid=5 disabled=false constant=true keys=[] title=Halvard
+  uid=6 disabled=false constant=true keys=[] title=Griffin Lore
+  uid=7 disabled=false constant=true keys=[] title=Odo
+  uid=8 disabled=false constant=true keys=[] title=Frost Wolf
+  uid=9 disabled=false constant=true keys=[] title=Kobold
+  uid=10 disabled=false constant=true keys=[] title={{USER}}
+  uid=11 disabled=false constant=true keys=[] title=Drill Rules
+  uid=12 disabled=false constant=true keys=[] title=Dynamic Day Counter & Event Trigger Rules]
+  uid=13 disabled=false constant=true keys=[] title=Bram & Gil Progression
+  uid=14 disabled=false constant=true keys=[] title=Toren Progression
+  uid=15 disabled=false constant=true keys=[] title=剧情时间线跳跃补全指令
+  uid=16 disabled=false constant=true keys=[] title=Non-Combat Dynamics
+  uid=17 disabled=true constant=false keys=[] title=这是10272601版本
+## mechanism: incremental=false
+## tree
+  leaf Player.Name = <missing>
+  leaf Heroes.艾德温·晨盾.HP = <missing>
+  leaf Heroes.艾德温·晨盾.Affection = <missing>
+  leaf World.Title = <missing>
+  leaf Player.Inventory = <missing>
+  leaf World.Invasion = <missing>
+## rules: 0
+## triggers: 0
+## ledger: absorbed=0 skipped=0
+## prescan signals: 6
+  2#s3 逐日樣式
+  11#s2 逐日樣式
+  12#s2 代碼或標籤
+  12#s3 代碼或標籤
+  12#s5 代碼或標籤
+  12#s11 逐日樣式
+## interface via character
+  scripts=0 mvu=false unsupported=None opening=true
+## interface via worldbook
