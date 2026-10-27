@@ -1,6 +1,7 @@
-// 桌面 QuickJS 宿主的 bundle 入口（mvu-zod-semantics 規格 1.2、2.3 節）：`npm run build:mvu-bundle` 打成
-// src-tauri/gen/mvu-engine.js（IIFE、全域名 TTMvu），由 src-tauri/src/mvu_engine/runtime.rs 求值後呼叫 `TTMvu.boot()`。
-// 與 Rust 之間一律傳 JSON 字串。值解析在同一個 context 同步跑：QuickJS 沒有計時器，期限由 Rust 的中斷處理器守。
+// QuickJS 宿主的 bundle 入口（mvu-zod-semantics 規格 1.2、2.3、4 節）：`npm run build:mvu-bundle` 打成
+// src-tauri/gen/mvu-engine.js（IIFE、全域名 TTMvu），桌面由 src-tauri/src/mvu_engine/runtime.rs、網頁由 wasm 版 QuickJS
+// （web/src/features/mvu/zod/quickjs-host.ts）求值後呼叫 `TTMvu.boot()`。與宿主之間一律傳 JSON 字串。值解析在同一個
+// context 同步跑：QuickJS 沒有計時器，期限由宿主的中斷處理器守。
 import lodash from "lodash";
 import { z } from "zod";
 import { buildMvuEngineSource } from "./engine-source";

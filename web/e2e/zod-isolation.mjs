@@ -1,15 +1,20 @@
 // zod 卡隔離的真瀏覽器驗收（npm run e2e:zod，P5 必跑、不進 verify；mvu-zod-semantics 規格 4 節）：正式建置照
 // Cloudflare Pages 的標頭託管（static-server.mjs），用 WebKit（本機有 Google Chrome 就再跑一次）確認：
-// - 隔離宿主頁 /mvu-zod 的 CSP hash 對得上實際送出的開機碼；開發伺服器兩種網址也帶同一份標頭。
-// - 同一份引擎在瀏覽器裡跑共用 41 案，與桌面基準逐項相同（jitless zod）。
-// - 第一道防線（不透明來源＋CSP，不剝全域）：存檔讀／寫／刪、網路、WebRTC、eval、非 blob 模組、二層 blob 偷載都失敗。
-// - 整條路（含白名單剝除與失敗即停）：卡片腳本裡巢狀 Worker、存檔、二層 Blob、WebRTC、網路、假結果全部失敗。
-// - 白名單外的 import 與動態 import 整次失敗；schema 無窮迴圈 5 秒期限內作廢，下一次重建可用。
+// - 隔離宿主頁 /mvu-zod 的 CSP hash 對得上實際送出的開機碼、只有它帶 'wasm-unsafe-eval'；開發伺服器兩種網址也帶同一份。
+// - 主頁的 wasm 編譯與 JS eval 都被擋；隔離頁的 blob Worker 能編 wasm、JS eval 照擋。
+// - 同一份引擎（wasm 版 QuickJS 跑桌面同一支 bundle）跑共用 41 案與真卡，與桌面基準逐項相同。
+// - 第一道防線（不透明來源＋CSP，探測引擎直接在 Worker 跑）：存檔讀／寫／刪、網路、WebRTC、eval、非 blob 模組、二層 blob
+//   偷載都失敗。
+// - 卡片在 QuickJS 裡：巢狀 Worker、存檔、Blob、WebRTC、網路、假結果、WebAssembly 都拿不到（QuickJS 自己的 eval 不受
+//   瀏覽器 CSP 管，不在此列）。
+// - loader 白名單：白名單網址的靜態、動態（含非字面量，同桌面）import 照樣載入；白名單外的整次失敗，不連網。
+// - 上限：transform 期與載入期的記憶體炸彈（字串、物件、ArrayBuffer、TypedArray）整次失敗、線性記憶體封頂 128 MB；
+//   遞迴（堆疊）、丟 null、無窮迴圈與 Promise 無窮迴圈整次失敗；炸彈進行中主頁期限到了照樣收掉；之後都能重建。
 // - 開機訊息只收父頁、本站：外站直接開頁或嵌入後送開機訊息，惡意引擎不會跑。
 // 判定一律看可觀測的結果（另開的探測伺服器有沒有收到請求、卡片自己回報的例外、存檔哨兵還在不在），不靠攔截請求。
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -59,7 +64,7 @@ const bootScript = (html) => {
   return `'sha256-${createHash("sha256").update(scripts[0][1], "utf8").digest("base64")}'`;
 };
 
-/** 卡片腳本裡的攻擊（整條路：不透明來源＋剝除）：結果寫進 schema 的預設值帶回來 */
+/** 卡片腳本裡的攻擊（整條路：卡片在 QuickJS 裡）：結果寫進 schema 的預設值帶回來 */
 function attackCard(probe) {
   return `import { registerMvuSchema } from '${MVU_ZOD}';
 const out = {};
@@ -81,13 +86,14 @@ await t('selfPost', () => self.postMessage('x'));
 await t('importScripts', () => importScripts('${probe}/card-import-scripts'));
 await t('caches', () => caches.keys());
 await t('broadcast', () => new BroadcastChannel('tt'));
-await t('newFunction', () => new Function('return 1')());
+await t('wasm', () => WebAssembly.compile(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0])));
 export const Schema = z.object({ probe: z.string().prefault(JSON.stringify(out)) });
 $(() => registerMvuSchema(Schema));
 `;
 }
 
-/** 第一道防線（不剝全域的探測引擎，由宿主頁照正式流程送進 /mvu-zod）：只靠不透明來源與 CSP */
+/** 第一道防線（探測引擎直接在 Worker 跑，由宿主頁照正式流程送進 /mvu-zod）：只靠不透明來源與 CSP。wasmCompile 應放行
+ *  （QuickJS 要用），其餘都該擋 */
 function layerOneEngine(probe, appOrigin, asset) {
   return `onmessage = async (event) => {
   const port = event.ports[0];
@@ -101,6 +107,7 @@ function layerOneEngine(probe, appOrigin, asset) {
   await t('ws', () => new Promise((res, rej) => { const s = new WebSocket('${probe.replace("http", "ws")}/l1-ws'); s.onopen = () => res('open'); s.onerror = () => rej(new Error('ws')); setTimeout(() => rej(new Error('ws-timeout')), 1500); }));
   await t('rtc', () => typeof RTCPeerConnection === 'undefined' ? Promise.reject(new Error('absent')) : new RTCPeerConnection());
   await t('newFunction', () => new Function('return 1')());
+  await t('wasmCompile', () => WebAssembly.compile(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0])).then(() => 'compiled'));
   await t('importProbe', () => import('${probe}/l1-import.js'));
   await t('importAppAsset', () => import('${appOrigin}/assets/${asset}'));
   await t('secondBlobImportsProbe', async () => (await import(URL.createObjectURL(new Blob(['import "${probe}/l1-via-blob.js"; export default 1'], { type: 'text/javascript' })))).default);
@@ -126,7 +133,8 @@ async function checkDevHeaders() {
       const response = await fetch(new URL(path, base));
       assert.equal(response.status, 200, path);
       const csp = response.headers.get("content-security-policy");
-      assert.ok(csp?.includes(`script-src ${bootScript(await response.text())} blob:`), `${path}：${csp}`);
+      assert.ok(csp?.includes(`script-src ${bootScript(await response.text())} blob: 'wasm-unsafe-eval';`), `${path}：${csp}`);
+      assert.doesNotMatch(csp, /(^|\s)'unsafe-eval'/);
       assert.match(csp, /connect-src 'none'/);
       assert.match(csp, /sandbox allow-scripts/);
     }
@@ -140,6 +148,19 @@ const dist = join(ROOT, "dist");
 const runtimeChunk = readdirSync(join(dist, "assets")).find((name) => /^runtime-.*\.js$/.test(name));
 const someAsset = readdirSync(join(dist, "assets")).find((name) => /^index-.*\.js$/.test(name));
 assert.ok(runtimeChunk && someAsset, "找不到執行期 chunk");
+// 主頁 CSP 探測：放成同站模組由頁面自己載入（測試框架的 evaluate 在 WebKit 不受頁面 CSP 管，不能直接在裡面試）
+const HOST_PROBE = "e2e-host-probe.js";
+writeFileSync(
+  join(dist, HOST_PROBE),
+  `export async function probe() {
+  const out = {};
+  try { await WebAssembly.compile(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0])); out.wasm = "ALLOWED"; } catch (error) { out.wasm = "blocked " + error.name; }
+  try { out.eval = "ALLOWED " + (0, eval)("1"); } catch (error) { out.eval = "blocked " + error.name; }
+  try { out.newFunction = "ALLOWED " + new Function("return 1")(); } catch (error) { out.newFunction = "blocked " + error.name; }
+  return out;
+}
+`,
+);
 const server = await startStaticServer(dist);
 const appOrigin = new URL(server.url).origin;
 const probe = await startProbe();
@@ -178,7 +199,11 @@ try {
   step("正式建置：/mvu-zod 的 CSP hash 對得上送出的開機碼；/mvu-zod.html 轉到 /mvu-zod");
   const frameResponse = await fetch(new URL("mvu-zod", server.url));
   const frameCsp = frameResponse.headers.get("content-security-policy");
-  assert.ok(frameCsp?.includes(`script-src ${bootScript(await frameResponse.text())} blob:`), frameCsp ?? "沒有 CSP");
+  assert.ok(frameCsp?.includes(`script-src ${bootScript(await frameResponse.text())} blob: 'wasm-unsafe-eval';`), frameCsp ?? "沒有 CSP");
+  assert.doesNotMatch(frameCsp, /(^|\s)'unsafe-eval'/);
+  const hostCsp = (await fetch(server.url)).headers.get("content-security-policy") ?? "";
+  assert.match(hostCsp, /script-src 'self'/, "主頁沒有 CSP");
+  assert.doesNotMatch(hostCsp, /unsafe-eval/, "主頁不得放行 eval／wasm");
   assert.match(frameCsp, /default-src 'none'.*connect-src 'none'.*frame-ancestors 'self'.*sandbox allow-scripts/);
   const redirect = await fetch(new URL("mvu-zod.html", server.url), { redirect: "manual" });
   assert.equal(redirect.status, 308);
@@ -220,6 +245,13 @@ try {
         });
       }, runtimeChunk);
 
+      step("主頁：wasm 編譯與 JS eval 都被 CSP 擋");
+      const hostBlocked = await page.evaluate(async (path) => (await import(`/${path}`)).probe(), HOST_PROBE);
+      console.log("  ", JSON.stringify(hostBlocked));
+      // WebKit 的文件本身不拿 CSP 管 wasm 編譯（Worker 裡才管；本案沒改主頁 CSP，這是瀏覽器既有行為），只在 Chrome 驗
+      assertAllBlocked(hostBlocked, "主頁", name === "webkit" ? ["wasm"] : []);
+      cspErrors.length = 0;
+
       step("同一份引擎跑共用 41 案，與桌面基準逐項相同");
       const golden = JSON.parse(fixture("zod-corpus-golden.json"));
       const output = await page.evaluate(
@@ -235,10 +267,10 @@ try {
       );
       assert.deepEqual(output.init, golden.init);
       golden.cases.forEach(({ name: label, message: _message, feedback: _feedback, ...expected }, index) => assert.deepEqual(output.results[index], expected, label));
-      assert.deepEqual(cspErrors, [], "引擎正常運作時不該有 CSP 違規（jitless）");
+      assert.deepEqual(cspErrors, [], "引擎正常運作時不該有 CSP 違規");
 
       if (existsSync(REAL_GOLDEN)) {
-        step("真卡（TestCards 本機限定）：原文 schema 經 lexer 與真模組載入，開局與一批指令和 Node 基準相同");
+        step("真卡（TestCards 本機限定）：原文 schema 送進 QuickJS，開局與一批指令和 Node 基準相同");
         for (const card of JSON.parse(readFileSync(REAL_GOLDEN, "utf8"))) {
           const actual = await page.evaluate(
             async ({ schema, initvar, message }) => {
@@ -260,7 +292,7 @@ try {
         console.log("（略過真卡：沒有 TestCards/zod-cards-golden.json）");
       }
 
-      step("第一道防線：不透明來源＋CSP（不剝全域）擋下存檔、網路、eval、非 blob 模組與二層 blob 偷載");
+      step("第一道防線：不透明來源＋CSP 擋下存檔、網路、eval、非 blob 模組與二層 blob 偷載；blob Worker 繼承得到 wasm 編譯");
       const layerOne = await page.evaluate(
         (engine) =>
           new Promise((resolve, reject) => {
@@ -283,9 +315,10 @@ try {
         layerOneEngine(probe.url, appOrigin, someAsset),
       );
       console.log("  ", JSON.stringify(layerOne));
-      assertAllBlocked(layerOne, "第一道防線");
+      assertAllBlocked(layerOne, "第一道防線", ["wasmCompile"]);
+      assert.equal(layerOne.wasmCompile, "ALLOWED compiled", "隔離頁的 blob Worker 要能編 wasm");
 
-      step("整條路：卡片腳本裡巢狀 Worker、存檔讀寫刪、二層 Blob、WebRTC、網路、假結果全部失敗");
+      step("整條路：卡片（QuickJS 裡）的巢狀 Worker、存檔讀寫刪、Blob、WebRTC、網路、假結果、WebAssembly 全部失敗");
       const attacked = await page.evaluate(async (schema) => {
         const runner = window.__tt.createZodRunner({ schema });
         try {
@@ -298,12 +331,14 @@ try {
       console.log("  ", JSON.stringify(cardOut));
       assertAllBlocked(cardOut, "卡片腳本");
 
-      step("白名單網址的字面量動態 import 照樣載入（同桌面 loader），頂層 await 與非頂層（then）都能註冊");
+      step("白名單網址的動態 import 照樣載入（同桌面 loader，含非字面量），頂層 await 與非頂層（then）都能註冊");
       const dynamic = await page.evaluate(async (mvuZod) => {
         const out = [];
         for (const schema of [
           `const m = await import('${mvuZod}');\nm.registerMvuSchema(z.object({ a: z.number() }));`,
           `import('${mvuZod}').then((m) => m.registerMvuSchema(z.object({ a: z.number() })));`,
+          `const m = await import(\`${mvuZod}\`);\nm.registerMvuSchema(z.object({ a: z.number() }));`,
+          `const u = '${mvuZod}'.slice(0);\nconst m = await import(u);\nm.registerMvuSchema(z.object({ a: z.number() }));`,
         ]) {
           const runner = window.__tt.createZodRunner({ schema });
           try {
@@ -314,14 +349,14 @@ try {
         }
         return out;
       }, MVU_ZOD);
-      assert.deepEqual(dynamic, [{ a: 1 }, { a: 1 }]);
+      assert.deepEqual(dynamic, [{ a: 1 }, { a: 1 }, { a: 1 }, { a: 1 }]);
 
-      step("白名單外的 import、非字面量（含模板字串）動態 import：整次失敗（schema-load），不連網");
+      step("白名單外的 import（靜態、字面量與非字面量動態、墊片內部名）：整次失敗（schema-load），不連網");
       for (const schema of [
         `import x from '${probe.url}/static.js';\nimport { registerMvuSchema } from '${MVU_ZOD}';\n$(() => registerMvuSchema(z.object({})));`,
         `import { registerMvuSchema } from '${MVU_ZOD}';\nconst u = '${probe.url}/' + 'dyn.js';\nawait import(u);\n$(() => registerMvuSchema(z.object({})));`,
         `import { registerMvuSchema } from '${MVU_ZOD}';\nawait import('${probe.url}/dyn-literal.js');\n$(() => registerMvuSchema(z.object({})));`,
-        `const m = await import(\`${MVU_ZOD}\`);\nm.registerMvuSchema(z.object({}));`,
+        `import { registerMvuSchema as r } from 'tt:mvu_zod';\nr(z.object({}));`,
       ]) {
         const kind = await page.evaluate(async (text) => {
           const runner = window.__tt.createZodRunner({ schema: text });
@@ -368,6 +403,82 @@ try {
       assert.ok(deadline.ms >= 4900 && deadline.ms < 7000, `期限 ${deadline.ms} ms`);
       assert.equal(deadline.after, 2);
       assert.equal(deadline.load, "deadline");
+
+      step("上限：記憶體炸彈（transform 期、載入期）整次失敗、線性記憶體封頂 128 MB；堆疊、丟 null、Promise 無窮迴圈整次失敗；之後重建可用");
+      const limits = await page.evaluate(async (mvuZod) => {
+        const head = `import { registerMvuSchema } from '${mvuZod}';\n`;
+        const transform = (body) => `${head}registerMvuSchema(z.object({ n: z.number().transform((v) => { if (v === 13) { ${body}; } return v; }).prefault(0) }));`;
+        const atLoad = (body) => `${head}${body};\nregisterMvuSchema(z.object({ n: z.number().prefault(0) }));`;
+        const bombs = {
+          string: "const a = []; for (let i = 0; ; i++) a.push('x'.repeat(1 << 20) + i)",
+          object: "const a = []; for (let i = 0; ; i++) a.push({ i, s: [i, i, i] })",
+          arrayBuffer: "const a = []; for (;;) a.push(new ArrayBuffer(1 << 20))",
+          typedArray: "const a = []; for (;;) a.push(new Float64Array(1 << 20))",
+        };
+        const megabytes = (message) => Number(/線性記憶體 (\d+) MB/.exec(message)?.[1] ?? NaN);
+        const out = {};
+        const run = async (label, schema, phase) => {
+          const runner = window.__tt.createZodRunner({ schema });
+          const started = performance.now();
+          try {
+            await runner.initialize({});
+            if (phase !== "load") await runner.parse("_.set('n', 13);", { stat_data: { n: 0 } }, null);
+            out[label] = { kind: "ok" };
+          } catch (error) {
+            out[label] = { kind: error.kind, mb: megabytes(error.message), ms: Math.round(performance.now() - started) };
+          }
+          // 同一支 runner 下一次派工重建可用（載入期炸彈的 schema 每次都炸，只驗 transform 期）
+          if (phase !== "load") out[label].after = (await runner.parse("_.set('n', 2);", { stat_data: { n: 0 } }, null)).table.stat_data.n;
+          runner.dispose();
+        };
+        for (const [name, body] of Object.entries(bombs)) {
+          await run(`transform-${name}`, transform(body), "transform");
+          await run(`load-${name}`, atLoad(body), "load");
+        }
+        await run("transform-recursion", transform("const f = (n) => f(n + 1) + 1; f(0)"), "transform");
+        await run("transform-throwNull", transform("throw null"), "transform");
+        await run("load-jobs", atLoad("const f = () => { Promise.resolve().then(f); }; f()"), "load");
+        return out;
+      }, MVU_ZOD);
+      console.log("  ", JSON.stringify(limits));
+      for (const name of ["string", "object", "arrayBuffer", "typedArray"]) {
+        const transformed = limits[`transform-${name}`];
+        assert.equal(transformed.kind, "memory", `transform-${name}`);
+        assert.ok(transformed.mb <= 128, `transform-${name} 線性記憶體 ${transformed.mb} MB`);
+        assert.equal(transformed.after, 2, `transform-${name} 之後重建`);
+        // 載入期失敗都歸 schema-load（同桌面：載入卡片時的任何失敗）
+        assert.equal(limits[`load-${name}`].kind, "schema-load", `load-${name}`);
+        assert.ok(limits[`load-${name}`].mb <= 128, `load-${name} 線性記憶體 ${limits[`load-${name}`].mb} MB`);
+      }
+      assert.equal(limits["transform-recursion"].kind, "stack");
+      assert.equal(limits["transform-recursion"].after, 2);
+      assert.equal(limits["transform-throwNull"].kind, "memory");
+      assert.equal(limits["transform-throwNull"].after, 2);
+      assert.equal(limits["load-jobs"].kind, "deadline");
+
+      step("炸彈進行中主頁期限先到：照樣 terminate 收掉（deadline），之後重建可用");
+      const outer = await page.evaluate(async (mvuZod) => {
+        // 慢慢配置（每 MB 之間忙 20 ms），主頁期限 1 秒先到、Worker 自己的 5 秒期限還沒到
+        const schema = `import { registerMvuSchema } from '${mvuZod}';\nregisterMvuSchema(z.object({ n: z.number().transform((v) => { if (v === 13) { const a = []; for (;;) { const t = Date.now(); while (Date.now() - t < 20) {} a.push(new ArrayBuffer(1 << 20)); } } return v; }).prefault(0) }));`;
+        const runner = window.__tt.createZodRunner({ schema, deadlineMs: 1000 });
+        await runner.initialize({});
+        const started = performance.now();
+        const out = {};
+        try {
+          await runner.parse("_.set('n', 13);", { stat_data: { n: 0 } }, null);
+          out.kind = "ok";
+        } catch (error) {
+          out.kind = error.kind;
+        }
+        out.ms = Math.round(performance.now() - started);
+        out.after = (await runner.parse("_.set('n', 2);", { stat_data: { n: 0 } }, null)).table.stat_data.n;
+        runner.dispose();
+        return out;
+      }, MVU_ZOD);
+      console.log("  ", JSON.stringify(outer));
+      assert.equal(outer.kind, "deadline");
+      assert.ok(outer.ms < 2000, `主頁期限 ${outer.ms} ms`);
+      assert.equal(outer.after, 2);
 
       step("開機訊息只收父頁與本站：外站直接開頁、嵌入（含沙盒與不沙盒）後送開機訊息，惡意引擎都不會跑");
       const attacker = await browser.newPage();

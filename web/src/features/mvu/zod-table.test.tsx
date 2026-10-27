@@ -114,8 +114,8 @@ async function mount(options: { saved?: SavedMvu | null; resumed?: boolean; star
   }
   const root = createRoot(document.createElement("div"));
   await act(async () => root.render(<Probe />));
-  // 等掛載時的載入與開局做完（不呼叫 ready：那是玩家送出前才有的一步）
-  for (let i = 0; i < 200 && entries[0]?.vars === undefined && mvu.zodFailure === null && mvu.initError === null && !(options.resumed ?? false); i++) {
+  // 等掛載時的載入與開局做完（不呼叫 ready：那是玩家送出前才有的一步）；QuickJS 開機約 0.3 秒，負載下更久
+  for (let i = 0; i < 2000 && entries[0]?.vars === undefined && mvu.zodFailure === null && mvu.initError === null && !(options.resumed ?? false); i++) {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 5));
     });
@@ -314,6 +314,7 @@ describe.skipIf(!existsSync(GOLDEN))("真卡：網頁 zod runner 與桌面宿主
       const result = await runner.parse(item.message, JSON.parse(item.old) as Record<string, unknown>, { user: "玩家", char: null });
       expect(JSON.stringify(result.table), `${item.name} ${item.message}`).toBe(item.table);
     }
-  });
+    // 每條各起一支 QuickJS（每支開機約 0.3 秒）
+  }, 60_000);
 });
 

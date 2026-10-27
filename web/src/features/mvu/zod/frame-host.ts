@@ -1,18 +1,17 @@
 // 主頁這一側的 zod 引擎（mvu-zod-semantics 規格 4 節）：一桌一支。第一次派工時建不透明來源的 iframe（mvu-zod.html），
-// 交引擎原始碼與兩個 MessagePort（Worker 用、控制用）；開機（取引擎＋剝除檢查）另給 10 秒。派工後單一 5 秒期限涵蓋
-// 載入卡片 schema、運算、這裡驗回傳與回成功前的最後檢查；逾時、出錯就回收整支（之後的回傳一律不認），下次派工
-// （玩家下一次操作）才重建，不自動重試。同一桌依序派工、不重疊。
+// 交引擎原始碼（含 QuickJS wasm 與 bundle）與兩個 MessagePort（Worker 用、控制用）；開機（取引擎、起 QuickJS）另給
+// 10 秒。派工後單一 5 秒期限涵蓋載入卡片 schema、運算、這裡驗回傳與回成功前的最後檢查；逾時、出錯（含記憶體、堆疊）
+// 就回收整支（terminate Worker，之後的回傳一律不認），下次派工（玩家下一次操作）才重建，不自動重試。同一桌依序派工、
+// 不重疊。
 import type { MvuDetailedResult, ZodInitOutcome } from "@desktop/features/mvu-engine/host-contract";
-import { BOOT_TYPE, type ZodBootReply, type ZodReply, type ZodRequest } from "./protocol";
-import { splitSchemaImports } from "./schema-script";
+import { BOOT_TYPE, type ZodBootReply, type ZodReply, type Macros, type ZodRequest, type ZodWorkerFailure } from "./protocol";
 import { checkDetailed, checkInitialized } from "./validate";
-import type { Macros } from "./engine-core";
 
 export const ZOD_BOOT_MS = 10_000;
 export const ZOD_DEADLINE_MS = 5_000;
 export const ZOD_FRAME_URL = `${import.meta.env.BASE_URL}mvu-zod.html`;
 
-export type ZodFailureKind = "schema-load" | "deadline" | "script" | "boot" | "bad-output" | "closed";
+export type ZodFailureKind = "schema-load" | "deadline" | "memory" | "stack" | "script" | "boot" | "bad-output" | "closed";
 
 /** 整次失敗：狀態不提交（呼叫端照常落正文） */
 export class ZodRunError extends Error {
@@ -53,10 +52,14 @@ interface Frame {
   onReply: ((reply: ZodReply | null, detail?: string) => void) | null;
 }
 
+/** Worker 回報的失敗種類 → 主頁的種類 */
+function failureKind(kind: ZodWorkerFailure): ZodFailureKind {
+  return kind === "schema-load" || kind === "deadline" || kind === "memory" || kind === "stack" ? kind : "script";
+}
+
 const loadDefaultEngine = () => import("virtual:mvu-zod-engine").then((module) => module.default);
 
 export function createZodRunner(options: ZodRunnerOptions): ZodRunner {
-  const split = splitSchemaImports(options.schema);
   const loadEngine = options.loadEngine ?? loadDefaultEngine;
   const frameUrl = options.frameUrl ?? ZOD_FRAME_URL;
   const bootMs = options.bootMs ?? ZOD_BOOT_MS;
@@ -151,7 +154,6 @@ export function createZodRunner(options: ZodRunnerOptions): ZodRunner {
   const dispatch = <T>(build: (id: number) => ZodRequest, accept: (json: string) => T): Promise<T> => {
     const run = async (): Promise<T> => {
       if (closed) throw new ZodRunError("closed", "closed");
-      if (!split.ok) throw new ZodRunError("schema-load", split.error);
       const frame = await ensure();
       const started = now();
       sequence += 1;
@@ -169,7 +171,7 @@ export function createZodRunner(options: ZodRunnerOptions): ZodRunner {
         frame.onReply = (reply, detail) => {
           if (reply === null) return finish(new ZodRunError("script", detail ?? "worker-error"));
           if (reply.id !== id) return;
-          if (!reply.ok) return finish(new ZodRunError(reply.kind === "schema-load" ? "schema-load" : "script", reply.detail));
+          if (!reply.ok) return finish(new ZodRunError(failureKind(reply.kind), reply.detail));
           let value: T;
           try {
             value = accept(reply.json);
@@ -196,13 +198,13 @@ export function createZodRunner(options: ZodRunnerOptions): ZodRunner {
     parse(message, old, macros) {
       const oldJson = JSON.stringify(old);
       return dispatch(
-        (id) => ({ id, op: "parse", parts: split.ok ? split.parts : [], message, old: oldJson, macros: JSON.stringify(macros) }),
+        (id) => ({ id, op: "parse", schema: options.schema, message, old: oldJson, macros: JSON.stringify(macros) }),
         checkDetailed,
       );
     },
     initialize(stat) {
       const statJson = JSON.stringify(stat);
-      return dispatch((id) => ({ id, op: "initialize", parts: split.ok ? split.parts : [], stat: statJson }), checkInitialized);
+      return dispatch((id) => ({ id, op: "initialize", schema: options.schema, stat: statJson }), checkInitialized);
     },
     dispose() {
       closed = true;

@@ -26,7 +26,7 @@ mvu-array-index-path 驗收時查到：zod 版 MVU 卡（registerMvuSchema，Tes
 ## Current state
 - 進 main 七筆：P1 共用核心 `src/features/mvu-engine/`、P2 zod 迴圈與回傳契約、P3 Rust QuickJS 宿主 `src-tauri/src/mvu_engine/`、P4 桌面接線（`mvu_engine/wiring.rs`）、P5 網頁隔離宿主（`web/src/features/mvu/zod/`）、P6 回饋句單一來源（`zod-feedback.ts`）與 parity json zod 分支、結案文件。
 - 每包都經 Sol／Grok 驗收到三方共識；審查串見下方討論紀錄。
-- 已知限制與後續案（BACKLOG）：卡片 iframe 的 shim 沒有 z（card-shim-no-zod）、非 zod 桌開場白 `<initvar>` 不覆寫（initvar-nonzod-overwrite）、網頁 MVU 記憶體硬上限（web-mvu-memory-cap）；網頁回饋不進存檔、其餘被忽略的指令不回饋（規格 6.1）。
+- 已知限制與後續案（BACKLOG）：卡片 iframe 的 shim 沒有 z（card-shim-no-zod）、非 zod 桌開場白 `<initvar>` 不覆寫（initvar-nonzod-overwrite）、網頁 MVU 記憶體硬上限（[web-mvu-memory-cap](web-mvu-memory-cap.md)，已結案）；網頁回饋不進存檔、其餘被忽略的指令不回饋（規格 6.1）。
 - 待驗：實測佇列的 MVU zod 桌真機驗收；發版前驗 Windows MSVC 編譯（規格 0 節）；網頁上線後抽查 Cloudflare Pages `/mvu-zod`、`/mvu-zod.html`（308）的回應標頭（規格 4.3）。
 
 ## 本機驗證（不入版控的工具）

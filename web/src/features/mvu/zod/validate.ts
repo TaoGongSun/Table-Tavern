@@ -1,10 +1,12 @@
-// 主頁驗 Worker 的回傳（mvu-zod-semantics 規格 1.4、4 節）：卡片腳本與核心同一個 realm，核心自己的上限可能被卡片
-// 改掉，所以筆數、大小、形狀在這裡再擋一次（同桌面 Rust 端）。不合就丟錯（整次失敗）。
+// 主頁驗 Worker 的回傳（mvu-zod-semantics 規格 1.4、4 節）：卡片腳本與核心同一個 QuickJS realm，核心自己的上限可能被
+// 卡片改掉，所以筆數、大小、形狀在這裡再擋一次（同桌面 Rust 端）。不合就丟錯（整次失敗）。只取契約欄位：bundle 另帶的
+// feedback 不收（主頁用 zod-feedback.ts 自己出句）。
 import type { MvuDetailedResult } from "@desktop/features/mvu-engine/host-contract";
 import type { ZodInitialized } from "./frame-host";
+import { REPLY_CHARS } from "./protocol";
 
 /** 同核心的 PARSE_LIMITS 與 1.4 節 */
-const LIMITS = { TABLE_BYTES: 2 * 1024 * 1024, RESULTS: 1000, CHANGES: 2000, REPLY_CHARS: 48 * 1024 * 1024 };
+const LIMITS = { TABLE_BYTES: 2 * 1024 * 1024, RESULTS: 1000, CHANGES: 2000 };
 const STATUSES = new Set(["applied", "no-change", "rejected", "ignored"]);
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -12,7 +14,7 @@ const isPath = (value: unknown) => Array.isArray(value) && value.every((part) =>
 const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value) ?? "").length;
 
 function parseReply(json: string): unknown {
-  if (typeof json !== "string" || json.length > LIMITS.REPLY_CHARS) throw new Error("回傳過大");
+  if (typeof json !== "string" || json.length > REPLY_CHARS) throw new Error("回傳過大");
   return JSON.parse(json);
 }
 
@@ -31,7 +33,7 @@ export function checkDetailed(json: string): MvuDetailedResult {
     throw new Error("變動清單不對");
   }
   if (typeof value.changesTruncated !== "boolean") throw new Error("回傳形狀不對");
-  return value as unknown as MvuDetailedResult;
+  return { table, zod: value.zod, results, changes, changesTruncated: value.changesTruncated } as MvuDetailedResult;
 }
 
 export function checkInitialized(json: string): ZodInitialized {
@@ -40,5 +42,5 @@ export function checkInitialized(json: string): ZodInitialized {
     throw new Error("開局回傳形狀不對");
   }
   if (bytes(value.stat_data) > LIMITS.TABLE_BYTES) throw new Error("變數表超過上限");
-  return value as unknown as ZodInitialized;
+  return { outcome: value.outcome, stat_data: value.stat_data } as unknown as ZodInitialized;
 }

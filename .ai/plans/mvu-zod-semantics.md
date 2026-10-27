@@ -5,9 +5,10 @@ zod 卡照上游 mvu_zod，用真 zod 執行卡片自帶的 schema；桌面與�
 
 ## 0. 定案
 - 桌面宿主用 rquickjs `=0.14.0`（內含 quickjs-ng 0.16.2），預設 allocator，不開 `rust-alloc`〔三方共識，依 QuickJS 短驗證〕。短驗證證據：mathjs、json5、yaml、jsonrepair、zod 4.6.7 原樣跑通；三份卡片 schema 的輸出與 Node 逐字相同；記憶體、時間、堆疊上限實測生效；沒有網路與檔案 API；觸限後 runtime 可能壞掉，所以觸限就重建。
-- 新依賴：npm `zod`、crate `rquickjs`；網頁另加 `es-module-lexer`。三者都是 MIT。根目錄另加開發依賴 `@types/lodash` 4.17.25（同網頁）。
+- 新依賴：npm `zod`、crate `rquickjs`；網頁另加 `quickjs-emscripten-core` 與 `@jitl/quickjs-ng-wasmfile-release-sync`（都鎖 `0.32.0`，內含 quickjs-ng 0.12.1；web-mvu-memory-cap）。全部 MIT。根目錄另加開發依賴 `@types/lodash` 4.17.25（同網頁）。
 - 發版前要驗：Windows（MSVC）第一次編 quickjs-ng 的 C 程式碼（rquickjs-sys 有預先產生的 bindings，不需要 libclang）。
-- 網頁版先用 Worker，只有時間上限；記憶體硬上限尚未符合裁決要求，記在 BACKLOG〔作者裁決 2026-10-27〕。
+- 網頁版改用 wasm 版 QuickJS 跑桌面同一支 bundle，記憶體硬上限是每支 Worker 各自一份有 maximum 的 `WebAssembly.Memory`（128 MB）（web-mvu-memory-cap，4 節）〔三方共識〕。
+- QuickJS 版本差：桌面 quickjs-ng 0.16.2（rquickjs `=0.14.0`）、網頁 0.12.1（quickjs-emscripten `0.32.0`，目前最新版）。兩邊跑同一支 bundle，41 案語料與三張真卡輸出逐項相同（vitest、e2e:zod 都比）；升級任一邊都要重跑這兩份對照。
 - 整批 5 秒期限不放寬〔三方共識〕。大表（100 千字元級）每條約 25 ms，5 秒約可跑 200 條。
 - 同一桌有兩張卡都呼叫 `registerMvuSchema`：用先匯入的那份；第二份拒絕，並明白告知玩家〔模型判斷·未裁決，主線裁〕。
 - schema 異常情況要各自明定行為，不得悄悄降級成非 zod 桌：沒有註冊、腳本停用、載入失敗〔模型判斷·未裁決，主線裁〕。
@@ -26,8 +27,8 @@ env.host.fatal?(error) -> boolean                    // 選配：資源類錯誤
 env.emit(name, args, isolate) -> Promise              // MVU 事件
 env.events、env.lodash
 ```
-- iframe 與網頁宿主：`evaluate` 送 Worker（單筆 200 ms 逾時），給 timers；保險在核心，逾時呼叫取消函式並以 eval-timeout 整次失敗。只適用非 zod 路徑；zod 路徑在 Worker 內同步跑、只靠整批期限（4.2 節）。
-- `fatal`：QuickJS 的記憶體不足、堆疊溢位可被 catch，zod 迴圈會把它當單條拒收；桌面宿主給 `fatal`，zod 驗證與開局的 catch 先問它，真就照拋。判定是 InternalError、堆疊溢位的 RangeError、丟 null（記憶體耗盡到建不出錯誤物件）；已知差異：卡片 transform 自己 throw null／undefined 也算整次失敗（上游是單條拒收）〔模型判斷·三方共識〕。iframe 與網頁不給，行為不變。
+- iframe 與網頁宿主（非 zod 路徑）：`evaluate` 送 Worker（單筆 200 ms 逾時），給 timers；保險在核心，逾時呼叫取消函式並以 eval-timeout 整次失敗。網頁 zod 路徑跑的是 QuickJS 宿主（同桌面 bundle），值解析在 QuickJS 裡同步跑、只靠整批期限（4.2 節）。
+- `fatal`：QuickJS 的記憶體不足、堆疊溢位可被 catch，zod 迴圈會把它當單條拒收；桌面宿主給 `fatal`，zod 驗證與開局的 catch 先問它，真就照拋。判定是 InternalError、堆疊溢位的 RangeError、丟 null（記憶體耗盡到建不出錯誤物件）；已知差異：卡片 transform 自己 throw null／undefined 也算整次失敗（上游是單條拒收）〔模型判斷·三方共識〕。網頁 zod 路徑跑同一支 bundle，`fatal` 與桌面相同（web-mvu-memory-cap）；卡片 iframe 不給，行為不變。
 - 純邏輯不變：schema、路徑、指令抽取、套用、上限。
 - 片段規則照舊：不得出現反引號與「錢字號加左大括號」。
 
@@ -48,7 +49,7 @@ env.events、env.lodash
 | `host-contract.ts` | host 介面與回傳契約型別 |
 | `initvar.ts` | initvar 解析與合併（parseStructured、correctlyMerge、initvarBody、openingOverride），桌面入口與網頁共用（6.3 節） |
 | `zod-feedback.ts` | zod 逐條結果給 GM 的回饋句與 notes 上限，桌面與網頁共用（6.1 節） |
-| `quickjs-entry.ts` | 桌面 bundle 入口：`boot()` 補 TextEncoder、安靜的 console 與卡片用的 z、_、$，回 JSON 字串介面（register、status、parse（另帶 feedback）、initialize、seed） |
+| `quickjs-entry.ts` | QuickJS bundle 入口（桌面與網頁 zod 路徑共用）：`boot()` 補 TextEncoder、安靜的 console 與卡片用的 z、_、$，回 JSON 字串介面（register、status、parse（另帶 feedback）、initialize、seed） |
 | `fixtures/zod-corpus-golden.json` | 入口在 Node 跑 41 案的完整輸出，cargo 拿同一份比 QuickJS；重產 `UPDATE_ZOD_GOLDEN=1` |
 | `fixtures/real-cards.ts` | 三張真卡的取材與對照指令（vitest 兩檔共用；真卡基準寫到 `TestCards/zod-cards-golden.json` 給 cargo） |
 
@@ -135,7 +136,7 @@ status 四種：
   - zod 迴圈用 try/catch 把 schema／transform 拋的錯當單條拒收；QuickJS 的 interrupt 是不可捕捉的錯誤，應穿過 catch 變成整次失敗。P3 要有測試釘住這點（transform 裡無窮迴圈 → 整次失敗，不是單條拒收）。
 
 ### 2.3 bundle
-- npm script `build:mvu-bundle`（`scripts/build-mvu-bundle.mjs`，用 vite 的建置 API 打 IIFE、全域名 TTMvu）產生 `src-tauri/gen/mvu-engine.js`（gitignore）。
+- npm script `build:mvu-bundle`（`scripts/build-mvu-bundle.mjs`，用 vite 的建置 API 打 IIFE、全域名 TTMvu）產生 `src-tauri/gen/mvu-engine.js`（gitignore）。網頁的建置外掛（`web/mvu-zod-engine-plugin.ts`）用同一份設定（`mvuBundleOptions`）在記憶體裡打同一支，不讀 gen/。
 - 併進 `npm run build`，所以 verify 的 cargo 步驟前、tauri 的 beforeBuildCommand、windows-install-smoke 都會先產生；beforeDevCommand 另外先跑它。
 - `build.rs` 檢查檔案存在；缺了就停下，提示要先跑哪個指令。
 
@@ -212,10 +213,12 @@ Node 與 QuickJS 結果相同，只證明兩個宿主一致，不能當成和上
 
 P5 驗收清單（`npm run e2e:zod`，WebKit＋本機 Chrome，P5 必跑、不進 verify）：
 - `/mvu-zod` 的 CSP hash 對得上實際送出的開機碼，開發伺服器的 `/mvu-zod`、`/mvu-zod.html` 同；
-- 瀏覽器裡跑 41 案與桌面基準逐項相同（jitless），TestCards 在時三張真卡也比；
-- 第一道防線單獨驗（不剝全域）：存檔讀寫刪、網路、eval、非 blob 模組、二層 blob 偷載都失敗；
-- 整條路：卡片腳本裡巢狀 Worker、存檔、二層 Blob、WebRTC、網路、假結果都失敗；
-- 白名單外的 import、非字面量的動態 import 整次失敗，白名單網址的字面量動態 import 照樣載入；無窮迴圈 5 秒作廢、下次重建可用；
+- 瀏覽器裡跑 41 案與桌面基準逐項相同，TestCards 在時三張真卡也比；
+- 隔離頁 CSP 帶 `'wasm-unsafe-eval'`、不帶 `'unsafe-eval'`；主頁 CSP 兩者都不帶，主頁 JS eval 被擋（Chrome 另驗 wasm 編譯被擋；WebKit 的文件不拿 CSP 管 wasm 編譯，瀏覽器既有行為）；
+- 第一道防線單獨驗（探測引擎直接在 Worker 跑）：存檔讀寫刪、網路、JS eval、非 blob 模組、二層 blob 偷載都失敗，wasm 編譯可以；
+- 整條路：卡片（QuickJS 裡）的巢狀 Worker、存檔、Blob、WebRTC、網路、假結果、WebAssembly 都拿不到；
+- loader：白名單網址的靜態、動態（含非字面量）import 照樣載入；白名單外的、直接 import 墊片內部名都整次失敗、不連網；
+- 上限：transform 期與載入期的記憶體炸彈（字串、物件、ArrayBuffer、TypedArray）整次失敗、線性記憶體不超過 128 MB；遞迴、丟 null、無窮迴圈、Promise 無窮迴圈整次失敗；炸彈進行中主頁期限先到照樣 terminate；之後都能重建；
 - 外站直接開頁或嵌入後送開機訊息，惡意引擎不跑；判定看另開的探測伺服器、卡片回報的例外與存檔哨兵，不靠攔截請求。
 
 順序：P1 → P2 → P3 → P4，P6 最後。
@@ -223,21 +226,26 @@ P5 驗收清單（`npm run e2e:zod`，WebKit＋本機 Chrome，P5 必跑、不�
 ## 4. 網頁宿主（P5）
 定案經 Sol、Grok 兩輪審查與兩次小驗證（WebKit＋Chrome）〔三方共識〕。只有 zod 桌（卡上有啟用、含 `registerMvuSchema` 的腳本，取第一支；一桌一卡，兩卡衝突不適用）走這條，非 zod 桌照舊在主頁跑核心＋值解析 Worker。
 
-### 4.1 隔離：不透明來源為主、剝除為輔
-- 第一道：`web/public/mvu-zod.html` 掛 `sandbox="allow-scripts"` 的 iframe，來源不透明，瀏覽器不給本站 IndexedDB。標頭 CSP（`site-headers.ts` 建置時算、開發伺服器中介層同一份）：`default-src 'none'; script-src 'sha256-<開機碼>' blob:; worker-src blob:; connect-src 'none'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'; sandbox allow-scripts`。blob Worker 繼承這份 CSP（實測兩家都是）。
+### 4.1 隔離：卡片拿不到瀏覽器能力＋loader 白名單（web-mvu-memory-cap 改寫）
+安全依據是兩件事〔三方共識〕：卡片程式只在 QuickJS 裡跑、宿主不交任何瀏覽器物件或宿主函式給它；import 只走跟桌面相同的 loader。不透明來源 iframe、父頁身分檢查、專用 port、CSP、主頁輸出重驗是外層，照留。
+- 卡片原文只當字串送進 QuickJS（`zod/quickjs-host.ts`），不拼進 Worker 腳本、不在瀏覽器裡 eval／Function／原生 import。舊的剝全域（strip.ts）與 es-module-lexer 切 import 都刪了，也不留成 wasm 失敗時的退路。
+- QuickJS 裡沒有任何宿主 API：fetch、XHR、WebSocket、importScripts、postMessage、self、navigator、indexedDB、Worker、WebAssembly、計時器、std／os 都看不到（同桌面 sandbox probe）。宿主只橋接模組 loader 與中斷處理器。
+- loader（同 `runtime.rs` ShimOnly）：normalizer 只把 `is_mvu_zod_url` 白名單網址對到墊片名，其餘對到封鎖名；loader 只供墊片原文，其餘丟錯。從不拿卡片給的字串去連線。動態 import 在執行時比對（字面量、非字面量、模板字串都一樣），跟桌面一致；這是相容性變更：以前網頁拒收非字面量。直接 import 墊片內部名一樣失敗。
+- QuickJS 裡的 eval／Function 不受瀏覽器 CSP 管（卡片本來就能在 QuickJS 裡 eval，同桌面），所以「卡片 eval 被擋」不再是測項；能力是否拿得到才是。
+- 第一道防線：`web/public/mvu-zod.html` 掛 `sandbox="allow-scripts"` 的 iframe，來源不透明，瀏覽器不給本站 IndexedDB。標頭 CSP（`site-headers.ts` 建置時算、開發伺服器中介層同一份）：`default-src 'none'; script-src 'sha256-<開機碼>' blob: 'wasm-unsafe-eval'; worker-src blob:; connect-src 'none'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'; sandbox allow-scripts`。`'wasm-unsafe-eval'` 只為 Worker 編譯 QuickJS 的 wasm，只加在隔離頁；主頁不加，兩邊都不加 `'unsafe-eval'`。blob Worker 繼承這份 CSP（實測兩家都是，含 wasm 編譯）。`'wasm-unsafe-eval'` 要 Safari 16 以上，更舊的 Safari 開不了 zod 桌（整次失敗提示）。
 - 開機碼只收一次開機：不在框裡（頂層）就不裝監聽；`event.source === parent`、`event.origin` 是本站、要帶兩個 port；之後只走 port。
-- 引擎是 classic IIFE 文字（`web/mvu-zod-engine-plugin.ts` 打包成 `virtual:mvu-zod-engine`，整支自足）。主頁傳文字進去建 blob Worker，不需要 CORS，CSP 也不必寫站點網址。Chrome 在不透明來源起不了 module 型 blob Worker，所以用 classic 再 `import()` 卡片模組。
-- 第二道：Worker 開機先在閉包抓住 `postMessage`、`URL.createObjectURL`、`Blob`、`JSON`，沿原型鏈把全域剝到白名單（ECMAScript 內建＋TextEncoder／TextDecoder、計時器、structuredClone；`zod/strip.ts`）。失敗即停：indexedDB、caches、fetch、XHR、WebSocket、WebTransport、EventSource、Worker、SharedWorker、RTCPeerConnection、RTCDataChannel、BroadcastChannel、URL、Blob、postMessage、importScripts、navigator 任一還看得到就不載卡片。卡片拿不到 blob 網址，所以二層 Blob 模組建不出來；就算建得出來，CSP 也只准 blob、碰不到同站與外站。
-- 卡片 import：主頁用 es-module-lexer（asm.js 版，宿主 CSP 不准 wasm）切開。只准規格 2.2 的 mvu_zod 網址（同 `is_mvu_zod_url`），在 Worker 裡接成墊片 blob。動態 import 以兩邊一致為準〔模型判斷·主線裁決〕：桌面 QuickJS loader 在執行時比對網址、放行白名單（實測字面量、非字面量、模板字串都放行），網頁只能靜態判定，所以放行白名單網址的字串字面量動態 import，非字面量（含模板字串）拒收；兩邊共同成立的是「白名單字面量載入、白名單外拒收」，非字面量指向白名單網址只有桌面放行（已知差異，桌面不改）。其他 import、source／defer phase 一律載入失敗。卡片全域只放 z、_、`$`、安靜的 console；zod `jitless`。
-- blob 網址：引擎的在 Worker 起來後收回、卡片的在 import 完收回；墊片的留到整支 Worker 回收（非頂層的動態 import 可能晚點才載墊片）。卡片模組跑完後最多等 100 輪事件迴圈讓非頂層 import 完成註冊，仍沒註冊才算載入失敗。
+- 引擎是 classic IIFE 文字（`web/mvu-zod-engine-plugin.ts` 打包成 `virtual:mvu-zod-engine`，整支自足）：Worker 程式＋quickjs-emscripten＋桌面同一支 bundle（文字）＋wasm（base64；主頁 CSP 的 connect-src 不放行本站，不另外抓檔）。Worker 先以佔位字串建置、建完再接回兩樣資產（vite 的 IIFE 收尾會在程式碼裡找 `(function(`，bundle 原文也有，會插錯位置）。主頁傳文字進去建 blob Worker。
 
-### 4.2 期限與生命週期
+### 4.2 期限、記憶體與生命週期
 - 一桌一支，暖的跨訊息重用；同一桌依序派工、不重疊。
-- 值解析在 Worker 內同步跑、不給 timers（同 QuickJS），只靠整批期限；1.1 節「單筆 200 ms、給 timers」只描述非 zod 路徑。
-- 開機（取引擎文字＋iframe＋剝除與檢查到 ready）另給 10 秒，卡片腳本這時還沒執行。
-- 派工起算單一 monotonic 5 秒：import 卡片與展開 schema、運算、主頁驗回傳、回成功前最後一次對期限。逾時算 Deadline，丟棄那支之後的所有回傳（關 port、叫 iframe terminate、移除 iframe）。載入途中逾時也算 Deadline，不呼叫核心。
+- 記憶體：每支 Worker 建自己的 `WebAssembly.Memory`（initial 16 MB、maximum 128 MB、不 shared），交給 emscripten 用；建不出來就開機失敗，不退回預設 Memory（預設 maximum 2 GB）。只用 release-sync 版，不用 asyncify。這是唯一的記憶體防線：QuickJS 的 `setMemoryLimit`（64 MB，同桌面）只是內層，wasm 版擋不住字串、ArrayBuffer 配置（短驗證把 maximum 放到 1 GB 時線性記憶體長到近 1 GB），不算防線。上限管的是整支引擎的總佔用（QuickJS 堆積、配置器碎片、C 堆疊），正常卡約 19 MB。
+- 從 QuickJS 取東西一律先量長度：回傳字串超過 8 M 字元（`protocol.ts` REPLY_CHARS，主頁 validate 同一個數）整次失敗；錯誤的 name、message、code 各自限長，超過就不讀（不先整份搬出再截）。量長度用開機時（卡片執行前）在 QuickJS 裡建的小函式，只有宿主拿得到。
+- 失敗語意（同桌面 `classify`）：中斷觸發過一律算期限，即使最後回了成功也拒收；out of memory、string too long、丟 null／undefined（含卡片自己 throw null）算記憶體；call stack（含瀏覽器自己的 wasm 呼叫堆疊先爆）算堆疊；wasm trap、emscripten 中止算 crashed。載入卡片時的失敗除期限外都歸 schema-load（訊息帶原因）。任何失敗後這支宿主不再接工、不 dispose（觸限後釋放會中止），回報後主頁回收整支 Worker。
+- 值解析在 QuickJS 內同步跑、不給 timers，只靠整批期限；1.1 節「單筆 200 ms、給 timers」只描述非 zod 路徑。
+- 開機（取引擎文字＋iframe＋起 QuickJS、載入 bundle 到 ready）另給 10 秒，卡片腳本這時還沒執行。
+- 派工起算單一 monotonic 5 秒：主頁計時涵蓋載入卡片 schema、運算、主頁驗回傳、回成功前最後一次對期限。Worker 收到派工另起 5 秒交給 QuickJS 中斷處理器（宿主跑 Promise 工作時也對期限）。主頁逾時算 Deadline，丟棄那支之後的所有回傳（關 port、叫 iframe terminate、移除 iframe）；記憶體吃緊時 QuickJS 的中斷不準，主頁期限加 terminate 是後盾。
 - 出錯或逾時就回收，等玩家下一次操作再重建，不自動重試。Chrome 對忙碌中的 Worker 下 terminate，約 2 秒後才真停（WebKit 約 0.3 秒），回傳已丟棄，只多耗 CPU。
-- 沒有記憶體硬上限（0 節，另案 web-mvu-memory-cap）。
+- 效能（短驗證）：開機 150–250 ms，parse 每則 3–90 ms（V8 原生約快 5–10 倍）。
 
 ### 4.3 回傳與提交
 - 宿主端用 `parseMessageDetailed`，表以 JSON 文字往返（同桌面語意）。主頁重驗形狀、results ≤ 1000、changes ≤ 2000、表 ≤ 2 MB（`zod/validate.ts`）。逐條拒收回饋給 GM 見 6.1 節。

@@ -56,7 +56,7 @@ zod 桌卡片前端自己呼叫 `Mvu.parseMessage` 時，結果要跟後端（�
 
 ## 5. 驗收
 - 結果表用保留鍵序的序列化字串比（作者裁決保留寫入順序），不用忽略順序的相等。
-- 真卡 17 條（TestCards 本機限定，CI 略過）：`card-mvu-parse.test.ts` 經沙盒通道拿到的表與宿主引擎逐字相同，並寫出 `TestCards/card-parse-golden.json`；cargo（QuickJS `run_batch`）與網頁（`zod-table.test.tsx`）拿同一份逐字比。網頁那邊用的是測試 runner 替身（`zod/test-runner.ts`，同一份 engine-core 在同進程跑），不是真的隔離 iframe＋Worker。
+- 真卡 17 條（TestCards 本機限定，CI 略過）：`card-mvu-parse.test.ts` 經沙盒通道拿到的表與宿主引擎逐字相同，並寫出 `TestCards/card-parse-golden.json`；cargo（QuickJS `run_batch`）與網頁（`zod-table.test.tsx`）拿同一份逐字比。網頁那邊用的是測試 runner 替身（`zod/test-runner.ts`，同一個 QuickJS 宿主在同進程跑），不是真的隔離 iframe＋Worker。
 - 沒驗到的：真的不透明 iframe／WKWebView 裡那段 shim（排隊、補發事件、逾時）只有 Node 單元測試；測試通道只驗了宿主端整條（controller → `card_vars_parse` → QuickJS）。
 - shim（`card-mvu-parse.test.ts`）：zod:false 走本地核心；zod 桌用宿主表、事件順序與內容；回錯 reject 不退回；送前上限；單筆在途；ENDED 監聽器 await 下一次 parse；逾時 reject 與晚到結果不認。
 - 桌面 controller：token 相符才交 `card_vars_parse`、錯誤回給沙盒、不碰寫入；cargo：只算不寫、非 zod 桌與重構桌回 None、判定失敗與 schema 載入失敗回 Err。

@@ -56,7 +56,7 @@ describe("site _headers", () => {
     const boot = /<script>([\s\S]*?)<\/script>/.exec(html)![1];
     const hash = createHash("sha256").update(boot, "utf8").digest("base64");
     expect(ZOD_FRAME).toBe(
-      `default-src 'none'; script-src 'sha256-${hash}' blob:; worker-src blob:; connect-src 'none'; frame-ancestors 'self'; ` +
+      `default-src 'none'; script-src 'sha256-${hash}' blob: 'wasm-unsafe-eval'; worker-src blob:; connect-src 'none'; frame-ancestors 'self'; ` +
         "base-uri 'none'; form-action 'none'; sandbox allow-scripts",
     );
     const rules = parseHeadersFile(siteHeaders("production", {}));

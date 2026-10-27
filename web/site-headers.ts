@@ -36,7 +36,8 @@ export const readZodFrame = () => readFileSync(ZOD_FRAME_FILE, "utf8");
 
 /**
  * zod 卡隔離宿主頁的 CSP（mvu-zod-semantics 規格 4 節）：只准那段行內開機碼（sha256 對實際輸出的文件內容算）與
- * blob:（引擎與卡片模組都是在不透明來源裡建的 blob），不准連線、不准巢狀框；`sandbox allow-scripts` 讓這份文件
+ * blob:（引擎是在不透明來源裡建的 blob Worker），`'wasm-unsafe-eval'` 只為 Worker 編譯 QuickJS 的 wasm（JS 的
+ * eval 照擋；卡片在 QuickJS 裡，看不到 WebAssembly）；不准連線、不准巢狀框；`sandbox allow-scripts` 讓這份文件
  * 就算被直接打開也永遠是不透明來源。Worker 由 blob 建立，沿用這份政策。
  */
 export function zodFrameCsp(html: string): string {
@@ -45,7 +46,7 @@ export function zodFrameCsp(html: string): string {
   const hash = createHash("sha256").update(scripts[0][1], "utf8").digest("base64");
   return [
     "default-src 'none'",
-    `script-src 'sha256-${hash}' blob:`,
+    `script-src 'sha256-${hash}' blob: 'wasm-unsafe-eval'`,
     "worker-src blob:",
     "connect-src 'none'",
     "frame-ancestors 'self'",
