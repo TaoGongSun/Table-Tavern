@@ -191,14 +191,14 @@ fn begin_next_scene_tx(
     );
     state.current_scene = next_scene;
     write_state(root, world_id, &state)?;
-    let interface_takeover =
-        crate::data::is_interface_takeover(root, world_id, state.refactor_mode.as_deref());
+    let requires_present_report =
+        crate::data::requires_present_report(root, world_id, state.refactor_mode.as_deref());
     settle_card_visibility(
         root,
         world_id,
         old_scene,
         state.state.table.get("present").map(String::as_str),
-        interface_takeover,
+        requires_present_report,
     );
     Ok(next_scene)
 }

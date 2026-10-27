@@ -60,8 +60,8 @@ pub use state::{
 pub use world::{
     create_reset_world, create_sample_world, create_world, delete_world, interface_takeover,
     is_interface_takeover, list_worlds, read_interface_shell, read_refactor_outcome, read_world_md,
-    reclaim_world_if_empty, rename_world, world_has_state_bar, write_interface_shell,
-    write_refactor_outcome, write_world_md, WorldMeta,
+    reclaim_world_if_empty, rename_world, requires_present_report, world_has_state_bar,
+    write_interface_shell, write_refactor_outcome, write_world_md, WorldMeta,
 };
 pub(crate) use world::{create_world_exclusive, discard_new_world};
 pub(crate) use world_file::{

@@ -137,17 +137,19 @@ fn match_unique(
 ///
 /// 結算失敗一律吞掉：換幕本身已經成功，auto_hidden 記帳不該反過來讓換幕報錯。
 ///
-/// 介面由 App 接管的桌（有重構骨架、不是 characters 桌，與 transport::gm_turn_format 同一依據）
-/// 不寫 state 圍欄、沒有在場名單：present 缺席時不結算，否則原卡主角色會被當成「沒出現」收進隱藏區，
-/// GM 上下文就少了那張卡。其他桌（含 characters 與沒重構的桌）照原行為結算。
+/// `requires_present_report`（`data::requires_present_report`）：這桌的 GM 回合有沒有被要求報 present。
+/// 沒被要求的桌（介面接管桌、沒重構的顯示腳本桌）present 缺席＝未知不是沒人：不結算、旗標原樣保留，
+/// 否則原卡主角色會被當成「沒出現」收進隱藏區，GM 上下文就少了那張卡。有被要求的桌照原行為結算。
+/// 已知限制：主角色已被藏的顯示腳本桌，`read_card_interfaces` 略過隱藏卡 → 判定掉回一般旁白、照樣結算，
+/// 只能玩家手動拉回〔作者裁決 2026-10-27：舊桌不拉回〕。
 pub(super) fn settle_card_visibility(
     root: &Path,
     world_id: &str,
     ended_scene: u64,
     present: Option<&str>,
-    interface_takeover: bool,
+    requires_present_report: bool,
 ) {
-    if present.is_none() && interface_takeover {
+    if present.is_none() && !requires_present_report {
         return;
     }
     let Ok(characters) = list_characters(root, world_id) else {
@@ -259,26 +261,57 @@ mod tests {
         assert!(!auto_hidden_of(&ghost.id), "archived 的卡完全不受結算影響");
     }
 
-    /// present 缺席時：介面接管桌（有骨架、不是 characters 桌）不結算；一般桌與 characters 桌照原行為，
-    /// 沒有回歸事件的卡結算成隱藏。
+    /// present 缺席時只有「沒被要求報 present」的桌（介面接管、沒重構的顯示腳本桌）不結算，旗標原樣保留
+    /// （配角照樣藏著，不會被順手拉回）；一般桌、characters 桌與不套卡內腳本的桌照原行為，沒回歸事件的卡
+    /// 結算成隱藏。顯示腳本桌 present 有值（含空字串）照常結算。
     #[test]
-    fn missing_present_skips_settlement_only_on_takeover_tables() {
-        for (label, shell, mode, host_hidden_after) in [
-            ("takeover", true, Some("interface"), false),
-            ("takeover-no-mode", true, None, false),
-            ("characters", true, Some("characters"), true),
-            ("plain", false, None, true),
-            ("interface-no-shell", false, Some("interface"), true),
-        ] {
+    fn missing_present_skips_settlement_only_where_present_is_not_requested() {
+        // (label, 骨架, 玩法, 主角色帶顯示腳本, 套卡內腳本, present, 主角色結算後隱藏, 配角結算後隱藏)
+        #[rustfmt::skip]
+        let cases = [
+            ("takeover", true, Some("interface"), false, true, None, false, true),
+            ("takeover-no-mode", true, None, false, true, None, false, true),
+            ("characters", true, Some("characters"), false, true, None, true, true),
+            ("plain", false, None, false, true, None, true, true),
+            ("interface-no-shell", false, Some("interface"), false, true, None, true, true),
+            ("card-format", false, None, true, true, None, false, true),
+            ("card-format-regex-off", false, None, true, false, None, true, true),
+            ("card-format-empty-present", false, None, true, true, Some(""), true, true),
+            ("card-format-present-hit", false, None, true, true, Some("周掌櫃"), true, false),
+        ];
+        for (label, shell, mode, scripts, regex_allowed, present, host_after, other_after) in cases
+        {
             let root = TestRoot::new(&format!("card-settlement-no-present-{label}"));
             let world_id = create_world(root.path(), "桌").unwrap();
-            let host = character_card(&new_id(), "北境驛站");
-            let hidden = character_card(&new_id(), "周掌櫃");
-            for card in [&host, &hidden] {
-                write_character(root.path(), &world_id, card).unwrap();
-            }
-            set_character_auto_hidden(root.path(), &world_id, &host.id, false).unwrap();
-            set_character_auto_hidden(root.path(), &world_id, &hidden.id, true).unwrap();
+            let host_id = if scripts {
+                // 啟用中、placement 含 2 的顯示腳本：read_card_interfaces 認得的那種
+                let raw = serde_json::json!({"data": {"name": "北境驛站", "extensions": {
+                    "regex_scripts": [{
+                        "scriptName": "狀態欄",
+                        "findRegex": "/<Status_block>[\\s\\S]*?<\\/Status_block>/",
+                        "replaceString": "<div>狀態</div>",
+                        "placement": [2]
+                    }]
+                }}})
+                .to_string();
+                crate::import::import_character(
+                    root.path(),
+                    &world_id,
+                    raw.as_bytes(),
+                    "#3366ff",
+                    "zh-TW",
+                )
+                .unwrap()
+                .id
+            } else {
+                let host = character_card(&new_id(), "北境驛站");
+                write_character(root.path(), &world_id, &host).unwrap();
+                host.id
+            };
+            let other = character_card(&new_id(), "周掌櫃");
+            write_character(root.path(), &world_id, &other).unwrap();
+            set_character_auto_hidden(root.path(), &world_id, &host_id, false).unwrap();
+            set_character_auto_hidden(root.path(), &world_id, &other.id, true).unwrap();
             if shell {
                 crate::data::write_interface_shell(
                     root.path(),
@@ -289,16 +322,27 @@ mod tests {
             }
             let mut state = read_state(root.path(), &world_id).unwrap();
             state.refactor_mode = mode.map(str::to_owned);
+            state.regex_allowed = regex_allowed;
+            if let Some(present) = present {
+                state
+                    .state
+                    .table
+                    .insert("present".to_owned(), present.to_owned());
+            }
             write_state(root.path(), &world_id, &state).unwrap();
-            assert!(state.state.table.get("present").is_none());
+            if scripts && regex_allowed {
+                let interfaces =
+                    crate::import::read_card_interfaces(root.path(), &world_id).unwrap();
+                assert_eq!(interfaces[0].scripts.len(), 1, "{label}: 應是顯示腳本桌");
+            }
 
             begin_next_scene(root.path(), &world_id, "摘要", None).unwrap();
 
             let metas = list_characters(root.path(), &world_id).unwrap();
             let auto_hidden_of =
                 |id: &str| metas.iter().find(|meta| meta.id == id).unwrap().auto_hidden;
-            assert_eq!(auto_hidden_of(&host.id), host_hidden_after, "{label}");
-            assert!(auto_hidden_of(&hidden.id), "{label}");
+            assert_eq!(auto_hidden_of(&host_id), host_after, "{label}: 主角色");
+            assert_eq!(auto_hidden_of(&other.id), other_after, "{label}: 配角");
         }
     }
 

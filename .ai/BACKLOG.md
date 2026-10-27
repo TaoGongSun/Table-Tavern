@@ -23,10 +23,9 @@ mvu-zod-semantics 施工中（`mvu-zod-semantics` 分支，已登記 HANDOFF）�
 ## 階段 C：卡片介面接管
 
 作者裁決 2026-10-27（Sol／Grok 共識後提問）：
-- 順序：①介面桌處理 NPC 開口蓋掉旁白 → ②修 cardformat-presence-autohide → ③shell-update-flash 先校準量測、不依門檻直接做雙緩衝 → ④character-presence 名冊接線降後獨立排（在場規則搬出 chat.rs 跟著④做）。〔作者裁決 2026-10-27〕
+- 順序：①介面桌處理 NPC 開口蓋掉旁白 → ②修 cardformat-presence-autohide（已結案）→ ③shell-update-flash 先校準量測、不依門檻直接做雙緩衝 → ④character-presence 名冊接線降後獨立排（在場規則搬出 chat.rs 跟著④做）。〔作者裁決 2026-10-27〕
 - ①的做法：介面桌停用角色點名（不做回合聚合正文；代價是介面桌失去多角色開口）。〔作者裁決 2026-10-27〕
 
-- [cardformat-presence-autohide](tasks/cardformat-presence-autohide.md) — 沒重構的顯示腳本桌不報 present，換幕後原卡主角色被自動隱藏（順序②） — 下一步：獨立修，不再與 character-presence 同條件合修
 - [character-presence](tasks/character-presence.md) — 卡片自訂名冊欄位（如駐留角色）接到既有在場機制（順序④） — 下一步：開工前先拍兩點（怎麼認名冊欄位、名冊與 present 不一致時誰優先）；在場規則搬出 chat.rs 跟著本案做；包 4 已做的在場過濾與自動上下場不重做
 
 ## 階段 D：引擎行為實聊
