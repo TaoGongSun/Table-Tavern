@@ -7,7 +7,7 @@
 
 - [import-tests-folder](tasks/import-tests-folder.md) — import/ 24 檔（11 支測試）超過資料夾上限，測試收進子資料夾 — 下一步：MVU 相容段開工前結構體檢時一併做
 - [cardformat-presence-autohide](tasks/cardformat-presence-autohide.md) — 沒重構的顯示腳本桌不報 present，換幕後原卡主角色被自動隱藏 — 下一步：併入卡片介面接管段，與 character-presence 同一個條件一起修
-- [mvu-zod-semantics](tasks/mvu-zod-semantics.md) — zod 版 MVU 卡的更新語意改以 mvu_zod 為基準 — 下一步：網頁版公開後再決定〔作者裁決 2026-10-12〕
+- [mvu-zod-semantics](tasks/mvu-zod-semantics.md) — zod 版 MVU 卡的更新語意改以 mvu_zod 為基準 — 下一步：已拍板（2026-10-27），先抽共用核心＋QuickJS 短驗證
 - [mvu-meta-schema](tasks/mvu-meta-schema.md) — 非 zod MVU 卡的 schema 檢查（可擴充、必填鍵、模板） — 下一步：未排程
 - [initvar-entry-yaml-semantics](tasks/initvar-entry-yaml-semantics.md) — [initvar] 條目挑選與 YAML 語意（$meta、# 註解）對齊上游 — 下一步：未排程，排在 initvar-yaml-list 之後
 - [mvu-command-syntax](tasks/mvu-command-syntax.md) — 未重構 MVU 卡指令式更新（_.set）被靜默略過 — 下一步：未排程，先找實卡確認
