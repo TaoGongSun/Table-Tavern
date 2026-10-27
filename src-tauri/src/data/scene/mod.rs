@@ -5,6 +5,7 @@ mod lifecycle;
 mod marker;
 mod presence;
 mod transcript;
+mod visibility;
 
 pub use export::{export_scene_markdown, export_transcript_markdown};
 pub(crate) use glyph::{fold_glyphs, glyph_equal};

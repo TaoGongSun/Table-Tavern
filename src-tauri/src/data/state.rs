@@ -342,6 +342,13 @@ pub struct WorldState {
     /// 分岔用的顯示編號：key 是內部幕號字串，比照 scene_titles。沒進這個表的幕＝原線，查詢一律走 scene_label。
     #[serde(default)]
     pub scene_labels: BTreeMap<String, SceneLabel>,
+    /// 每一幕離開時的角色卡自動隱藏快照：幕號字串 → 卡 id → auto_hidden，退回／分岔回到那一幕時照它寫回
+    /// （見 scene/visibility.rs）。零張卡的幕也留空表：空快照≠沒有快照。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub scene_card_visibility: BTreeMap<String, BTreeMap<String, bool>>,
+    /// 分岔已記下被離開那幕的快照、卡也可能改了一半，但還沒推進 current_scene：離開這一幕時沿用該快照不重拍。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_leave: Option<u64>,
     #[serde(default)]
     pub state: TableState,
     #[serde(default, skip_serializing_if = "Mechanism::is_empty")]

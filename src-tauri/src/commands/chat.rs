@@ -696,7 +696,7 @@ pub(crate) async fn gm_narrate(
             action_id.as_deref(),
         );
         // 角色卡自動回歸（AI 卡重構包 4b）：鏡射人物登場，鍵換成卡名；
-        // auto_hidden 欄位本身不在這裡動，只在換幕結算（data::begin_next_scene）。
+        // auto_hidden 欄位本身不在這裡動，只在換幕結算（data::begin_next_scene）與退回／分岔復原。
         if let Ok((hidden_cards, mut other_names)) = cards {
             other_names.extend(
                 worldbook
@@ -939,7 +939,7 @@ fn record_person_arrivals(
 /// 角色卡自動回歸（AI 卡重構包 4b）：present 名單（缺席就退回本文比對）比對得上、
 /// 本幕還沒回歸過的 auto_hidden 卡，逐一 append 公開回歸事件；有私設時另 append
 /// 一則 gm_only 私設事件（只有 GM 看得到，card-arrival-private-leak）。同一張卡本幕只記一次。鏡射 record_person_arrivals，鍵從世界書 title 換成卡片 name；
-/// **不改 auto_hidden 欄位本身**（鐵律：持久欄位只在換幕結算，見 data::begin_next_scene）。
+/// **不改 auto_hidden 欄位本身**（鐵律：持久欄位只在換幕結算與退回／分岔復原動，見 data::begin_next_scene）。
 /// 私設先寫：私設寫失敗就整張跳過、下一輪重試；公開事件寫失敗頂多多一則重複私設，
 /// 不會出現「已回歸卻沒有私設」被去重擋住補不回來。
 /// 回傳這輪實際記上的卡 id 清單（成功寫檔才算）。
@@ -1273,7 +1273,7 @@ mod tests {
 
     /// AI 卡重構包 4b，鏡射 4a：present 有隱藏卡的名字就 append 回歸事件——私設先成一則
     /// gm_only 事件、公開設定再成一則（card-arrival-private-leak）；同一幕重複比對不重複
-    /// append；不改 auto_hidden 欄位本身（鐵律，換幕才結算）。
+    /// append；不改 auto_hidden 欄位本身（鐵律，只在換幕結算與退回／分岔復原動）。
     #[test]
     fn record_card_arrivals_appends_once_per_scene_and_does_not_touch_auto_hidden() {
         let root = std::env::temp_dir().join(format!(

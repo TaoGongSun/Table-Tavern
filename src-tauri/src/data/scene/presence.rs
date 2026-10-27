@@ -123,7 +123,7 @@ fn match_unique(
     result
 }
 
-/// 換幕結算角色卡自動隱藏（AI 卡重構包 4b；鐵律：auto_hidden 這個持久欄位只在換幕動，
+/// 換幕結算角色卡自動隱藏（AI 卡重構包 4b；鐵律：auto_hidden 這個持久欄位只在換幕結算與退回／分岔復原動，
 /// 幕中回合的登場偵測只 append 事件不改欄位，見 lib.rs record_card_arrivals）。
 ///
 /// 出現過＝(a) 剛結束那幕的角色卡回歸事件集合 ∪ (b) 換幕當下 present 名單比對命中。

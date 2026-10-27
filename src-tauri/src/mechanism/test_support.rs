@@ -50,6 +50,8 @@ pub(super) fn world_with(pairs: &[(&str, &str)], mechanism: Mechanism) -> data::
         catchup_summaries: BTreeMap::new(),
         scene_titles: BTreeMap::new(),
         scene_labels: BTreeMap::new(),
+        scene_card_visibility: BTreeMap::new(),
+        pending_leave: None,
         state: data::TableState {
             table: BTreeMap::new(),
             tree: tree_from(pairs),

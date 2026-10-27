@@ -22,7 +22,8 @@ pub struct CharacterMeta {
     #[serde(default)]
     pub archived: bool,
     /// 自動隱藏（AI 卡重構包 4b）：換幕結算時系統判斷「這幕沒出現」才打開，劇情拉回來就
-    /// 自動關掉；跟 `archived`（玩家手動封存，系統永不自動改動）是獨立的兩軸，見
+    /// 自動關掉；退回／分岔回到某一幕時照那幕離開時的快照寫回（scene/visibility.rs）。
+    /// 跟 `archived`（玩家手動封存，系統永不自動改動）是獨立的兩軸，見
     /// `settle_card_visibility` 與 `set_character_auto_hidden`。
     #[serde(default)]
     pub auto_hidden: bool,
@@ -355,7 +356,7 @@ fn existing_auto_hidden(path: &Path) -> bool {
 }
 
 /// id 由呼叫端先跟 new_id 要好（草稿期生圖需要落在正確的圖庫路徑）；空 id 直接回錯。
-/// `CharacterCard` 不帶 auto_hidden（AI 卡重構包 4b：那是換幕結算的持久欄位，不是編輯表單
+/// `CharacterCard` 不帶 auto_hidden（AI 卡重構包 4b：那是換幕結算與退回／分岔復原的持久欄位，不是編輯表單
 /// 的一部分），這裡改寫其他欄位時，延續磁碟上原有的 auto_hidden，不會被前端編輯捎帶清掉。
 pub fn write_character(root: &Path, world_id: &str, card: &CharacterCard) -> DataResult<()> {
     validate_id(&card.id)?;
@@ -384,7 +385,8 @@ pub fn set_character_archived(
     write_character(root, world_id, &card)
 }
 
-/// 換幕結算（`settle_card_visibility`）專用：直接寫入新的 auto_hidden 值，其餘欄位原樣保留。
+/// 換幕結算（`settle_card_visibility`）、退回／分岔復原（scene/visibility.rs）與隱藏區手動拉回共用：
+/// 直接寫入新的 auto_hidden 值，其餘欄位原樣保留，整檔原子寫（中途失敗卡檔不截壞）。
 /// 不走 `write_character`（那支會延續磁碟舊值，寫不進新值）。
 pub fn set_character_auto_hidden(
     root: &Path,
@@ -395,7 +397,7 @@ pub fn set_character_auto_hidden(
     let card = read_character(root, world_id, character_id)?;
     let path = character_path(root, world_id, character_id)?;
     let display_index = display_index_for(root, world_id, &path)?;
-    super::world_file::commit_world_write(
+    super::world_file::commit_world_write_atomic(
         &path,
         serialize_character(&card, display_index, auto_hidden).as_bytes(),
     )?;

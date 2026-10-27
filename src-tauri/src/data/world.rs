@@ -77,6 +77,8 @@ fn blank_state(id: &str, name: &str) -> WorldState {
         catchup_summaries: BTreeMap::new(),
         scene_titles: BTreeMap::new(),
         scene_labels: BTreeMap::new(),
+        scene_card_visibility: BTreeMap::new(),
+        pending_leave: None,
         state: TableState::default(),
         mechanism: Mechanism::default(),
         aligned_scene: None,

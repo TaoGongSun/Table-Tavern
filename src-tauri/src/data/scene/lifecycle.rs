@@ -10,6 +10,7 @@ use super::transcript::{
     append_transcript_tx, parse_transcript, read_transcript, transcript_path, TranscriptEvent,
     TranscriptKind,
 };
+use super::visibility::{record_leaving_scene, restore_scene_visibility};
 use crate::ui_msg::UiMsg;
 
 /// 沒進 scene_labels 的幕＝原線（舊存檔也走這條）：顯示編號就是內部幕號，第 1 版，上一幕是前一號。
@@ -61,6 +62,12 @@ fn fork_scene_tx(tx: &CommitTx<'_>, from_scene: u64) -> DataResult<u64> {
     let current_scene = state.current_scene;
     let new_scene = current_scene + 1;
     let plan = message_vars::scene_seed_for_fork(tx, from_scene)?;
+    // 角色卡隱藏（兩段提交）：先落地被離開那幕的快照與 pending_leave，再照來源幕快照改卡；
+    // 改卡或後面任一步失敗，重試會沿用這份快照，不把改了一半的卡當成原值
+    record_leaving_scene(root, world_id, &mut state)?;
+    state.pending_leave = Some(current_scene);
+    write_state(root, world_id, &state)?;
+    restore_scene_visibility(root, world_id, &state, from_scene)?;
     // 世界書計時：目前幕（被離開的）與來源幕的 pending 先結算，來源幕的檔複製成新幕的（不帶 pending）
     super::super::world_info_store::copy_for_fork(
         root,
@@ -106,6 +113,7 @@ fn fork_scene_tx(tx: &CommitTx<'_>, from_scene: u64) -> DataResult<u64> {
         },
     );
     state.current_scene = new_scene;
+    state.pending_leave = None;
     state.state = events
         .iter()
         .rev()
@@ -144,6 +152,9 @@ fn begin_next_scene_tx(
     let mut state = read_state(root, world_id)?;
     let old_scene = state.current_scene;
     let next_scene = old_scene + 1;
+    // 角色卡隱藏快照在結算前拍（跟 current_scene 同一次 write_state 落地），退回／分岔回這幕時照它寫回
+    record_leaving_scene(root, world_id, &mut state)?;
+    state.pending_leave = None;
     // 變數模式：新幕開頭的摘要帶一份種子表，第一個 GM 回覆前卡片照樣讀得到值、補得到狀態欄占位
     let seed = message_vars::scene_seed_for_next(tx, old_scene, next_scene)?;
     // 世界書計時：舊幕 pending 先結算（GM 半截已由上面的交接代落），未到期的平移成新幕的檔（P4）
@@ -230,6 +241,10 @@ fn revert_scene_tx(tx: &CommitTx<'_>) -> DataResult<u64> {
     }
     // 世界書計時：子幕的 pending 先結算（變數意圖寫在不分幕的層，檔刪了就撤不回）；結算失敗就整個不退
     super::super::world_info_store::settle_pending(root, world_id, scene)?;
+    // 角色卡隱藏照父幕快照寫回，全部寫成才切回父幕；失敗回錯、current_scene 不動，重試冪等
+    restore_scene_visibility(root, world_id, &state, previous_scene)?;
+    state.scene_card_visibility.remove(&scene.to_string());
+    state.pending_leave = None;
     state.current_scene = previous_scene;
     state.scene_titles.remove(&previous_scene.to_string());
     // 自己這筆標籤跟著檔案一起消失，不留退回後查不到來源、卻還佔著 key 的殭屍紀錄。

@@ -70,7 +70,7 @@ pub fn person_arrival(entry: &WorldbookEntry, fill: NeutralFill<'_>) -> (EventMa
 
 // ---------------------------------------------------------------------
 // AI 卡重構包 4b：角色卡自動上下場，鏡射上面 4a 的世界書人物在場機制。角色卡的持久
-// 隱藏欄位（data::CharacterMeta.auto_hidden）只在換幕結算（data::begin_next_scene）改動，
+// 隱藏欄位（data::CharacterMeta.auto_hidden）只在換幕結算（data::begin_next_scene）與退回／分岔復原改動，
 // 這裡（回合中）只偵測與 append 事件，不碰欄位本身。
 // ---------------------------------------------------------------------
 
