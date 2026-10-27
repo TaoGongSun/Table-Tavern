@@ -30,7 +30,7 @@ const backend = vi.hoisted(() => ({
 const evalWorkers = vi.hoisted(() => ({ created: [] as { terminated: boolean }[], held: null as (() => void)[] | null }));
 vi.mock("./mvu/card-mvu-eval-host", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./mvu/card-mvu-eval-host")>();
-  const { runEval } = await import("./mvu/card-mvu-parse-engine");
+  const { runEval } = await import("../mvu-engine/value-parser");
   return {
     ...actual,
     createEvalHost: () =>

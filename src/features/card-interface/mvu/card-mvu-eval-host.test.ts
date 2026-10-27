@@ -1,7 +1,7 @@
 // 宿主端值解析 Worker 管理（包 2c，計畫 8.9）：序列派工、200 ms 逾時終止並重建、開機等待、關閉。
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createEvalHost, MAX_EVAL_QUEUE, MAX_EVAL_TEXT_BYTES, parseEvalRequest, type EvalWorkerLike } from "./card-mvu-eval-host";
-import { runEval } from "./card-mvu-parse-engine";
+import { runEval } from "../../mvu-engine/value-parser";
 
 type Handler = (event: { data?: unknown }) => void;
 

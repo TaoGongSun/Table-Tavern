@@ -4,7 +4,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { runEval } from "@desktop/features/card-interface/mvu/card-mvu-parse-engine";
+import { runEval } from "@desktop/features/mvu-engine/value-parser";
 import { parseWebSave } from "@desktop/shared/contracts/web-save/web-save";
 import { playCardFromValue } from "../cards/play-card";
 import { failureFromHttp } from "../openrouter/api-failure";

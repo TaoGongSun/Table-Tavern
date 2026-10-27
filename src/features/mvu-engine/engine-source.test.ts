@@ -1,10 +1,10 @@
-// Mvu.parseMessage（包 2c，計畫 8.9）：沙盒端的指令抽取、套用、schema、事件分階段與上限。值解析走真的引擎
-// （card-mvu-parse-engine.ts），只是把宿主的 Worker 換成同進程呼叫。
+// MVU 共用核心（engine-source.ts）經 iframe 宿主（卡片沙盒的 Mvu.parseMessage，包 2c，計畫 8.9）：指令抽取、套用、
+// schema、事件分階段與上限。值解析走真的引擎（value-parser.ts），只是把宿主的 Worker 換成同進程呼叫。
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { buildMvuShimSource } from "./card-mvu-shim-source";
-import { runEval } from "./card-mvu-parse-engine";
-import { type CardMvu } from "./card-mvu-shim";
-import replaceParity from "../../../shared/contracts/mvu-replace-parity.json";
+import { buildMvuShimSource } from "../card-interface/mvu/card-mvu-shim-source";
+import { runEval } from "./value-parser";
+import { type CardMvu } from "../card-interface/mvu/card-mvu-shim";
+import replaceParity from "../../shared/contracts/mvu-replace-parity.json";
 
 const lodashName = "lodash";
 const lodash: unknown = ((await import(/* @vite-ignore */ lodashName)) as { default: unknown }).default;

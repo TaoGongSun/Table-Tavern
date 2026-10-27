@@ -1,4 +1,4 @@
-// MVU `parseMessage` 的值解析引擎（計畫 8.9，D1）：跑在宿主專用 Web Worker 裡（card-mvu-eval.worker.ts），
+// MVU 共用核心的值解析引擎（計畫 8.9，D1）：iframe 與網頁宿主跑在專用 Web Worker 裡（card-interface/mvu/card-mvu-eval.worker.ts），
 // 純函式、不碰 DOM 與 app 狀態。行為對照 MagVarUpdate `parseCommandValue`（值解析六段）與 `parseString`
 // （JSONPatch 區塊），只當規格書讀、不抄碼。
 import {

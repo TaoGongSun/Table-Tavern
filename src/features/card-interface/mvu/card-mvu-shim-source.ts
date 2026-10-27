@@ -4,7 +4,7 @@
 // （計畫 .ai/plans/card-mvu-shim.md 第 3、8.5、8.6 節）。
 import { scriptLiteral } from "../card-chat-shim";
 import { type CardMvu } from "./card-mvu-shim";
-import { buildMvuParseSource } from "./card-mvu-parse-source";
+import { buildMvuEngineSource } from "../../mvu-engine/engine-source";
 
 /**
  * 排在讀訊息墊片之後、橋接墊片之前：真 parent 先收進閉包，之後只認它推來、token 相符、形狀正確的快照與
@@ -13,7 +13,8 @@ import { buildMvuParseSource } from "./card-mvu-parse-source";
  * 寫入（message 層，包 2a）：先改本地值（保持上游同步語意），再把整張表送宿主；宿主確認落檔才結算。
  * 本地值依寫入目標（事件 key）暫存，結算前推來的快照不蓋掉它；被拒時換成宿主推回的權威值並發外部變動事件。
  *
- * parseMessage（包 2c）：流程整段在沙盒跑，值解析與數學式逐條送宿主的專用 Worker（`mvu-eval`／`mvu-eval-result`）。
+ * parseMessage（包 2c）：MVU 共用核心（mvu-engine/engine-source.ts）整段在沙盒跑；這裡是它的 iframe 宿主——值解析與數學式
+ * 逐條送宿主的專用 Worker（`mvu-eval`／`mvu-eval-result`）。
  *
  * 非 message 層（包 2b）：chat／character／global／preset／script／extension 各是一份「整張表」，沿用同一套
  * 本地值、版本與結算機制，寫入目標 key 是層名（script／extension／character 帶 `:原 ID`），宿主依 key 決定
@@ -398,7 +399,51 @@ export function buildMvuShimSource(mvu: CardMvu, token: string): string {
     return text.replace(/^[\\\\"'\` ]+/, "").replace(/[\\\\"'\` ]+$/, "");
   }
 
-${buildMvuParseSource()}
+${buildMvuEngineSource()}
+  // MVU 共用核心的 iframe 宿主：值解析請求送宿主的專用 Worker、等結果；結果由訊息監聽器（不經序列佇列，免得
+  // 監聽器裡呼叫 parseMessage 時卡死）交給 resolveEval。宿主 Worker 單筆 200 ms 逾時，核心另設保險計時器
+  var evalWaiting = new Map();
+  var evalSequence = 0;
+  function resolveEval(data) {
+    var done = evalWaiting.get(data.requestId);
+    if (!done) return;
+    evalWaiting.delete(data.requestId);
+    done(data);
+  }
+  var mvuCore = createMvuCore({
+    emit: emit,
+    events: EVENTS,
+    lodash: lodash,
+    host: {
+      evaluate: function (op, text, done) {
+        evalSequence += 1;
+        var id = TOKEN + ":e" + String(evalSequence);
+        evalWaiting.set(id, done);
+        parentRef.postMessage(
+          { source: "table-tavern-card", kind: "mvu-eval", token: TOKEN, requestId: id, op: op, text: text },
+          "*"
+        );
+        return function () {
+          evalWaiting.delete(id);
+        };
+      },
+      timers: {
+        set: function (fn, ms) {
+          return setTimeout(fn, ms);
+        },
+        clear: function (id) {
+          clearTimeout(id);
+        }
+      },
+      utf8Length: function (text) {
+        return new TextEncoder().encode(text).length;
+      },
+      macros: function () {
+        return store.macros;
+      }
+    }
+  });
+  var parseMessage = mvuCore.parseMessage;
   var Mvu = {
     events: EVENTS,
     getMvuData: function (option) {
@@ -432,7 +477,7 @@ ${buildMvuParseSource()}
       if (options.is_recursive) await emit(EVENTS.SINGLE_VARIABLE_UPDATED, [stat, path, old, value], false);
       return true;
     },
-    // 照 MVU updateVariables 重寫（card-mvu-parse-source.ts）：值解析送宿主的專用 Worker
+    // MVU 共用核心（mvu-engine/engine-source.ts）：值解析送宿主的專用 Worker
     parseMessage: parseMessage,
     getMvuVariable: function (data, path, option) {
       var options = option || {};

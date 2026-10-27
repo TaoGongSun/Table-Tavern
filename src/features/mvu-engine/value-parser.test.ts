@@ -1,6 +1,6 @@
 // parseMessage 的值解析引擎（計畫 8.9）：值解析六段、受限數學式、JSONPatch 區塊文字解析、值上限。
 import { describe, expect, it } from "vitest";
-import { MAX_EXPRESSION_CHARS, parseCommandValue, parsePatchBlock, runEval, valueLimitProblem } from "./card-mvu-parse-engine";
+import { MAX_EXPRESSION_CHARS, parseCommandValue, parsePatchBlock, runEval, valueLimitProblem } from "./value-parser";
 
 describe("值解析六段", () => {
   it("字面量與 JSON", () => {

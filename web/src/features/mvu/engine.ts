@@ -1,7 +1,7 @@
-// 宿主端的 MVU：updateVariables（建置時從桌面版沙盒那份原始碼包出來，見 web/mvu-engine-plugin.ts）、
+// 宿主端的 MVU：共用核心（建置時從 src/features/mvu-engine 包出來，見 web/mvu-engine-plugin.ts）的網頁宿主、
 // 初始化時的 schema 生成與元資料清理。值解析交給 Worker（evaluate.ts）。
 import lodash from "lodash";
-import { createMvuEngine, type MvuEngine } from "virtual:mvu-engine";
+import { createMvuCore } from "virtual:mvu-engine";
 import type { Evaluator } from "./evaluate";
 
 /** MVU 事件名（MagVarUpdate variable_def.ts）；宿主這邊沒有監聽器，只是片段要用到 */
@@ -29,29 +29,30 @@ export interface HostMvu {
 }
 
 export function createHostMvu(evaluator: Evaluator, macros: MvuMacros): HostMvu {
-  let engine: MvuEngine | null = null;
-  const parentRef = {
-    postMessage: (message: Record<string, unknown>) => {
-      const { requestId, op, text } = message;
-      if ((op !== "value" && op !== "patch") || typeof text !== "string") {
-        engine?.resolveEval({ requestId, ok: false, error: "bad-request" });
-        return;
-      }
-      void evaluator
-        .run(op, text)
-        .catch((reason: unknown) => ({ ok: false as const, error: `host-error: ${String(reason)}` }))
-        .then((outcome) => engine?.resolveEval({ requestId, ...outcome }));
-    },
-  };
-  engine = createMvuEngine({
+  const created = createMvuCore({
     emit: async () => {},
     events: EVENTS,
     lodash,
-    parentRef,
-    token: "host",
-    store: { macros },
+    host: {
+      evaluate: (op, text, done) => {
+        if ((op !== "value" && op !== "patch") || typeof text !== "string") {
+          done({ ok: false, error: "bad-request" });
+          return null;
+        }
+        void evaluator
+          .run(op, text)
+          .catch((reason: unknown) => ({ ok: false as const, error: `host-error: ${String(reason)}` }))
+          .then(done);
+        return null;
+      },
+      timers: {
+        set: (fn, ms) => setTimeout(fn, ms),
+        clear: (id) => clearTimeout(id as ReturnType<typeof setTimeout>),
+      },
+      utf8Length: (text) => new TextEncoder().encode(text).length,
+      macros: () => macros,
+    },
   });
-  const created = engine;
   return {
     parseMessage: (message, old) => created.parseMessage(message, old),
     initializeSchema(stat, oldSchema) {

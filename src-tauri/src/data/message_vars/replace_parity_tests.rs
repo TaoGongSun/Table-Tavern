@@ -1,4 +1,4 @@
-//! mvu-replace-numeric：跟前端墊片（card-mvu-parse-source.test.ts）跑同一份案例。照 GM 回合提交
+//! mvu-replace-numeric：跟前端 MVU 共用核心（mvu-engine/engine-source.test.ts）跑同一份案例。照 GM 回合提交
 //! （write.rs `apply_gm_block`）的路：stat_data 投影成樹 → apply_block_typed（Upstream 策略、帶 stat_data）
 //! → 照帶型別寫值合回 stat_data。
 use super::convert::{merge_tree_change_typed, stat_to_tree, NewValues};

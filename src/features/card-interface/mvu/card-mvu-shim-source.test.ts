@@ -2,7 +2,7 @@
 // card-mvu-shim.test.ts。
 import { describe, expect, it, vi } from "vitest";
 import { buildMvuShimSource } from "./card-mvu-shim-source";
-import { runEval } from "./card-mvu-parse-engine";
+import { runEval } from "../../mvu-engine/value-parser";
 import { type CardMvu } from "./card-mvu-shim";
 
 const lodashName = "lodash";
