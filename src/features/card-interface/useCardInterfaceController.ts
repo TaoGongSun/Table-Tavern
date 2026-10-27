@@ -30,6 +30,7 @@ import {
 import { createEvalHost, type EvalHost } from "./mvu/card-mvu-eval-host";
 import { parseWriteRequest, serveEval, serveParse, type HostParse } from "./mvu/card-mvu-messages";
 import { type TranscriptEvent } from "../../shared/contracts/backend-contracts";
+import type { Collections } from "../refactor/refactor-shell-sections";
 
 // 短指紋（djb2）：card-interface iframe 的 key 用，內容一換 key 就換。
 function fingerprint(text: string): string {
@@ -39,6 +40,11 @@ function fingerprint(text: string): string {
 }
 
 /** 後端 `card_vars_state`：桌世代、這一幕是否走逐樓變數表、目前幕號 */
+/** read_state 裡填骨架要用的兩份表 */
+interface MechanismTypes {
+  mechanism?: { value_types?: Record<string, string>; collections?: Collections };
+}
+
 interface VarsState {
   generation: number;
   active: boolean;
@@ -152,6 +158,8 @@ export function useCardInterfaceController(input: {
   const [tableMode, setTableMode] = useState<string | null | undefined>(undefined);
   // 原卡欄位型別（重構套用時記下）：骨架填值時決定數字／布林的寫法
   const [valueTypes, setValueTypes] = useState<Record<string, string>>({});
+  // 集合描述（重構套用時記下）：骨架的 `{{#集合}}` 區段怎麼展開
+  const [collections, setCollections] = useState<Collections>({});
   const [cardUiOpen, setCardUiOpen] = useState(false);
   // 玩家點分頁固定的卡（cardKey）；null＝跟著最新。綁著當時的桌，換桌當下就失效（不必等 effect 清）
   const [pinned, setPinned] = useState<{ worldId: string; card: string } | null>(null);
@@ -195,9 +203,12 @@ export function useCardInterfaceController(input: {
       })
       .catch(() => {});
     setValueTypes({});
-    invoke<{ mechanism?: { value_types?: Record<string, string> } }>("read_state", { worldId })
+    setCollections({});
+    invoke<MechanismTypes>("read_state", { worldId })
       .then((state) => {
-        if (current()) setValueTypes(state?.mechanism?.value_types ?? {});
+        if (!current()) return;
+        setValueTypes(state?.mechanism?.value_types ?? {});
+        setCollections(state?.mechanism?.collections ?? {});
       })
       .catch(() => {});
   }, [worldId]);
@@ -240,6 +251,7 @@ export function useCardInterfaceController(input: {
       events,
       cardInterfaces,
       valueTypes,
+      collections,
       cache: shellCache,
       mvu: {
         liveTree: tree,
@@ -255,6 +267,7 @@ export function useCardInterfaceController(input: {
       events,
       cardInterfaces,
       valueTypes,
+      collections,
       shellCache,
       tree,
       userName,
@@ -610,14 +623,13 @@ export function useCardInterfaceController(input: {
     const [shell, mode, state] = await Promise.all([
       invoke<string | null>("refactor_interface_shell", { worldId: id }).catch(() => null),
       invoke<string | null>("refactor_table_mode", { worldId: id }).catch(() => undefined),
-      invoke<{ mechanism?: { value_types?: Record<string, string> } }>("read_state", { worldId: id }).catch(
-        () => null,
-      ),
+      invoke<MechanismTypes>("read_state", { worldId: id }).catch(() => null),
     ]);
     if (mine !== shellLoad.current) return shell;
     setRefactorShell(shell);
     setTableMode(mode);
     setValueTypes(state?.mechanism?.value_types ?? {});
+    setCollections(state?.mechanism?.collections ?? {});
     return shell;
   }, []);
 

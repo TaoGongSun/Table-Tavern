@@ -8,6 +8,7 @@ import { EditingStateField, treeValueAt } from "./useTableStateController";
 import { IconExpand } from "../../shared/ui/icons";
 import { displayWithFormat } from "./state-format";
 import { usePresentDisplay } from "./present-glyphs";
+import { ORDER_KEY, orderedItemKeys } from "../refactor/refactor-shell-sections";
 
 const STATE_BAR_OPEN_KEY = "state_bar_open";
 
@@ -15,6 +16,17 @@ const STATE_BAR_OPEN_KEY = "state_bar_open";
 function isIndexBranch(node: Record<string, StateNode>): boolean {
   const keys = Object.keys(node);
   return keys.length > 0 && keys.every((_, index) => index.toString() in node);
+}
+
+/** 接管桌的具名集合（在場人物之類）：項目帶 app 管的順序葉子 `_序` */
+function isCollection(node: Record<string, StateNode>): boolean {
+  return Object.values(node).some((child) => typeof child === "object" && child !== null && ORDER_KEY in child);
+}
+
+/** 分支底下照顯示順序的子節點：集合項目照 `_序`，順序葉子本身不顯示 */
+function branchEntries(node: Record<string, StateNode>): [string, StateNode][] {
+  if (isCollection(node)) return orderedItemKeys(node).map((key) => [key, node[key]]);
+  return Object.entries(node).filter(([key]) => key !== ORDER_KEY);
 }
 
 // 值裡的字面 {{user}} 只在顯示時換成玩家名（模型上下文與存檔仍是原文，後端注入前才代換）；
@@ -186,7 +198,7 @@ export function StateBar({
     depth: number,
     inList = false,
   ): ReactNode {
-    const entries = Object.entries(nodes);
+    const entries = branchEntries(nodes);
     // 空分支（例如清空的清單）內容區顯示空值字樣；根層空樹什麼都不印
     if (entries.length === 0 && depth > 0) {
       return <div className="state-tree-empty">{t("stateEmptyValue")}</div>;
@@ -202,7 +214,7 @@ export function StateBar({
       // 清單出身的分支（鍵恰為 0..n-1，如「氣味標記者：0→利格魯德」的名冊）與清單裡的項目
       // （如「人物列表/0」及其底下）不是誰的狀態包，掛指認下拉會被讀成「挑誰出場」；
       // 只有名字鍵的物件分支才提供指認。年份那種不連號的數字鍵照常是名字鍵。
-      const indexBranch = isIndexBranch(node);
+      const indexBranch = isIndexBranch(node) || isCollection(node);
       const isList = inList || indexBranch || Object.keys(node).length === 0;
       return (
         <details

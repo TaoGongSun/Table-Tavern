@@ -4,6 +4,7 @@ import { cardDrawable, cardKey, findShell, gmOrder, type CardInterface, type She
 import { type ChatFloor, type ChatRole, type CurrentFloor } from "./card-chat-shim";
 import { buildCardMvu, hasStatData, withMvuPlaceholder, type CardMvu, type MvuLayer, type StateTree } from "./mvu/card-mvu-shim";
 import { bodyRecordPrefix, fillSkeletonPlaceholders, spreadBodyRecord, type StateNode } from "../refactor/refactor-shell";
+import type { Collections } from "../refactor/refactor-shell-sections";
 import { type TranscriptEvent } from "../../shared/contracts/backend-contracts";
 import { eventDisplayText, parseMarker, speakerDisplayName } from "../../shared/ui/event-text";
 
@@ -138,6 +139,7 @@ function floorMessage(
   cards: CardInterface[],
   yamlTags: string[],
   valueTypes: Record<string, string>,
+  collections: Collections,
   liveTree: StateTree | undefined,
   slot: string,
   pick: { only: string | null; cache?: ShellCache },
@@ -155,14 +157,14 @@ function floorMessage(
     const recap = inertRecap(eventDisplayText(event));
     const prefix = bodyRecordPrefix(skeleton, yamlTags);
     return {
-      message: fillSkeletonPlaceholders(skeleton, withBody(tree, slot), yamlTags, valueTypes),
+      message: fillSkeletonPlaceholders(skeleton, withBody(tree, slot), yamlTags, valueTypes, collections),
       recap: { slot, text: prefix === null ? recap : spreadBodyRecord(prefix, recap).slice(prefix.length) },
       synthesized: true,
     };
   }
   if (snapshot === undefined || findShell(cards, [{ text: raw, ...source }], pick) !== null) return { message: raw, ...source };
   return {
-    message: fillSkeletonPlaceholders(skeleton, withBody(snapshot, eventDisplayText(event)), yamlTags, valueTypes),
+    message: fillSkeletonPlaceholders(skeleton, withBody(snapshot, eventDisplayText(event)), yamlTags, valueTypes, collections),
     synthesized: true,
   };
 }
@@ -182,6 +184,8 @@ export interface PickInput {
   cardInterfaces: CardInterface[];
   /** 原卡欄位型別（mechanism.value_types）：決定骨架裡數字／布林要不要加引號 */
   valueTypes?: Record<string, string>;
+  /** 集合描述（mechanism.collections）：骨架裡 `{{#集合}}` 區段怎麼展開 */
+  collections?: Collections;
   /** 前情提要佔位的亂數來源（測試注入用；預設密碼學亂數） */
   nonce?: () => string;
   /** 目前狀態樹（含面板手動改值）與玩家名：MVU 卡的活樓讀它；active＝卡片變數模式（每樓讀事件上自己的表）；
@@ -252,6 +256,7 @@ export function pickCardShell(input: PickInput): PickedShell | null {
       cardInterfaces,
       yamlTags,
       input.valueTypes ?? {},
+      input.collections ?? {},
       input.mvu?.liveTree,
       `${SLOT_PREFIX}${nonce}N${id}E`,
       pickOptions,

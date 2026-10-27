@@ -102,6 +102,17 @@ describe("pickCardShell", () => {
       expect(picked?.floors[0].message).toBe("<UI>上回合畫面</UI>");
     });
 
+    it("集合描述照傳到填值：樓的快照依區段展開", () => {
+      const sectioned = "<UI>{{#人}}[{{@key}}:{{職}}]{{/人}} {{本回合.正文}}</UI>";
+      const history = [gmAt("正文", { 人: { 乙: { _序: "0", 職: "兵" }, 甲: { _序: "1", 職: "將" } } })];
+      const picked = pick(sectioned, {
+        tableMode: "interface",
+        events: history,
+        collections: { 人: { keyed: true, item: "object", fields: { 職: "text" } } },
+      });
+      expect(picked?.floors[0].message).toBe("<UI>[乙:兵][甲:將] 正文</UI>");
+    });
+
     it("歷史樓各自用自己的快照：兩個 GM 樓的值不同", () => {
       const history = [
         gmAt("第一則", { World: { Time: "清晨" } }),

@@ -8,6 +8,7 @@ export type StateNode = string | { [key: string]: StateNode };
 
 import yaml from "js-yaml";
 import stMacros from "../../shared/contracts/st-macros/st-macros.json";
+import { SectionBinder, type Collections } from "./refactor-shell-sections";
 
 // 佔位符只認 `{{...}}`：內容不含花括號或換行的簡單形式。
 const PLACEHOLDER_REGEX = /\{\{([^{}\n]+)\}\}/g;
@@ -73,22 +74,31 @@ function fillRaw(text: string, tree: Record<string, StateNode>): string {
  *   解析不到；信任模型與直玩餵 event.raw 相同——模型原文進沙盒 iframe，不多做一層。
  * - `yamlTags` 指定的容器（例如卡用 YAML 解析器讀的 `<Status_block>`）之內：值照所在位置的 YAML 語法
  *   表示，卡讀到的才是原值（規則見 fillYamlRegion）。容器外（正文槽、其他格式）照原樣填。
+ * - 集合區段 `{{#集合}}…{{/集合}}` 先依 `collections`（mechanism.collections）展開，見 refactor-shell-sections.ts。
  */
 export function fillSkeletonPlaceholders(
   skeleton: string,
   tree: Record<string, StateNode>,
   yamlTags: string[] = [],
   valueTypes: Record<string, string> = {},
+  collections: Collections = {},
 ): string {
   const ranges = yamlRanges(skeleton, yamlTags);
-  let out = "";
+  const regions: { text: string; yaml: boolean }[] = [];
   let cursor = 0;
   for (const [start, end] of ranges) {
-    out += fillPlainRegion(skeleton.slice(cursor, start), tree);
-    out += fillYamlRegion(skeleton.slice(start, end), tree, valueTypes);
+    regions.push({ text: skeleton.slice(cursor, start), yaml: false }, { text: skeleton.slice(start, end), yaml: true });
     cursor = end;
   }
-  return out + fillPlainRegion(skeleton.slice(cursor), tree);
+  regions.push({ text: skeleton.slice(cursor), yaml: false });
+  // 先展開集合區段（只綁路徑、不放值），整份再一次填值
+  const binder = new SectionBinder(tree, collections);
+  const bound = regions.map((region) => ({ ...region, text: binder.bind(region.text, region.yaml) }));
+  const filledTree = binder.tree();
+  const types = binder.valueTypes(valueTypes);
+  return bound
+    .map((region) => (region.yaml ? fillYamlRegion(region.text, filledTree, types) : fillPlainRegion(region.text, filledTree)))
+    .join("");
 }
 
 // 記錄式正文行：整行只有正文槽一個佔位符、在行尾，前面的固定文字以欄位分隔 `|` 結尾（例如 `mainText|{{本回合.正文}}`）。

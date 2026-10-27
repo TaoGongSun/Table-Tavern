@@ -79,6 +79,23 @@ describe("StateBar 分支指認下拉", () => {
     expect(branchesWithSelect().sort()).toEqual(["2025", "2026", "年度", "状态栏", "驿站物资"].sort());
   });
 
+  it("接管桌具名集合：項目照 _序 排、不顯示 _序、集合與項目都不掛下拉", () => {
+    renderTree({
+      在場人物: {
+        周掌柜: { _序: "2", 身份: "军需官" },
+        林远: { _序: "0", 身份: "新任驿丞" },
+        贺铮: { _序: "1", 身份: "老驿长" },
+      },
+      驿站: { 粮草: "四百石" },
+    });
+    const summaries = [...host.querySelectorAll("details.state-tree-branch > summary")].map(
+      (summary) => summary.firstChild?.textContent ?? "",
+    );
+    expect(summaries).toEqual(["在場人物", "林远", "贺铮", "周掌柜", "驿站"]);
+    expect(host.textContent).not.toContain("_序");
+    expect(branchesWithSelect()).toEqual(["驿站"]);
+  });
+
   it("空分支顯示空值字樣，根層空樹不印", () => {
     renderTree({ 名單: {} });
     expect(host.querySelector(".state-tree-empty")?.textContent).toBe(t("stateEmptyValue"));
