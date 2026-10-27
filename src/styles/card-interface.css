@@ -35,11 +35,34 @@
   font-size: 0.85rem;
 }
 
-.card-interface-frame {
+/* 殼雙緩衝：新殼（pending）墊在舊殼下面載，ready 才翻面。z-index: 0 自成疊層，整組留在工具列之下 */
+.card-interface-frames {
+  position: relative;
+  z-index: 0;
   flex: 1;
   min-height: 0;
+}
+
+.card-interface-frame {
+  position: absolute;
+  inset: 0;
   width: 100%;
+  height: 100%;
   border: 0;
+}
+
+/* front 的元素背景＝覆蓋層底色：卡片文件多半透明底，靠它完全蓋住下面在載的新殼 */
+.card-interface-frame.is-front {
+  z-index: 1;
+  background: var(--surface-0);
+}
+
+/* 翻面等待期的擋板：蓋住兩支 iframe，點擊不穿透到任何一支 */
+.card-interface-lock {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  outline: none;
 }
 
 /* 多卡分頁：在換幕與關閉鈕左邊；卡名長就截字，滑過看全名 */

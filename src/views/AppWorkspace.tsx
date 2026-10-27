@@ -421,6 +421,8 @@ export function AppWorkspace({
           }
           shellDoc={cardInterface.shellDoc}
           shellKey={cardInterface.shellKey}
+          shellIdentity={cardInterface.shellIdentity}
+          shellRegistry={cardInterface.shellRegistry}
           chat={cardInterface.chat}
           mvu={cardInterface.mvu}
           onAdvanceScene={() => void advanceThenReopen(advanceScene, cardInterface.open)}

@@ -16,6 +16,7 @@ import {
 import { drawableCards, pickCardShell, type PickInput } from "./card-shell-route";
 import { buildCardChat, type CardChat } from "./card-chat-shim";
 import { type CardMvu, type MvuLayer, type StateTree } from "./mvu/card-mvu-shim";
+import { acceptsInput, acceptsStorage, createShellRegistry, type ShellRegistry } from "./shell-frames/shell-frames-state";
 import {
   createMvuWriteQueue,
   type Authority,
@@ -99,6 +100,10 @@ export interface CardInterfaceController {
   shellDoc: string | null;
   /** 桌別＋殼＋本樓的指紋，當 iframe 的 key，也是讀訊息推送的 token */
   shellKey: string;
+  /** 顯示對象（桌、桌世代、殼所屬的卡）：換了就硬切、不雙緩衝 */
+  shellIdentity: string;
+  /** 兩支殼 iframe 的現況（覆蓋層寫、這裡的訊息監聽讀） */
+  shellRegistry: ShellRegistry;
   /** 本場讀訊息快照；覆蓋層在它變動與 iframe load 時推給沙盒 */
   chat: CardChat | null;
   /** MVU 變數快照（null＝這桌沒有 MVU 卡）；與 chat 一起推 */
@@ -361,6 +366,11 @@ export function useCardInterfaceController(input: {
           ),
     [worldId, varsGeneration, varsScene, activeCard, shell, currentId, currentName, currentText],
   );
+  const shellIdentity = useMemo(
+    () => JSON.stringify([worldId, varsGeneration, activeCard]),
+    [worldId, varsGeneration, activeCard],
+  );
+  const [shellRegistry] = useState(createShellRegistry);
   // MVU 卡的殼要等非 message 層讀回才出文件（hasMvuCard 與 mvu 非 null 才有非 message 層可讀）
   const layersReady = mvu === null || layers !== null;
   const cardShellDoc = useMemo(
@@ -519,11 +529,14 @@ export function useCardInterfaceController(input: {
   // 跟 ST 一樣不必進出對話，也不擋卡片自己觸發回合（那在 ST 上是正常用法，會壞的卡在 ST 也會壞）
   useEffect(() => {
     if (!cardUiOpen) return;
+    const registry = shellRegistry;
     const onMessage = (event: MessageEvent) => {
       const data = event.data;
       if (typeof data !== "object" || data === null || data.source !== "table-tavern-card") return;
-      // 卡片存設定：只落到宿主存檔，不碰 state——這裡一改 state 就會連動 srcdoc 重繪
+      // 卡片存設定：只落到宿主存檔，不碰 state——這裡一改 state 就會連動 srcdoc 重繪。
+      // 新舊殼重疊時只收新殼的（整份快照，舊殼晚寫會蓋掉新殼剛存的）
       if (data.kind === "storage") {
+        if (!acceptsStorage(registry, event.source, data.token)) return;
         writeCardStorage(worldId, data.entries);
         return;
       }
@@ -579,6 +592,8 @@ export function useCardInterfaceController(input: {
         return;
       }
       if (data.kind !== "input") return;
+      // 行動只收正在顯示的那份殼，而且不在翻面等待期（舊殼的按鈕對不上新畫面）
+      if (!acceptsInput(registry, event.source, data.token)) return;
       void submitTextRef.current(String(data.text ?? ""));
     };
     window.addEventListener("message", onMessage);
@@ -646,6 +661,8 @@ export function useCardInterfaceController(input: {
       pinCard,
       shellDoc: cardShellDoc,
       shellKey: cardShellKey,
+      shellIdentity,
+      shellRegistry,
       chat,
       mvu,
       open,
@@ -664,6 +681,8 @@ export function useCardInterfaceController(input: {
       pinCard,
       cardShellDoc,
       cardShellKey,
+      shellIdentity,
+      shellRegistry,
       chat,
       open,
       close,

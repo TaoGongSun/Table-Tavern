@@ -27,7 +27,6 @@ mvu-zod-semantics 施工中（`mvu-zod-semantics` 分支，已登記 HANDOFF）�
 - ①的做法：介面桌停用角色點名（不做回合聚合正文；代價是介面桌失去多角色開口）。〔作者裁決 2026-10-27〕
 
 - [cardformat-presence-autohide](tasks/cardformat-presence-autohide.md) — 沒重構的顯示腳本桌不報 present，換幕後原卡主角色被自動隱藏（順序②） — 下一步：獨立修，不再與 character-presence 同條件合修
-- [shell-update-flash](tasks/shell-update-flash.md) — 卡片介面殼更新無閃白：postMessage ready 取代 load 事件重建雙緩衝（順序③） — 下一步：先校準閃白量測，不依門檻直接做雙緩衝
 - [character-presence](tasks/character-presence.md) — 卡片自訂名冊欄位（如駐留角色）接到既有在場機制（順序④） — 下一步：開工前先拍兩點（怎麼認名冊欄位、名冊與 present 不一致時誰優先）；在場規則搬出 chat.rs 跟著本案做；包 4 已做的在場過濾與自動上下場不重做
 
 ## 階段 D：引擎行為實聊

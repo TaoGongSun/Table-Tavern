@@ -1,11 +1,12 @@
 // @vitest-environment happy-dom
-// 覆蓋層的讀訊息推送：快照變動時推、iframe load 時補推，帶目前這支殼的 token，只送進目前的 iframe。
+// 覆蓋層：殼雙緩衝（背面載、ready 翻面、逾時強制翻、硬切、鎖定）與讀訊息推送（帶這份殼的 token，只送進它的 iframe）。
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildOverlayComposer, CardInterfaceOverlay, type OverlayComposer } from "./CardInterfaceOverlay";
 import { type CardChat } from "./card-chat-shim";
+import { createShellRegistry, type ShellRegistry } from "./shell-frames/shell-frames-state";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -32,18 +33,21 @@ const chatB: CardChat = {
   ],
 };
 
-describe("CardInterfaceOverlay chat push", () => {
+describe("CardInterfaceOverlay 殼雙緩衝與讀訊息推送", () => {
   let root: Root | null = null;
   let host: HTMLDivElement | null = null;
+  let registry: ShellRegistry = createShellRegistry();
 
   afterEach(() => {
     act(() => root?.unmount());
     host?.remove();
     root = null;
     host = null;
+    registry = createShellRegistry();
+    vi.useRealTimers();
   });
 
-  async function render(chat: CardChat | null, shellKey: string) {
+  async function render(chat: CardChat | null, shellKey: string, identity = "桌A") {
     if (root === null) {
       host = document.createElement("div");
       document.body.appendChild(host);
@@ -51,31 +55,54 @@ describe("CardInterfaceOverlay chat push", () => {
     }
     await act(async () =>
       root?.render(
-        <CardInterfaceOverlay generatingName={null} shellDoc="<html></html>" shellKey={shellKey} chat={chat} onAdvanceScene={() => {}} advanceDisabled={false} onClose={() => {}} composer={composer()} />,
+        <CardInterfaceOverlay
+          generatingName={null}
+          shellDoc={`<html>${shellKey}</html>`}
+          shellKey={shellKey}
+          shellIdentity={identity}
+          shellRegistry={registry}
+          chat={chat}
+          onAdvanceScene={() => {}}
+          advanceDisabled={false}
+          onClose={() => {}}
+          composer={composer()}
+        />,
       ),
     );
   }
 
-  function spyFrame() {
-    const frame = host!.querySelector("iframe")!;
+  const frames = () => [...host!.querySelectorAll<HTMLIFrameElement>("iframe")];
+  const frameOf = (key: string) => host!.querySelector<HTMLIFrameElement>(`iframe[data-shell-key="${key}"]`)!;
+
+  function spyFrame(key: string) {
+    const frame = frameOf(key);
     const postMessage = vi.fn();
-    Object.defineProperty(frame, "contentWindow", { configurable: true, value: { postMessage } });
-    return { frame, postMessage };
+    const view = { postMessage };
+    Object.defineProperty(frame, "contentWindow", { configurable: true, value: view });
+    return { frame, postMessage, view };
   }
 
-  it("updates before load are pushed, and load pushes the latest snapshot again", async () => {
+  async function ready(source: unknown, token: string) {
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: { source: "table-tavern-card", kind: "ready", token, reason: "raf", t: { dcl: 1, raf: 2, sent: 2 } },
+          source: source as Window,
+        }),
+      );
+    });
+  }
+
+  it("同一份殼：快照變動就推；殼回報 ready 再推一次最新的", async () => {
     await render(chatA, "k1");
-    const { frame, postMessage } = spyFrame();
-    // 還沒 load 就有新一樓
+    const { postMessage, view } = spyFrame("k1");
     await render(chatB, "k1");
     expect(postMessage).toHaveBeenLastCalledWith(
       { source: "table-tavern-host", kind: "chat", token: "k1", chat: chatB, mvu: null },
       "*",
     );
     postMessage.mockClear();
-    await act(async () => {
-      frame.dispatchEvent(new Event("load"));
-    });
+    await ready(view, "k1");
     expect(postMessage).toHaveBeenCalledTimes(1);
     expect(postMessage).toHaveBeenLastCalledWith(
       { source: "table-tavern-host", kind: "chat", token: "k1", chat: chatB, mvu: null },
@@ -83,15 +110,33 @@ describe("CardInterfaceOverlay chat push", () => {
     );
   });
 
-  it("a new shell key mounts a new iframe and pushes carry the new token only", async () => {
+  it("首開直接繪：只有一支、是 front、沒有擋板", async () => {
     await render(chatA, "k1");
-    const old = spyFrame();
+    expect(frames()).toHaveLength(1);
+    expect(frameOf("k1").dataset.shellRole).toBe("front");
+    expect(host!.querySelector("[data-shell-lock]")).toBeNull();
+    expect(registry.locked).toBe(false);
+  });
+
+  it("同桌換殼：新殼掛在背面、舊殼留著、鎖定；新殼 ready 才翻面，翻面不換元素、舊殼卸掉", async () => {
+    await render(chatA, "k1");
+    const old = spyFrame("k1");
     await render(chatB, "k2");
-    const fresh = spyFrame();
-    expect(fresh.frame).not.toBe(old.frame);
-    await act(async () => {
-      fresh.frame.dispatchEvent(new Event("load"));
-    });
+    expect(frames().map((frame) => frame.dataset.shellRole)).toEqual(["front", "pending"]);
+    const fresh = spyFrame("k2");
+    expect(host!.querySelector("[data-shell-lock]")).not.toBeNull();
+    expect(frames().every((frame) => frame.inert && frame.tabIndex === -1)).toBe(true);
+    expect(registry).toMatchObject({ locked: true, front: { key: "k1" }, pending: { key: "k2" } });
+    // 舊殼的 ready、token 不對的 ready 都不翻面
+    await ready(old.view, "k1");
+    await ready(fresh.view, "k1");
+    expect(frames()).toHaveLength(2);
+    await ready(fresh.view, "k2");
+    expect(frames()).toEqual([fresh.frame]);
+    expect(fresh.frame.dataset.shellRole).toBe("front");
+    expect(fresh.frame.inert).toBe(false);
+    expect(host!.querySelector("[data-shell-lock]")).toBeNull();
+    expect(registry).toMatchObject({ locked: false, front: { key: "k2" }, pending: null });
     expect(old.postMessage).not.toHaveBeenCalled();
     expect(fresh.postMessage).toHaveBeenLastCalledWith(
       { source: "table-tavern-host", kind: "chat", token: "k2", chat: chatB, mvu: null },
@@ -99,12 +144,52 @@ describe("CardInterfaceOverlay chat push", () => {
     );
   });
 
+  it("等待期又換殼：丟掉舊的背面那支、front 不動；逾時從鎖定起點算，到時強制翻到最新的", async () => {
+    vi.useFakeTimers();
+    await render(chatA, "k1");
+    await render(chatA, "k2");
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+    await render(chatA, "k3");
+    expect(frames().map((frame) => frame.dataset.shellKey)).toEqual(["k1", "k3"]);
+    await act(async () => {
+      vi.advanceTimersByTime(499);
+    });
+    expect(frames()).toHaveLength(2);
+    await act(async () => {
+      vi.advanceTimersByTime(10);
+    });
+    expect(frames().map((frame) => [frame.dataset.shellKey, frame.dataset.shellRole])).toEqual([["k3", "front"]]);
+  });
+
+  it("換桌（顯示對象不同）硬切：舊的立刻卸、新的直接當 front", async () => {
+    await render(chatA, "k1", "桌A");
+    await render(chatA, "k2", "桌B");
+    expect(frames().map((frame) => [frame.dataset.shellKey, frame.dataset.shellRole])).toEqual([["k2", "front"]]);
+    expect(registry.locked).toBe(false);
+  });
+
+  it("等待期回到正在顯示的那份：丟掉背面、解鎖", async () => {
+    await render(chatA, "k1");
+    await render(chatA, "k2");
+    await render(chatA, "k1");
+    expect(frames().map((frame) => frame.dataset.shellKey)).toEqual(["k1"]);
+    expect(registry.locked).toBe(false);
+  });
+
+  it("鎖定時焦點在舊殼裡就移到擋板", async () => {
+    await render(chatA, "k1");
+    frameOf("k1").focus();
+    expect(document.activeElement).toBe(frameOf("k1"));
+    await render(chatA, "k2");
+    expect(document.activeElement).toBe(host!.querySelector("[data-shell-lock]"));
+  });
+
   it("no snapshot, no push", async () => {
     await render(null, "k1");
-    const { frame, postMessage } = spyFrame();
-    await act(async () => {
-      frame.dispatchEvent(new Event("load"));
-    });
+    const { postMessage, view } = spyFrame("k1");
+    await ready(view, "k1");
     expect(postMessage).not.toHaveBeenCalled();
   });
 
@@ -120,6 +205,8 @@ describe("CardInterfaceOverlay chat push", () => {
             generatingName={null}
             shellDoc="<html></html>"
             shellKey="k1"
+            shellIdentity="桌A"
+            shellRegistry={createShellRegistry()}
             chat={chatA}
             onAdvanceScene={onAdvanceScene}
             advanceDisabled={advanceDisabled}
@@ -160,6 +247,8 @@ describe("CardInterfaceOverlay 分頁與輸入列", () => {
           generatingName={null}
           shellDoc="<html></html>"
           shellKey="k1"
+          shellIdentity="桌A"
+          shellRegistry={createShellRegistry()}
           chat={chatA}
           onAdvanceScene={() => {}}
           advanceDisabled={false}

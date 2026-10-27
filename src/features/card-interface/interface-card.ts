@@ -4,6 +4,7 @@ import { buildChatShimSource, scriptLiteral, type CardChat } from "./card-chat-s
 import { buildMvuShimSource, type CardMvu } from "./mvu/card-mvu-shim";
 import { buildSandboxLibs } from "./card-sandbox-libs";
 import { CARD_STORAGE_LIMIT, type CardStorage } from "./card-storage";
+import { buildReadySignalSource } from "./shell-frames/shell-ready";
 
 export interface InterfaceScript {
   name: string;
@@ -506,7 +507,7 @@ ${buildStorageShimSource(seed, token)}
  * 把殼包成可直接餵給沙盒 iframe srcdoc 的完整文件（含宿主橋接墊片）。
  * seed＝這桌上次存下的卡片設定，開場回填進沙盒 localStorage。
  * chat＝本場讀訊息快照與這份文件的 token；mvu＝MVU 變數快照（null＝這桌沒有 MVU 卡，不定義 MVU 函式）。
- * 順序：內建全域庫 → 讀訊息 → MVU → 橋接 → 卡片自己的 script。讀訊息與 MVU 墊片趕在橋接墊片覆寫
+ * 順序：ready 握手 → 內建全域庫 → 讀訊息 → MVU → 橋接 → 卡片自己的 script。讀訊息與 MVU 墊片趕在橋接墊片覆寫
  * window.parent 之前收好真 parent。chat 為 null＝讀訊息與 MVU 函式都不定義，卡片照它自己的退路走。
  */
 export function buildShellDocument(
@@ -514,10 +515,11 @@ export function buildShellDocument(
   seed: CardStorage = {},
   chat: { chat: CardChat; token: string; mvu?: CardMvu | null } | null = null,
 ): string {
+  const readyShim = chat === null ? "" : `<script>${buildReadySignalSource(scriptLiteral(chat.token))}</script>`;
   const chatShim = chat === null ? "" : `<script>${buildChatShimSource(chat.chat, chat.token)}</script>`;
   const mvuShim =
     chat === null || !chat.mvu ? "" : `<script>${buildMvuShimSource(chat.mvu, chat.token)}</script>`;
-  const shim = buildSandboxLibs() + chatShim + mvuShim + buildHostBridgeShim(seed, chat?.token);
+  const shim = readyShim + buildSandboxLibs() + chatShim + mvuShim + buildHostBridgeShim(seed, chat?.token);
   // 墊片攔不到的備案：把殼原始碼裡完整字面的 window.parent／window.top 直接改指向誘餌，
   // \b 確保只換完整字面，不誤傷 window.parentNode 或 node.parent.foo 這類正常寫法。
   const processedShell = shell.replace(/window\.parent\b/g, "window.__ttHost").replace(/window\.top\b/g, "window.__ttHost");

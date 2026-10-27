@@ -1,11 +1,13 @@
 // 卡片自帶介面的覆蓋層：打字狀態列、多卡分頁、換幕與關閉鈕、那支沙盒 iframe、底部輸入列。純 markup——
 // 「要不要掛上去」的條件留在 App（只在遊玩畫面出現），殼內容與生成狀態各由自己的 controller 擁有。
-import { type FormEvent, type ReactNode, useCallback, useEffect, useRef } from "react";
+import { type FormEvent, type ReactNode, useCallback, useEffect } from "react";
 import { t } from "../../i18n";
 import { IconClose, IconSceneAdvance, IconSend, IconStop } from "../../shared/ui/icons";
 import { type CardChat } from "./card-chat-shim";
 import { type CardMvu } from "./mvu/card-mvu-shim";
 import { wouldOverflow, type SummaryBudget } from "../play/scene-budget";
+import { ShellFrames } from "./shell-frames/ShellFrames";
+import { slotWindow, type ShellRegistry } from "./shell-frames/shell-frames-state";
 
 /** 底部輸入列：與聊天輸入框共用草稿與送出（App 包過桌面鎖的 send），停用條件由呼叫端照聊天輸入框算好 */
 export interface OverlayComposer {
@@ -78,8 +80,12 @@ interface CardInterfaceOverlayProps {
   generatingName: string | null;
   /** 介面殼的 HTML；null＝還沒備好，不掛 iframe */
   shellDoc: string | null;
-  /** 殼指紋：換一份殼就讓整支 iframe 重掛；也是讀訊息推送的 token */
+  /** 殼指紋：每份殼一支新 iframe（雙緩衝翻面）；也是讀訊息推送的 token */
   shellKey: string;
+  /** 顯示對象（桌、桌世代、殼所屬的卡）：換了就硬切、不雙緩衝 */
+  shellIdentity: string;
+  /** 兩支 iframe 的現況，宿主訊息監聽依它收卡片的行動與設定 */
+  shellRegistry: ShellRegistry;
   /** 本場讀訊息快照；變動時與 iframe load 時推給沙盒 */
   chat: CardChat | null;
   /** MVU 變數快照；與讀訊息快照同一則推送 */
@@ -101,6 +107,8 @@ export function CardInterfaceOverlay({
   generatingName,
   shellDoc,
   shellKey,
+  shellIdentity,
+  shellRegistry,
   chat,
   mvu = null,
   onAdvanceScene,
@@ -111,19 +119,22 @@ export function CardInterfaceOverlay({
   onPickCard,
   composer,
 }: CardInterfaceOverlayProps) {
-  const frameRef = useRef<HTMLIFrameElement | null>(null);
-  // 單向推送：只送到目前這支 iframe（opaque origin 只能用 "*"），帶 token 讓舊殼與別桌的殼不收
+  // 單向推送：只送到這份殼的那支 iframe（opaque origin 只能用 "*"），帶 token 讓舊殼與別桌的殼不收
   const push = useCallback(() => {
     if (chat === null) return;
-    frameRef.current?.contentWindow?.postMessage(
-      { source: "table-tavern-host", kind: "chat", token: shellKey, chat, mvu },
-      "*",
-    );
-  }, [chat, mvu, shellKey]);
-  // 逐字稿變了就推（本樓沒變、不重掛的情形）；load 時再推一次，補 doc 建好到殼初始化之間漏掉的更新
+    const target = [shellRegistry.pending, shellRegistry.front].find((slot) => slot?.key === shellKey);
+    slotWindow(target ?? null)?.postMessage({ source: "table-tavern-host", kind: "chat", token: shellKey, chat, mvu }, "*");
+  }, [chat, mvu, shellKey, shellRegistry]);
+  // 逐字稿變了就推（本樓沒變、不換殼的情形）；殼回報 ready 時再推一次，補文件建好到殼初始化之間漏掉的更新
   useEffect(() => {
     push();
   }, [push]);
+  const onReady = useCallback(
+    (key: string) => {
+      if (key === shellKey) push();
+    },
+    [push, shellKey],
+  );
 
   return (
     <div className="card-interface-overlay">
@@ -177,19 +188,15 @@ export function CardInterfaceOverlay({
           <IconClose />
         </button>
       </div>
-      {/* 單 iframe 直繪：key＝殼指紋，殼一換整支重掛（掛載時 srcdoc 就在，必然載入）。
-          殼更新瞬間可能閃一下白，換來顯示的確定性。 */}
-      {shellDoc !== null && (
-        <iframe
-          key={shellKey}
-          ref={frameRef}
-          onLoad={push}
-          className="card-interface-frame"
-          sandbox="allow-scripts"
-          srcDoc={shellDoc}
-          title={t("cardInterfaceOpen")}
-        />
-      )}
+      {/* 雙緩衝：新殼先在舊殼下面載，殼內墊片回報 ready 才翻面；首開與換桌／切卡直接繪 */}
+      <ShellFrames
+        doc={shellDoc}
+        shellKey={shellKey}
+        identity={shellIdentity}
+        registry={shellRegistry}
+        title={t("cardInterfaceOpen")}
+        onReady={onReady}
+      />
       {/* 底部輸入列：介面開著也能打自由行動（等同 ST 輸入框一直在），草稿與聊天輸入框同一份 */}
       <form className="card-interface-composer" onSubmit={composer.onSubmit}>
         {composer.notice && <p className="scene-length-hint scene-capacity-hint is-full">{composer.notice}</p>}

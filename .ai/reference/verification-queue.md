@@ -18,6 +18,12 @@
 4e. [refactor-card-png-export](../handoffs/refactor-card-png-export.md)（macOS 部分 2026-10-06 已用測試通道代測通過：三階匯出、陣容欄單一入口匯入 #3、59 MB 大卡往返、QuickLook 縮圖）：剩沒有環境的兩項——①Windows Explorer 看 #3 大卡（數十 MB）的縮圖與檔案大小顯示　②SillyTavern 匯入 #2／#3 PNG 會乾淨拒收（報找不到角色卡，不當成角色卡吃進去）。這兩項驗完本案才算實測完成。
 
 
+4f. [shell-update-flash](../handoffs/archive/shell-update-flash.md) 殼內按鈕與設定（測試通道點不到沙盒 iframe 內的按鈕；零 AI 派送或假 GM 端點）：①毛絨轉變桌介面開著，按殼內按鈕送出行動：聊天收到該句　②殼內改設定（例：主題、字號）後關掉重開介面、再走一回合：設定仍在　③送出後新殼還在背面載（等待期）時按舊殼按鈕：不送出。注意：等待期間 pending 那支殼（新殼）可以存設定，舊殼的設定寫入一律拒收。
+
+4g. [shell-update-flash](../handoffs/archive/shell-update-flash.md) 等待期鍵盤：送出後新殼在背面載的那段時間，用原生 Tab／Shift+Tab（真鍵盤，測試通道的 press 不觸發原生移焦）焦點進不了兩支 iframe 內的控制項。
+
+4h. [shell-update-flash](../handoffs/archive/shell-update-flash.md) 離線：毛絨轉變桌（殼靠 CDN 的 tailwind、daisyui、字型）斷網後走一回合：新殼最遲 1500 ms 強制翻上來（可能是半載好的殼），之後介面可繼續用、不卡住。
+
 排這梯前先確認該項驗收步驟裡沒有換幕：換幕一定走模型產前情提要摘要（`advance_scene`），避不開。
 
 ## 梯 2：要開 API 實聊、會燒額度
