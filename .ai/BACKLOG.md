@@ -5,6 +5,7 @@
 已在進行中的看 [HANDOFF.md](HANDOFF.md)，等實機驗收的看 [實測佇列](reference/verification-queue.md)。
 競品研究：[Marinara Engine 參考策略](plans/marinara_reference_notes.md)（借鏡清單 §14、強化順序 §15、研究待辦 §20 尚未立案）。
 
+- [mechanism-ledger-card-path](tasks/mechanism-ledger-card-path.md) — 角色卡路徑匯入時機制帳本把認不出的條目報成已接管（世界書路徑正確） — 下一步：梯 2 第 6 項跑完後修
 - [worldbook-keys-separator-i18n](tasks/worldbook-keys-separator-i18n.md) — 世界編輯器關鍵字分隔符寫死全形「、」，英文介面下不對 — 下一步：未排程，小修
 - [mvu-zod-semantics](tasks/mvu-zod-semantics.md) — zod 版 MVU 卡的更新語意改以 mvu_zod 為基準 — 下一步：網頁版公開後再決定〔作者裁決 2026-10-12〕
 - [mvu-meta-schema](tasks/mvu-meta-schema.md) — 非 zod MVU 卡的 schema 檢查（可擴充、必填鍵、模板） — 下一步：未排程
