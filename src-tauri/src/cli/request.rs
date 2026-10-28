@@ -166,10 +166,11 @@ pub fn codex_args(model: Option<&str>, effort: &str, allow_tools: bool) -> Vec<S
     args
 }
 
-/// agy 的 `--output-format` 與 usage 回報是 1.1.8 才有的；更舊的版本會因為不認得旗標
-/// 當場失敗。偵測到的版本字串解析不出來時放行——寧可讓呼叫失敗時帶著 CLI 自己的錯誤訊息，
-/// 也不要因為版本字串換了格式就把整條路擋死。
-pub fn agy_supports_stream_json(version: &str) -> bool {
+/// app 支援的 agy 最低版本 1.2.1：`--output-format stream-json`（1.1.8）、`--agent`（1.1.1）與
+/// 自訂代理的 `excludeDefaultComponents`（1.2.1）都要有，精簡工具集代理才成立；更舊的版本一律
+/// 擋下（AgyTooOld），不會在沒精簡的狀態下照跑。版本字串解析不出來時放行並照帶 `--agent`——
+/// 寧可讓呼叫失敗時帶著 CLI 自己的錯誤訊息，也不要因為版本字串換了格式就把整條路擋死。
+pub fn agy_version_supported(version: &str) -> bool {
     let numbers: Vec<u64> = version
         .split(|ch: char| !ch.is_ascii_digit())
         .filter(|part| !part.is_empty())
@@ -177,15 +178,17 @@ pub fn agy_supports_stream_json(version: &str) -> bool {
         .filter_map(|part| part.parse().ok())
         .collect();
     match numbers.as_slice() {
-        [major, minor, patch] => (*major, *minor, *patch) >= (1, 1, 8),
+        [major, minor, patch] => (*major, *minor, *patch) >= (1, 2, 1),
         _ => true,
     }
 }
 
 /// agy 沒有 system prompt 旗標，呼叫端把 system 併進正文。正文走 stdin（不帶 `-p`
-/// 就是單發模式），不佔命令列長度；聊天維持安全預設不開工具。
-/// allow_tools：agy 的生圖工具在無頭模式需要 command 權限、提示彈不出來會被自動拒絕
-/// （2026-07-27 實測），生圖呼叫必須帶 --dangerously-skip-permissions 才會出圖。
+/// 就是單發模式），不佔命令列長度。
+/// allow_tools＝false（聊天、旁白、卡重構）：帶 `--agent` 走 app 的精簡工具集代理
+/// （`agy_home::ensure_text_agent`），模型拿不到 run_command 等工具。
+/// allow_tools＝true（生圖）：要 generate_image，不帶代理；生圖工具在無頭模式需要 command 權限、
+/// 提示彈不出來會被自動拒絕（2026-07-27 實測），必須帶 --dangerously-skip-permissions 才會出圖。
 /// 注意：agy 對單則訊息約 195KB 以上會靜默只留開頭（2026-10-06 實測，`-p` 與 stdin 相同），
 /// 換傳遞方式解不掉，見 .ai/plans/long-prompt-scene-hint.md 發現 D。
 pub fn agy_args(model: Option<&str>, allow_tools: bool) -> Vec<String> {
@@ -196,6 +199,9 @@ pub fn agy_args(model: Option<&str>, allow_tools: bool) -> Vec<String> {
     }
     if allow_tools {
         args.push("--dangerously-skip-permissions".to_owned());
+    } else {
+        args.push("--agent".to_owned());
+        args.push(super::agy_home::TEXT_AGENT.to_owned());
     }
     // stream-json 才拿得到 usage（agy 1.1.8 起含 cache_read_tokens）；純 json 會把整包
     // 壓到最後一次吐出，串流就沒了。

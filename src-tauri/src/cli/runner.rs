@@ -19,6 +19,37 @@ const STDIN_WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(
 #[cfg(test)]
 const STDIN_WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
+/// 斷流門檻：任何一行輸出都把期限往後推這麼久（網路死、CLI 內部卡死）。
+#[cfg(not(test))]
+const STALL_WINDOW: std::time::Duration = std::time::Duration::from_secs(120);
+#[cfg(test)]
+const STALL_WINDOW: std::time::Duration = std::time::Duration::from_secs(6);
+/// 第一個正文或思考事件出現前的保底（從 spawn 起算）：期限取「300 秒保底」與「最後一行＋120 秒」
+/// 較晚者，所以不是最多 300 秒——一直有行（init、stderr）就一直續。agy 思考時 stdout 完全沒輸出，
+/// 長盤點會靜默一兩百秒。與 API 路徑的首個進展窗同值（transport/stall.rs）；
+/// init 行與 stderr 不算進展、不解除保底〔作者裁決 2026-10-28：選 A〕。
+#[cfg(not(test))]
+const FIRST_PROGRESS_WINDOW: std::time::Duration = std::time::Duration::from_secs(300);
+#[cfg(test)]
+const FIRST_PROGRESS_WINDOW: std::time::Duration = std::time::Duration::from_secs(9);
+/// 收到成功的收尾事件後等程序自己退出的寬限：agy 1.4.8 交完 result 後可能卡在背景的
+/// 對話標題產生、永不退出（plans/agy-long-survey-fail.md）。期限從收到收尾那刻起算、不因新行重算。
+#[cfg(not(test))]
+const DONE_GRACE: std::time::Duration = std::time::Duration::from_secs(10);
+#[cfg(test)]
+const DONE_GRACE: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// 這則錯誤是不是斷流逾時（`cli_stalled`／`cli_stalled_after_output`）。lane 據此不丟線重開重試：
+/// 重試會把等待疊成兩倍。
+pub fn is_stall_error(message: &str) -> bool {
+    ["cli_stalled", "cli_stalled_after_output"]
+        .iter()
+        .any(|code| {
+            message.contains(&format!(r#"\"code\":\"{code}\""#))
+                || message.contains(&format!(r#""code":"{code}""#))
+        })
+}
+
 /// `run_cli_cancellable` 的收場。中止不是錯誤：呼叫端要拿半截文字去做抹寫，不能走失敗重試。
 pub enum CliFinish {
     Completed(String),
@@ -282,9 +313,14 @@ async fn drive_child(
     let mut agy_conversation_id: Option<String> = None;
     // 子程序死法收網（2026-08-12，跨平台 tokio API）：
     // ①程序退出但管線不 EOF（孫程序繼承 fd）：退出後 800ms 沒新行＝強制收尾；
-    // ②程序活著但斷流（網路死、CLI 內部卡死）：120 秒無任何 stdout/stderr 行＝殺程序回錯；
-    //   （API 通道的對應偵測在 transport/stall.rs，數的是模型進展而非輸出行，常數不共用。）
-    // ③stdin 餵不進（上方 60 秒逾時）；④crash 無收尾事件（迴圈後 exit status 檢查）。
+    // ②程序活著但斷流（網路死、CLI 內部卡死）：STALL_WINDOW 無任何 stdout/stderr 行＝殺程序回錯；
+    //   第一個正文／思考事件前另有 FIRST_PROGRESS_WINDOW 保底（agy 思考期間不吐任何行）；
+    // ③stdin 餵不進（上方 60 秒逾時）；④crash 無收尾事件（迴圈後 exit status 檢查）；
+    // ⑤交完成功收尾卻不退出：DONE_GRACE 後殺掉，照常交回全文。
+    let started = tokio::time::Instant::now();
+    let mut progressed = false;
+    let mut grace_deadline: Option<tokio::time::Instant> = None;
+    let mut grace_armed = false;
     let mut exited = false;
     let mut stall: Option<String> = None;
     let mut aborted = false;
@@ -299,11 +335,25 @@ async fn drive_child(
         // 收尾還沒到時，取消排在讀管線之前：輸出一直有字時，biased 不會把停止排到後面。
         // 已經收到收尾行就關掉這支：完成與停止同時就緒時，完成贏，交回全文。
         let arm_cancel = cancel.is_some() && done.is_none();
+        let stall_at = match progressed {
+            true => tokio::time::Instant::now() + STALL_WINDOW,
+            false => {
+                (tokio::time::Instant::now() + STALL_WINDOW).max(started + FIRST_PROGRESS_WINDOW)
+            }
+        };
         let line = tokio::select! {
             biased;
             _ = wait_cancel(&mut cancel), if arm_cancel => {
                 aborted = true;
                 break;
+            }
+            // 寬限排在讀管線之前：程序一直吐 stderr 時期限照樣輪得到
+            _ = tokio::time::sleep_until(grace_deadline.unwrap_or(started)), if grace_deadline.is_some() && !exited => {
+                // 殺掉後交給下面的 wait 分支收屍、800ms 排空，再走正常完成路徑
+                let _ = child.start_kill();
+                grace_deadline = None;
+                stdin_open = false;
+                continue;
             }
             line = lines.next_line(), if stdout_open => match line? {
                 LineRead::Line(line) => line,
@@ -366,9 +416,13 @@ async fn drive_child(
                 stdin_open = false;
                 continue;
             },
-            _ = tokio::time::sleep(std::time::Duration::from_secs(120)), if !exited => {
-                // 網路或程序卡死
-                stall = Some(UiMsg::CliStalled.to_string());
+            _ = tokio::time::sleep_until(stall_at), if !exited => {
+                // 還沒吐正文＝可能仍在思考；吐過正文＝中途斷流
+                stall = Some(match full_text.is_empty() {
+                    true => UiMsg::CliStalled,
+                    false => UiMsg::CliStalledAfterOutput,
+                }
+                .to_string());
                 break;
             },
         };
@@ -501,7 +555,11 @@ async fn drive_child(
                 }
             }
         }
-        match parse(&line) {
+        let parsed = parse(&line);
+        if !matches!(parsed, CliLine::Other) {
+            progressed = true;
+        }
+        match parsed {
             CliLine::Delta(text) => {
                 if let Some(reason) = text_guard.push(&text) {
                     runaway = Some((reason, text_guard.chars()));
@@ -528,6 +586,11 @@ async fn drive_child(
                         runaway = Some((reason, text_guard.chars()));
                         break;
                     }
+                }
+                // 成功收尾才起算寬限，而且只起算一次（codex／grok 的頂層 error 可能只是過程通知）
+                if !is_error && !grace_armed {
+                    grace_armed = true;
+                    grace_deadline = Some(tokio::time::Instant::now() + DONE_GRACE);
                 }
                 done = Some((text, is_error));
             }
@@ -615,3 +678,6 @@ mod tests;
 
 #[cfg(test)]
 mod runaway_tests;
+
+#[cfg(test)]
+mod finish_tests;

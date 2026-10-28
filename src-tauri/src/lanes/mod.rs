@@ -910,6 +910,21 @@ pub(crate) async fn run_turn(
                     aborted: false,
                 });
             }
+            // 斷流逾時不重開重試（重試會把等待疊成兩倍，超過玩家耐性）：收尾比照輸出失控，
+            // 下一輪靠 pending_rewrite／撤線重開，這輪回錯
+            Err(error) if !opening && cli::is_stall_error(&error.to_string()) => {
+                settle_abort(
+                    call,
+                    world_id,
+                    &key,
+                    &session_id,
+                    input.confidential.as_deref(),
+                    input.prefix.as_deref(),
+                    &mut store,
+                    &store_path,
+                )?;
+                return Err(error.to_string());
+            }
             // 續聊失敗（session 檔認不得、CLI 拒絕 resume 等）＝丟線重開全量再試一次
             Err(_) if !opening => {
                 if call.provider == LaneProvider::Grok {

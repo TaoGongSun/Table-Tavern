@@ -107,19 +107,71 @@ pub(crate) fn ensure_keychain_link(agy_home: &Path, real_home: &Path) -> Result<
         Err(error) => return Err(failed(format!("{}：{error}", link.display()))),
     }
     // 不存在、斷鏈或指向別處：同目錄唯一臨時名建好再 rename 蓋上，並行呼叫不會看到半成品
-    let mut nonce = [0u8; 8];
-    getrandom::fill(&mut nonce).map_err(|error| failed(error.to_string()))?;
-    let temp = library.join(format!(
-        ".Keychains.{}.{}",
-        std::process::id(),
-        nonce.iter().map(|b| format!("{b:02x}")).collect::<String>()
-    ));
+    let temp = temp_beside(&library, KEYCHAIN_LINK[1])?;
     let result = make_symlink(&target, &temp).and_then(|()| std::fs::rename(&temp, &link));
     if let Err(error) = result {
         let _ = std::fs::remove_file(&temp);
         return Err(failed(format!("{}：{error}", link.display())));
     }
     Ok(())
+}
+
+/// app 專用代理的名字（`--agent` 帶這個）。檔案由 `ensure_text_agent` 維護。
+pub const TEXT_AGENT: &str = "table-tavern-text";
+
+/// 精簡工具集代理（plans/agy-long-survey-fail.md）：`tools: []` 加 `excludeDefaultComponents`
+/// 拿掉 agy 預設的代理系統提示與約 60 個工具（1.4.8 實測只剩內建的 manage_task）。
+/// 模型因此不會為了「看工作區」去叫 run_command 被無頭模式擋掉，思考量也降到約 1/3。
+/// 本文只是一句中性說明，劇情指示照舊由 app 放在 stdin 正文。
+const TEXT_AGENT_FILE: &str = "---
+name: table-tavern-text
+description: Table Tavern text replies (maintained by the app; do not edit)
+tools: []
+excludeDefaultComponents: true
+mainAgent: true
+subagent: false
+---
+Respond to the user's message with plain text.
+";
+
+/// 確保 `agy_home/.gemini/config/agents/table-tavern-text.md` 是上面那份內容：相同就不動，
+/// 不同或不存在就同目錄臨時檔＋rename 寫入。原位被資料夾或連結佔住、或任一步失敗都回錯——
+/// agy 找不到 `--agent` 指名的代理時可能靜默退回預設代理，那就又回到會叫工具的老樣子。
+pub(crate) fn ensure_text_agent(agy_home: &Path) -> Result<(), String> {
+    let dir = agy_home.join(".gemini").join("config").join("agents");
+    std::fs::create_dir_all(&dir).map_err(|error| failed(format!("{}：{error}", dir.display())))?;
+    let path = dir.join(format!("{TEXT_AGENT}.md"));
+    match std::fs::symlink_metadata(&path) {
+        Ok(meta) if meta.is_file() => {
+            let current = std::fs::read(&path)
+                .map_err(|error| failed(format!("{}：{error}", path.display())))?;
+            if current == TEXT_AGENT_FILE.as_bytes() {
+                return Ok(());
+            }
+        }
+        Ok(_) => return Err(failed(format!("{} 不是一般檔案", path.display()))),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(failed(format!("{}：{error}", path.display()))),
+    }
+    let temp = temp_beside(&dir, TEXT_AGENT)?;
+    let result =
+        std::fs::write(&temp, TEXT_AGENT_FILE).and_then(|()| std::fs::rename(&temp, &path));
+    if let Err(error) = result {
+        let _ = std::fs::remove_file(&temp);
+        return Err(failed(format!("{}：{error}", path.display())));
+    }
+    Ok(())
+}
+
+/// 同目錄、每次唯一的臨時名（並行呼叫各寫各的，rename 時才換上）。
+fn temp_beside(dir: &Path, stem: &str) -> Result<PathBuf, String> {
+    let mut nonce = [0u8; 8];
+    getrandom::fill(&mut nonce).map_err(|error| failed(error.to_string()))?;
+    Ok(dir.join(format!(
+        ".{stem}.{}.{}",
+        std::process::id(),
+        nonce.iter().map(|b| format!("{b:02x}")).collect::<String>()
+    )))
 }
 
 #[cfg(unix)]
@@ -251,6 +303,47 @@ mod tests {
         let error = ensure_keychain_link(&agy, &dir.path().join("nobody")).unwrap_err();
         assert!(error.contains("agy_profile_failed"), "{error}");
         assert!(!agy.join("Library/Keychains").exists());
+    }
+
+    #[test]
+    fn text_agent_is_written_once_and_rewritten_when_changed() {
+        let (_dir, _, agy, _) = setup();
+        ensure_text_agent(&agy).unwrap();
+        let file = agy.join(".gemini/config/agents/table-tavern-text.md");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), TEXT_AGENT_FILE);
+        let written = std::fs::metadata(&file).unwrap().modified().unwrap();
+        ensure_text_agent(&agy).unwrap();
+        assert_eq!(
+            std::fs::metadata(&file).unwrap().modified().unwrap(),
+            written
+        );
+        std::fs::write(&file, "tools: [run_command]").unwrap();
+        ensure_text_agent(&agy).unwrap();
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), TEXT_AGENT_FILE);
+        // 沒留下臨時檔
+        assert_eq!(
+            std::fs::read_dir(file.parent().unwrap()).unwrap().count(),
+            1
+        );
+    }
+
+    #[test]
+    fn text_agent_slot_taken_by_non_file_is_an_error() {
+        let (dir, _, agy, _) = setup();
+        let file = agy.join(".gemini/config/agents/table-tavern-text.md");
+        std::fs::create_dir_all(&file).unwrap();
+        let error = ensure_text_agent(&agy).unwrap_err();
+        assert!(error.contains("agy_profile_failed"), "{error}");
+        std::fs::remove_dir(&file).unwrap();
+        std::os::unix::fs::symlink(dir.path(), &file).unwrap();
+        assert!(ensure_text_agent(&agy).is_err());
+        // 建不出資料夾（.gemini 是檔案）也回錯
+        let (_dir2, _, agy2, _) = setup();
+        std::fs::create_dir_all(&agy2).unwrap();
+        std::fs::write(agy2.join(".gemini"), b"x").unwrap();
+        assert!(ensure_text_agent(&agy2)
+            .unwrap_err()
+            .contains("agy_profile_failed"));
     }
 
     #[test]

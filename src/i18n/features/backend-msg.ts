@@ -292,6 +292,7 @@ export const BACKEND_MSG_PARAMS: Record<string, Record<string, BackendParamType>
   cli_reply_error: { error: "string" },
   cli_stdin_timeout: {},
   cli_stalled: {},
+  cli_stalled_after_output: {},
   cli_crashed: { status: "string", tail: "string" },
   cli_no_reply: { status: "string", tail: "string" },
   cli_turn_failed: { cli: "string" },

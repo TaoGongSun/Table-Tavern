@@ -61,6 +61,7 @@ fn agy_profile(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     cli::agy_home::prepare_home(&home)?;
     #[cfg(target_os = "macos")]
     cli::agy_home::ensure_keychain_link(&home, &cli::agy_home::real_home()?)?;
+    cli::agy_home::ensure_text_agent(&home)?;
     Ok(home)
 }
 
@@ -170,8 +171,7 @@ pub(crate) async fn prepare_lane_call(
         .into_iter()
         .find(|info| info.id == id)
         .ok_or_else(|| UiMsg::CliNotFound { cli: id.to_owned() }.to_string())?;
-    if provider == lanes::LaneProvider::Agy && !cli::agy_supports_stream_json(&info.version) {
-        // 1.1.8 起才有 --output-format stream-json，拿得到用量與 conversation ID
+    if provider == lanes::LaneProvider::Agy && !cli::agy_version_supported(&info.version) {
         return Err(UiMsg::AgyTooOld {
             version: info.version,
         }
@@ -473,8 +473,7 @@ pub(crate) async fn stream_turn_reporting_truncation(
             }
             .to_string()
         })?;
-    if transport_kind == "agy" && !cli::agy_supports_stream_json(&info.version) {
-        // 1.1.8 起才有 --output-format stream-json，拿得到用量
+    if transport_kind == "agy" && !cli::agy_version_supported(&info.version) {
         return Err(UiMsg::AgyTooOld {
             version: info.version,
         }

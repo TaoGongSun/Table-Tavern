@@ -23,19 +23,20 @@ fn flatten_restores_speaker_prefix_and_appends_turn_instruction() {
     assert!(prompt.ends_with("現在輪到「狐狸」回應。"));
 }
 
-/// agy 1.1.8 以下不認 --output-format，要在打過去之前擋下；版本字串認不得就放行，
-/// 讓呼叫失敗時帶著 CLI 自己的錯誤訊息，而不是因為格式換了就把整條路擋死。
+/// agy 1.2.1 以下沒有精簡工具集代理要的 `excludeDefaultComponents`（更舊的連 stream-json 都沒有），
+/// 要在打過去之前擋下；版本字串認不得就放行。
 #[test]
-fn agy_stream_json_support_gates_on_1_1_8() {
-    assert!(!agy_supports_stream_json("1.1.7"));
-    assert!(!agy_supports_stream_json("1.0.99"));
-    assert!(!agy_supports_stream_json("0.9.9"));
-    assert!(agy_supports_stream_json("1.1.8"));
-    assert!(agy_supports_stream_json("1.1.17"));
-    assert!(agy_supports_stream_json("2.0.0"));
-    assert!(agy_supports_stream_json("agy version 1.1.17 (darwin)"));
-    assert!(agy_supports_stream_json("")); // 認不得就放行
-    assert!(agy_supports_stream_json("nightly"));
+fn agy_version_gates_on_1_2_1() {
+    assert!(!agy_version_supported("1.2.0"));
+    assert!(!agy_version_supported("1.1.17"));
+    assert!(!agy_version_supported("1.1.7"));
+    assert!(!agy_version_supported("0.9.9"));
+    assert!(agy_version_supported("1.2.1"));
+    assert!(agy_version_supported("1.4.8"));
+    assert!(agy_version_supported("2.0.0"));
+    assert!(agy_version_supported("agy version 1.4.8 (darwin)"));
+    assert!(agy_version_supported("")); // 認不得就放行
+    assert!(agy_version_supported("nightly"));
 }
 
 /// 共線後 messages 已自足：label 傳空就不再補名字前綴（否則「加爾：雷恩：……」），
@@ -68,19 +69,34 @@ fn agy_args_carry_no_prompt_on_the_command_line() {
         [
             "--model",
             "Claude Sonnet 4.6 (Thinking)",
+            "--agent",
+            "table-tavern-text",
             "--output-format",
             "stream-json"
         ]
     );
-    assert_eq!(agy_args(None, false), ["--output-format", "stream-json"]);
+    assert_eq!(
+        agy_args(None, false),
+        [
+            "--agent",
+            "table-tavern-text",
+            "--output-format",
+            "stream-json"
+        ]
+    );
+    // 生圖要 generate_image：不帶精簡代理
     let image = agy_args(None, true);
     assert!(image.contains(&"--dangerously-skip-permissions".to_owned()));
+    assert!(!image.contains(&"--agent".to_owned()));
     assert!(!image.contains(&"-p".to_owned()));
 }
 
 #[test]
 fn agy_session_resumes_exact_id_and_body_sends_only_delta() {
     let open = agy_session_args(Some("gemini-x"), None);
+    assert!(open
+        .windows(2)
+        .any(|pair| pair == ["--agent", "table-tavern-text"]));
     assert!(!open.contains(&"--conversation".to_owned()));
     assert!(!open.contains(&"-p".to_owned()));
     assert_eq!(

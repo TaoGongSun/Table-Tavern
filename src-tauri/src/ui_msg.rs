@@ -375,7 +375,10 @@ pub enum UiMsg {
         error: String,
     },
     CliStdinTimeout,
+    /// 還沒吐出任何正文就逾時（可能仍在思考）。
     CliStalled,
+    /// 已經吐出正文後斷流。
+    CliStalledAfterOutput,
     /// status 是程序結束狀態原文，tail 是 stderr 最後幾行原文。
     CliCrashed {
         status: String,

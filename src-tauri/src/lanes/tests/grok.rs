@@ -97,7 +97,7 @@ if rid and os.environ.get('FAKE_RUNAWAY_RESUME') == '1':
     while True:
         print(json.dumps({'type': 'text', 'data': ' '}), flush=True)
 print(json.dumps({'type': 'text', 'data': reply}, ensure_ascii=False))
-print(json.dumps({'type': 'end', 'usage': {'input_tokens': 100, 'cache_read_input_tokens': 128, 'output_tokens': 5}}))
+print(json.dumps({'type': 'end', 'stopReason': 'end_turn', 'usage': {'input_tokens': 100, 'cache_read_input_tokens': 128, 'output_tokens': 5}}))
 "#,
     )
     .unwrap();

@@ -24,11 +24,11 @@ pub use detect::detect_clis;
 pub(crate) use detect::find_binary;
 pub use prompt_file::PromptFile;
 pub use request::{
-    agy_args, agy_body, agy_session_args, agy_session_body, agy_supports_stream_json, claude_args,
+    agy_args, agy_body, agy_session_args, agy_session_body, agy_version_supported, claude_args,
     claude_model_for, claude_session_args, codex_args, codex_effort_for, flatten_messages,
     grok_args, grok_envs, grok_payload, grok_session_args, tier_override,
 };
-pub use runner::{run_cli, run_cli_cancellable, CliFinish};
+pub use runner::{is_stall_error, run_cli, run_cli_cancellable, CliFinish};
 pub use stream::{
     parse_agy_line, parse_agy_usage, parse_claude_line, parse_claude_usage, parse_codex_line,
     parse_codex_usage, parse_grok_line, parse_grok_usage,

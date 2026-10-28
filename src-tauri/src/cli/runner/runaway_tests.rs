@@ -138,7 +138,7 @@ async fn length_cap_applies_only_to_full_policy() {
     let body = r#"
 for _ in range(400):
     print('{"type":"text","data":"' + '正常的長篇敘述。' * 12 + '"}', flush=True)
-print('{"type":"end"}', flush=True)
+print('{"type":"end","stopReason":"end_turn"}', flush=True)
 "#;
     let fx = fake("length", body);
     assert_eq!(
@@ -202,7 +202,7 @@ const GROK_BLANK_THOUGHT: &str = r#"
 for _ in range(3000):
     print('{"type":"thought","data":" "}', flush=True)
 print('{"type":"text","data":"好"}', flush=True)
-print('{"type":"end"}', flush=True)
+print('{"type":"end","stopReason":"end_turn"}', flush=True)
 "#;
 
 #[tokio::test]
@@ -275,7 +275,7 @@ time.sleep(0.3)
 for i in range(20):
     print('noise', i, file=sys.stderr, flush=True)
 time.sleep(0.3)
-sys.stdout.write('ta":"完整"}\r\n{"type":"end"}')
+sys.stdout.write('ta":"完整"}\r\n{"type":"end","stopReason":"end_turn"}')
 sys.stdout.flush()
 "#,
     );

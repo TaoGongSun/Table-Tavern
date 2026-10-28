@@ -193,6 +193,10 @@ with open(os.path.join(d, 'calls.jsonl'), 'a') as f:
     f.write(json.dumps({'args': args, 'prompt': prompt}, ensure_ascii=False) + '\n')
 if cid and cid != 'agy-conversation-1':
     sys.exit(3)
+if cid and os.environ.get('FAKE_STALL_RESUME') == '1':
+    print(json.dumps({'event': 'init', 'conversation_id': cid}), flush=True)
+    import time
+    time.sleep(60)
 if cid and os.environ.get('FAKE_RUNAWAY_RESUME') == '1':
     print(json.dumps({'event': 'init', 'conversation_id': cid}), flush=True)
     while True:
@@ -206,7 +210,11 @@ print(json.dumps({'event': 'result', 'result': {
     'status': 'SUCCESS', 'response': os.environ.get('FAKE_REPLY_PREFIX', '') + '回覆' + str(turn), 'num_turns': turn,
     'usage': {'input_tokens': input_tokens, 'output_tokens': output_tokens,
               'thinking_tokens': 20, 'cache_read_tokens': cached,
-              'total_tokens': input_tokens + output_tokens}}}, ensure_ascii=False))
+              'total_tokens': input_tokens + output_tokens}}}, ensure_ascii=False), flush=True)
+if os.environ.get('FAKE_HANG_AFTER_RESULT') == '1':
+    import signal, time
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    time.sleep(60)
 "#,
     )
     .unwrap();
@@ -1626,6 +1634,7 @@ mod opening_raw;
 mod owner;
 mod runaway;
 mod solo_restart;
+mod stall;
 mod status_strip;
 mod tail_threshold;
 
