@@ -27,6 +27,8 @@ export const es: Record<MsgKey, string> = {
   usageSavedAbout: "ahorro aprox.",
   usageBarHit: "Leído de caché",
   usageBarFull: "Precio completo",
+  usageBarOurs: "Lo nuestro (est.)",
+  usageBarVendor: "Integrado",
   usageDetailsToggle: "Ver detalles",
   usageRounds: "Rondas",
   usageInputTokens: "Entrada",
@@ -54,6 +56,10 @@ export const es: Record<MsgKey, string> = {
   usageCacheUnknownWhy: "Esta conexión no informa cifras de caché; acertar y fallar se ven igual.",
   usageCacheNotExpected: "Mesa nueva / línea nueva",
   usageCacheNotExpectedWhy: "Todavía no había nada que reutilizar; no es una avería.",
+  usageCacheVendorOnly: "Solo la parte integrada de la CLI en caché",
+  usageCacheVendorOnlyWhy: "Este turno solo reutilizó la apertura fija de la propia CLI (o menos); nada de lo que enviamos. No cuenta como ahorro.",
+  usageCacheVendorOnlyApi: "Solo la apertura fija del proveedor en caché",
+  usageCacheVendorOnlyApiWhy: "Este turno solo reutilizó la apertura fija del proveedor (o menos); nada de lo que enviamos. No cuenta como ahorro.",
 
   // La forma de esta llamada, aparte del resultado de la caché
   usageModeResume: "Sesión continuada",

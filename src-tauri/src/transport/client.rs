@@ -617,7 +617,11 @@ async fn stream_chat_windowed(
                 .map_or_else(|| "—（這條路不回報快取）".to_owned(), |rate| format!("{rate:.0}%")),
         );
         if let Some(path) = usage_log {
-            crate::usage::log::append_call(path, world, "api", model, None, shape, usage);
+            let origin = crate::usage::log::origin_fields(
+                None,
+                crate::usage::log::endpoint_id(&base).as_deref(),
+            );
+            crate::usage::log::append_call(path, world, "api", model, None, shape, usage, &origin);
         }
     }
     // 用量照記再判成敗：失敗的呼叫一樣燒了 token，額度分頁不能少算這一筆
@@ -802,7 +806,13 @@ async fn stream_chat_models_windowed(
                 .map_or_else(|| "—（這條路不回報快取）".to_owned(), |rate| format!("{rate:.0}%")),
         );
         if let Some(path) = usage_log {
-            crate::usage::log::append_call(path, world, "api", log_model, None, shape, usage);
+            let origin = crate::usage::log::origin_fields(
+                None,
+                crate::usage::log::endpoint_id(&base).as_deref(),
+            );
+            crate::usage::log::append_call(
+                path, world, "api", log_model, None, shape, usage, &origin,
+            );
         }
     }
     if let Some(message) = runaway {

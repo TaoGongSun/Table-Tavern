@@ -27,6 +27,8 @@ export const ptBR: Record<MsgKey, string> = {
   usageSavedAbout: "economia aprox.",
   usageBarHit: "Lido do cache",
   usageBarFull: "Preço cheio",
+  usageBarOurs: "Nosso (est.)",
+  usageBarVendor: "Embutido",
   usageDetailsToggle: "Ver detalhes",
   usageRounds: "Rodadas",
   usageInputTokens: "Entrada",
@@ -54,6 +56,10 @@ export const ptBR: Record<MsgKey, string> = {
   usageCacheUnknownWhy: "Esta conexão não informa números de cache; acerto e erro parecem iguais.",
   usageCacheNotExpected: "Mesa nova / linha nova",
   usageCacheNotExpectedWhy: "Ainda não havia nada para reaproveitar; não é uma falha.",
+  usageCacheVendorOnly: "Só a parte embutida da CLI em cache",
+  usageCacheVendorOnlyWhy: "Esta rodada só reaproveitou a abertura fixa da própria CLI (ou menos); nada do que enviamos. Não conta como economia.",
+  usageCacheVendorOnlyApi: "Só a abertura fixa do provedor em cache",
+  usageCacheVendorOnlyApiWhy: "Esta rodada só reaproveitou a abertura fixa do provedor (ou menos); nada do que enviamos. Não conta como economia.",
 
   // O formato desta chamada, separado do resultado do cache
   usageModeResume: "Sessão continuada",

@@ -6,7 +6,7 @@
 
 OpenRouter 那條的根因 2026-08-22 實證定案：`stealth/ox-alpha` **只在「上一次請求是這一次的逐字前綴」時給快取**，而 app 每輪把尾端動態塊（世界書 keyword、目前狀態、導演指示）換成新的，上一輪的請求就不再是這一輪的前綴，於是全滅（29 筆只有 2 筆真中）。決定性對照：同一桌內容、同一間隔，尾端換掉＝1%、嚴格前綴＝84%。修法拍板走「動態塊併入歷史」，規格、證偽清單、分包與驗收見 [plans/non-claude-real-cache.md](../plans/non-claude-real-cache.md)。
 
-與 [vendor-prefix-floor](vendor-prefix-floor.md) 分開立案：那案是顯示層（把「只中到白送那段」標出來，不動組裝），本案是機制層（怎麼讓我方內容真的中）。
+與 [vendor-prefix-floor](../handoffs/archive/vendor-prefix-floor.md) 分開立案：那案是顯示層（把「只中到白送那段」標出來，不動組裝），本案是機制層（怎麼讓我方內容真的中）。
 
 ## Next action
 

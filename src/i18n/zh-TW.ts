@@ -32,6 +32,8 @@ export const zh = {
   usageSavedAbout: "約省下",
   usageBarHit: "讀到快取",
   usageBarFull: "全額",
+  usageBarOurs: "我方命中（估）",
+  usageBarVendor: "自帶部分",
   usageDetailsToggle: "看細項",
   usageRounds: "輪數",
   usageInputTokens: "輸入",
@@ -60,6 +62,10 @@ export const zh = {
   usageCacheUnknownWhy: "這條連線不回報快取資料，中沒中都看不出來。",
   usageCacheNotExpected: "新桌／新線",
   usageCacheNotExpectedWhy: "本來就沒有可中的，不是故障。",
+  usageCacheVendorOnly: "只中到 CLI 自帶部分",
+  usageCacheVendorOnlyWhy: "這輪只讀到 CLI 自己固定開頭的快取（或更少），我方送的內容沒中，不算進已省。",
+  usageCacheVendorOnlyApi: "只中到供應商固定開頭",
+  usageCacheVendorOnlyApiWhy: "這輪只讀到供應商固定開頭的快取（或更少），我方送的內容沒中，不算進已省。",
 
   // 這通送出去的形狀，與快取結果是兩回事
   usageModeResume: "續聊",

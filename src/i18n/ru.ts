@@ -27,6 +27,8 @@ export const ru: Record<MsgKey, string> = {
   usageSavedAbout: "сэкономлено около",
   usageBarHit: "Прочитано из кэша",
   usageBarFull: "Полная цена",
+  usageBarOurs: "Наше (оценка)",
+  usageBarVendor: "Встроенное",
   usageDetailsToggle: "Показать детали",
   usageRounds: "Раунды",
   usageInputTokens: "Ввод",
@@ -54,6 +56,10 @@ export const ru: Record<MsgKey, string> = {
   usageCacheUnknownWhy: "Это соединение не сообщает данные о кэше; попадание и промах выглядят одинаково.",
   usageCacheNotExpected: "Новый стол / новая линия",
   usageCacheNotExpectedWhy: "Переиспользовать пока было нечего; это не сбой.",
+  usageCacheVendorOnly: "В кэше только встроенная часть CLI",
+  usageCacheVendorOnlyWhy: "В этом ходе переиспользовано только фиксированное начало самой CLI (или меньше); ничего из отправленного нами. Это не считается экономией.",
+  usageCacheVendorOnlyApi: "В кэше только фиксированное начало провайдера",
+  usageCacheVendorOnlyApiWhy: "В этом ходе переиспользовано только фиксированное начало провайдера (или меньше); ничего из отправленного нами. Это не считается экономией.",
 
   // Форма этого вызова, отдельная от результата кэша
   usageModeResume: "Продолжение сессии",

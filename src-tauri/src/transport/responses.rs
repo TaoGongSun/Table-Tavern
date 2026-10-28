@@ -362,7 +362,8 @@ async fn stream_responses_windowed(
                 .map_or_else(|| "—（這條路不回報快取）".to_owned(), |rate| format!("{rate:.0}%")),
         );
         if let Some(path) = usage_log_path {
-            usage_log::append_call(path, world, "api", model, None, shape, usage);
+            let origin = usage_log::origin_fields(None, usage_log::endpoint_id(&base).as_deref());
+            usage_log::append_call(path, world, "api", model, None, shape, usage, &origin);
         }
     }
 

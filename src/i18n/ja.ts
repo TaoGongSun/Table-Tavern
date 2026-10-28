@@ -27,6 +27,8 @@ export const ja: Record<MsgKey, string> = {
   usageSavedAbout: "節約 約",
   usageBarHit: "キャッシュ読み込み",
   usageBarFull: "全額",
+  usageBarOurs: "こちら側（推定）",
+  usageBarVendor: "組み込み分",
   usageDetailsToggle: "詳細を見る",
   usageRounds: "ラウンド数",
   usageInputTokens: "入力",
@@ -54,6 +56,10 @@ export const ja: Record<MsgKey, string> = {
   usageCacheUnknownWhy: "この接続はキャッシュの数値を返さないため、ヒットしたかどうか判別できません。",
   usageCacheNotExpected: "新しい卓／新しいレーン",
   usageCacheNotExpectedWhy: "もともと再利用できるものがありません。不具合ではありません。",
+  usageCacheVendorOnly: "CLI の組み込み部分だけキャッシュ",
+  usageCacheVendorOnlyWhy: "このターンは CLI 自身の固定の冒頭（またはそれ以下）だけがキャッシュされ、こちらが送った内容は再利用されていません。節約には数えません。",
+  usageCacheVendorOnlyApi: "プロバイダーの固定の冒頭だけキャッシュ",
+  usageCacheVendorOnlyApiWhy: "このターンはプロバイダー自身の固定の冒頭（またはそれ以下）だけがキャッシュされ、こちらが送った内容は再利用されていません。節約には数えません。",
 
   // この呼び出しの形。キャッシュ結果とは別の軸です
   usageModeResume: "継続セッション",

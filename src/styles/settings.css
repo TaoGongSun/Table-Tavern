@@ -671,7 +671,8 @@
   color: var(--ok);
 }
 
-/* 一條看完快取比例：綠色是讀到快取省下的、灰色是全額付的 */
+/* 一條看完快取比例：綠色是讀到快取省下的、灰色是全額付的；
+   認得出 CLI／供應商自帶底線時，中間多一段琥珀色的自帶部分（白送的，不算我方省下） */
 .usage-bar {
   display: flex;
   height: 1.9rem;
@@ -681,6 +682,7 @@
 }
 
 .usage-bar-hit,
+.usage-bar-vendor,
 .usage-bar-full {
   display: flex;
   align-items: center;
@@ -693,6 +695,11 @@
 
 .usage-bar-hit {
   background: var(--ok);
+  color: var(--surface-1);
+}
+
+.usage-bar-vendor {
+  background: var(--amber);
   color: var(--surface-1);
 }
 

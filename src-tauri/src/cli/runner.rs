@@ -154,6 +154,8 @@ pub async fn run_cli_cancellable(
             "lane": usage_log.as_ref().and_then(|log| log.lane.as_ref().map(|lane| lane.lane.clone())),
         }),
     );
+    // 帳本的 cli_version：與正式呼叫並行查，落帳時查好了才寫（同一支執行檔查過一次就走快取）
+    let version = VersionProbe::start(usage_log.is_some(), program, working_dir, envs);
     let mut command = Command::new(program);
     // 先掛系統代理再掛使用者 envs，同名時使用者設定蓋過代理
     crate::cli::proxy::apply_system_proxy(&mut command);
@@ -201,6 +203,7 @@ pub async fn run_cli_cancellable(
         thinking_to_delta,
         policy,
         usage_log,
+        version,
         &mut on_delta,
         cancel,
         #[cfg(feature = "test-harness")]
@@ -213,6 +216,29 @@ pub async fn run_cli_cancellable(
     result
 }
 
+/// 帳本 `cli_version` 的背景查詢。落帳時沒查好就不寫（歸「版本未知」組），從不等它。
+/// 單元測試不查：假 CLI 會把 `--version` 也記成一次呼叫，擾亂呼叫次數的斷言（查詢本身在 detect.rs 另測）。
+struct VersionProbe(Option<tokio::task::JoinHandle<Option<String>>>);
+
+impl VersionProbe {
+    fn start(wanted: bool, program: &Path, working_dir: &Path, envs: &[(String, String)]) -> Self {
+        if cfg!(test) || !wanted {
+            return Self(None);
+        }
+        Self(Some(tokio::spawn(super::detect::cli_version(
+            program.to_path_buf(),
+            working_dir.to_path_buf(),
+            envs.to_vec(),
+        ))))
+    }
+
+    /// 查好了才取（已完成的 handle await 立即返回），沒查好就放棄這一筆。
+    async fn ready(&mut self) -> Option<String> {
+        let handle = self.0.take_if(|handle| handle.is_finished())?;
+        handle.await.ok().flatten()
+    }
+}
+
 /// spawn 之後的整段：餵 stdin、逐行讀 stdout／stderr、判收尾。任何提早 return 都由呼叫端
 /// `run_cli_cancellable` 接著收屍。
 #[cfg_attr(feature = "test-harness", allow(clippy::too_many_arguments))]
@@ -223,6 +249,7 @@ async fn drive_child(
     thinking_to_delta: bool,
     policy: RunawayPolicy,
     usage_log: Option<UsageLog<'_>>,
+    mut version: VersionProbe,
     on_delta: &mut impl FnMut(&str),
     mut cancel: Option<watch::Receiver<bool>>,
     #[cfg(feature = "test-harness")] harness_dispatch: &str,
@@ -446,27 +473,23 @@ async fn drive_child(
                         .hit_rate()
                         .map_or_else(|| "—".to_owned(), |rate| format!("{rate:.0}%")),
                 );
-                match super::stream::agy_usage_evidence(&line, agy_conversation_id.as_deref()) {
-                    Some(evidence) => crate::usage::log::append_call_with_evidence(
-                        log.path,
-                        log.world,
-                        log.transport,
-                        log.model,
-                        log.lane.as_ref(),
-                        log.shape,
-                        usage,
-                        &evidence,
-                    ),
-                    None => crate::usage::log::append_call(
-                        log.path,
-                        log.world,
-                        log.transport,
-                        log.model,
-                        log.lane.as_ref(),
-                        log.shape,
-                        usage,
-                    ),
+                let mut extra =
+                    crate::usage::log::origin_fields(version.ready().await.as_deref(), None);
+                if let Some(evidence) =
+                    super::stream::agy_usage_evidence(&line, agy_conversation_id.as_deref())
+                {
+                    extra.extend(evidence);
                 }
+                crate::usage::log::append_call(
+                    log.path,
+                    log.world,
+                    log.transport,
+                    log.model,
+                    log.lane.as_ref(),
+                    log.shape,
+                    usage,
+                    &extra,
+                );
                 if let Some(slot) = log.prompt_tokens_out {
                     slot.store(usage.prompt_tokens, std::sync::atomic::Ordering::Relaxed);
                 }

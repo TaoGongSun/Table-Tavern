@@ -28,6 +28,8 @@ export const en: Record<MsgKey, string> = {
   usageSavedAbout: "saved about",
   usageBarHit: "Cache read",
   usageBarFull: "Full price",
+  usageBarOurs: "Ours (est.)",
+  usageBarVendor: "Built-in",
   usageDetailsToggle: "Show details",
   usageRounds: "Rounds",
   usageInputTokens: "Input",
@@ -55,6 +57,10 @@ export const en: Record<MsgKey, string> = {
   usageCacheUnknownWhy: "This connection reports no cache figures, so a hit or a miss looks the same.",
   usageCacheNotExpected: "New table / new lane",
   usageCacheNotExpectedWhy: "There was nothing to reuse yet; nothing is broken.",
+  usageCacheVendorOnly: "Only the CLI's built-in part was cached",
+  usageCacheVendorOnlyWhy: "This round only reused the CLI's own fixed opening (or less); nothing we sent was cached, so it doesn't count as saved.",
+  usageCacheVendorOnlyApi: "Only the provider's fixed opening was cached",
+  usageCacheVendorOnlyApiWhy: "This round only reused the provider's own fixed opening (or less); nothing we sent was cached, so it doesn't count as saved.",
 
   // The shape of this call, which is separate from the cache result
   usageModeResume: "Continued session",

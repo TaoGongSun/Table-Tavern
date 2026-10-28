@@ -43,8 +43,7 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [state-update-echo-in-story](tasks/state-update-echo-in-story.md) — GM 照抄歷史裡的「（系統）狀態更新」事件進正文並顯示 — 下一步：未排程；先量一般桌長局發生率
 
 ## 階段 E：成本
-[api-shared-lane](handoffs/api-shared-lane.md) 四路成對測試先做；以下三案依其數據決定做不做：
-- [vendor-prefix-floor](tasks/vendor-prefix-floor.md) — 只中到供應商白送的那段，不該報成命中 — 下一步：可開工〔模型判斷·未裁決〕：實測佇列第 14 項（2026-10-28）codex 0.164.0 自帶段實為 11,008（非 9,984、隨 CLI 版本變），9 通我方 0 命中卻全標 hit、額度分頁顯示 36–76%；建議底線依「通道＋CLI 版本」取眾數、樣本 ≥3 才判定（出現過 6,912 低於自帶段，不能取最小值）。
+[api-shared-lane](handoffs/api-shared-lane.md) 四路成對測試先做；以下兩案依其數據決定做不做：
 - [non-claude-real-cache](tasks/non-claude-real-cache.md) — codex／agy／OpenRouter 沒有續聊，快取到底有沒有真的抓到 — 下一步：開工首步先在測試 root PATH 放包裝腳本抓兩通 codex 實際輸入、比對共同前綴長度：短＝我們組裝問題照規格做；長卻只中自帶段＝codex 自身插入變動內容，改記已知限制。agy 每角色一條 lane、6 通全 0，不適用；API 路缺數據（OpenRouter 未儲值）。
 - [no-cache-model-optout](tasks/no-cache-model-optout.md) — 零命中的模型不走共線：自動退回單角色組裝 — 下一步：仍缺數據（實測第 14 項 API 路因 OpenRouter 未儲值未測，2026-10-28）；開工前先重新立證：等帶 `cache_reporting: "reported"` 的 eligible zero 累積出來，確認真的有模型零命中。證據站得住再拍板規格檔的四項（solo 的 role 分配、要不要讓玩家看見、冷卻週期、與 usage-diag-non-claude 的先後）。
 

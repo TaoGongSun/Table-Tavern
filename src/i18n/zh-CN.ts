@@ -27,6 +27,8 @@ export const zhCN: Record<MsgKey, string> = {
   usageSavedAbout: "约省下",
   usageBarHit: "读到缓存",
   usageBarFull: "全额",
+  usageBarOurs: "我方命中（估）",
+  usageBarVendor: "自带部分",
   usageDetailsToggle: "看细项",
   usageRounds: "轮数",
   usageInputTokens: "输入",
@@ -54,6 +56,10 @@ export const zhCN: Record<MsgKey, string> = {
   usageCacheUnknownWhy: "这条连接不回报缓存数据，命中与否都看不出来。",
   usageCacheNotExpected: "新桌／新线",
   usageCacheNotExpectedWhy: "本来就没有可命中的，不是故障。",
+  usageCacheVendorOnly: "只命中 CLI 自带部分",
+  usageCacheVendorOnlyWhy: "这轮只读到 CLI 自己固定开头的缓存（或更少），我方发送的内容没有命中，不计入已省。",
+  usageCacheVendorOnlyApi: "只命中服务商固定开头",
+  usageCacheVendorOnlyApiWhy: "这轮只读到服务商固定开头的缓存（或更少），我方发送的内容没有命中，不计入已省。",
 
   // 这通发出去的形状，与缓存结果是两回事
   usageModeResume: "续聊",

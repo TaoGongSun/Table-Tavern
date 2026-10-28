@@ -25,6 +25,13 @@ type UsageRow = {
   estimated_rounds: number;
   unreported: number;
   in_use: boolean;
+  /** 已辨識自帶底線的組裡，讀到的快取中屬於 CLI／供應商自帶段的量 */
+  vendor_cached_tokens: number;
+  /** 只中到自帶底線的輪數（不算進已省）；其中走 API 的另計 */
+  vendor_only_rounds: number;
+  vendor_only_api_rounds: number;
+  /** 讀到快取且不是只中到自帶底線的輪數 */
+  own_hit_rounds: number;
 };
 type UsageReport = {
   worlds: { id: string; name: string; rounds: number }[];
@@ -54,6 +61,9 @@ const CACHE_KEYS = {
   zero: ["usageCacheZero", "usageCacheZeroWhy", "warn"],
   unknown: ["usageCacheUnknown", "usageCacheUnknownWhy", "idle"],
   "not-expected": ["usageCacheNotExpected", "usageCacheNotExpectedWhy", "idle"],
+  // 只中到 CLI／供應商自帶的固定開頭（usage/floor.rs 認出的底線）：我方內容沒中，但不是可證明的故障
+  "vendor-only": ["usageCacheVendorOnly", "usageCacheVendorOnlyWhy", "warn"],
+  "vendor-only-api": ["usageCacheVendorOnlyApi", "usageCacheVendorOnlyApiWhy", "warn"],
 } as const;
 
 // 後端 usage_report::chip_state 的前端版：統計與「最近一輪」要落在同一個格子，
@@ -189,6 +199,18 @@ export function UsageTab({ currentWorld }: { currentWorld: string }) {
     totals.priced_tokens === 0 ? 0 : Math.max(0, (totals.saved_tokens * 100) / totals.priced_tokens);
   // 金額湊不齊（混了不回報用量或計價不明的來源）就不出現在第一眼，改由細項逐列交代
   const showSavedUsd = totals.saved_usd !== null && !totals.saved_partial;
+  // 範圍內的快取全是 CLI／供應商白送的那段：頭條不報「已省 0%」，直說只中到自帶部分（作者裁決 2026-10-06）
+  const vendorOnlyHeadline = totals.vendor_only_rounds > 0 && totals.own_hit_rounds === 0;
+  const vendorOnlyKey =
+    totals.vendor_only_api_rounds === totals.vendor_only_rounds
+      ? "usageCacheVendorOnlyApi"
+      : "usageCacheVendorOnly";
+  // 命中條拆出自帶段：已辨識底線時分「我方命中（估）／自帶／全額」三段，共用原始輸入分母
+  const vendor =
+    hit === null || totals.vendor_cached_tokens === 0
+      ? 0
+      : (totals.vendor_cached_tokens * 100) / totals.observed_prompt_tokens;
+  const ours = hit === null ? 0 : Math.max(0, hit - vendor);
 
   return (
     <div className="usage-tab">
@@ -211,7 +233,11 @@ export function UsageTab({ currentWorld }: { currentWorld: string }) {
 
       {totals.prompt_tokens > 0 && (
         <>
-          {totals.priced_tokens > 0 && (
+          {vendorOnlyHeadline ? (
+            <p className="usage-headline">
+              <span className="usage-headline-saved">{t(vendorOnlyKey)}</span>
+            </p>
+          ) : totals.priced_tokens > 0 && (
             <p className="usage-headline">
               <span className="usage-headline-saved">
                 {t(estimated ? "usageSavedHeadlineApprox" : "usageSavedHeadline", {
@@ -227,6 +253,22 @@ export function UsageTab({ currentWorld }: { currentWorld: string }) {
           )}
           {hit === null ? (
             <p className="usage-note">{t("usageCacheBlind")}</p>
+          ) : vendor > 0 ? (
+            <div
+              className="usage-bar"
+              role="img"
+              aria-label={`${t("usageBarOurs")} ${ours.toFixed(0)}%, ${t("usageBarVendor")} ${vendor.toFixed(0)}%`}
+            >
+              <span className="usage-bar-hit" style={{ width: `${ours}%` }} title={t("usageBarOurs")}>
+                {ours >= 18 && `${t("usageBarOurs")} ${ours.toFixed(0)}%`}
+              </span>
+              <span className="usage-bar-vendor" style={{ width: `${vendor}%` }} title={t("usageBarVendor")}>
+                {vendor >= 18 && `${t("usageBarVendor")} ${vendor.toFixed(0)}%`}
+              </span>
+              <span className="usage-bar-full" style={{ width: `${100 - hit}%` }} title={t("usageBarFull")}>
+                {hit <= 82 && `${t("usageBarFull")} ${(100 - hit).toFixed(0)}%`}
+              </span>
+            </div>
           ) : (
             <div
               className="usage-bar"

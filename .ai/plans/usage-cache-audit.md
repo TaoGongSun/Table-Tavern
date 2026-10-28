@@ -176,7 +176,7 @@ CLI 版本在實跑前用各家 `--version` 記下；claude 另以 session 檔�
 
 ### 顯示拍板〔作者裁決 2026-10-06〕
 
-1. 只中到 CLI 自帶底線的輪次頭條不算「已省」，改標「只中到 CLI 自帶部分」——歸 [vendor-prefix-floor](../tasks/vendor-prefix-floor.md)。
+1. 只中到 CLI 自帶底線的輪次頭條不算「已省」，改標「只中到 CLI 自帶部分」——歸 [vendor-prefix-floor](../handoffs/archive/vendor-prefix-floor.md)。
 2. 有回報、值是 0：顯示「這次沒有快取」，不推測原因；`skipped` 只留給 claude（含修 agy 被誤標 skipped）——本案做。
 3. 丟線：分頁維持「丟線重來」一行，`stage`／`detail` 只留帳本——本案不動 UI。
 4. claude 1 小時快取：停保溫、過期門檻改 1 小時、省額改 2 倍係數——歸 [claude-1h-cache](../tasks/claude-1h-cache.md)。

@@ -27,6 +27,8 @@ export const ko: Record<MsgKey, string> = {
   usageSavedAbout: "절약 약",
   usageBarHit: "캐시 읽음",
   usageBarFull: "전액",
+  usageBarOurs: "우리 쪽 적중(추정)",
+  usageBarVendor: "기본 제공분",
   usageDetailsToggle: "자세히 보기",
   usageRounds: "라운드 수",
   usageInputTokens: "입력",
@@ -54,6 +56,10 @@ export const ko: Record<MsgKey, string> = {
   usageCacheUnknownWhy: "이 연결은 캐시 수치를 보고하지 않아 적중 여부를 알 수 없습니다.",
   usageCacheNotExpected: "새 테이블／새 레인",
   usageCacheNotExpectedWhy: "애초에 재사용할 것이 없습니다. 고장이 아닙니다.",
+  usageCacheVendorOnly: "CLI 기본 부분만 캐시됨",
+  usageCacheVendorOnlyWhy: "이번 턴은 CLI 자체의 고정 앞부분(또는 그 이하)만 캐시되었고, 우리가 보낸 내용은 재사용되지 않았습니다. 절약으로 치지 않습니다.",
+  usageCacheVendorOnlyApi: "제공자 고정 앞부분만 캐시됨",
+  usageCacheVendorOnlyApiWhy: "이번 턴은 제공자 자체의 고정 앞부분(또는 그 이하)만 캐시되었고, 우리가 보낸 내용은 재사용되지 않았습니다. 절약으로 치지 않습니다.",
 
   // 이번 호출의 형태. 캐시 결과와는 별개입니다
   usageModeResume: "이어가기",

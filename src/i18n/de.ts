@@ -27,6 +27,8 @@ export const de: Record<MsgKey, string> = {
   usageSavedAbout: "gespart ca.",
   usageBarHit: "Aus Cache gelesen",
   usageBarFull: "Voller Preis",
+  usageBarOurs: "Unser Anteil (geschätzt)",
+  usageBarVendor: "Eingebaut",
   usageDetailsToggle: "Details anzeigen",
   usageRounds: "Runden",
   usageInputTokens: "Eingabe",
@@ -54,6 +56,10 @@ export const de: Record<MsgKey, string> = {
   usageCacheUnknownWhy: "Diese Verbindung meldet keine Cache-Zahlen; Treffer und Fehlschlag sehen gleich aus.",
   usageCacheNotExpected: "Neuer Tisch / neue Lane",
   usageCacheNotExpectedWhy: "Es gab noch nichts wiederzuverwenden; das ist kein Fehler.",
+  usageCacheVendorOnly: "Nur der eingebaute CLI-Teil im Cache",
+  usageCacheVendorOnlyWhy: "In dieser Runde wurde nur der feste Anfang der CLI selbst (oder weniger) wiederverwendet; nichts von unseren Inhalten. Das zählt nicht als gespart.",
+  usageCacheVendorOnlyApi: "Nur der feste Anfang des Anbieters im Cache",
+  usageCacheVendorOnlyApiWhy: "In dieser Runde wurde nur der feste Anfang des Anbieters (oder weniger) wiederverwendet; nichts von unseren Inhalten. Das zählt nicht als gespart.",
 
   // Die Form dieses Aufrufs, unabhängig vom Cache-Ergebnis
   usageModeResume: "Fortgesetzte Sitzung",
