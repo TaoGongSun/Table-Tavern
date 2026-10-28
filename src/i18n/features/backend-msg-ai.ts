@@ -8,6 +8,11 @@ const COPY = {
     be_agy_profile_failed: "無法準備 agy 設定目錄：{error}",
     be_agy_keychain_slot_occupied:
       "agy 設定目錄裡的登入位置被其他資料佔住：{path}。請把它移到別處保留後再試一次。",
+    be_codex_profile_failed: "無法準備 codex 設定目錄：{error}",
+    be_codex_auth_slot_occupied:
+      "codex 設定目錄裡的登入位置被其他資料佔住：{path}。請把它移到別處保留後再試一次。",
+    be_codex_auth_missing:
+      "App 讀不到 codex 登入（{path}）。請到設定頁登入 codex；如果你把 codex 登入設成存在系統鑰匙圈，App 無法共用，需改回檔案儲存。",
     be_cli_risk_not_accepted: "尚未確認 CLI 訂閱模式的風險告知，請到設定完成確認",
     be_cli_not_found: "找不到 {cli} CLI，請確認已安裝並登入",
     be_agy_too_old: "Gemini CLI {version} 太舊，本 app 需要 1.2.1 以上。請執行 `agy update` 後重新驗證。",
@@ -30,6 +35,7 @@ const COPY = {
     be_cli_unexpected_abort: "內部錯誤：沒有取消訊號卻回報中止",
     be_agy_conversation_mismatch: "Agy 續聊回到不同的對話：預期 {expected}，實際 {actual}",
     be_agy_lock_poisoned: "Agy 回填鎖已損壞",
+    be_cli_session_mismatch: "{cli} 續聊回到不同的對話：預期 {expected}，實際 {actual}",
     be_lane_state_write_failed: "無法寫入續聊線狀態檔 {path}：{error}",
     be_session_abandon_failed: "中止後刪不掉 session 檔 {path}：{error}。這條線已清掉，請再送一次。",
     be_lane_rewrite_unsupported: "{provider} 的續聊線無法在回合後抹掉私設，私設必須放進該角色固定的系統提示詞",
@@ -40,6 +46,11 @@ const COPY = {
     be_agy_profile_failed: "无法准备 agy 设定目录：{error}",
     be_agy_keychain_slot_occupied:
       "agy 设定目录里的登录位置被其他数据占用：{path}。请把它移到别处保留后再试一次。",
+    be_codex_profile_failed: "无法准备 codex 设定目录：{error}",
+    be_codex_auth_slot_occupied:
+      "codex 设定目录里的登录位置被其他数据占用：{path}。请把它移到别处保留后再试一次。",
+    be_codex_auth_missing:
+      "App 读不到 codex 登录（{path}）。请到设定页登录 codex；如果你把 codex 登录设成存在系统钥匙串，App 无法共用，需改回文件存储。",
     be_cli_risk_not_accepted: "尚未确认 CLI 订阅模式的风险告知，请到设定完成确认",
     be_cli_not_found: "找不到 {cli} CLI，请确认已安装并登录",
     be_agy_too_old: "Gemini CLI {version} 太旧，本 app 需要 1.2.1 以上。请执行 `agy update` 后重新验证。",
@@ -62,6 +73,7 @@ const COPY = {
     be_cli_unexpected_abort: "内部错误：没有取消信号却回报中止",
     be_agy_conversation_mismatch: "Agy 续聊回到了不同的对话：预期 {expected}，实际 {actual}",
     be_agy_lock_poisoned: "Agy 回填锁已损坏",
+    be_cli_session_mismatch: "{cli} 续聊回到了不同的对话：预期 {expected}，实际 {actual}",
     be_lane_state_write_failed: "无法写入续聊线状态文件 {path}：{error}",
     be_session_abandon_failed: "中止后删不掉 session 文件 {path}：{error}。这条线已清掉，请再发送一次。",
     be_lane_rewrite_unsupported: "{provider} 的续聊线无法在回合后抹掉私设，私设必须放进该角色固定的系统提示词",
@@ -72,6 +84,11 @@ const COPY = {
     be_agy_profile_failed: "Couldn't prepare the agy settings folder: {error}",
     be_agy_keychain_slot_occupied:
       "The sign-in slot in the agy settings folder is taken by other data: {path}. Move it somewhere else to keep it, then try again.",
+    be_codex_profile_failed: "Couldn't prepare the codex settings folder: {error}",
+    be_codex_auth_slot_occupied:
+      "The sign-in slot in the codex settings folder is taken by other data: {path}. Move it somewhere else to keep it, then try again.",
+    be_codex_auth_missing:
+      "The app can't read your codex sign-in ({path}). Sign in to codex from Settings. If your codex sign-in is stored in the system keychain, the app can't share it; switch codex back to file storage.",
     be_cli_risk_not_accepted:
       "The risk notice for CLI subscription mode hasn't been confirmed yet. Confirm it in Settings.",
     be_cli_not_found: "Couldn't find the {cli} CLI. Make sure it's installed and signed in.",
@@ -99,6 +116,7 @@ const COPY = {
     be_agy_conversation_mismatch:
       "Agy resumed a different conversation: expected {expected}, got {actual}",
     be_agy_lock_poisoned: "Agy's write-back lock is broken.",
+    be_cli_session_mismatch: "{cli} resumed a different conversation: expected {expected}, got {actual}",
     be_lane_state_write_failed: "Couldn't write the conversation-thread state file {path}: {error}",
     be_session_abandon_failed:
       "After stopping, the session file {path} couldn't be deleted: {error}. This thread has been cleared; please send again.",
@@ -111,6 +129,11 @@ const COPY = {
     be_agy_profile_failed: "agy の設定フォルダを準備できませんでした：{error}",
     be_agy_keychain_slot_occupied:
       "agy の設定フォルダ内のログイン用の場所が別のデータで使われています：{path}。別の場所へ移して保管してから、もう一度お試しください。",
+    be_codex_profile_failed: "codex の設定フォルダを準備できませんでした：{error}",
+    be_codex_auth_slot_occupied:
+      "codex 設定フォルダのログイン位置が別のデータで埋まっています：{path}。別の場所へ移して保管してから、もう一度お試しください。",
+    be_codex_auth_missing:
+      "アプリが codex のログイン情報を読めません（{path}）。設定画面から codex にログインしてください。codex のログインをシステムのキーチェーンに保存している場合は共有できないため、ファイル保存に戻してください。",
     be_cli_risk_not_accepted:
       "CLIサブスクリプションモードのリスク確認がまだです。設定で確認を済ませてください。",
     be_cli_not_found: "{cli} CLI が見つかりません。インストールとログインを確認してください。",
@@ -138,6 +161,7 @@ const COPY = {
     be_agy_conversation_mismatch:
       "Agy の続き会話が別の会話に戻りました：想定 {expected}、実際 {actual}",
     be_agy_lock_poisoned: "Agy の書き戻しロックが壊れています",
+    be_cli_session_mismatch: "{cli} の続きが別の会話に戻りました：想定 {expected}、実際 {actual}",
     be_lane_state_write_failed: "会話スレッドの状態ファイル {path} に書き込めませんでした：{error}",
     be_session_abandon_failed:
       "中止後に session ファイル {path} を削除できませんでした：{error}。このスレッドはクリア済みです。もう一度送信してください。",
@@ -150,6 +174,11 @@ const COPY = {
     be_agy_profile_failed: "agy 설정 폴더를 준비하지 못했습니다: {error}",
     be_agy_keychain_slot_occupied:
       "agy 설정 폴더의 로그인 위치를 다른 데이터가 차지하고 있습니다: {path}. 다른 곳으로 옮겨 보관한 뒤 다시 시도하세요.",
+    be_codex_profile_failed: "codex 설정 폴더를 준비하지 못했습니다: {error}",
+    be_codex_auth_slot_occupied:
+      "codex 설정 폴더의 로그인 위치를 다른 데이터가 차지하고 있습니다: {path}. 다른 곳으로 옮겨 보관한 뒤 다시 시도하세요.",
+    be_codex_auth_missing:
+      "앱이 codex 로그인 정보를 읽을 수 없습니다({path}). 설정에서 codex에 로그인하세요. codex 로그인을 시스템 키체인에 저장하도록 설정했다면 앱이 공유할 수 없으니 파일 저장으로 되돌리세요.",
     be_cli_risk_not_accepted:
       "CLI 구독 모드의 리스크 고지를 아직 확인하지 않았습니다. 설정에서 확인을 마쳐 주세요.",
     be_cli_not_found: "{cli} CLI를 찾을 수 없습니다. 설치와 로그인 상태를 확인해 주세요.",
@@ -177,6 +206,7 @@ const COPY = {
     be_agy_conversation_mismatch:
       "Agy 이어 하기가 다른 대화로 돌아갔습니다: 예상 {expected}, 실제 {actual}",
     be_agy_lock_poisoned: "Agy 기록 잠금이 손상되었습니다",
+    be_cli_session_mismatch: "{cli} 이어서 대화가 다른 대화로 돌아갔습니다: 예상 {expected}, 실제 {actual}",
     be_lane_state_write_failed: "대화 스레드 상태 파일 {path}에 쓰지 못했습니다: {error}",
     be_session_abandon_failed:
       "중단 후 session 파일 {path}을(를) 지우지 못했습니다: {error}. 이 스레드는 정리했으니 다시 보내 주세요.",
@@ -189,6 +219,11 @@ const COPY = {
     be_agy_profile_failed: "No se pudo preparar la carpeta de ajustes de agy: {error}",
     be_agy_keychain_slot_occupied:
       "El espacio de inicio de sesión de la carpeta de ajustes de agy está ocupado por otros datos: {path}. Muévelos a otro lugar para conservarlos y vuelve a intentarlo.",
+    be_codex_profile_failed: "No se pudo preparar la carpeta de ajustes de codex: {error}",
+    be_codex_auth_slot_occupied:
+      "El espacio de inicio de sesión en la carpeta de ajustes de codex está ocupado por otros datos: {path}. Muévelo a otro lugar para conservarlo y vuelve a intentarlo.",
+    be_codex_auth_missing:
+      "La app no puede leer tu inicio de sesión de codex ({path}). Inicia sesión en codex desde Ajustes. Si guardas el inicio de sesión de codex en el llavero del sistema, la app no puede compartirlo; vuelve a guardarlo en archivo.",
     be_cli_risk_not_accepted:
       "Aún no has confirmado el aviso de riesgos del modo de suscripción por CLI. Confírmalo en los ajustes.",
     be_cli_not_found: "No se encontró la CLI de {cli}. Comprueba que esté instalada y con la sesión iniciada.",
@@ -217,6 +252,7 @@ const COPY = {
     be_agy_conversation_mismatch:
       "Agy retomó otra conversación: se esperaba {expected}, llegó {actual}",
     be_agy_lock_poisoned: "El bloqueo de escritura de Agy está dañado",
+    be_cli_session_mismatch: "{cli} retomó otra conversación: se esperaba {expected}, se obtuvo {actual}",
     be_lane_state_write_failed: "No se pudo escribir el archivo de estado del hilo {path}: {error}",
     be_session_abandon_failed:
       "Tras detener, no se pudo borrar el archivo de sesión {path}: {error}. El hilo ya se limpió; vuelve a enviar.",
@@ -229,6 +265,11 @@ const COPY = {
     be_agy_profile_failed: "Não foi possível preparar a pasta de configurações do agy: {error}",
     be_agy_keychain_slot_occupied:
       "O espaço de login da pasta de configurações do agy está ocupado por outros dados: {path}. Mova-os para outro lugar para guardá-los e tente de novo.",
+    be_codex_profile_failed: "Não foi possível preparar a pasta de configurações do codex: {error}",
+    be_codex_auth_slot_occupied:
+      "O local de login na pasta de configurações do codex está ocupado por outros dados: {path}. Mova-o para outro lugar para guardá-lo e tente de novo.",
+    be_codex_auth_missing:
+      "O app não consegue ler seu login do codex ({path}). Entre no codex pelas Configurações. Se o login do codex fica no chaveiro do sistema, o app não consegue compartilhá-lo; volte a salvar em arquivo.",
     be_cli_risk_not_accepted:
       "O aviso de risco do modo de assinatura da CLI ainda não foi confirmado. Confirme nas configurações.",
     be_cli_not_found: "A CLI do {cli} não foi encontrada. Confira se ela está instalada e logada.",
@@ -257,6 +298,7 @@ const COPY = {
     be_agy_conversation_mismatch:
       "O Agy retomou outra conversa: esperado {expected}, veio {actual}",
     be_agy_lock_poisoned: "A trava de gravação do Agy está corrompida",
+    be_cli_session_mismatch: "{cli} retomou outra conversa: esperado {expected}, recebido {actual}",
     be_lane_state_write_failed: "Não foi possível gravar o arquivo de estado da conversa {path}: {error}",
     be_session_abandon_failed:
       "Depois de interromper, não foi possível apagar o arquivo de sessão {path}: {error}. A conversa já foi limpa; envie de novo.",
@@ -269,6 +311,11 @@ const COPY = {
     be_agy_profile_failed: "Der agy-Einstellungsordner konnte nicht vorbereitet werden: {error}",
     be_agy_keychain_slot_occupied:
       "Der Anmeldeplatz im agy-Einstellungsordner ist durch andere Daten belegt: {path}. Verschiebe sie an einen anderen Ort, um sie zu behalten, und versuche es erneut.",
+    be_codex_profile_failed: "Der codex-Einstellungsordner konnte nicht vorbereitet werden: {error}",
+    be_codex_auth_slot_occupied:
+      "Der Anmeldeplatz im codex-Einstellungsordner ist durch andere Daten belegt: {path}. Verschiebe sie an einen anderen Ort, um sie zu behalten, und versuche es erneut.",
+    be_codex_auth_missing:
+      "Die App kann deine codex-Anmeldung nicht lesen ({path}). Melde dich in den Einstellungen bei codex an. Wenn deine codex-Anmeldung im System-Schlüsselbund liegt, kann die App sie nicht mitnutzen; stelle codex wieder auf Dateispeicherung um.",
     be_cli_risk_not_accepted:
       "Der Risikohinweis für den CLI-Abonnementmodus ist noch nicht bestätigt. Bestätige ihn in den Einstellungen.",
     be_cli_not_found: "Die {cli}-CLI wurde nicht gefunden. Prüfe, ob sie installiert und angemeldet ist.",
@@ -297,6 +344,7 @@ const COPY = {
     be_agy_conversation_mismatch:
       "Agy hat eine andere Unterhaltung fortgesetzt: erwartet {expected}, erhalten {actual}",
     be_agy_lock_poisoned: "Die Rückschreibsperre von Agy ist beschädigt",
+    be_cli_session_mismatch: "{cli} hat eine andere Unterhaltung fortgesetzt: erwartet {expected}, erhalten {actual}",
     be_lane_state_write_failed:
       "Die Statusdatei des Gesprächsstrangs {path} konnte nicht geschrieben werden: {error}",
     be_session_abandon_failed:
@@ -310,6 +358,11 @@ const COPY = {
     be_agy_profile_failed: "Impossible de préparer le dossier de réglages d’agy\u00a0: {error}",
     be_agy_keychain_slot_occupied:
       "L’emplacement de connexion du dossier de réglages d’agy est occupé par d’autres données\u00a0: {path}. Déplacez-les ailleurs pour les conserver, puis réessayez.",
+    be_codex_profile_failed: "Impossible de préparer le dossier de réglages de codex\u00a0: {error}",
+    be_codex_auth_slot_occupied:
+      "L’emplacement de connexion du dossier de réglages de codex est occupé par d’autres données\u00a0: {path}. Déplacez-les ailleurs pour les conserver, puis réessayez.",
+    be_codex_auth_missing:
+      "L’app ne peut pas lire votre connexion codex ({path}). Connectez-vous à codex depuis les Réglages. Si votre connexion codex est stockée dans le trousseau du système, l’app ne peut pas la partager\u00a0; revenez au stockage en fichier.",
     be_cli_risk_not_accepted:
       "L'avertissement sur les risques du mode abonnement CLI n'est pas encore confirmé. Confirme-le dans les réglages.",
     be_cli_not_found: "CLI {cli} introuvable. Vérifie qu'elle est installée et connectée.",
@@ -338,6 +391,7 @@ const COPY = {
     be_agy_conversation_mismatch:
       "Agy a repris une autre conversation\u00a0: attendu {expected}, reçu {actual}",
     be_agy_lock_poisoned: "Le verrou d'écriture d'Agy est corrompu",
+    be_cli_session_mismatch: "{cli} a repris une autre conversation\u00a0: attendu {expected}, obtenu {actual}",
     be_lane_state_write_failed: "Impossible d'écrire le fichier d'état du fil {path}\u00a0: {error}",
     be_session_abandon_failed:
       "Après l'arrêt, impossible de supprimer le fichier de session {path}\u00a0: {error}. Le fil a été vidé\u00a0; renvoie ton message.",
@@ -350,6 +404,11 @@ const COPY = {
     be_agy_profile_failed: "Не удалось подготовить папку настроек agy: {error}",
     be_agy_keychain_slot_occupied:
       "Место для входа в папке настроек agy занято другими данными: {path}. Переместите их в другое место, чтобы сохранить, и попробуйте снова.",
+    be_codex_profile_failed: "Не удалось подготовить папку настроек codex: {error}",
+    be_codex_auth_slot_occupied:
+      "Место для входа в папке настроек codex занято другими данными: {path}. Перенесите их в другое место, чтобы сохранить, и попробуйте снова.",
+    be_codex_auth_missing:
+      "Приложение не может прочитать вход в codex ({path}). Войдите в codex в настройках. Если вход в codex хранится в системной связке ключей, приложение не может его использовать; верните хранение в файле.",
     be_cli_risk_not_accepted:
       "Согласие с рисками режима подписки CLI ещё не подтверждено. Подтверди его в настройках.",
     be_cli_not_found: "CLI {cli} не найден. Проверь, что он установлен и в нём выполнен вход.",
@@ -377,6 +436,7 @@ const COPY = {
     be_agy_conversation_mismatch:
       "Agy продолжил другой разговор: ожидался {expected}, получен {actual}",
     be_agy_lock_poisoned: "Блокировка записи Agy повреждена",
+    be_cli_session_mismatch: "{cli} продолжил другой разговор: ожидался {expected}, получен {actual}",
     be_lane_state_write_failed: "Не удалось записать файл состояния ветки диалога {path}: {error}",
     be_session_abandon_failed:
       "После остановки не удалось удалить файл сессии {path}: {error}. Ветка уже очищена — отправь ещё раз.",

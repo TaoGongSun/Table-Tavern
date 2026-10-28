@@ -1,6 +1,6 @@
 #![allow(clippy::await_holding_lock)]
 
-use super::super::stream::{parse_claude_line, parse_claude_usage};
+use super::super::stream::{parse_claude_usage, CLAUDE_PROTOCOL};
 use super::*;
 
 /// 以假 CLI 腳本走完 spawn→stdin→逐行解析→增量→收尾整條路（sh 腳本，僅 unix）
@@ -43,7 +43,7 @@ async fn run_cli_streams_deltas_from_fake_cli_and_reads_stdin() {
         &[],
         "提示詞",
         &[],
-        parse_claude_line,
+        &CLAUDE_PROTOCOL,
         true,
         RunawayPolicy::Off,
         Some(UsageLog {
@@ -77,7 +77,7 @@ async fn run_cli_streams_deltas_from_fake_cli_and_reads_stdin() {
         &[],
         "提示詞",
         &[],
-        parse_claude_line,
+        &CLAUDE_PROTOCOL,
         false,
         RunawayPolicy::Off,
         None,
@@ -145,7 +145,7 @@ async fn run_cli_aborts_instantly_on_fatal_stderr_api_error_and_shows_it_in_tail
             &[],
             "提示詞",
             &[],
-            parse_claude_line,
+            &CLAUDE_PROTOCOL,
             true,
             RunawayPolicy::Off,
             None,
@@ -189,7 +189,7 @@ async fn run_cli_reports_crash_without_result_event_instead_of_returning_partial
         &[],
         "提示詞",
         &[],
-        parse_claude_line,
+        &CLAUDE_PROTOCOL,
         true,
         RunawayPolicy::Off,
         None,
@@ -239,7 +239,7 @@ async fn run_cli_surfaces_prompt_too_long_with_stable_code() {
         &[],
         "長",
         &[],
-        parse_claude_line,
+        &CLAUDE_PROTOCOL,
         false,
         RunawayPolicy::Off,
         None,
@@ -288,7 +288,7 @@ async fn run_cli_strips_inherited_anthropic_env_but_keeps_explicit_envs() {
         &[],
         "提示詞",
         &[("ANTHROPIC_MARKER".to_owned(), "explicit".to_owned())],
-        parse_claude_line,
+        &CLAUDE_PROTOCOL,
         false,
         RunawayPolicy::Off,
         None,
@@ -330,7 +330,7 @@ async fn run_cli_feeds_long_stdin_while_draining_output() {
             &[],
             &payload,
             &[],
-            parse_claude_line,
+            &CLAUDE_PROTOCOL,
             false,
             RunawayPolicy::Off,
             None,
@@ -375,7 +375,7 @@ async fn run_cli_reaps_child_before_returning_an_error() {
             "PID_FILE".to_owned(),
             pid_file.to_string_lossy().into_owned(),
         )],
-        parse_claude_line,
+        &CLAUDE_PROTOCOL,
         false,
         RunawayPolicy::Off,
         None,
@@ -532,7 +532,7 @@ fn main() {
                     &args,
                     stdin,
                     &[],
-                    parse_claude_line,
+                    &CLAUDE_PROTOCOL,
                     false,
                     RunawayPolicy::Off,
                     None,
@@ -581,12 +581,13 @@ fn main() {
             &args,
             "x",
             &[],
-            parse_claude_line,
+            &CLAUDE_PROTOCOL,
             false,
             RunawayPolicy::Off,
             None,
             |_: &str| {},
             Some(rx),
+            SessionWatch::default(),
         );
         let (finish, ()) = tokio::join!(run, trigger);
         assert!(matches!(finish.unwrap(), CliFinish::Aborted(_)));
@@ -614,7 +615,7 @@ fn main() {
                 &args,
                 "x",
                 &[],
-                parse_claude_line,
+                &CLAUDE_PROTOCOL,
                 false,
                 RunawayPolicy::Off,
                 None,
@@ -710,7 +711,7 @@ mod output_closed_first {
                 &[],
                 &payload,
                 &[],
-                parse_claude_line,
+                &CLAUDE_PROTOCOL,
                 false,
                 RunawayPolicy::Off,
                 None,
@@ -739,7 +740,7 @@ mod output_closed_first {
                 &[],
                 &payload(),
                 &[],
-                parse_claude_line,
+                &CLAUDE_PROTOCOL,
                 false,
                 RunawayPolicy::Off,
                 None,
@@ -779,12 +780,13 @@ mod output_closed_first {
             &[],
             &payload,
             &[],
-            parse_claude_line,
+            &CLAUDE_PROTOCOL,
             false,
             RunawayPolicy::Off,
             None,
             |_: &str| {},
             Some(rx),
+            SessionWatch::default(),
         );
         let (finish, ()) = tokio::time::timeout(std::time::Duration::from_secs(3), async {
             tokio::join!(run, trigger)
@@ -829,7 +831,7 @@ async fn run_cli_reports_claude_identity_only_when_unambiguous() {
         &[],
         "x",
         &[],
-        parse_claude_line,
+        &CLAUDE_PROTOCOL,
         false,
         RunawayPolicy::Off,
         Some(UsageLog {
@@ -871,7 +873,7 @@ async fn run_cli_reports_claude_identity_only_when_unambiguous() {
         &[],
         "x",
         &[],
-        parse_claude_line,
+        &CLAUDE_PROTOCOL,
         false,
         RunawayPolicy::Off,
         Some(UsageLog {

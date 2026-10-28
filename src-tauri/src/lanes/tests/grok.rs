@@ -125,6 +125,7 @@ print(json.dumps({'type': 'end', 'stopReason': 'end_turn', 'usage': {'input_toke
         claude_home: PathBuf::new(),
         prompt_dir: dir.join("prompts"),
         on_overage: None,
+        effort: None,
     };
     FakeGrok {
         dir,
@@ -706,6 +707,7 @@ async fn real_grok_shared_lane_rewrites_verbatim_sessions() {
         claude_home: PathBuf::new(),
         prompt_dir: dir.join("prompts"),
         on_overage: None,
+        effort: None,
     };
     let secret = "狐狸其實是失蹤的公主ZQX17";
     let mut events = vec![event(
@@ -918,6 +920,7 @@ async fn switching_gm_lane_from_claude_to_grok_deletes_the_claude_session() {
         usage_log: grok.call.usage_log.clone(),
         provider: LaneProvider::Grok,
         on_overage: None,
+        effort: None,
     };
     run_turn(
         &call,

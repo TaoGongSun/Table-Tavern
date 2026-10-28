@@ -60,12 +60,41 @@ fn agy_profile(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let home = config_root(app)?.join("agy-home");
     cli::agy_home::prepare_home(&home)?;
     #[cfg(target_os = "macos")]
-    cli::agy_home::ensure_keychain_link(&home, &cli::agy_home::real_home()?)?;
+    {
+        let real_home = cli::agy_home::real_home()
+            .map_err(|error| UiMsg::AgyProfileFailed { error }.to_string())?;
+        cli::agy_home::ensure_keychain_link(&home, &real_home)?;
+    }
     cli::agy_home::ensure_text_agent(&home)?;
     Ok(home)
 }
 
-/// grok 與 agy 的每個呼叫點共用這組環境（少一處就會出現「UI 顯示已登入、實跑未登入」或
+/// app 專用的 CODEX_HOME（設定根底下）。純路徑：換幕容量讀 codex 的模型快取也看這裡，
+/// 那條路不建目錄、不確保登入連結，也不因為還沒登入就失敗。
+pub(crate) fn codex_home_dir(config_root: &std::path::Path) -> PathBuf {
+    config_root.join("codex-home")
+}
+
+/// codex 專用 CODEX_HOME（cli::codex_home）：session 不再寫進使用者的 `~/.codex`；
+/// auth.json 連回使用者那份共用登入〔作者裁決 2026-10-28〕。任何一步失敗都回錯，不退回裸跑。
+/// 這裡只建目錄、確保連結；還沒登入不算錯，要跑 codex 的兩處（單發、lane）另用 `codex_require_auth` 擋。
+fn codex_profile(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let home = codex_home_dir(&config_root(app)?);
+    cli::codex_home::prepare_home(&home)?;
+    cli::codex_home::ensure_auth_link(&home, &codex_real_home()?)?;
+    Ok(home)
+}
+
+fn codex_real_home() -> Result<PathBuf, String> {
+    cli::agy_home::real_home().map_err(|error| UiMsg::CodexProfileFailed { error }.to_string())
+}
+
+/// 要跑 codex 前確認共用的登入檔在；不在就回 CodexAuthMissing（沒登入或登入在系統鑰匙圈）。
+fn codex_require_auth() -> Result<(), String> {
+    cli::codex_home::require_auth(&codex_real_home()?)
+}
+
+/// grok、agy 與 codex 的每個呼叫點共用這組環境（少一處就會出現「UI 顯示已登入、實跑未登入」或
 /// 對話漏寫回使用者目錄）；其餘 CLI 不需要隔離，回空陣列。
 pub(crate) fn cli_envs(
     app: &tauri::AppHandle,
@@ -77,6 +106,7 @@ pub(crate) fn cli_envs(
             Ok(cli::grok_envs(&home, &grok_home))
         }
         "agy" => Ok(cli::agy_envs(&agy_profile(app)?)),
+        "codex" => Ok(cli::codex_envs(&codex_profile(app)?)),
         _ => Ok(Vec::new()),
     }
 }
@@ -138,13 +168,14 @@ fn claude_home_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(".claude"))
 }
 
-/// 這個傳輸走不走 lane 續聊。Agy 用精確 `--conversation <id>`，
-/// Claude/Grok 用各自的 session 旗標；api/codex 照走無狀態路徑。
+/// 這個傳輸走不走 lane 續聊。Agy 用精確 `--conversation <id>`、codex 用 `exec resume <thread id>`，
+/// Claude/Grok 用各自的 session 旗標；api 照走無狀態路徑。
 pub(crate) fn lane_provider(config: &data::AppConfig) -> Option<lanes::LaneProvider> {
     match chat_transport(config).as_str() {
         "claude" => Some(lanes::LaneProvider::Claude),
         "agy" => Some(lanes::LaneProvider::Agy),
         "grok" => Some(lanes::LaneProvider::Grok),
+        "codex" => Some(lanes::LaneProvider::Codex),
         _ => None,
     }
 }
@@ -165,6 +196,7 @@ pub(crate) async fn prepare_lane_call(
         lanes::LaneProvider::Claude => "claude",
         lanes::LaneProvider::Agy => "agy",
         lanes::LaneProvider::Grok => "grok",
+        lanes::LaneProvider::Codex => "codex",
     };
     let info = cli::detect_clis()
         .await
@@ -184,7 +216,9 @@ pub(crate) async fn prepare_lane_call(
                 .unwrap_or_else(|| cli::claude_model_for(tier))
                 .to_owned(),
         ),
-        lanes::LaneProvider::Agy | lanes::LaneProvider::Grok => override_model.map(str::to_owned),
+        lanes::LaneProvider::Agy | lanes::LaneProvider::Grok | lanes::LaneProvider::Codex => {
+            override_model.map(str::to_owned)
+        }
     };
     Ok(lanes::LaneCall {
         provider,
@@ -195,7 +229,15 @@ pub(crate) async fn prepare_lane_call(
             lanes::LaneProvider::Claude => claude_cli_envs(config),
             lanes::LaneProvider::Agy => cli_envs(app, "agy")?,
             lanes::LaneProvider::Grok => cli_envs(app, "grok")?,
+            lanes::LaneProvider::Codex => {
+                let envs = cli_envs(app, "codex")?;
+                codex_require_auth()?;
+                envs
+            }
         },
+        // codex 的檔位映射到 effort；同一條線換 effort 就重開（plan_turn 的 EffortChanged）
+        effort: (provider == lanes::LaneProvider::Codex)
+            .then(|| cli::codex_effort_for(tier).to_owned()),
         model,
         usage_log: data_root(app)
             .ok()
@@ -572,7 +614,7 @@ async fn stream_turn_inner(
                 &args,
                 &prompt,
                 &envs,
-                cli::parse_claude_line,
+                &cli::CLAUDE_PROTOCOL,
                 thinking_to_delta,
                 policy,
                 usage_log.as_deref().map(|path| cli::UsageLog {
@@ -601,13 +643,15 @@ async fn stream_turn_inner(
             let model = cli::tier_override(&config.tier_models, "codex", tier);
             let args = cli::codex_args(model, cli::codex_effort_for(tier), allow_cli_tools);
             let combined = format!("{system}\n\n{prompt}");
+            let envs = cli_envs(app, "codex")?;
+            codex_require_auth()?;
             cli::run_cli(
                 &program,
                 &cli_working_dir,
                 &args,
                 &combined,
-                &[],
-                cli::parse_codex_line,
+                &envs,
+                &cli::CODEX_PROTOCOL,
                 false, // 只有 claude 解析器會產思考增量
                 policy,
                 usage_log.as_deref().map(|path| cli::UsageLog {
@@ -645,7 +689,7 @@ async fn stream_turn_inner(
                 &args,
                 &combined,
                 &envs,
-                cli::parse_agy_line,
+                &cli::AGY_PROTOCOL,
                 false,
                 policy,
                 usage_log.as_deref().map(|path| cli::UsageLog {
@@ -695,7 +739,7 @@ async fn stream_turn_inner(
                 &args,
                 "",
                 &envs,
-                cli::parse_grok_line,
+                &cli::GROK_PROTOCOL,
                 false,
                 policy,
                 usage_log.as_deref().map(|path| cli::UsageLog {

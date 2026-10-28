@@ -176,7 +176,7 @@ fn tagged_echo_resumes_for_the_next_speaker() {
         prefix: "兔子：".to_owned(),
     };
     assert!(matches!(
-        plan_turn(Some(&state), &input, 1_010, LaneProvider::Claude),
+        plan_turn(Some(&state), &input, 1_010, LaneProvider::Claude, None),
         TurnPlan::Resume { base: 2, .. }
     ));
 }

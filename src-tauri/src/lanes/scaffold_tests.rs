@@ -881,6 +881,8 @@ fn lane_state(events: &[TranscriptEvent], system: &str, provider: LaneProvider) 
         cache_ttl_secs: LEGACY_CACHE_TTL_SECS,
         last_prompt_tokens: 0,
         agy_usage: None,
+        codex_usage: None,
+        effort: None,
         unerased_owner: None,
         had_state_block: false,
         hoisted_worldbook: None,
@@ -918,7 +920,7 @@ fn upgrading_scaffold_reopens_gm_lane_on_every_provider() {
         for now in [live, expired] {
             assert!(
                 matches!(
-                    plan_turn(Some(&state), &input, now, provider),
+                    plan_turn(Some(&state), &input, now, provider, None),
                     TurnPlan::Reopen {
                         reason: ReopenReason::SystemChanged
                     }
@@ -928,7 +930,7 @@ fn upgrading_scaffold_reopens_gm_lane_on_every_provider() {
         }
         let caught_up = lane_state(events, &new, provider);
         for now in [live, expired] {
-            match plan_turn(Some(&caught_up), &input, now, provider) {
+            match plan_turn(Some(&caught_up), &input, now, provider, None) {
                 TurnPlan::Resume {
                     system,
                     patch,
@@ -973,7 +975,7 @@ fn upgrading_scaffold_patches_or_rebases_claude_chars_lane() {
     let expired = 1_000 + LEGACY_CACHE_TTL_SECS + 1;
 
     let claude = lane_state(events, &old, LaneProvider::Claude);
-    match plan_turn(Some(&claude), &input, live, LaneProvider::Claude) {
+    match plan_turn(Some(&claude), &input, live, LaneProvider::Claude, None) {
         TurnPlan::Resume {
             system,
             patch,
@@ -988,7 +990,7 @@ fn upgrading_scaffold_patches_or_rebases_claude_chars_lane() {
         }
         TurnPlan::Reopen { .. } => panic!("claude 快取活著走補丁"),
     }
-    match plan_turn(Some(&claude), &input, expired, LaneProvider::Claude) {
+    match plan_turn(Some(&claude), &input, expired, LaneProvider::Claude, None) {
         TurnPlan::Resume {
             system,
             patch,
@@ -1002,7 +1004,7 @@ fn upgrading_scaffold_patches_or_rebases_claude_chars_lane() {
     }
     let caught_up = lane_state(events, &new, LaneProvider::Claude);
     assert!(matches!(
-        plan_turn(Some(&caught_up), &input, live, LaneProvider::Claude),
+        plan_turn(Some(&caught_up), &input, live, LaneProvider::Claude, None),
         TurnPlan::Resume {
             patch: None,
             rebased: false,

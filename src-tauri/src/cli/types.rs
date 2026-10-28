@@ -9,7 +9,7 @@ pub struct CliInfo {
     pub version: String,
 }
 
-/// 設定 UI 下拉用的模型選項。清單讀自各 CLI 自身（codex：~/.codex/models_cache.json；
+/// 設定 UI 下拉用的模型選項。清單讀自各 CLI 自身（codex：app 的 codex-home，退回 ~/.codex 的 models_cache.json；
 /// claude：執行檔內建的模型註冊表），非本程式寫死的正典；
 /// 實際用哪個模型仍由 config 的覆寫決定。
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -33,6 +33,41 @@ pub struct AgyUsageCounters {
     pub cache_read_tokens: u64,
 }
 
+/// codex `exec resume` 的 `turn.completed.usage` 是整條 thread 的累計值；lane 存上一輪成功那次，
+/// runner 相減才是這一輪的用量。
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CodexUsageCounters {
+    pub input_tokens: u64,
+    pub cached_input_tokens: u64,
+    pub cache_write_input_tokens: u64,
+    pub output_tokens: u64,
+}
+
+/// 續聊線的 session 觀測（目前只有 codex 用）：不綁在 usage_log 上，沒開用量帳本也照樣擷取。
+#[derive(Default)]
+pub struct SessionWatch<'a> {
+    /// 回填這次看到的 thread id（開線時由 CLI 產生）
+    pub id_out: Option<&'a std::sync::Mutex<Option<String>>>,
+    /// 續聊必須留在這個 thread；CLI 回報別的 id 就在正文前中止
+    pub expected_id: Option<&'a str>,
+    /// 上一輪成功時的累計用量；續聊時 None＝基準不明，這輪用量記為未知
+    pub codex_usage_base: Option<CodexUsageCounters>,
+    /// 續聊（要相減）才設 true；開線那輪累計值就是本輪用量
+    pub resumed: bool,
+    /// 回填這輪 turn.completed 的累計用量，供 lane 存成下一輪的基準
+    pub codex_usage_out: Option<&'a std::sync::Mutex<Option<CodexUsageCounters>>>,
+    /// 收到完成事件、程序卻以非 0 結束：正文照交，但 session 是否落檔不可信，lane 據此丟線
+    pub unclean_exit_out: Option<&'a std::sync::atomic::AtomicBool>,
+}
+
+/// 一家 CLI 的輸出協定：逐行解析器＋收尾規則。
+pub struct CliProtocol {
+    pub parse: fn(&str) -> CliLine,
+    /// true：沒收到完成事件（`CliLine::Done`）就結束一律算失敗，即使程序以 0 結束。
+    /// codex 有「事件通道 EOF、沒送 turn.completed 仍回 0」的分支，只看正文會把半截當成功。
+    pub require_done: bool,
+}
+
 /// claude lane 續聊（prompt-cache-optimization 包 2）的 session 指定方式。
 pub enum CliSession<'a> {
     /// 開新線：session id 由本程式產生（UUID），之後靠它 resume 與定位 session 檔。
@@ -51,6 +86,9 @@ pub enum CliLine {
         text: String,
         is_error: bool,
     },
+    /// 非致命的錯誤通知（codex 頂層 error：重試中的 Reconnecting 也走這裡）：記下來，不結束回合；
+    /// 回合最後失敗時拿最後一則當錯誤文字。
+    SoftError(String),
     Other,
 }
 

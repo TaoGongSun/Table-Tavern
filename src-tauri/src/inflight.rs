@@ -318,7 +318,7 @@ mod tests {
                     &args,
                     "",
                     &[],
-                    crate::cli::parse_claude_line,
+                    &crate::cli::CLAUDE_PROTOCOL,
                     false,
                     crate::transport::RunawayPolicy::Off,
                     None,

@@ -1,4 +1,4 @@
-use super::types::{CliLine, UsageLog};
+use super::types::{CliLine, CliProtocol, SessionWatch, UsageLog};
 use crate::data::DataResult;
 use crate::transport::{
     context_overflow, runaway_message, RunawayGuard, RunawayPolicy, RunawayReason, LINE_CAP_BYTES,
@@ -123,7 +123,7 @@ pub async fn run_cli(
     args: &[String],
     stdin_data: &str,
     envs: &[(String, String)],
-    parse: fn(&str) -> CliLine,
+    protocol: &CliProtocol,
     thinking_to_delta: bool,
     policy: RunawayPolicy,
     usage_log: Option<UsageLog<'_>>,
@@ -135,12 +135,13 @@ pub async fn run_cli(
         args,
         stdin_data,
         envs,
-        parse,
+        protocol,
         thinking_to_delta,
         policy,
         usage_log,
         on_delta,
         None,
+        SessionWatch::default(),
     )
     .await?
     {
@@ -162,7 +163,7 @@ pub async fn run_cli_cancellable(
     args: &[String],
     stdin_data: &str,
     envs: &[(String, String)],
-    parse: fn(&str) -> CliLine,
+    protocol: &CliProtocol,
     // 思考增量要不要餵給 on_delta：只有「進度字尾」型顯示（卡重構）開 true；
     // 聊天／旁白的 on_delta 是劇情正文串流，思考混進去會出戲。
     thinking_to_delta: bool,
@@ -171,6 +172,8 @@ pub async fn run_cli_cancellable(
     usage_log: Option<UsageLog<'_>>,
     mut on_delta: impl FnMut(&str),
     cancel: Option<watch::Receiver<bool>>,
+    // 續聊線的 thread id／累計用量觀測（codex）；不綁 usage_log
+    session: SessionWatch<'_>,
 ) -> DataResult<CliFinish> {
     super::agy_home::check_spawn_envs(program, envs).map_err(crate::data::invalid_data)?;
     #[cfg(feature = "test-harness")]
@@ -231,10 +234,11 @@ pub async fn run_cli_cancellable(
     let result = drive_child(
         &mut child,
         stdin_data,
-        parse,
+        protocol,
         thinking_to_delta,
         policy,
         usage_log,
+        session,
         version,
         &mut on_delta,
         cancel,
@@ -277,10 +281,11 @@ impl VersionProbe {
 async fn drive_child(
     child: &mut Child,
     stdin_data: &str,
-    parse: fn(&str) -> CliLine,
+    protocol: &CliProtocol,
     thinking_to_delta: bool,
     policy: RunawayPolicy,
     usage_log: Option<UsageLog<'_>>,
+    session: SessionWatch<'_>,
     mut version: VersionProbe,
     on_delta: &mut impl FnMut(&str),
     mut cancel: Option<watch::Receiver<bool>>,
@@ -311,6 +316,8 @@ async fn drive_child(
     let mut stdout_open = true;
     let mut stderr_open = true;
     let mut agy_conversation_id: Option<String> = None;
+    // codex 頂層 error（非致命通知）的最後一則：回合最後失敗時當錯誤文字
+    let mut soft_error: Option<String> = None;
     // 子程序死法收網（2026-08-12，跨平台 tokio API）：
     // ①程序退出但管線不 EOF（孫程序繼承 fd）：退出後 800ms 沒新行＝強制收尾；
     // ②程序活著但斷流（網路死、CLI 內部卡死）：STALL_WINDOW 無任何 stdout/stderr 行＝殺程序回錯；
@@ -321,6 +328,10 @@ async fn drive_child(
     let mut progressed = false;
     let mut grace_deadline: Option<tokio::time::Instant> = None;
     let mut grace_armed = false;
+    // 程序是被寬限期殺掉的（成功收尾已到、期限到時還沒退出、kill 有送出）：非 0 退出是我們造成的
+    let mut grace_killed = false;
+    // codex 回報這輪 rollout 存檔失敗（之後才可能補存）：被寬限殺掉就不能假設已落檔
+    let mut rollout_unsaved = false;
     let mut exited = false;
     let mut stall: Option<String> = None;
     let mut aborted = false;
@@ -349,9 +360,15 @@ async fn drive_child(
             }
             // 寬限排在讀管線之前：程序一直吐 stderr 時期限照樣輪得到
             _ = tokio::time::sleep_until(grace_deadline.unwrap_or(started)), if grace_deadline.is_some() && !exited => {
-                // 殺掉後交給下面的 wait 分支收屍、800ms 排空，再走正常完成路徑
-                let _ = child.start_kill();
+                // 殺掉後交給下面的 wait 分支收屍、800ms 排空，再走正常完成路徑。
+                // 期限到時程序已自己退出的不算我們殺的，退出碼照它自己的判
                 grace_deadline = None;
+                if !matches!(child.try_wait(), Ok(Some(_))) && child.start_kill().is_ok() {
+                    grace_killed = true;
+                    eprintln!("[cli] killed after done grace (process did not exit after its finish event)");
+                    #[cfg(feature = "test-harness")]
+                    crate::harness::ai_event(harness_dispatch, "done-grace-killed", serde_json::Value::Null);
+                }
                 stdin_open = false;
                 continue;
             }
@@ -446,6 +463,31 @@ async fn drive_child(
                 agy_conversation_id = Some(id);
             }
         }
+        if session.id_out.is_some() || session.expected_id.is_some() {
+            if let Some(id) = super::stream::codex_thread_id(&line) {
+                if let Some(expected) = session.expected_id.filter(|expected| *expected != id) {
+                    return Err(UiMsg::CliSessionMismatch {
+                        cli: "codex".to_owned(),
+                        expected: expected.to_owned(),
+                        actual: id,
+                    }
+                    .into_error());
+                }
+                if let Some(slot) = session.id_out {
+                    if let Ok(mut held) = slot.lock() {
+                        *held = Some(id);
+                    }
+                }
+            }
+        }
+        let codex_counters = (session.resumed || session.codex_usage_out.is_some())
+            .then(|| super::stream::codex_usage_counters(&line))
+            .flatten();
+        if let (Some(slot), Some(current)) = (session.codex_usage_out, codex_counters) {
+            if let Ok(mut held) = slot.lock() {
+                *held = Some(current);
+            }
+        }
         if let Some(slot) = usage_log.as_ref().and_then(|log| log.overage_out) {
             // 超額事件可能在 result 前後任何位置；一次嘗試內見過 true 就不撤銷（那段已按超額計費）
             if super::stream::claude_overage(&line) == Some(true) {
@@ -505,6 +547,30 @@ async fn drive_child(
                         }
                     }
                 }
+                // codex 續聊：累計值相減；基準缺或計數倒退＝這輪用量未知，不拿累計值冒充單輪
+                let mut codex_unknown = None;
+                if let (true, Some(current)) = (session.resumed, codex_counters) {
+                    match session
+                        .codex_usage_base
+                        .and_then(|base| super::stream::codex_usage_delta(current, base))
+                    {
+                        Some(delta) => usage = delta,
+                        None => {
+                            usage = crate::transport::PromptCacheUsage {
+                                created_1h_tokens: None,
+                                prompt_tokens: 0,
+                                cached_tokens: None,
+                                created_tokens: None,
+                                output_tokens: 0,
+                                cost_usd: None,
+                            };
+                            codex_unknown = Some(serde_json::json!({
+                                "current": current,
+                                "base": session.codex_usage_base,
+                            }));
+                        }
+                    }
+                }
                 // 原始收尾 usage 與解析後要落帳的數字並排（agy 另附累積值與上輪基準）
                 #[cfg(feature = "test-harness")]
                 crate::harness::ai_event(
@@ -535,6 +601,9 @@ async fn drive_child(
                 {
                     extra.extend(evidence);
                 }
+                if let Some(unknown) = codex_unknown {
+                    extra.insert("codex_usage_unknown".to_owned(), unknown);
+                }
                 crate::usage::log::append_call(
                     log.path,
                     log.world,
@@ -555,8 +624,12 @@ async fn drive_child(
                 }
             }
         }
-        let parsed = parse(&line);
-        if !matches!(parsed, CliLine::Other) {
+        if protocol.require_done && super::stream::codex_rollout_save_failed(&line) {
+            eprintln!("[cli] codex reported a rollout save failure");
+            rollout_unsaved = true;
+        }
+        let parsed = (protocol.parse)(&line);
+        if !matches!(parsed, CliLine::Other | CliLine::SoftError(_)) {
             progressed = true;
         }
         match parsed {
@@ -592,7 +665,15 @@ async fn drive_child(
                     grace_armed = true;
                     grace_deadline = Some(tokio::time::Instant::now() + DONE_GRACE);
                 }
-                done = Some((text, is_error));
+                // codex：已經報過失敗的收尾不讓後到的事件蓋掉（失敗原因要留著）。
+                // 其他家照舊由後到的收尾為準（grok 的頂層 error 之後 end_turn＝成功，方案 §3）
+                if !(protocol.require_done && matches!(done, Some((_, true)))) {
+                    done = Some((text, is_error));
+                }
+            }
+            CliLine::SoftError(text) => {
+                eprintln!("[cli] soft error: {text}");
+                soft_error = Some(text);
             }
             CliLine::Other => {}
         }
@@ -630,6 +711,37 @@ async fn drive_child(
         }
         .into_error());
     }
+    if protocol.require_done && done.is_none() && status.success() {
+        // codex 有「事件通道 EOF、沒送 turn.completed 仍回 0」的分支：半截正文不能當成完成
+        let error = soft_error.unwrap_or_else(|| {
+            UiMsg::CliTurnFailedStatus {
+                cli: "Codex".to_owned(),
+                status: status.to_string(),
+            }
+            .to_string()
+        });
+        if let Some(coded) = context_overflow::cli_failure(&error) {
+            return Err(crate::data::invalid_data(coded));
+        }
+        return Err(UiMsg::CliReplyError { error }.into_error());
+    }
+    if protocol.require_done
+        && done.is_some()
+        && !status.success()
+        && (!grace_killed || rollout_unsaved)
+    {
+        // 收到完成事件卻自己非正常結束：正文照交，但 session 是否已落檔不可信，lane 據此丟線。
+        // 寬限期殺掉的不算：codex 0.164.0 在送出 turn.completed 之前已把這輪寫進 rollout 並投影進
+        // SQLite（core/src/tasks/mod.rs:395-412 回合結束先 flush_rollout，之後 on_task_finished 才送
+        // TurnComplete；thread-store/src/local/live_writer.rs:346-389 flush 等寫入任務確認、非 legacy
+        // 另投影 SQLite；rollout/src/recorder.rs:1099-1118），丟線只會白白掉快取。
+        // 例外：那次 flush 失敗時 codex 只發警告（「Failed to save the conversation transcript」）
+        // 照常完成，這時被殺就不能確定已落檔，照舊丟線
+        eprintln!("[cli] turn completed but exit status {status}; session will not be resumed");
+        if let Some(flag) = session.unclean_exit_out {
+            flag.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
     if done.is_none() && !status.success() {
         // 死法④：CLI crash／被系統殺（無收尾事件＋exit 非零）——殘缺正文不能往下走
         let tail: String = stderr_text
@@ -638,6 +750,11 @@ async fn drive_child(
             .take(5)
             .collect::<Vec<_>>()
             .join("\n");
+        // codex 頂層 error 不走 stderr：有的話附在 stderr 尾段前面，玩家看得到 CLI 自己的原因
+        let tail = match &soft_error {
+            Some(error) => format!("{error}\n{tail}"),
+            None => tail,
+        };
         let msg = UiMsg::CliCrashed {
             status: status.to_string(),
             tail,
@@ -681,3 +798,6 @@ mod runaway_tests;
 
 #[cfg(test)]
 mod finish_tests;
+
+#[cfg(test)]
+mod codex_tests;

@@ -50,7 +50,8 @@ fn solo_plan_reopens_on_any_system_change() {
                 Some(&state),
                 &fox_turn(&events, PRIVATE_B, true, None),
                 now,
-                LaneProvider::Claude
+                LaneProvider::Claude,
+                None
             )),
             Some("system-changed"),
             "@{now}：不走補丁、也不追平"
@@ -64,7 +65,8 @@ fn solo_plan_reopens_on_any_system_change() {
             Some(&patched),
             &fox_turn(&events, PRIVATE_B, true, None),
             LIVE,
-            LaneProvider::Claude
+            LaneProvider::Claude,
+            None
         )),
         Some("system-changed")
     );
@@ -74,7 +76,8 @@ fn solo_plan_reopens_on_any_system_change() {
             Some(&state),
             &fox_turn(&events, PRIVATE_B, true, Some("## 世界書\n燈塔\n")),
             LIVE,
-            LaneProvider::Claude
+            LaneProvider::Claude,
+            None
         )),
         Some("worldbook-changed")
     );
@@ -100,6 +103,7 @@ fn solo_plan_resumes_when_system_is_unchanged() {
             &fox_turn(&events, PRIVATE_A, true, None),
             now,
             LaneProvider::Claude,
+            None,
         ) {
             TurnPlan::Resume {
                 session_id,
@@ -131,6 +135,7 @@ fn erased_lane_still_patches_and_agy_still_reopens() {
         &fox_turn(&events, &changed, false, None),
         LIVE,
         LaneProvider::Claude,
+        None,
     ) {
         TurnPlan::Resume { patch, .. } => assert!(patch.is_some(), "共線快取內走補丁"),
         TurnPlan::Reopen { reason } => panic!("共線不該重開：{}", reason.as_str()),
@@ -140,6 +145,7 @@ fn erased_lane_still_patches_and_agy_still_reopens() {
         &fox_turn(&events, &changed, false, None),
         EXPIRED,
         LaneProvider::Claude,
+        None,
     ) {
         TurnPlan::Resume { rebased, .. } => assert!(rebased, "共線過期追平"),
         TurnPlan::Reopen { reason } => panic!("共線不該重開：{}", reason.as_str()),
@@ -151,7 +157,7 @@ fn erased_lane_still_patches_and_agy_still_reopens() {
     let mut input = fox_turn(&events, PRIVATE_B, false, None);
     input.scope = Some("fox-id".to_owned());
     assert_eq!(
-        reason(plan_turn(Some(&agy), &input, LIVE, LaneProvider::Agy)),
+        reason(plan_turn(Some(&agy), &input, LIVE, LaneProvider::Agy, None)),
         Some("system-changed")
     );
 }
@@ -359,6 +365,7 @@ async fn solo_lane_deletes_the_old_session_for_other_reopen_reasons() {
         usage_log: agy.call.usage_log.clone(),
         provider: LaneProvider::Agy,
         on_overage: None,
+        effort: None,
     };
     let mut input = fox_turn(&events, PRIVATE_A, true, None);
     input.prefix = None;
@@ -392,6 +399,7 @@ async fn solo_resume_failure_deletes_the_old_session() {
         claude_home: fake.call.claude_home.clone(),
         provider: LaneProvider::Claude,
         on_overage: None,
+        effort: None,
     };
     failing
         .envs

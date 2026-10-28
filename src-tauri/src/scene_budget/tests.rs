@@ -582,9 +582,9 @@ fn text_of(request: &measure::Request) -> String {
     }
 }
 
-/// 聊天量測與實送同一組裝：GM 指示四態跟著桌況走；codex 量的是 dispatch 攤平後的那份
+/// 聊天量測與實送同一組裝：GM 指示四態跟著桌況走；codex 走 lane（exec resume），量的跟 claude 同一份 lane 組裝
 #[test]
-fn chat_measure_uses_the_real_gm_assembly_for_every_format_and_codex_flatten() {
+fn chat_measure_uses_the_real_gm_assembly_for_every_format_and_codex_lane() {
     let events = vec![
         event(TranscriptKind::Player, "玩家", "開始。"),
         event(TranscriptKind::Narration, "GM", "雨。"),
@@ -593,27 +593,25 @@ fn chat_measure_uses_the_real_gm_assembly_for_every_format_and_codex_flatten() {
     let config = config_for("codex");
     let lang = crate::transport::ui_language(&config);
     let materials = crate::chat_assembly::gm_materials(&root, &world).unwrap();
-    let (scope, _) = crate::chat_assembly::gm_scope(&materials);
     let scan = crate::chat_assembly::test_gm_scan(&root, &world, &materials, &lang);
-    let (instruction, closing) =
+    let (instruction, _) =
         crate::chat_assembly::gm_instruction(&root, &world, &materials, &scan, &lang);
     let narration = instruction.content.clone();
-    // codex：與 dispatch 同一個 flatten（label GM＋本輪收尾句）
-    let (system, prompt) = crate::cli::flatten_messages(
-        "GM",
-        closing,
-        &crate::chat_assembly::gm_messages(&materials, &scan, &scope, instruction, &lang),
-        &lang,
-    );
-    match gm_path(&root, &world, "codex") {
-        measure::Request::Cli {
-            system: measured_system,
-            prompt: measured_prompt,
-        } => {
-            assert_eq!(measured_system, system);
-            assert_eq!(measured_prompt, prompt);
+    match (
+        gm_path(&root, &world, "codex"),
+        gm_path(&root, &world, "claude"),
+    ) {
+        (
+            measure::Request::Cli {
+                system: codex_system,
+                prompt: codex_prompt,
+            },
+            measure::Request::Cli { system, prompt },
+        ) => {
+            assert_eq!(codex_system, system);
+            assert_eq!(codex_prompt, prompt);
         }
-        measure::Request::Api(_) => panic!("codex 要量攤平後的輸入"),
+        _ => panic!("codex 與 claude 都走 lane"),
     }
     // API：訊息本身
     assert!(matches!(

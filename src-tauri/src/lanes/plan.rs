@@ -85,6 +85,8 @@ pub(super) enum ReopenReason {
     ReplyDiverged,
     ResumeFailed,
     ProviderChanged,
+    /// codex 這條線換了 reasoning effort（玩家改檔位覆寫）：同線中途換 effort 對快取的影響不明，直接重開
+    EffortChanged,
     SystemChanged,
     /// 未抹線換了開口者（含別的角色解析到同一模型而共用同一 key）
     OwnerChanged,
@@ -109,6 +111,7 @@ impl ReopenReason {
             Self::ReplyDiverged => "reply-diverged",
             Self::ResumeFailed => "resume-failed",
             Self::ProviderChanged => "provider-changed",
+            Self::EffortChanged => "effort-changed",
             Self::SystemChanged => "system-changed",
             Self::OwnerChanged => "owner-changed",
             Self::ModeChanged => "mode-changed",
@@ -158,6 +161,7 @@ pub(super) fn plan_turn(
     input: &TurnInput<'_>,
     now_epoch: u64,
     provider: LaneProvider,
+    effort: Option<&str>,
 ) -> TurnPlan {
     let Some(state) = state else {
         return TurnPlan::Reopen {
@@ -168,6 +172,11 @@ pub(super) fn plan_turn(
         return TurnPlan::Reopen {
             reason: ReopenReason::ProviderChanged,
         }; // 線名撞到別家 CLI 開的線：session id 是對方的，resume 一定失敗
+    }
+    if state.effort.as_deref() != effort {
+        return TurnPlan::Reopen {
+            reason: ReopenReason::EffortChanged,
+        }; // 只有 codex 帶 effort；其他 CLI 兩邊都是 None
     }
     if state.pending_rewrite.is_some() {
         return TurnPlan::Reopen {

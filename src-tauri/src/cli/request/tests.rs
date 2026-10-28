@@ -518,3 +518,39 @@ fn tier_override_reads_prefixed_keys_and_ignores_blank() {
     assert_eq!(tier_override(&map, "claude", Tier::Fast), None); // 空白＝未設
     assert_eq!(tier_override(&map, "codex", Tier::Best), None);
 }
+
+/// codex 三種呼叫：單發帶 --ephemeral，lane 開線不帶、續聊接 `resume <id>`；聊天都帶精簡旗標，
+/// 生圖不帶；`-s` 一定在 `resume` 前（它不是全域旗標）。
+#[test]
+fn codex_args_shapes_for_oneshot_lane_and_image() {
+    let has_lean = |args: &[String]| {
+        CODEX_LEAN_FLAGS
+            .iter()
+            .all(|flag| args.windows(2).any(|w| w[0] == "-c" && w[1] == *flag))
+    };
+    let oneshot = codex_args(Some("m1"), "low", false);
+    assert!(oneshot.contains(&"--ephemeral".to_owned()));
+    assert!(has_lean(&oneshot));
+    assert!(oneshot.windows(2).any(|w| w == ["-s", "read-only"]));
+    assert_eq!(oneshot.last().unwrap(), "-");
+
+    let image = codex_args(None, "high", true);
+    assert!(image.contains(&"--ephemeral".to_owned()));
+    assert!(image.windows(2).any(|w| w == ["-s", "workspace-write"]));
+    assert!(!image.iter().any(|arg| arg.starts_with("skills.")));
+
+    let opened = codex_session_args(Some("m1"), "low", None);
+    assert!(!opened.contains(&"--ephemeral".to_owned()));
+    assert!(!opened.contains(&"resume".to_owned()));
+    assert!(has_lean(&opened));
+    assert!(opened.windows(2).any(|w| w == ["-m", "m1"]));
+    assert_eq!(opened.last().unwrap(), "-");
+
+    let resumed = codex_session_args(None, "low", Some("thread-1"));
+    assert!(!resumed.contains(&"--ephemeral".to_owned()));
+    assert!(has_lean(&resumed));
+    let at = |needle: &str| resumed.iter().position(|arg| arg == needle).unwrap();
+    assert!(at("-s") < at("resume"));
+    assert!(at("model_reasoning_effort=\"low\"") < at("resume"));
+    assert_eq!(&resumed[at("resume")..], ["resume", "thread-1", "-"]);
+}

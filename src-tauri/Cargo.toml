@@ -58,6 +58,8 @@ block2 = { version = "0.6", optional = true }
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 winreg = "0.56"
+# codex-home 硬連結的檔案身分（磁碟序號＋file index）；same-file 也是靠它，已在依賴樹內
+winapi-util = "0.1.11"
 
 [features]
 # 只給主線自動化 GUI 實測的測試包用：`npm run harness:build`。正式包絕不開。

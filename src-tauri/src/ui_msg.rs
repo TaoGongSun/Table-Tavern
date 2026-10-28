@@ -346,6 +346,17 @@ pub enum UiMsg {
     AgyKeychainSlotOccupied {
         path: String,
     },
+    CodexProfileFailed {
+        error: String,
+    },
+    /// codex-home 裡共用登入的 auth.json 位置被不是我們建的檔／目錄佔住；path 是完整路徑。
+    CodexAuthSlotOccupied {
+        path: String,
+    },
+    /// 共用登入的目標 `~/.codex/auth.json` 不存在（沒登入，或登入存在系統鑰匙圈）；path 是目標完整路徑。
+    CodexAuthMissing {
+        path: String,
+    },
     CliRiskNotAccepted,
     /// cli 是 claude／codex／agy／grok 的 id 原文。
     CliNotFound {
@@ -403,6 +414,12 @@ pub enum UiMsg {
         actual: String,
     },
     AgyLockPoisoned,
+    /// 續聊回到不同的 session；cli 是 id 原文（目前只有 codex）。
+    CliSessionMismatch {
+        cli: String,
+        expected: String,
+        actual: String,
+    },
     LaneStateWriteFailed {
         path: String,
         error: String,

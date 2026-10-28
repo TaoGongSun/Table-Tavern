@@ -43,8 +43,6 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 ## 階段 E：成本
 [api-shared-lane](handoffs/api-shared-lane.md) 四路成對測試先做；以下各案依其數據決定做不做：
 - [codex-floor-sandbox-group](tasks/codex-floor-sandbox-group.md) — codex 自帶底線 12,288 vs 11,008，疑因沙盒模式不同而帳本分組沒算進去 — 下一步：未排程；先驗差額來源
-- [codex-lane-resume](tasks/codex-lane-resume.md) — codex 改走 lane 續聊讓我方內容吃到快取（單發零命中、resume 3 輪中 2） — 下一步：未排程；開工前作者裁決 session 存放位置
-- [codex-skills-in-prompt](tasks/codex-skills-in-prompt.md) — 使用者自己的 codex 技能清單（4.9–19.5KB）被帶進跑團 prompt — 下一步：未排程；先查來源與關閉方式
 
 ## 階段 F：生圖
 [sponsor-features](handoffs/sponsor-features.md) 的 AI 生圖（梯 2 第 8）、[image-model-picker](handoffs/image-model-picker.md)（第 21）、[image-model-free-tier-hide](handoffs/image-model-free-tier-hide.md)（第 22）先實測；之後 vn-mode 前置實測 a／b／c（已有[實測報告](plans/vn-mode-image-spike.md)，待作者三項決定）。

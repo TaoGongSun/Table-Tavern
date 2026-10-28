@@ -20,7 +20,7 @@ fn post_opening(root: &std::path::Path, world: &str) {
     .unwrap();
 }
 
-/// lane（claude）量的 system 與 prompt＝實送 `gm_lane_parts`＋`build_prompt_as`；codex 量的＝實送攤平。
+/// lane（claude、codex）量的 system 與 prompt＝實送 `gm_lane_parts`＋`build_prompt_as`。
 fn assert_measure_matches(root: &std::path::Path, world: &str) {
     let lang = "zh-TW";
     let materials = crate::chat_assembly::gm_materials(root, world).unwrap();
@@ -43,21 +43,15 @@ fn assert_measure_matches(root: &std::path::Path, world: &str) {
         }
         measure::Request::Api(_) => panic!("claude 走 lane"),
     }
-    let (flat_system, flat_prompt) = crate::cli::flatten_messages(
-        "GM",
-        closing,
-        &crate::chat_assembly::gm_messages(&materials, &scan, &scope, instruction, lang),
-        lang,
-    );
     match gm_path(root, world, "codex") {
         measure::Request::Cli {
             system: measured_system,
             prompt: measured_prompt,
         } => {
-            assert_eq!(measured_system, flat_system);
-            assert_eq!(measured_prompt, flat_prompt);
+            assert_eq!(measured_system, system);
+            assert_eq!(measured_prompt, prompt);
         }
-        measure::Request::Api(_) => panic!("codex 要量攤平後的輸入"),
+        measure::Request::Api(_) => panic!("codex 走 lane"),
     }
 }
 

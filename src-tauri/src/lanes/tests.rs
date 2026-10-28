@@ -155,6 +155,7 @@ rate('FAKE_RATE_AFTER')
         usage_log: Some(dir.join("prompt-cache.jsonl")),
         claude_home: claude_home.clone(),
         on_overage: None,
+        effort: None,
     };
     FakeCli {
         dir,
@@ -233,6 +234,7 @@ if os.environ.get('FAKE_HANG_AFTER_RESULT') == '1':
         usage_log: Some(usage_log),
         claude_home: dir.join("unused-claude-home"),
         on_overage: None,
+        effort: None,
     };
     FakeCli {
         dir,
@@ -308,6 +310,8 @@ fn lane_state(events: &[TranscriptEvent], scene: u64) -> LaneState {
         cache_ttl_secs: LEGACY_CACHE_TTL_SECS,
         last_prompt_tokens: 0,
         agy_usage: None,
+        codex_usage: None,
+        effort: None,
         unerased_owner: None,
         had_state_block: false,
         hoisted_worldbook: None,
@@ -362,14 +366,14 @@ fn plan_resumes_only_when_everything_lines_up() {
     let input = turn_input(&events, 0);
 
     assert!(matches!(
-        plan_turn(None, &input, 1_010, LaneProvider::Claude),
+        plan_turn(None, &input, 1_010, LaneProvider::Claude, None),
         TurnPlan::Reopen {
             reason: ReopenReason::FirstTurn
         }
     ));
 
     let good = lane_state(&events, 0);
-    match plan_turn(Some(&good), &input, 1_010, LaneProvider::Claude) {
+    match plan_turn(Some(&good), &input, 1_010, LaneProvider::Claude, None) {
         TurnPlan::Resume {
             session_id, base, ..
         } => {
@@ -385,7 +389,7 @@ fn plan_resumes_only_when_everything_lines_up() {
         prefix: None,
     });
     assert!(matches!(
-        plan_turn(Some(&pending), &input, 1_010, LaneProvider::Claude),
+        plan_turn(Some(&pending), &input, 1_010, LaneProvider::Claude, None),
         TurnPlan::Reopen {
             reason: ReopenReason::PendingRewrite
         }
@@ -394,7 +398,13 @@ fn plan_resumes_only_when_everything_lines_up() {
     let mut scene_changed = good.clone();
     scene_changed.scene = 1;
     assert!(matches!(
-        plan_turn(Some(&scene_changed), &input, 1_010, LaneProvider::Claude),
+        plan_turn(
+            Some(&scene_changed),
+            &input,
+            1_010,
+            LaneProvider::Claude,
+            None
+        ),
         TurnPlan::Reopen {
             reason: ReopenReason::SceneChanged
         }
@@ -402,7 +412,13 @@ fn plan_resumes_only_when_everything_lines_up() {
 
     let mut changed_input = turn_input(&events, 0);
     changed_input.frozen_system = "凍結B".to_owned();
-    match plan_turn(Some(&good), &changed_input, 1_010, LaneProvider::Claude) {
+    match plan_turn(
+        Some(&good),
+        &changed_input,
+        1_010,
+        LaneProvider::Claude,
+        None,
+    ) {
         TurnPlan::Resume { system, patch, .. } => {
             assert_eq!(system, "凍結A");
             assert!(patch.is_some());
@@ -413,7 +429,7 @@ fn plan_resumes_only_when_everything_lines_up() {
     let mut ahead = good.clone();
     ahead.sent_events = 3; // 正典被收回到水位前
     assert!(matches!(
-        plan_turn(Some(&ahead), &input, 1_010, LaneProvider::Claude),
+        plan_turn(Some(&ahead), &input, 1_010, LaneProvider::Claude, None),
         TurnPlan::Reopen {
             reason: ReopenReason::HistoryRewound
         }
@@ -426,7 +442,13 @@ fn plan_resumes_only_when_everything_lines_up() {
     ];
     let edited_input = turn_input(&edited, 0);
     assert!(matches!(
-        plan_turn(Some(&good), &edited_input, 1_010, LaneProvider::Claude),
+        plan_turn(
+            Some(&good),
+            &edited_input,
+            1_010,
+            LaneProvider::Claude,
+            None
+        ),
         TurnPlan::Reopen {
             reason: ReopenReason::HistoryEdited
         }
@@ -455,7 +477,7 @@ fn switching_cli_reopens_instead_of_resuming_someone_elses_session() {
     let mut state = lane_state(&events, 0);
     state.expected_reply = None;
     assert!(matches!(
-        plan_turn(Some(&state), &input, 1_010, LaneProvider::Grok),
+        plan_turn(Some(&state), &input, 1_010, LaneProvider::Grok, None),
         TurnPlan::Reopen {
             reason: ReopenReason::ProviderChanged
         }
@@ -480,7 +502,7 @@ fn drifted_system_rebases_on_claude_and_reopens_on_grok() {
     state.expected_reply = None;
     let expired = state.last_call_epoch + LEGACY_CACHE_TTL_SECS + 1;
 
-    match plan_turn(Some(&state), &input, expired, LaneProvider::Claude) {
+    match plan_turn(Some(&state), &input, expired, LaneProvider::Claude, None) {
         TurnPlan::Resume {
             system,
             patch,
@@ -498,6 +520,7 @@ fn drifted_system_rebases_on_claude_and_reopens_on_grok() {
         &input,
         state.last_call_epoch + 1,
         LaneProvider::Claude,
+        None,
     ) {
         TurnPlan::Resume { system, patch, .. } => {
             assert_eq!(system, "凍結A"); // 快取還活著就別動它
@@ -508,13 +531,13 @@ fn drifted_system_rebases_on_claude_and_reopens_on_grok() {
 
     state.provider = LaneProvider::Grok.as_str().to_owned();
     assert!(matches!(
-        plan_turn(Some(&state), &input, expired, LaneProvider::Grok),
+        plan_turn(Some(&state), &input, expired, LaneProvider::Grok, None),
         TurnPlan::Reopen {
             reason: ReopenReason::SystemChanged
         }
     ));
     let same = turn_input(&events, 0); // frozen_system 維持「凍結A」
-    match plan_turn(Some(&state), &same, expired, LaneProvider::Grok) {
+    match plan_turn(Some(&state), &same, expired, LaneProvider::Grok, None) {
         TurnPlan::Resume { system, patch, .. } => {
             assert_eq!(system, "凍結A");
             assert!(patch.is_none()); // grok 從頭到尾只靠開線那份 system
@@ -536,7 +559,7 @@ fn plan_skips_own_reply_at_watermark_or_reopens() {
 
     let with_reply = [before[0].clone(), reply.clone()];
     let input = turn_input(&with_reply, 0);
-    match plan_turn(Some(&state), &input, 1_010, LaneProvider::Claude) {
+    match plan_turn(Some(&state), &input, 1_010, LaneProvider::Claude, None) {
         TurnPlan::Resume { base, .. } => assert_eq!(base, 2),
         TurnPlan::Reopen { .. } => panic!("回覆已落檔必須續聊"),
     }
@@ -548,7 +571,13 @@ fn plan_skips_own_reply_at_watermark_or_reopens() {
     ];
     let tampered_input = turn_input(&tampered, 0);
     assert!(matches!(
-        plan_turn(Some(&state), &tampered_input, 1_010, LaneProvider::Claude),
+        plan_turn(
+            Some(&state),
+            &tampered_input,
+            1_010,
+            LaneProvider::Claude,
+            None
+        ),
         TurnPlan::Reopen {
             reason: ReopenReason::ReplyDiverged
         }
@@ -557,7 +586,13 @@ fn plan_skips_own_reply_at_watermark_or_reopens() {
     // 回覆還沒落檔（前端沒寫進 transcript）
     let missing_input = turn_input(&before, 0);
     assert!(matches!(
-        plan_turn(Some(&state), &missing_input, 1_010, LaneProvider::Claude),
+        plan_turn(
+            Some(&state),
+            &missing_input,
+            1_010,
+            LaneProvider::Claude,
+            None
+        ),
         TurnPlan::Reopen {
             reason: ReopenReason::ReplyDiverged
         }
@@ -571,7 +606,7 @@ fn plan_rebases_changed_material_after_cache_expires() {
     input.frozen_system = "凍結B".to_owned();
     let state = lane_state(&events, 0);
 
-    match plan_turn(Some(&state), &input, 1_301, LaneProvider::Claude) {
+    match plan_turn(Some(&state), &input, 1_301, LaneProvider::Claude, None) {
         TurnPlan::Resume {
             system,
             patch,
@@ -878,6 +913,7 @@ async fn lane_turns_open_rewrite_resume_and_degrade() {
         usage_log: None,
         claude_home: call.claude_home.clone(),
         on_overage: None,
+        effort: None,
     };
     run_turn(
         &haiku_call,
@@ -967,6 +1003,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': '回覆',
         usage_log: Some(usage_log.clone()),
         claude_home,
         on_overage: None,
+        effort: None,
     };
     let calls = |index: usize| -> (Vec<String>, String, String) {
         let text = std::fs::read_to_string(session_dir.join("calls.jsonl")).unwrap();
@@ -1103,6 +1140,7 @@ fn abort_delete_failure_clears_lane_and_returns_error() {
         usage_log: Some(usage_log.clone()),
         claude_home: claude_home.clone(),
         on_overage: None,
+        effort: None,
     };
     let error = settle_abort(
         &call,
@@ -1236,6 +1274,7 @@ time.sleep(60)
         usage_log: None,
         claude_home: claude_home.clone(),
         on_overage: None,
+        effort: None,
     };
     let world_for_abort = world_id.clone();
     let (guard, mut cancel) = crate::inflight::register_turn(&world_for_abort, "turn-1");
@@ -1334,7 +1373,8 @@ fn sent_segment_marker_or_gm_only_change_reopens_but_unsent_does_not() {
                 Some(&state),
                 &turn_input(changed, 0),
                 1_010,
-                LaneProvider::Claude
+                LaneProvider::Claude,
+                None
             ),
             TurnPlan::Reopen {
                 reason: ReopenReason::HistoryEdited
@@ -1347,6 +1387,7 @@ fn sent_segment_marker_or_gm_only_change_reopens_but_unsent_does_not() {
         &turn_input(&marked, 0),
         1_010,
         LaneProvider::Claude,
+        None,
     ) {
         TurnPlan::Resume { base, .. } => {
             assert_eq!(base, 1);
@@ -1381,7 +1422,8 @@ fn expected_reply_with_marker_or_gm_only_diverges() {
                 Some(&state),
                 &turn_input(&events, 0),
                 1_010,
-                LaneProvider::Claude
+                LaneProvider::Claude,
+                None
             ),
             TurnPlan::Reopen {
                 reason: ReopenReason::ReplyDiverged
@@ -1394,7 +1436,8 @@ fn expected_reply_with_marker_or_gm_only_diverges() {
             Some(&state),
             &turn_input(&events, 0),
             1_010,
-            LaneProvider::Claude
+            LaneProvider::Claude,
+            None
         ),
         TurnPlan::Resume { base: 2, .. }
     ));
@@ -1434,7 +1477,7 @@ fn chars_lane_skips_card_private_event_without_shifting_watermark() {
         text: reply.text.clone(),
     });
     let input = turn_input(&events, 0);
-    match plan_turn(Some(&state), &input, 1_010, LaneProvider::Claude) {
+    match plan_turn(Some(&state), &input, 1_010, LaneProvider::Claude, None) {
         TurnPlan::Resume { base, .. } => {
             assert_eq!(base, 2);
             assert_eq!(
@@ -1466,7 +1509,8 @@ fn plan_after_an_unanswered_player_line_is_discarded() {
             Some(&failed),
             &turn_input(&resent, 0),
             1_010,
-            LaneProvider::Claude
+            LaneProvider::Claude,
+            None
         ),
         TurnPlan::Reopen {
             reason: ReopenReason::PendingRewrite
@@ -1481,7 +1525,8 @@ fn plan_after_an_unanswered_player_line_is_discarded() {
             Some(&sent),
             &turn_input(&history, 0),
             1_010,
-            LaneProvider::Claude
+            LaneProvider::Claude,
+            None
         ),
         TurnPlan::Reopen {
             reason: ReopenReason::HistoryRewound
@@ -1494,7 +1539,8 @@ fn plan_after_an_unanswered_player_line_is_discarded() {
             Some(&sent),
             &turn_input(&changed, 0),
             1_010,
-            LaneProvider::Claude
+            LaneProvider::Claude,
+            None
         ),
         TurnPlan::Reopen {
             reason: ReopenReason::HistoryEdited
@@ -1508,6 +1554,7 @@ fn plan_after_an_unanswered_player_line_is_discarded() {
         &turn_input(&resent, 0),
         1_010,
         LaneProvider::Claude,
+        None,
     ) {
         TurnPlan::Resume { base, .. } => assert_eq!(base, 1),
         TurnPlan::Reopen { .. } => panic!("線沒碰過收回的那句，應照常續聊"),
@@ -1535,6 +1582,7 @@ fn apply_rewrite_names_the_failing_stage() {
         claude_home: claude_home.clone(),
         prompt_dir: working_dir.with_file_name("prompts"),
         on_overage: None,
+        effort: None,
     };
     let user = |uuid: &str, parent: Option<&str>, text: &str| {
         serde_json::json!({"type":"user","uuid":uuid,"parentUuid":parent,
@@ -1627,6 +1675,7 @@ fn apply_rewrite_names_the_failing_stage() {
 }
 
 mod cache_ttl;
+mod codex;
 mod gm_restart;
 mod grok;
 mod lane_lock;
@@ -1664,7 +1713,7 @@ fn own_prefix_echo_resumes_on_stripped_event_and_diverges_otherwise() {
         }
         assert!(
             matches!(
-                plan_turn(Some(&state), &input, 1_010, provider),
+                plan_turn(Some(&state), &input, 1_010, provider, None),
                 TurnPlan::Resume { base: 2, .. }
             ),
             "{provider:?}"
@@ -1675,7 +1724,7 @@ fn own_prefix_echo_resumes_on_stripped_event_and_diverges_otherwise() {
                 event(TranscriptKind::Dialogue, "fox-id", "狐狸", diverged),
             ];
             assert!(matches!(
-                plan_turn(Some(&state), &turn_input(&stored, 0), 1_010, provider),
+                plan_turn(Some(&state), &turn_input(&stored, 0), 1_010, provider, None),
                 TurnPlan::Reopen {
                     reason: ReopenReason::ReplyDiverged
                 }

@@ -168,36 +168,52 @@ pub(super) fn check_destination(path: &Path, layout: &Layout) -> Result<PathBuf,
 /// (a) `Library/Keychains` 指向 `<家目錄>/Library/Keychains`（共用登入，精確比對位置與目標）；
 /// (b) 目標 canonical 後仍在 agy-home 內的連結（agy 自建的 `.gemini/antigravity-cli/cli.log` → `log/…`）。
 /// agy-home 本身與其下 `Library` 是 symlink 照拒；其餘指向 agy-home 外的一律拒——root 內不留指向外部的連結。
+/// codex 的隔離目錄 `config/codex-home`（cli::codex_home）另有兩條：
+/// (c) `auth.json` 指向 `<家目錄>/.codex/auth.json`（共用登入，精確比對位置與目標）；
+/// (d) `tmp/` 是 codex 每次自建的暫存（`arg0-*/apply_patch` 等指向 codex 執行檔的連結），
+///     掃到它、確認是真目錄（上層各層都已驗過不是連結）時就地整個刪掉，不放行任何連結。
 pub(super) fn reject_symlinks(root: &Path, home: &Path) -> Result<(), String> {
     match fs::symlink_metadata(root) {
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(format!("無法檢查 {}：{error}", root.display())),
-        Ok(_) => scan_for_symlinks(root, &AllowedLink::agy_keychain(root, home)),
+        Ok(_) => scan_for_symlinks(root, &AllowedLink::new(root, home)),
     }
 }
 
 struct AllowedLink {
     agy_home: PathBuf,
-    at: PathBuf,
-    to: PathBuf,
+    /// 精確放行的 (位置, 目標)：agy 的 keychain、codex 的 auth.json
+    exact: [(PathBuf, PathBuf); 2],
+    /// codex 自建暫存目錄：掃到就刪
+    codex_tmp: PathBuf,
 }
 
 impl AllowedLink {
-    fn agy_keychain(root: &Path, home: &Path) -> Self {
+    fn new(root: &Path, home: &Path) -> Self {
         let tail = crate::cli::agy_home::KEYCHAIN_LINK;
         let agy_home = root.join("config").join("agy-home");
+        let codex_home = root.join("config").join("codex-home");
         Self {
-            at: tail.iter().fold(agy_home.clone(), |p, s| p.join(s)),
+            exact: [
+                (
+                    tail.iter().fold(agy_home.clone(), |p, s| p.join(s)),
+                    tail.iter().fold(home.to_path_buf(), |p, s| p.join(s)),
+                ),
+                (
+                    codex_home.join(crate::cli::codex_home::AUTH_FILE),
+                    crate::cli::codex_home::auth_target(home),
+                ),
+            ],
             agy_home,
-            to: tail.iter().fold(home.to_path_buf(), |p, s| p.join(s)),
+            codex_tmp: codex_home.join("tmp"),
         }
     }
 
     /// 相對連結以所在目錄解析，兩邊都 canonical_lenient 後比對。
     fn permits(&self, path: &Path) -> bool {
-        if path != self.at {
+        let Some((_, to)) = self.exact.iter().find(|(at, _)| path == at) else {
             return false;
-        }
+        };
         let Ok(value) = fs::read_link(path) else {
             return false;
         };
@@ -205,7 +221,7 @@ impl AllowedLink {
             Some(parent) => parent.join(value),
             None => return false,
         };
-        match (canonical_lenient(&resolved), canonical_lenient(&self.to)) {
+        match (canonical_lenient(&resolved), canonical_lenient(to)) {
             (Ok(a), Ok(b)) => a == b,
             _ => false,
         }
@@ -243,6 +259,12 @@ fn scan_for_symlinks(dir: &Path, allowed: &AllowedLink) -> Result<(), String> {
             return Err(format!("root 內不得有 symlink：{}", path.display()));
         }
         if meta.is_dir() {
+            if path == allowed.codex_tmp {
+                // remove_dir_all 不跟隨連結：裡面指向 codex 執行檔的連結只刪連結本身
+                fs::remove_dir_all(&path)
+                    .map_err(|e| format!("無法清掉 {}：{e}", path.display()))?;
+                continue;
+            }
             scan_for_symlinks(&path, allowed)?;
         }
     }
@@ -570,6 +592,47 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn codex_home_auth_link_is_allowed_and_tmp_is_cleared() {
+        let (l, _, _, root) = reuse_fixture("codex-ok");
+        let codex_home = root.join("config/codex-home");
+        let arg0 = codex_home.join("tmp/arg0-macos/codex-arg0abc");
+        fs::create_dir_all(&arg0).unwrap();
+        let binary = l.home.join("bin-codex");
+        fs::write(&binary, "bin").unwrap();
+        std::os::unix::fs::symlink(&binary, arg0.join("apply_patch")).unwrap();
+        let target = crate::cli::codex_home::auth_target(&l.home);
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        fs::write(&target, "login").unwrap();
+        std::os::unix::fs::symlink(&target, codex_home.join("auth.json")).unwrap();
+        prepare(&root, &l, None).unwrap();
+        assert!(!codex_home.join("tmp").exists());
+        // 連結指向的執行檔與登入檔都還在
+        assert_eq!(fs::read_to_string(&binary).unwrap(), "bin");
+        assert_eq!(fs::read_to_string(&target).unwrap(), "login");
+        // auth.json 指向別處照擋
+        fs::remove_file(codex_home.join("auth.json")).unwrap();
+        std::os::unix::fs::symlink(&binary, codex_home.join("auth.json")).unwrap();
+        assert!(prepare(&root, &l, None).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_config_pointing_outside_deletes_nothing() {
+        let (l, _, _, root) = reuse_fixture("codex-config-link");
+        let outside = l.home.join("outside-config");
+        let tmp = outside.join("codex-home/tmp");
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("keep.txt"), "x").unwrap();
+        if root.join("config").exists() {
+            fs::remove_dir_all(root.join("config")).unwrap();
+        }
+        std::os::unix::fs::symlink(&outside, root.join("config")).unwrap();
+        assert!(prepare(&root, &l, None).is_err());
+        assert_eq!(fs::read_to_string(tmp.join("keep.txt")).unwrap(), "x");
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn agy_keychain_link_elsewhere_is_rejected() {
         let (l, root, _, library) = agy_fixture("agy-elsewhere");
         let other = l.home.join("Documents");
@@ -662,6 +725,23 @@ mod tests {
                 Err(err) => panic!("釋放後一直取不回鎖：{err}"),
             }
         }
+    }
+
+    /// `--fresh` 清 codex-home：auth.json 連結只刪連結本身，使用者的登入檔還在。
+    #[cfg(unix)]
+    #[test]
+    fn wipe_removes_codex_auth_link_but_keeps_login() {
+        let base = scratch("wipe-codex");
+        let root = base.join("root");
+        let codex_home = root.join("config/codex-home");
+        fs::create_dir_all(&codex_home).unwrap();
+        let target = crate::cli::codex_home::auth_target(&base.join("home"));
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        fs::write(&target, "login").unwrap();
+        std::os::unix::fs::symlink(&target, codex_home.join("auth.json")).unwrap();
+        wipe(&root, &[]).unwrap();
+        assert_eq!(fs::read_dir(&root).unwrap().count(), 0);
+        assert_eq!(fs::read_to_string(&target).unwrap(), "login");
     }
 
     #[test]

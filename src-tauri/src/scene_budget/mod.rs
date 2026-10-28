@@ -265,7 +265,9 @@ impl OwnedSources {
     fn load(config_root: &Path, root: &Path, config: &AppConfig) -> Self {
         let transport = crate::transport::dispatch::chat_transport(config);
         let (codex_cache, codex_config) = match transport.as_str() {
-            "codex" => limits::read_codex_files(),
+            "codex" => {
+                limits::read_codex_files(&crate::transport::dispatch::codex_home_dir(config_root))
+            }
             _ => (None, None),
         };
         let grok_windows = match transport.as_str() {
@@ -470,7 +472,9 @@ fn summary_limit(config_root: &Path, root: &Path, config: &AppConfig) -> Option<
     let catalog = data::read_model_catalog(config_root).unwrap_or_default();
     let (codex_cache, codex_config) =
         match crate::transport::dispatch::chat_transport(config).as_str() {
-            "codex" => limits::read_codex_files(),
+            "codex" => {
+                limits::read_codex_files(&crate::transport::dispatch::codex_home_dir(config_root))
+            }
             _ => (None, None),
         };
     let grok_windows = match crate::transport::dispatch::chat_transport(config).as_str() {

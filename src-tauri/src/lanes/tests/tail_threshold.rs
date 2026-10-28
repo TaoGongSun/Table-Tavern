@@ -44,7 +44,7 @@ fn plan(
     now: u64,
     provider: LaneProvider,
 ) -> Option<&'static str> {
-    reason_of(plan_turn(Some(state), input, now, provider))
+    reason_of(plan_turn(Some(state), input, now, provider, None))
 }
 
 const LIVE: u64 = 1_001;

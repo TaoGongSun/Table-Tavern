@@ -131,7 +131,7 @@ pub(super) fn settle_abort(
         LaneProvider::Claude => {
             apply_rewrite(call, session_id, confidential, prefix, None).map(|_| ())
         }
-        LaneProvider::Agy | LaneProvider::Grok => Ok(()),
+        LaneProvider::Agy | LaneProvider::Grok | LaneProvider::Codex => Ok(()),
     };
     if let Err(failure) = rewrite {
         record_rewrite_failure(

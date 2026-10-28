@@ -164,7 +164,15 @@ pub async fn cli_model_catalog(cli: &str, envs: &[(String, String)]) -> Vec<Mode
             }
             options
         }
-        "codex" => read(&[".codex", "models_cache.json"])
+        // app 的 codex-home（envs 的 CODEX_HOME）先，還沒刷新過才退回使用者的 ~/.codex
+        "codex" => envs
+            .iter()
+            .rev()
+            .find(|(key, _)| key == "CODEX_HOME")
+            .and_then(|(_, home)| {
+                std::fs::read_to_string(PathBuf::from(home).join("models_cache.json")).ok()
+            })
+            .or_else(|| read(&[".codex", "models_cache.json"]))
             .map(|json| parse_codex_catalog(&json))
             .unwrap_or_default(),
         "agy" => match find_binary("agy") {

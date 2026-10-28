@@ -3,7 +3,7 @@
 #![cfg(unix)]
 #![allow(clippy::await_holding_lock)]
 
-use super::super::stream::{parse_agy_line, parse_claude_line, parse_codex_line};
+use super::super::stream::{AGY_PROTOCOL, CLAUDE_PROTOCOL, CODEX_PROTOCOL};
 use super::*;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -56,7 +56,7 @@ impl Fake {
 
     async fn run(
         &self,
-        parse: fn(&str) -> CliLine,
+        protocol: &CliProtocol,
         usage_log: Option<UsageLog<'_>>,
         cancel: Option<watch::Receiver<bool>>,
     ) -> DataResult<CliFinish> {
@@ -69,12 +69,13 @@ impl Fake {
                 &[],
                 "提示詞",
                 &envs,
-                parse,
+                protocol,
                 false,
                 RunawayPolicy::Off,
                 usage_log,
                 |_: &str| {},
                 cancel,
+                SessionWatch::default(),
             ),
         )
         .await
@@ -98,7 +99,7 @@ async fn success_then_hang_is_killed_after_grace_and_completes() {
     let _serial = crate::inflight::lock_real_process_tests();
     let fx = fake("hang", &format!("{AGY_RESULT}\nhang()"));
     let started = Instant::now();
-    assert_eq!(completed(fx.run(parse_agy_line, None, None).await), "答案");
+    assert_eq!(completed(fx.run(&AGY_PROTOCOL, None, None).await), "答案");
     assert!(started.elapsed() < STALL_WINDOW, "{:?}", started.elapsed());
     assert!(!fx.alive(), "程序要被殺掉收屍");
 }
@@ -111,7 +112,7 @@ async fn stderr_spam_after_success_does_not_starve_the_grace_deadline() {
     );
     let fx = fake("spam", &body);
     let started = Instant::now();
-    assert_eq!(completed(fx.run(parse_agy_line, None, None).await), "答案");
+    assert_eq!(completed(fx.run(&AGY_PROTOCOL, None, None).await), "答案");
     assert!(started.elapsed() < STALL_WINDOW, "{:?}", started.elapsed());
     assert!(!fx.alive());
 }
@@ -145,7 +146,7 @@ hang()"#;
         identity_out: None,
     };
     assert_eq!(
-        completed(fx.run(parse_claude_line, Some(log), None).await),
+        completed(fx.run(&CLAUDE_PROTOCOL, Some(log), None).await),
         "好"
     );
     assert!(overage.load(std::sync::atomic::Ordering::Relaxed));
@@ -160,7 +161,7 @@ async fn error_finish_is_not_completion_and_codex_notice_does_not_block_grace() 
         "emit({'type': 'result', 'is_error': True, 'result': '額度用完'})",
     );
     let error = fx
-        .run(parse_claude_line, None, None)
+        .run(&CLAUDE_PROTOCOL, None, None)
         .await
         .err()
         .expect("要回錯");
@@ -173,7 +174,7 @@ hang()"#;
     let fx = fake("codex-notice", body);
     let started = Instant::now();
     assert_eq!(
-        completed(fx.run(parse_codex_line, None, None).await),
+        completed(fx.run(&CODEX_PROTOCOL, None, None).await),
         "接上了\n"
     );
     assert!(started.elapsed() < STALL_WINDOW, "{:?}", started.elapsed());
@@ -195,7 +196,7 @@ async fn cancel_after_success_still_completes() {
         tx
     });
     assert_eq!(
-        completed(fx.run(parse_agy_line, None, Some(rx)).await),
+        completed(fx.run(&AGY_PROTOCOL, None, Some(rx)).await),
         "答案"
     );
     drop(trigger.await);
@@ -208,7 +209,7 @@ async fn silent_thinking_before_first_progress_gets_the_floor_window() {
     let wait = (STALL_WINDOW + FIRST_PROGRESS_WINDOW).as_secs_f64() / 2.0;
     let body = format!("emit({{'event': 'init'}})\ntime.sleep({wait})\n{AGY_RESULT}");
     let fx = fake("floor", &body);
-    assert_eq!(completed(fx.run(parse_agy_line, None, None).await), "答案");
+    assert_eq!(completed(fx.run(&AGY_PROTOCOL, None, None).await), "答案");
 }
 
 /// 超過保底仍沒有進展＝斷流；有過進展之後回到一般斷流窗。
@@ -218,7 +219,7 @@ async fn no_progress_past_the_floor_or_silence_after_progress_stalls() {
     let fx = fake("floor-exceeded", "emit({'event': 'init'})\nhang()");
     let started = Instant::now();
     let error = fx
-        .run(parse_agy_line, None, None)
+        .run(&AGY_PROTOCOL, None, None)
         .await
         .err()
         .expect("要斷流");
@@ -238,7 +239,7 @@ async fn no_progress_past_the_floor_or_silence_after_progress_stalls() {
     let fx = fake("after-progress", body);
     let started = Instant::now();
     let error = fx
-        .run(parse_agy_line, None, None)
+        .run(&AGY_PROTOCOL, None, None)
         .await
         .err()
         .expect("要斷流");

@@ -1,4 +1,4 @@
-use super::types::CliLine;
+use super::types::{CliLine, CliProtocol, CodexUsageCounters};
 use crate::transport::PromptCacheUsage;
 use crate::ui_msg::UiMsg;
 
@@ -317,7 +317,7 @@ pub fn parse_codex_line(line: &str) -> CliLine {
             text: String::new(),
             is_error: false,
         },
-        Some("turn.failed") | Some("error") => CliLine::Done {
+        Some("turn.failed") => CliLine::Done {
             text: value
                 .pointer("/error/message")
                 .or_else(|| value.get("message"))
@@ -326,9 +326,104 @@ pub fn parse_codex_line(line: &str) -> CliLine {
                 .unwrap_or_else(|| turn_failed("Codex")),
             is_error: true,
         },
+        // 頂層 error 不分致命與否（exec JSON 把 will_retry 丟了，重試中的 Reconnecting 也長這樣）：
+        // 不結束回合，收尾規則交給 CODEX_PROTOCOL.require_done 與退出碼
+        Some("error") => CliLine::SoftError(
+            value
+                .get("message")
+                .and_then(|m| m.as_str())
+                .map(str::to_owned)
+                .unwrap_or_else(|| turn_failed("Codex")),
+        ),
         _ => CliLine::Other,
     }
 }
+
+/// codex 回合結束前存 rollout 失敗時發的警告（exec JSON 是 error 型 item；codex 0.164.0
+/// core/src/tasks/mod.rs:402-412）。字面改版就認不得，退回「寬限殺掉照常續用」。
+pub(super) fn codex_rollout_save_failed(line: &str) -> bool {
+    if !line.contains("Failed to save the conversation transcript") {
+        return false;
+    }
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
+        return false;
+    };
+    value.get("type").and_then(|t| t.as_str()) == Some("item.completed")
+        && value.pointer("/item/type").and_then(|t| t.as_str()) == Some("error")
+        && value
+            .pointer("/item/message")
+            .and_then(|m| m.as_str())
+            .is_some_and(|m| m.starts_with("Failed to save the conversation transcript"))
+}
+
+/// codex `thread.started` 的 thread id（開線與 resume 都會送，resume 時是原 id）。
+pub(super) fn codex_thread_id(line: &str) -> Option<String> {
+    if !line.contains("thread.started") {
+        return None;
+    }
+    let value: serde_json::Value = serde_json::from_str(line).ok()?;
+    if value.get("type").and_then(|t| t.as_str()) != Some("thread.started") {
+        return None;
+    }
+    value
+        .get("thread_id")
+        .and_then(|id| id.as_str())
+        .filter(|id| !id.is_empty())
+        .map(str::to_owned)
+}
+
+/// codex `turn.completed` 的累計用量（整條 thread 至今）。
+pub(super) fn codex_usage_counters(line: &str) -> Option<CodexUsageCounters> {
+    let value = usage_event(line, "turn.completed")?;
+    let usage = value.get("usage")?;
+    Some(CodexUsageCounters {
+        input_tokens: token_count(usage, "input_tokens"),
+        cached_input_tokens: token_count(usage, "cached_input_tokens"),
+        cache_write_input_tokens: token_count(usage, "cache_write_input_tokens"),
+        output_tokens: token_count(usage, "output_tokens"),
+    })
+}
+
+/// 續聊輪的用量＝本輪累計－上一輪累計。任一計數倒退回 None：基準與這條 thread 對不上，
+/// 呼叫端把這輪記成未知，不拿累計值冒充單輪用量。
+pub(super) fn codex_usage_delta(
+    current: CodexUsageCounters,
+    base: CodexUsageCounters,
+) -> Option<PromptCacheUsage> {
+    Some(PromptCacheUsage {
+        created_1h_tokens: None,
+        prompt_tokens: current.input_tokens.checked_sub(base.input_tokens)?,
+        cached_tokens: Some(
+            current
+                .cached_input_tokens
+                .checked_sub(base.cached_input_tokens)?,
+        ),
+        created_tokens: Some(
+            current
+                .cache_write_input_tokens
+                .checked_sub(base.cache_write_input_tokens)?,
+        ),
+        output_tokens: current.output_tokens.checked_sub(base.output_tokens)?,
+        cost_usd: None,
+    })
+}
+
+pub const CLAUDE_PROTOCOL: CliProtocol = CliProtocol {
+    parse: parse_claude_line,
+    require_done: false,
+};
+pub const CODEX_PROTOCOL: CliProtocol = CliProtocol {
+    parse: parse_codex_line,
+    require_done: true,
+};
+pub const AGY_PROTOCOL: CliProtocol = CliProtocol {
+    parse: parse_agy_line,
+    require_done: false,
+};
+pub const GROK_PROTOCOL: CliProtocol = CliProtocol {
+    parse: parse_grok_line,
+    require_done: false,
+};
 
 /// 收尾事件報失敗卻沒附原因時的說明；cli 是顯示名。
 fn turn_failed(cli: &str) -> String {

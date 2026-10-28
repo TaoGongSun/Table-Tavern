@@ -2,7 +2,7 @@
 #![cfg(unix)]
 #![allow(clippy::await_holding_lock)]
 
-use super::super::stream::{parse_claude_line, parse_grok_line};
+use super::super::stream::{CLAUDE_PROTOCOL, GROK_PROTOCOL};
 use super::*;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -53,11 +53,7 @@ impl Fake {
             .success()
     }
 
-    async fn run(
-        &self,
-        parse: fn(&str) -> CliLine,
-        policy: RunawayPolicy,
-    ) -> DataResult<CliFinish> {
+    async fn run(&self, protocol: &CliProtocol, policy: RunawayPolicy) -> DataResult<CliFinish> {
         let envs = self.envs();
         tokio::time::timeout(
             Duration::from_secs(20),
@@ -67,12 +63,13 @@ impl Fake {
                 &[],
                 "",
                 &envs,
-                parse,
+                protocol,
                 false,
                 policy,
                 None,
                 |_: &str| {},
                 None,
+                SessionWatch::default(),
             ),
         )
         .await
@@ -96,7 +93,7 @@ while True:
 async fn endless_blank_text_is_stopped_and_child_killed() {
     let _serial = crate::inflight::lock_real_process_tests();
     let fx = fake("blank", GROK_BLANK_FOREVER);
-    let finish = fx.run(parse_grok_line, RunawayPolicy::Full).await;
+    let finish = fx.run(&GROK_PROTOCOL, RunawayPolicy::Full).await;
     assert_eq!(reason_of(finish), Some(RunawayReason::WhitespaceRun));
     assert!(!fx.alive(), "失控後子程序要被殺掉");
 }
@@ -112,7 +109,7 @@ async fn run_cli_surfaces_runaway_as_stable_code_not_ttmsg() {
         &[],
         "",
         &envs,
-        parse_grok_line,
+        &GROK_PROTOCOL,
         false,
         RunawayPolicy::DegenerateOnly,
         None,
@@ -142,12 +139,12 @@ print('{"type":"end","stopReason":"end_turn"}', flush=True)
 "#;
     let fx = fake("length", body);
     assert_eq!(
-        reason_of(fx.run(parse_grok_line, RunawayPolicy::Full).await),
+        reason_of(fx.run(&GROK_PROTOCOL, RunawayPolicy::Full).await),
         Some(RunawayReason::Length)
     );
     let fx = fake("length-oneshot", body);
     match fx
-        .run(parse_grok_line, RunawayPolicy::DegenerateOnly)
+        .run(&GROK_PROTOCOL, RunawayPolicy::DegenerateOnly)
         .await
         .unwrap()
     {
@@ -171,7 +168,7 @@ while True:
 "#,
     );
     let started = std::time::Instant::now();
-    let finish = fx.run(parse_claude_line, RunawayPolicy::Full).await;
+    let finish = fx.run(&CLAUDE_PROTOCOL, RunawayPolicy::Full).await;
     assert_eq!(reason_of(finish), Some(RunawayReason::WhitespaceRun));
     assert!(started.elapsed() < Duration::from_secs(10));
     assert!(!fx.alive());
@@ -188,11 +185,7 @@ import json
 print(json.dumps({'type': 'result', 'is_error': False, 'result': '字' * 20000}), flush=True)
 "#,
     );
-    match fx
-        .run(parse_claude_line, RunawayPolicy::Full)
-        .await
-        .unwrap()
-    {
+    match fx.run(&CLAUDE_PROTOCOL, RunawayPolicy::Full).await.unwrap() {
         CliFinish::Completed(text) => assert_eq!(text.chars().count(), 20_000),
         _ => panic!("正常的收尾全文要照常採用"),
     }
@@ -210,7 +203,7 @@ async fn blank_thinking_trips_unless_policy_is_off() {
     let _serial = crate::inflight::lock_real_process_tests();
     let fx = fake("thought", GROK_BLANK_THOUGHT);
     match fx
-        .run(parse_grok_line, RunawayPolicy::DegenerateOnly)
+        .run(&GROK_PROTOCOL, RunawayPolicy::DegenerateOnly)
         .await
         .unwrap()
     {
@@ -222,7 +215,7 @@ async fn blank_thinking_trips_unless_policy_is_off() {
         _ => panic!("空白思考應觸發"),
     }
     let fx = fake("thought-off", GROK_BLANK_THOUGHT);
-    match fx.run(parse_grok_line, RunawayPolicy::Off).await.unwrap() {
+    match fx.run(&GROK_PROTOCOL, RunawayPolicy::Off).await.unwrap() {
         CliFinish::Completed(text) => assert_eq!(text, "好"),
         _ => panic!("Off 不查思考"),
     }
@@ -240,7 +233,7 @@ time.sleep(30)
 "#,
     );
     assert_eq!(
-        reason_of(fx.run(parse_grok_line, RunawayPolicy::Off).await),
+        reason_of(fx.run(&GROK_PROTOCOL, RunawayPolicy::Off).await),
         Some(RunawayReason::LineTooLong)
     );
     assert!(!fx.alive());
@@ -258,7 +251,7 @@ time.sleep(30)
 "#,
     );
     assert_eq!(
-        reason_of(fx.run(parse_grok_line, RunawayPolicy::Off).await),
+        reason_of(fx.run(&GROK_PROTOCOL, RunawayPolicy::Off).await),
         Some(RunawayReason::LineTooLong)
     );
 }
@@ -279,7 +272,7 @@ sys.stdout.write('ta":"完整"}\r\n{"type":"end","stopReason":"end_turn"}')
 sys.stdout.flush()
 "#,
     );
-    match fx.run(parse_grok_line, RunawayPolicy::Full).await.unwrap() {
+    match fx.run(&GROK_PROTOCOL, RunawayPolicy::Full).await.unwrap() {
         CliFinish::Completed(text) => assert_eq!(text, "完整"),
         _ => panic!("半條 stdout 要完整拼回"),
     }

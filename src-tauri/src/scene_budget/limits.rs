@@ -280,18 +280,22 @@ fn grok_default_model(catalog: &BTreeMap<String, Vec<ModelOption>>) -> Option<St
         .map(|option| option.id.clone())
 }
 
-/// 讀 codex 的兩個檔（app 跑 codex 沿用使用者自己的 `~/.codex`，沒有另設 CODEX_HOME）。
-pub fn read_codex_files() -> (Option<String>, Option<String>) {
-    let home = std::env::var_os("CODEX_HOME")
-        .map(std::path::PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| Path::new(&home).join(".codex")));
-    match home {
-        Some(home) => (
-            std::fs::read_to_string(home.join("models_cache.json")).ok(),
-            std::fs::read_to_string(home.join("config.toml")).ok(),
-        ),
-        None => (None, None),
-    }
+/// 讀 codex 的模型快取與 config.toml。app 跑 codex 用自己的 codex-home（`dispatch::codex_home_dir`），
+/// 模型快取在那裡還沒刷新過才退回使用者的 `~/.codex`。config.toml 只讀 codex-home 那份：app 一律帶
+/// `--ignore-user-config`，使用者 `~/.codex/config.toml` 的 model 本來就不生效，正常情況下這份不存在，
+/// 預設模型走「解析不到」——沒覆寫模型時本來就用不到模型快取，容量走 200k 猜測值，只提醒不鎖。
+/// 純讀檔：不建目錄、不碰登入連結，還沒登入也不失敗。
+pub fn read_codex_files(codex_home: &Path) -> (Option<String>, Option<String>) {
+    let cache = std::fs::read_to_string(codex_home.join("models_cache.json"))
+        .ok()
+        .or_else(|| {
+            let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))?;
+            std::fs::read_to_string(Path::new(&home).join(".codex").join("models_cache.json")).ok()
+        });
+    (
+        cache,
+        std::fs::read_to_string(codex_home.join("config.toml")).ok(),
+    )
 }
 
 #[cfg(test)]
@@ -319,6 +323,25 @@ mod tests {
             grok_windows: None,
             smart_free_context: None,
         }
+    }
+
+    /// codex-home 有的就讀 codex-home 那份；config.toml 只認 codex-home。
+    #[test]
+    fn codex_files_come_from_codex_home() {
+        let home = std::env::temp_dir().join(format!(
+            "tt-codex-files-{}-{}",
+            std::process::id(),
+            ulid::Ulid::generate()
+        ));
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::write(home.join("models_cache.json"), "{\"models\":[]}").unwrap();
+        std::fs::write(home.join("config.toml"), "model = \"gpt-x\"\n").unwrap();
+        let (cache, config) = read_codex_files(&home);
+        assert_eq!(cache.as_deref(), Some("{\"models\":[]}"));
+        assert_eq!(config.as_deref(), Some("model = \"gpt-x\"\n"));
+        std::fs::remove_file(home.join("config.toml")).unwrap();
+        assert_eq!(read_codex_files(&home).1, None);
+        std::fs::remove_dir_all(&home).unwrap();
     }
 
     #[test]

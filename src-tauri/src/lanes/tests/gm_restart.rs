@@ -31,7 +31,13 @@ fn claude_gm_plan_reopens_on_any_system_change() {
     let live = 1_001;
     let expired = 1_000 + LEGACY_CACHE_TTL_SECS + 1;
     assert!(matches!(
-        plan_turn(None, &gm_turn(&events, WORLD_A), live, LaneProvider::Claude),
+        plan_turn(
+            None,
+            &gm_turn(&events, WORLD_A),
+            live,
+            LaneProvider::Claude,
+            None
+        ),
         TurnPlan::Reopen {
             reason: ReopenReason::FirstTurn
         }
@@ -44,7 +50,8 @@ fn claude_gm_plan_reopens_on_any_system_change() {
                     Some(&state),
                     &gm_turn(&events, WORLD_B),
                     now,
-                    LaneProvider::Claude
+                    LaneProvider::Claude,
+                    None
                 ),
                 TurnPlan::Reopen {
                     reason: ReopenReason::SystemChanged
@@ -61,7 +68,8 @@ fn claude_gm_plan_reopens_on_any_system_change() {
             Some(&patched),
             &gm_turn(&events, WORLD_B),
             live,
-            LaneProvider::Claude
+            LaneProvider::Claude,
+            None
         ),
         TurnPlan::Reopen {
             reason: ReopenReason::SystemChanged
@@ -89,7 +97,7 @@ fn claude_gm_plan_resumes_when_system_is_unchanged() {
         let mut input = gm_turn(&events, WORLD_A);
         // 只改狀態與導演指示（尾段）不算 system 變動
         input.tail = "## 目前狀態\n深夜\n\n換人說話。".to_owned();
-        match plan_turn(Some(&state), &input, now, LaneProvider::Claude) {
+        match plan_turn(Some(&state), &input, now, LaneProvider::Claude, None) {
             TurnPlan::Resume {
                 session_id,
                 base,
@@ -259,6 +267,7 @@ async fn gm_resume_failure_deletes_the_old_session_before_reopening() {
         claude_home: fake.call.claude_home.clone(),
         provider: LaneProvider::Claude,
         on_overage: None,
+        effort: None,
     };
     failing
         .envs
@@ -377,7 +386,8 @@ fn macro_with_identical_expansion_keeps_the_gm_lane() {
             Some(&state),
             &gm_turn(&second_events, &second),
             1_001,
-            LaneProvider::Claude
+            LaneProvider::Claude,
+            None
         ),
         TurnPlan::Resume { patch: None, .. }
     ));
@@ -388,7 +398,8 @@ fn macro_with_identical_expansion_keeps_the_gm_lane() {
             Some(&state),
             &gm_turn(&second_events, &changed),
             1_001,
-            LaneProvider::Claude
+            LaneProvider::Claude,
+            None
         ),
         TurnPlan::Reopen {
             reason: ReopenReason::SystemChanged
@@ -420,7 +431,8 @@ fn stripped_gm_label_reopens_once_then_resumes() {
             Some(&echoed),
             &gm_turn(&landed, WORLD_A),
             1_010,
-            LaneProvider::Claude
+            LaneProvider::Claude,
+            None
         ),
         TurnPlan::Reopen {
             reason: ReopenReason::ReplyDiverged
@@ -435,6 +447,7 @@ fn stripped_gm_label_reopens_once_then_resumes() {
         &gm_turn(&landed, WORLD_A),
         1_010,
         LaneProvider::Claude,
+        None,
     ) {
         TurnPlan::Resume { base, .. } => assert_eq!(base, 2),
         TurnPlan::Reopen { .. } => panic!("回覆沒剝過必須續聊"),

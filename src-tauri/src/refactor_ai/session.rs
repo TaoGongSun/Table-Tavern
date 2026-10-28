@@ -84,7 +84,7 @@ async fn run_stage(
         &args,
         prompt,
         &call.envs,
-        cli::parse_claude_line,
+        &cli::CLAUDE_PROTOCOL,
         true, // 思考增量餵進度字尾：玩家分得出「在想」與「掛了」
         crate::transport::RunawayPolicy::DegenerateOnly,
         call.usage_log.as_deref().map(|path| cli::UsageLog {
@@ -161,6 +161,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': 'RECOMMEND: int
             usage_log: None,
             claude_home: dir.clone(),
             on_overage: None,
+            effort: None,
         };
         (dir, call)
     }

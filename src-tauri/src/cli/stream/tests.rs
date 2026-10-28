@@ -293,6 +293,62 @@ fn missing_usage_fields_count_as_zero() {
     );
 }
 
+/// 頂層 error（重試中的 Reconnecting 也是）不結束回合，交給收尾規則；turn.failed 才是失敗。
+#[test]
+fn codex_top_level_error_is_soft() {
+    assert_eq!(
+        parse_codex_line(
+            r#"{"type":"error","message":"Reconnecting... 2/5 (stream disconnected)"}"#
+        ),
+        CliLine::SoftError("Reconnecting... 2/5 (stream disconnected)".to_owned())
+    );
+    assert!(matches!(
+        parse_codex_line(r#"{"type":"error"}"#),
+        CliLine::SoftError(text) if !text.is_empty()
+    ));
+}
+
+#[test]
+fn codex_rollout_save_failure_warning_is_recognized() {
+    assert!(codex_rollout_save_failed(
+        r#"{"type":"item.completed","item":{"id":"w","type":"error","message":"Failed to save the conversation transcript; Codex will continue retrying. Error: x"}}"#
+    ));
+    // 正文寫了同一句不算
+    assert!(!codex_rollout_save_failed(
+        r#"{"type":"item.completed","item":{"id":"m","type":"agent_message","text":"Failed to save the conversation transcript"}}"#
+    ));
+    assert!(!codex_rollout_save_failed(r#"{"type":"turn.completed"}"#));
+}
+
+#[test]
+fn codex_thread_id_and_cumulative_usage() {
+    let started = r#"{"type":"thread.started","thread_id":"01a1812e-3b6c-7a62-8346-bb5f6c99dcbc"}"#;
+    assert_eq!(
+        codex_thread_id(started).as_deref(),
+        Some("01a1812e-3b6c-7a62-8346-bb5f6c99dcbc")
+    );
+    assert_eq!(codex_thread_id(r#"{"type":"turn.started"}"#), None);
+    assert_eq!(
+        codex_thread_id(r#"{"type":"thread.started","thread_id":""}"#),
+        None
+    );
+    // 真實累計值（2026-10-28 實測第 1、2 輪）
+    let first = codex_usage_counters(
+        r#"{"type":"turn.completed","usage":{"input_tokens":20948,"cached_input_tokens":11136,"cache_write_input_tokens":0,"output_tokens":93,"reasoning_output_tokens":0}}"#,
+    )
+    .unwrap();
+    let second = codex_usage_counters(
+        r#"{"type":"turn.completed","usage":{"input_tokens":42034,"cached_input_tokens":32000,"cache_write_input_tokens":0,"output_tokens":171,"reasoning_output_tokens":0}}"#,
+    )
+    .unwrap();
+    let delta = codex_usage_delta(second, first).unwrap();
+    assert_eq!(delta.prompt_tokens, 21086);
+    assert_eq!(delta.cached_tokens, Some(20864));
+    assert_eq!(delta.output_tokens, 78);
+    // 倒退＝基準對不上，不猜
+    assert_eq!(codex_usage_delta(first, second), None);
+}
+
 #[test]
 fn parses_real_codex_json_lines_and_ignores_warning_items() {
     assert_eq!(

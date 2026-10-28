@@ -73,6 +73,7 @@ fn plan_expiry_uses_the_lane_ttl() {
             &input,
             state.last_call_epoch + age,
             LaneProvider::Claude,
+            None,
         ) {
             TurnPlan::Resume {
                 session_id,
@@ -124,6 +125,7 @@ fn pin_lane_cache_ttl_only_touches_claude() {
         claude_home: PathBuf::new(),
         prompt_dir: PathBuf::new(),
         on_overage: None,
+        effort: None,
     };
     pin_lane_cache_ttl(&mut call);
     assert!(call

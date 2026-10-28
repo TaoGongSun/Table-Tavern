@@ -16,6 +16,19 @@ pub(crate) struct InstallMessages {
     fail: String,
 }
 
+/// codex 的登入共用使用者自己的 `~/.codex/auth.json`（app 的 codex-home 只放一條連結過去），
+/// 登入、登出、探針都要跑在使用者原本的環境；帶 CODEX_HOME 會把登入寫進 codex-home、佔掉連結位置。
+fn runs_in_app_profile(provider: &str) -> bool {
+    provider != "codex"
+}
+
+fn setup_envs(app: &tauri::AppHandle, provider: &str) -> Result<Vec<(String, String)>, String> {
+    match runs_in_app_profile(provider) {
+        true => cli_envs(app, provider),
+        false => Ok(Vec::new()),
+    }
+}
+
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
@@ -167,8 +180,8 @@ pub(crate) fn install_cli(
             .into_iter()
             .find(|spec| spec.id == provider)
             .ok_or_else(|| format!("unsupported CLI provider: {provider}"))?;
-        // 登入與探針都跑在 app 自己的 profile，否則會登在使用者的 ~/.grok 卻用不到
-        spec.envs = cli_envs(&app, &provider)?;
+        // 登入與探針都跑在 app 自己的 profile，否則會登在使用者的 ~/.grok 卻用不到；codex 例外（setup_envs）
+        spec.envs = setup_envs(&app, &provider)?;
         // 換帳號：略過前置探針（舊憑證有效也要重登）並保留 logout；平常那條把 logout 清掉
         match switch_account && !spec.logout.is_empty() {
             true => spec.pre_probe = false,
@@ -222,7 +235,7 @@ pub(crate) fn install_cli(
         let script = cli_install_script(
             &provider,
             &messages,
-            &cli_envs(&app, &provider)?,
+            &setup_envs(&app, &provider)?,
             switch_account,
         )?;
         let script_path = directory.join(format!("install-{provider}.command"));
@@ -265,7 +278,7 @@ pub(crate) fn install_cli(
 
 #[cfg(test)]
 mod tests {
-    use super::{cli_install_script, InstallMessages};
+    use super::{cli_install_script, runs_in_app_profile, InstallMessages};
     use std::path::PathBuf;
 
     fn messages() -> InstallMessages {
@@ -301,6 +314,18 @@ mod tests {
         assert!(script.contains("codex login"));
         assert!(script.contains("codex login status >/dev/null 2>&1"));
         assert!(script.contains("while [ \"$elapsed\" -lt 120 ]"));
+    }
+
+    /// codex 共用使用者的登入：腳本跑在使用者原本的環境，沒登入也照常產生，不帶 CODEX_HOME。
+    #[test]
+    fn codex_login_runs_in_the_users_own_home() {
+        assert!(!runs_in_app_profile("codex"));
+        assert!(runs_in_app_profile("grok") && runs_in_app_profile("agy"));
+        for switch in [false, true] {
+            let script = cli_install_script("codex", &messages(), &[], switch).unwrap();
+            assert!(!script.contains("CODEX_HOME"));
+            assert!(script.contains("codex login"));
+        }
     }
 
     #[test]

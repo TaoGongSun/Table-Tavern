@@ -1,9 +1,9 @@
-//! CLI lane resume 續聊（Claude/Grok 走各自 session，Agy 走精確 `--conversation`）。
+//! CLI lane resume 續聊（Claude/Grok 走各自 session，Agy 走精確 `--conversation`，codex 走 `exec resume`）。
 //! 每桌按「線種:實際模型」分線（2026-08-03 拍板）：chars:<model>（解析到同一個模型的角色
 //! 共用一條，快取按模型分池、跨模型本來就不共用）＋gm:<model>（GM 獨立——GM 的凍結 system
 //! 多了 world.md／私設／GM 條目，依可見性憲法不能和角色同線）。
 //! Agy 的 chars 線再按角色細分（chars:<model>:<角色 id>）：它的 session 沒有回合後抹寫路徑，
-//! 私設改提進該角色自己的凍結 system，一角一線才不會洩漏給別的角色。Grok 與 claude 一樣共線，
+//! 私設改提進該角色自己的凍結 system，一角一線才不會洩漏給別的角色；codex 同理（plans/codex-lane-resume.md）。Grok 與 claude 一樣共線，
 //! 回合後抹 session 目錄的兩個檔（grok_session）。
 //! 同桌的 lane 呼叫以每桌一把 mutex 串行：lanes.json 整份讀寫、session 檔回合後改寫，
 //! 交錯就會互蓋狀態或把抹掉的機密段寫回。
@@ -25,6 +25,7 @@ mod cleanup;
 pub(crate) mod grok_session;
 mod plan;
 mod prompt;
+mod provider_args;
 mod rewrite;
 mod rewrite_failure;
 mod session_file;
@@ -66,6 +67,7 @@ pub(crate) enum LaneProvider {
     Claude,
     Agy,
     Grok,
+    Codex,
 }
 
 impl LaneProvider {
@@ -74,6 +76,7 @@ impl LaneProvider {
             Self::Claude => "claude",
             Self::Agy => "agy",
             Self::Grok => "grok",
+            Self::Codex => "codex",
         }
     }
 }
@@ -91,6 +94,8 @@ pub(crate) struct LaneCall {
     pub usage_log: Option<PathBuf>,
     /// session 檔所在的 claude 設定目錄（~/.claude 或 $CLAUDE_CONFIG_DIR）；grok 不用
     pub claude_home: PathBuf,
+    /// codex 的 reasoning effort（檔位映射）；其他 CLI None。同一條線換 effort 就重開
+    pub effort: Option<String>,
     /// 這一輪有嘗試落在 Claude 訂閱超額時呼叫一次（帶那次嘗試自己的寫入觀測）。
     /// 在那次嘗試結束當下呼叫，整輪後來失敗也照報——錢已經花了。
     pub on_overage: Option<OverageSink>,
@@ -244,8 +249,8 @@ pub(crate) struct CharsLaneShape {
 /// `sole_present`：有效在場集合只有開口者本人（`chat_assembly::sole_present_character`）。
 pub(crate) fn chars_lane_shape(provider: LaneProvider, sole_present: bool) -> CharsLaneShape {
     match provider {
-        // Agy 沒有回合後抹寫路徑：一角一線＋私設進該角色自己的 system
-        LaneProvider::Agy => CharsLaneShape {
+        // Agy、codex 沒有回合後抹寫路徑：一角一線＋私設進該角色自己的 system
+        LaneProvider::Agy | LaneProvider::Codex => CharsLaneShape {
             hoist_private: true,
             erase: false,
             prefix: false,
@@ -336,6 +341,12 @@ struct LaneState {
     /// Agy result 的 conversation 累積計數；續聊時相減才是這一輪實際用量。
     #[serde(default)]
     agy_usage: Option<cli::AgyUsageCounters>,
+    /// codex turn.completed 的 thread 累計用量；續聊時相減才是這一輪實際用量。
+    #[serde(default)]
+    codex_usage: Option<cli::CodexUsageCounters>,
+    /// 開這條線用的 codex effort；換了就重開（線名不帶 effort，換幕容量才查得到上輪實報）
+    #[serde(default)]
+    effort: Option<String>,
     /// 開這條線的 CLI（"claude"／"grok"）。換 CLI 就整線重開——session id 認的是自己那套。
     /// grok lane 之前只有 claude 會開線，舊檔缺這欄位一律當 claude，不必白白重建一次快取。
     #[serde(default = "legacy_provider")]
@@ -426,10 +437,10 @@ pub(crate) async fn run_turn(
     mut cancel: Option<&mut crate::inflight::CancelSignal>,
     mut emit: impl FnMut(&str),
 ) -> Result<TurnOutcome, String> {
-    // Agy 沒有 session 檔抹寫路徑：機密段送進去就永久留在該線歷史裡。呼叫端必須把私設
+    // Agy、codex 沒有 session 檔抹寫路徑：機密段送進去就永久留在該線歷史裡。呼叫端必須把私設
     // 提進該角色自己的凍結 system（hoist_private）＋一角一線；這裡出聲擋下，寧可整輪失敗
     // 也不讓別的角色讀到不該讀的東西。
-    if call.provider == LaneProvider::Agy
+    if matches!(call.provider, LaneProvider::Agy | LaneProvider::Codex)
         && (input.confidential.is_some() || input.prefix.is_some())
     {
         return Err(UiMsg::LaneRewriteUnsupported {
@@ -444,7 +455,8 @@ pub(crate) async fn run_turn(
     }
     // 不抹尾段的角色線：狀態區塊留在歷史撤不掉，整塊消失要重開（StateBlockGone）
     let keeps_tail = input.lane == Lane::Chars
-        && (input.single_owner.is_some() || call.provider == LaneProvider::Agy);
+        && (input.single_owner.is_some()
+            || matches!(call.provider, LaneProvider::Agy | LaneProvider::Codex));
     if !keeps_tail {
         input.has_state_block = false;
     }
@@ -456,6 +468,7 @@ pub(crate) async fn run_turn(
     let call_epoch = now_epoch();
     let prior = store.get(&key);
     let prior_agy_usage = prior.and_then(|state| state.agy_usage);
+    let prior_codex_usage = prior.and_then(|state| state.codex_usage);
     // 診斷用（包 4）：距上輪幾秒、上輪送了多少（＝這輪的理論可中量）
     let age_secs = prior.map_or(0, |state| call_epoch.saturating_sub(state.last_call_epoch));
     let expected_cached = prior.map_or(0, |state| state.last_prompt_tokens);
@@ -476,7 +489,13 @@ pub(crate) async fn run_turn(
             capacity: input.capacity.map(|capacity| capacity.max as u64),
             percent: stale.percent(input.capacity),
         });
-    let mut plan = plan_turn(prior, &input, call_epoch, call.provider);
+    let mut plan = plan_turn(
+        prior,
+        &input,
+        call_epoch,
+        call.provider,
+        call.effort.as_deref(),
+    );
     // grok 重開前先撤銷舊線：崩潰留下的 pending 可能還帶著沒抹的機密段，舊 id 一律不再用。
     // GM 線與單角色線的舊 claude session 看舊線 provider 清掉（本輪換成 grok／agy 也清）
     if let (TurnPlan::Reopen { reason }, Some(prior)) = (&plan, prior) {
@@ -560,56 +579,16 @@ pub(crate) async fn run_turn(
         let side = lane_side(input.lane, input.opening_raw);
         let prompt = build_prompt_as(input.events, base, &tail, opening, side, input.lang);
         // 換幕容量的估計校正（計畫 §3.5）：只有重開全量那次「送出的就是整段」，估計與實報才配得上；
-        // agy 量的是 bytes，不需要 token 校正
-        let calibration_estimate = (opening && call.provider != LaneProvider::Agy).then(|| {
+        // agy 量的是 bytes，不需要 token 校正；codex 開線的實報含它自帶約 11k 的指示與工具定義，配不上
+        let calibration_estimate = (opening
+            && !matches!(call.provider, LaneProvider::Agy | LaneProvider::Codex))
+        .then(|| {
             crate::scene_budget::budget_tokens(&system)
                 + crate::scene_budget::budget_tokens(&prompt)
         });
-        let session = if opening {
-            cli::CliSession::Open(&session_id)
-        } else {
-            cli::CliSession::Resume(&session_id)
-        };
-        // system／正文一律不進命令列（Windows 整條命令列只有 32,767 個 UTF-16 單位）：
-        // Claude 的 system 寫檔、正文走 stdin；Grok 開線的 system 寫成 agent profile、正文寫檔；
-        // Agy 整包走 stdin（開線帶 system、續聊只送本輪）。暫存檔活到 run_cli 收屍返回後才刪。
-        let mut prompt_files = Vec::new();
-        let (args, stdin) = match call.provider {
-            LaneProvider::Claude => {
-                let system_file = cli::PromptFile::create(&call.prompt_dir, "system.txt", &system)?;
-                let args =
-                    cli::claude_session_args(call.model_label(), system_file.path(), &session);
-                prompt_files.push(system_file);
-                (args, prompt.clone())
-            }
-            LaneProvider::Grok => {
-                let profile = match (&session, system.is_empty()) {
-                    (cli::CliSession::Open(_), false) => Some(cli::PromptFile::create(
-                        &call.prompt_dir,
-                        "grok-system.md",
-                        &cli::grok_payload(&system, "", false).0.unwrap_or_default(),
-                    )?),
-                    _ => None,
-                };
-                let body = cli::PromptFile::create(&call.prompt_dir, "prompt.txt", &prompt)?;
-                let args = cli::grok_session_args(
-                    call.model.as_deref(),
-                    profile.as_ref().map(cli::PromptFile::path),
-                    body.path(),
-                    &session,
-                );
-                prompt_files.extend(profile);
-                prompt_files.push(body);
-                (args, String::new())
-            }
-            LaneProvider::Agy => {
-                let conversation = (!opening).then_some(session_id.as_str());
-                (
-                    cli::agy_session_args(call.model.as_deref(), conversation),
-                    cli::agy_session_body(&system, &prompt, conversation),
-                )
-            }
-        };
+        let command =
+            provider_args::provider_command(call, opening, &session_id, &system, &prompt)?;
+        let prompt_files = command.files;
 
         store.insert(
             key.clone(),
@@ -632,6 +611,8 @@ pub(crate) async fn run_turn(
                 cache_ttl_secs: 0,
                 last_prompt_tokens: 0,
                 agy_usage: None,
+                codex_usage: None,
+                effort: call.effort.clone(),
                 // 呼叫前就落檔：中途崩潰時下一輪靠 pending 重開，靠這欄擋別人續用
                 unerased_owner: input.single_owner.clone(),
                 had_state_block: keeps_tail && input.has_state_block,
@@ -645,12 +626,8 @@ pub(crate) async fn run_turn(
         );
         write_store(&store_path, &store)?;
 
-        let conversation_id = std::sync::Mutex::new(None);
-        let agy_usage = std::sync::Mutex::new(None);
-        let identity = std::sync::Mutex::new(None::<String>);
-        // 每次嘗試各自觀測：降級重開不沿用失敗那次的用量與超額旗標
-        let attempt_usage = std::sync::Mutex::new(None);
-        let attempt_overage = std::sync::atomic::AtomicBool::new(false);
+        // 每次嘗試各自觀測：降級重開不沿用失敗那次的用量、超額旗標與 id
+        let slots = provider_args::AttemptSlots::default();
         // 本輪角色自加的「名字：」不進畫面；每次 attempt 新建，續聊失敗重開不帶上一試的扣留
         let mut stream = transport::OwnPrefixStream::new(match &input.echo {
             ReplyEcho::Dialogue { prefix, .. } => prefix,
@@ -665,48 +642,31 @@ pub(crate) async fn run_turn(
         let result = cli::run_cli_cancellable(
             &call.program,
             &call.working_dir,
-            &args,
-            &stdin,
+            &command.args,
+            &command.stdin,
             &call.envs,
-            match call.provider {
-                LaneProvider::Claude => cli::parse_claude_line,
-                LaneProvider::Agy => cli::parse_agy_line,
-                LaneProvider::Grok => cli::parse_grok_line,
-            },
+            provider_args::protocol(call.provider),
             false, // 聊天正文串流，思考不進畫面
             // lane 只跑劇情輪（角色、GM 旁白、GM 建議）：字數上限＋退化偵測
             transport::RunawayPolicy::Full,
-            call.usage_log.as_deref().map(|path| cli::UsageLog {
-                usage_out: Some(&attempt_usage),
-                overage_out: (call.provider == LaneProvider::Claude).then_some(&attempt_overage),
-                path,
-                world: Some(world_id),
-                transport: call.provider.as_str(),
-                model: call.model_label(),
-                parse: match call.provider {
-                    LaneProvider::Claude => cli::parse_claude_usage,
-                    LaneProvider::Agy => cli::parse_agy_usage,
-                    LaneProvider::Grok => cli::parse_grok_usage,
-                },
-                lane: Some(lane_log),
-                shape: usage_log::PromptShape::Oneshot, // 續聊線的形狀由 LaneContext 說明，這欄不參與判定
-                prompt_tokens_out: Some(&prompt_tokens),
-                conversation_id_out: (call.provider == LaneProvider::Agy)
-                    .then_some(&conversation_id),
-                expected_conversation_id: (call.provider == LaneProvider::Agy && !opening)
-                    .then_some(session_id.as_str()),
-                agy_usage_base: (call.provider == LaneProvider::Agy && !opening)
-                    .then_some(prior_agy_usage)
-                    .flatten(),
-                agy_usage_out: (call.provider == LaneProvider::Agy).then_some(&agy_usage),
-                identity_out: Some(&identity),
-            }),
+            provider_args::usage_log(
+                call,
+                world_id,
+                lane_log,
+                opening,
+                &session_id,
+                prior_agy_usage,
+                &prompt_tokens,
+                &slots,
+            ),
             &mut filtered,
             cancel_rx.clone(),
+            provider_args::session_watch(call, opening, &session_id, prior_codex_usage, &slots),
         )
         .await;
-        let attempt_usage = attempt_usage.into_inner().ok().flatten();
-        if !overage_reported && attempt_overage.load(std::sync::atomic::Ordering::Relaxed) {
+        drop(prompt_files);
+        let attempt_usage = slots.usage.lock().ok().and_then(|held| *held);
+        if !overage_reported && slots.overage.load(std::sync::atomic::Ordering::Relaxed) {
             overage_reported = true;
             if let Some(sink) = &call.on_overage {
                 sink(CacheWriteObserved::of(attempt_usage.as_ref()));
@@ -780,16 +740,23 @@ pub(crate) async fn run_turn(
                     )?;
                     return Err(transport::empty_reply_error(&reply));
                 }
-                let actual_session_id = match call.provider {
-                    LaneProvider::Agy => conversation_id
-                        .into_inner()
+                let reported_id = |slot: &std::sync::Mutex<Option<String>>| {
+                    slot.lock()
                         .ok()
-                        .flatten()
-                        .filter(|id| !id.is_empty()),
+                        .and_then(|held| held.clone())
+                        .filter(|id| !id.is_empty())
+                };
+                let actual_session_id = match call.provider {
+                    LaneProvider::Agy => reported_id(&slots.conversation_id),
+                    LaneProvider::Codex => reported_id(&slots.codex_thread),
                     _ => Some(session_id.clone()),
                 };
-                // Agy 若沒有回 conversation ID，本輪回覆仍可用，但不能把假 ID 留給下輪。
-                if actual_session_id.is_none() {
+                // codex 收到完成事件卻非正常結束：completed 不能證明 session 已落檔，正文照交、線不續用
+                let unclean = slots
+                    .unclean_exit
+                    .load(std::sync::atomic::Ordering::Relaxed);
+                // Agy／codex 若沒有回 ID，本輪回覆仍可用，但不能把假 ID 留給下輪。
+                if actual_session_id.is_none() || unclean {
                     store.remove(&key);
                     write_store(&store_path, &store)?;
                     return Ok(TurnOutcome {
@@ -798,7 +765,8 @@ pub(crate) async fn run_turn(
                     });
                 }
                 let actual_session_id = actual_session_id.expect("checked above");
-                let actual_agy_usage = agy_usage.into_inner().ok().flatten();
+                let actual_agy_usage = slots.agy_usage.lock().ok().and_then(|held| *held);
+                let actual_codex_usage = slots.codex_usage.lock().ok().and_then(|held| *held);
                 let mut reminder: Option<bool> = None;
                 let rewrite = match call.provider {
                     LaneProvider::Claude => apply_rewrite(
@@ -823,7 +791,7 @@ pub(crate) async fn run_turn(
                         &reply,
                         cleaned.as_deref().unwrap_or(&reply),
                     ),
-                    LaneProvider::Agy | LaneProvider::Grok => Ok(()),
+                    LaneProvider::Agy | LaneProvider::Grok | LaneProvider::Codex => Ok(()),
                 };
                 match rewrite {
                     Ok(()) => {
@@ -845,7 +813,7 @@ pub(crate) async fn run_turn(
                             state.last_prompt_tokens =
                                 prompt_tokens.load(std::sync::atomic::Ordering::Relaxed);
                             // claude 要這次回報辨識得出實際模型才記校正（身分不明就不記）
-                            let confirmed = identity.lock().ok().and_then(|id| id.clone());
+                            let confirmed = slots.identity.lock().ok().and_then(|id| id.clone());
                             let identified =
                                 call.provider != LaneProvider::Claude || confirmed.is_some();
                             if let (Some(estimate), true) = (calibration_estimate, identified) {
@@ -866,11 +834,15 @@ pub(crate) async fn run_turn(
                                 LaneProvider::Claude => {
                                     next_cache_ttl(attempt_usage.as_ref(), prior_ttl, !opening)
                                 }
-                                // grok／agy 不回報快取時效，維持原本的五分鐘窗口
-                                LaneProvider::Agy | LaneProvider::Grok => LEGACY_CACHE_TTL_SECS,
+                                // grok／agy／codex 不回報快取時效，維持原本的五分鐘窗口
+                                LaneProvider::Agy | LaneProvider::Grok | LaneProvider::Codex => {
+                                    LEGACY_CACHE_TTL_SECS
+                                }
                             };
-                            if call.provider == LaneProvider::Agy {
-                                state.agy_usage = actual_agy_usage;
+                            match call.provider {
+                                LaneProvider::Agy => state.agy_usage = actual_agy_usage,
+                                LaneProvider::Codex => state.codex_usage = actual_codex_usage,
+                                _ => {}
                             }
                         }
                     }

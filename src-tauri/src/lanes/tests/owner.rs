@@ -197,7 +197,7 @@ fn plan_turn_owner_rules_in_fixed_order() {
     let events = [event(TranscriptKind::Player, "", "阿濤", "晚安")];
     let claude = LaneProvider::Claude;
     let plan = |state: &LaneState, input: &TurnInput<'_>| {
-        reopen_reason(plan_turn(Some(state), input, 1_010, claude))
+        reopen_reason(plan_turn(Some(state), input, 1_010, claude, None))
     };
     let fox = owned_state(&events, Some("fox-id"));
     // 同一人、單角色 → 續用

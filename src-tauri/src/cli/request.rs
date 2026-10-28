@@ -137,14 +137,32 @@ pub fn claude_session_args(
     args
 }
 
-/// codex 沒有 system prompt 旗標，呼叫端把 system 併進 prompt。
-/// --ignore-user-config：跳過使用者 config.toml（hooks／MCP），auth 不受影響（--help 查證）。
-/// allow_tools：生圖呼叫需要 $imagegen 寫檔，沙盒放寬到 workspace-write；聊天一律唯讀。
-pub fn codex_args(model: Option<&str>, effort: &str, allow_tools: bool) -> Vec<String> {
+/// codex 每輪固定帶的精簡設定（plans/codex-lane-resume.md §2）：關掉技能清單、plugins、memories、
+/// multi-agent 等注入與 shell snapshot。少了這些，請求前綴每輪不變（技能清單中途重注入會斷快取），
+/// 使用者自己的 codex 技能也不會帶進跑團請求。生圖不帶：它要用 bundled 的 $imagegen。
+pub const CODEX_LEAN_FLAGS: [&str; 14] = [
+    "skills.include_instructions=false",
+    "skills.bundled.enabled=false",
+    "cloud.skills.enabled=false",
+    "features.plugins=false",
+    "features.remote_plugin=false",
+    "features.recommended_plugins=false",
+    "features.memories=false",
+    "memories.use_memories=false",
+    "memories.generate_memories=false",
+    "features.multi_agent=false",
+    "features.multi_agent_v2=false",
+    "include_collaboration_mode_instructions=false",
+    "agents.enabled=false",
+    "features.shell_snapshot=false",
+];
+
+/// codex 共同前段：`exec --json … -s <沙盒> [-m] -c effort [精簡旗標]`。`-s` 不是全域旗標，
+/// 必須在 `resume` 之前；`-m`、`-c` 是全域的，一律放前面。
+fn codex_common(model: Option<&str>, effort: &str, allow_tools: bool) -> Vec<String> {
     let mut args: Vec<String> = [
         "exec",
         "--json",
-        "--ephemeral",
         "--skip-git-repo-check",
         "--ignore-user-config",
         "-s",
@@ -162,7 +180,33 @@ pub fn codex_args(model: Option<&str>, effort: &str, allow_tools: bool) -> Vec<S
     }
     args.push("-c".to_owned());
     args.push(format!("model_reasoning_effort=\"{effort}\""));
+    if !allow_tools {
+        for flag in CODEX_LEAN_FLAGS {
+            args.push("-c".to_owned());
+            args.push(flag.to_owned());
+        }
+    }
+    args
+}
+
+/// codex 單發。codex 沒有 system prompt 旗標，呼叫端把 system 併進 prompt。
+/// --ephemeral：單發不落 session；--ignore-user-config：跳過使用者 config.toml（hooks／MCP），auth 不受影響。
+/// allow_tools：生圖呼叫需要 $imagegen 寫檔，沙盒放寬到 workspace-write、不帶精簡旗標；聊天一律唯讀。
+pub fn codex_args(model: Option<&str>, effort: &str, allow_tools: bool) -> Vec<String> {
+    let mut args = codex_common(model, effort, allow_tools);
+    args.insert(2, "--ephemeral".to_owned());
     args.push("-".to_owned()); // prompt 走 stdin，避開參數長度上限
+    args
+}
+
+/// codex lane：開線（`resume` None）落 session、續聊接 `resume <thread id>`；正文都走 stdin。
+pub fn codex_session_args(model: Option<&str>, effort: &str, resume: Option<&str>) -> Vec<String> {
+    let mut args = codex_common(model, effort, false);
+    if let Some(thread_id) = resume {
+        args.push("resume".to_owned());
+        args.push(thread_id.to_owned());
+    }
+    args.push("-".to_owned());
     args
 }
 
@@ -227,7 +271,8 @@ pub fn agy_body(system: &str, prompt: &str) -> String {
     format!("{system}\n\n{prompt}")
 }
 
-/// Agy 對話 lane 的 stdin 正文：開線＝system＋本輪，續聊只送本輪（system 已在對話裡）。
+/// Agy／codex 對話 lane 的 stdin 正文：開線＝system＋本輪，續聊只送本輪（system 已在對話裡）。
+/// 兩家都沒有 system 旗標；codex 單發也是 `system\n\nprompt` 同一形狀。
 pub fn agy_session_body(system: &str, prompt: &str, conversation_id: Option<&str>) -> String {
     match conversation_id {
         Some(_) => prompt.to_owned(),

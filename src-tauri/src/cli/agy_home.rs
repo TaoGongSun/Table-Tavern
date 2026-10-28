@@ -11,15 +11,23 @@ use std::path::{Path, PathBuf};
 /// 假 HOME 裡共用登入的那條 symlink 的相對位置（測試通道的 symlink 檢查也認這條）。
 pub(crate) const KEYCHAIN_LINK: [&str; 2] = ["Library", "Keychains"];
 
-/// app 行程的真 HOME。只認 `HOME`：空值或相對路徑就回錯，不猜。
+/// app 行程的真家目錄：先認 `HOME`，沒有（Windows 常見）再認 `USERPROFILE`，與 codex 自己的解析一致。
+/// 空值或相對路徑就回錯，不猜。錯誤是原始說明（`HOME=…`），呼叫端各自包成自己 CLI 的 profile 失敗碼。
 pub(crate) fn real_home() -> Result<PathBuf, String> {
-    home_from(std::env::var_os("HOME"))
+    home_from(std::env::var_os("HOME"), std::env::var_os("USERPROFILE"))
 }
 
-fn home_from(value: Option<std::ffi::OsString>) -> Result<PathBuf, String> {
-    let home = value.map(PathBuf::from).unwrap_or_default();
+fn home_from(
+    home: Option<std::ffi::OsString>,
+    userprofile: Option<std::ffi::OsString>,
+) -> Result<PathBuf, String> {
+    let home = home
+        .filter(|value| !value.is_empty())
+        .or(userprofile)
+        .map(PathBuf::from)
+        .unwrap_or_default();
     if home.as_os_str().is_empty() || !home.is_absolute() {
-        return Err(failed(format!("HOME={}", home.display())));
+        return Err(format!("HOME={}", home.display()));
     }
     Ok(home)
 }
@@ -58,23 +66,26 @@ fn restrict(_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// 最後防線（只防漏網）：要 spawn 的是 agy 時，envs 必須顯式帶非空、絕對的 HOME，
-/// 否則它會繼承 app 的 HOME、把對話寫進使用者自己的 `~/.gemini`。
+/// 最後防線（只防漏網）：要 spawn 的是隔離過資料目錄的 CLI 時，envs 必須顯式帶非空、絕對的
+/// 隔離變數——agy 的 HOME（否則對話寫進使用者的 `~/.gemini`）、codex 的 CODEX_HOME
+/// （否則 session 寫進使用者的 `~/.codex`）。
 pub(crate) fn check_spawn_envs(program: &Path, envs: &[(String, String)]) -> Result<(), String> {
     let name = program
         .file_name()
         .map(|name| name.to_string_lossy().to_ascii_lowercase());
-    if !matches!(name.as_deref(), Some("agy" | "agy.exe")) {
-        return Ok(());
-    }
-    let home = envs
+    let (key, report): (&str, fn(String) -> String) = match name.as_deref() {
+        Some("agy" | "agy.exe") => ("HOME", failed),
+        Some("codex" | "codex.exe") => ("CODEX_HOME", super::codex_home::failed),
+        _ => return Ok(()),
+    };
+    let value = envs
         .iter()
         .rev()
-        .find(|(key, _)| key == "HOME")
+        .find(|(name, _)| name == key)
         .map(|(_, value)| value.as_str());
-    match home {
-        Some(home) if !home.is_empty() && Path::new(home).is_absolute() => Ok(()),
-        _ => Err(failed(format!("{}: HOME", program.display()))),
+    match value {
+        Some(value) if !value.is_empty() && Path::new(value).is_absolute() => Ok(()),
+        _ => Err(report(format!("{}: {key}", program.display()))),
     }
 }
 
@@ -219,13 +230,33 @@ mod tests {
 
     #[test]
     fn real_home_rejects_empty_missing_and_relative() {
-        assert!(home_from(None).is_err());
-        assert!(home_from(Some("".into())).is_err());
-        assert!(home_from(Some("relative/home".into())).is_err());
+        assert!(home_from(None, None).is_err());
+        assert!(home_from(Some("".into()), None).is_err());
+        assert!(home_from(Some("relative/home".into()), None).is_err());
         assert_eq!(
-            home_from(Some("/Users/x".into())).unwrap(),
+            home_from(Some("/Users/x".into()), None).unwrap(),
             PathBuf::from("/Users/x")
         );
+    }
+
+    #[test]
+    fn real_home_falls_back_to_userprofile() {
+        // 只有 USERPROFILE（Windows 常見）
+        assert_eq!(
+            home_from(None, Some("/Users/y".into())).unwrap(),
+            PathBuf::from("/Users/y")
+        );
+        // HOME 是空字串也退回
+        assert_eq!(
+            home_from(Some("".into()), Some("/Users/y".into())).unwrap(),
+            PathBuf::from("/Users/y")
+        );
+        // HOME 優先
+        assert_eq!(
+            home_from(Some("/Users/x".into()), Some("/Users/y".into())).unwrap(),
+            PathBuf::from("/Users/x")
+        );
+        assert!(home_from(None, Some("rel".into())).is_err());
     }
 
     #[test]
@@ -269,6 +300,14 @@ mod tests {
         assert!(check_spawn_envs(agy, &env("/cfg/agy-home")).is_ok());
         assert!(check_spawn_envs(Path::new("C:/x/AGY.EXE"), &[]).is_err());
         assert!(check_spawn_envs(Path::new("/bin/claude"), &[]).is_ok());
+        // codex 認 CODEX_HOME，不認 HOME
+        let codex = Path::new("/bin/codex");
+        assert!(check_spawn_envs(codex, &env("/cfg")).is_err());
+        let codex_env = |v: &str| vec![("CODEX_HOME".to_owned(), v.to_owned())];
+        assert!(check_spawn_envs(codex, &codex_env("rel")).is_err());
+        assert!(check_spawn_envs(codex, &codex_env("/cfg/codex-home")).is_ok());
+        let error = check_spawn_envs(Path::new("C:/x/codex.exe"), &[]).unwrap_err();
+        assert!(error.contains("codex_profile_failed"), "{error}");
     }
 
     #[test]
