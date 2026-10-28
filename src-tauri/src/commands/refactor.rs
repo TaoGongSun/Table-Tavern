@@ -651,8 +651,9 @@ pub(crate) fn refactor_interface_shell(
 pub(crate) struct GmTableMode {
     /// 介面接管桌（`data::is_interface_takeover`，與 GM 指示、角色回合拒收同一判定）：只走 GM 敘事線。
     gm_only: bool,
-    /// GM 回合會點名下一位（一般旁白格式，`data::requires_present_report` 與 GM 指示同一判定）：
-    /// 卡片自帶格式、接管桌不點名，「送出並讓點名角色接話」在這種桌不給。
+    /// GM 回合會點名下一位（一般旁白格式，`data::requires_present_report` 與 GM 指示同一判定，且主區有
+    /// 發言角色——點名名單同為 `chat_assembly::speaker_roster`）：卡片自帶格式、接管桌、全舞台卡桌不點名，
+    /// 「送出並讓點名角色接話」在這種桌不給。
     nominates: bool,
 }
 
@@ -664,9 +665,14 @@ pub(crate) fn gm_table_mode(
     let root = data_root(&app)?;
     let state = data::read_state(&root, &world_id).map_err(|error| error.to_string())?;
     let mode = state.refactor_mode.as_deref();
+    // 點名要有人可點：主區至少一張發言角色（全是舞台卡、或沒有角色的桌不出「送出並接話」）
+    let has_speaker = data::list_characters(&root, &world_id)
+        .map_err(|error| error.to_string())?
+        .iter()
+        .any(|meta| meta.cast_role() == data::CastRole::Speaker);
     Ok(GmTableMode {
         gm_only: data::is_interface_takeover(&root, &world_id, mode),
-        nominates: data::requires_present_report(&root, &world_id, mode),
+        nominates: has_speaker && data::requires_present_report(&root, &world_id, mode),
     })
 }
 

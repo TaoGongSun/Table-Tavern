@@ -21,7 +21,8 @@ mod worldbook;
 pub use character::{
     character_card_gone, character_files_present, delete_character, list_characters,
     read_character, read_player_card, reorder_characters, set_character_archived,
-    set_character_auto_hidden, write_character, CharacterCard, CharacterMeta,
+    set_character_auto_hidden, set_character_stage, write_character, CastRole, CharacterCard,
+    CharacterMeta,
 };
 pub use config::{
     install_sponsor_pack, migrate_legacy_config, read_config, read_model_catalog,

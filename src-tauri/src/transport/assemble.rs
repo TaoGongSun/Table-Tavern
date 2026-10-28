@@ -43,7 +43,8 @@ pub fn assemble_shared_messages(
     lang: &str,
 ) -> Vec<ChatMessage> {
     let mut system = chars_lane_system(cards, player, scan, lang);
-    let hoist = match cards.len() <= 1 {
+    // 單人＝發言角色只有一位（舞台卡不算，與 lane 的 sole_present、用量的 solo 同一判定）
+    let hoist = match cards.iter().filter(|card| !card.stage).count() <= 1 {
         true => Hoist::StableConfidential,
         false => Hoist::None,
     };

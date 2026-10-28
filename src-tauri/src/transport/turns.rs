@@ -112,12 +112,24 @@ pub fn chars_lane_system(
     };
     let separator = if en { " " } else { "" };
     let mut system = format!("{intro}{separator}{}\n", language_rule(lang));
-    if !cards.is_empty() {
-        system.push_str(match en {
-            true => "\n## Characters (public profiles)\n",
-            false => "\n## 登場角色（公開設定）\n",
-        });
-        for card in cards {
+    // 舞台卡（stage-card-in-speaker-list）另起「舞台」段：設定照給，但不在「登場角色」名單上，不會被指定扮演
+    let (stage, cast): (Vec<&CharacterCard>, Vec<&CharacterCard>) =
+        cards.iter().partition(|card| card.stage);
+    for (heading, group) in [
+        (super::context::stage_heading(lang), &stage),
+        (
+            match en {
+                true => "\n## Characters (public profiles)\n",
+                false => "\n## 登場角色（公開設定）\n",
+            },
+            &cast,
+        ),
+    ] {
+        if group.is_empty() {
+            continue;
+        }
+        system.push_str(heading);
+        for card in group {
             let texts = scan.texts.card(card);
             system.push_str(&format!("### {}\n", card.name));
             if !texts.dynamic && !texts.public.trim().is_empty() {
@@ -179,13 +191,22 @@ fn dynamic_profiles(
     scan: &WorldScan,
     lang: &str,
 ) -> String {
-    let mut body = String::new();
-    for card in cards {
+    let dynamic = |card: &&CharacterCard| {
         let texts = scan.texts.card(card);
-        if texts.dynamic && !texts.public.trim().is_empty() {
-            body.push_str(&format!("### {}\n{}\n", card.name, texts.public.trim()));
-        }
-    }
+        (texts.dynamic && !texts.public.trim().is_empty())
+            .then(|| format!("### {}\n{}\n", card.name, texts.public.trim()))
+    };
+    // 舞台卡的動態設定另起一段，與凍結 system 的分段一致
+    let stage: String = cards
+        .iter()
+        .filter(|card| card.stage)
+        .filter_map(|card| dynamic(&card))
+        .collect();
+    let mut body: String = cards
+        .iter()
+        .filter(|card| !card.stage)
+        .filter_map(|card| dynamic(&card))
+        .collect();
     if let Some(player) = player {
         let texts = &scan.texts.player;
         if texts.dynamic && !texts.public.trim().is_empty() {
@@ -196,14 +217,22 @@ fn dynamic_profiles(
             ));
         }
     }
-    if body.is_empty() {
-        return body;
+    let mut out = String::new();
+    if !stage.is_empty() {
+        out.push_str(match scaffold_en(lang) {
+            true => "## Stage (setting, this turn)\n",
+            false => "## 舞台（設定，本輪）\n",
+        });
+        out.push_str(&stage);
     }
-    let heading = match scaffold_en(lang) {
-        true => "## Characters (public profiles, this turn)\n",
-        false => "## 登場角色（公開設定，本輪）\n",
-    };
-    format!("{heading}{body}")
+    if !body.is_empty() {
+        out.push_str(match scaffold_en(lang) {
+            true => "## Characters (public profiles, this turn)\n",
+            false => "## 登場角色（公開設定，本輪）\n",
+        });
+        out.push_str(&body);
+    }
+    out
 }
 
 /// 「只有某角色知道的世界情報」段：限定可見與私密觸發的條目；沒有內容回空字串。

@@ -342,6 +342,7 @@ mod tests {
                 gen_prompt: String::new(),
                 public_md: "走私者。".to_owned(),
                 private_md: "欠了債。".to_owned(),
+                stage: false,
             },
         )
         .unwrap();
@@ -389,6 +390,7 @@ mod tests {
                 gen_prompt: String::new(),
                 public_md: "走私者。".to_owned(),
                 private_md: "欠了債。".to_owned(),
+                stage: false,
             },
         )
         .unwrap();

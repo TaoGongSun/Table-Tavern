@@ -354,6 +354,7 @@ pub(crate) fn import_character_placing(
         gen_prompt: String::new(),
         public_md: public_markdown(card_data, lang),
         private_md: private_markdown(card_data, lang),
+        stage: false,
     };
     data::write_character(root, world_id, &card)?;
     // 原卡或顯示圖寫不進去：整次回錯，剛建的角色 md 與已寫的檔一併收掉，不留半匯入的角色
@@ -402,6 +403,7 @@ pub(crate) fn import_character_placing(
             show_image: true,
             archived: false,
             auto_hidden: false,
+            stage: false,
             display_index: None,
         },
         image_dropped,

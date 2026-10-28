@@ -76,6 +76,20 @@ pub(crate) fn set_character_auto_hidden(
         .map_err(|error| error.to_string())
 }
 
+/// 舞台卡開關（stage-card-in-speaker-list，側欄卡片選單）：開啟時一併清 auto_hidden 讓設定恢復送出，
+/// 關閉不動 auto_hidden。玩家意志優先，幕中切換的快取代價玩家自付——與 set_character_archived 同款語意。
+#[tauri::command]
+pub(crate) fn set_character_stage(
+    app: tauri::AppHandle,
+    world_id: String,
+    character_id: String,
+    stage: bool,
+) -> Result<(), String> {
+    let _permit = data::world_write_permit(&world_id)?;
+    data::set_character_stage(&data_root(&app)?, &world_id, &character_id, stage)
+        .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 pub(crate) fn delete_character(
     app: tauri::AppHandle,

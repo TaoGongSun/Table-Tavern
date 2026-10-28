@@ -420,6 +420,7 @@ fn meta(id: &str, name: &str, archived: bool, auto_hidden: bool) -> data::Charac
         show_image: true,
         archived,
         auto_hidden,
+        stage: false,
         display_index: None,
     }
 }

@@ -6,6 +6,8 @@ use crate::world_scan::{
 use crate::{data, import, mechanism, transport};
 
 pub(crate) mod greeting;
+#[cfg(test)]
+mod stage_tests;
 
 /// GM 上下文素材＝world.md＋世界書＋全部角色卡（含私有）＋公開 transcript（NewPlan §7.0）。
 /// 單發組裝與 claude lane 續聊共用同一份素材。
@@ -28,7 +30,8 @@ pub(crate) struct GmMaterials {
     pub opening: transport::GmOpening,
 }
 
-/// 這一桌在場的角色卡（未封存、未自動隱藏），照 `prompt_card` 整理成送進提示詞的樣子。
+/// 這一桌送進提示詞的卡（發言角色＋舞台卡；不含封存、自動隱藏），照 `prompt_card` 整理成送進提示詞的樣子。
+/// 舞台卡的設定照送（GM 與角色線放「## 舞台」段）；誰能發言另由 `speakers` 分流。
 pub(crate) fn active_cards(
     root: &std::path::Path,
     world_id: &str,
@@ -49,13 +52,31 @@ pub(crate) fn active_cards_with(
     data::list_characters(root, world_id)
         .map_err(|error| error.to_string())?
         .into_iter()
-        .filter(|meta| !meta.archived && !meta.auto_hidden)
+        .filter(|meta| {
+            matches!(
+                meta.cast_role(),
+                data::CastRole::Speaker | data::CastRole::Stage
+            )
+        })
         .map(|meta| {
             data::read_character(root, world_id, &meta.id)
                 .map(|card| prompt_card(card, strip))
                 .map_err(|error| error.to_string())
         })
         .collect()
+}
+
+/// 集中分流（stage-card-in-speaker-list）：送進提示詞的卡裡，能發言的那些（點名名單、點名解析、
+/// 用量記的人數都從這裡取）；舞台卡只提供設定。以 meta 判斷的入口用 `data::CharacterMeta::cast_role`。
+pub(crate) fn speakers(
+    cards: &[data::CharacterCard],
+) -> impl Iterator<Item = &data::CharacterCard> {
+    cards.iter().filter(|card| !card.stage)
+}
+
+/// 點名名單：發言角色的名字（GM 導演指示的「下一位」候選）。
+pub(crate) fn speaker_roster(cards: &[data::CharacterCard]) -> Vec<String> {
+    speakers(cards).map(|card| card.name.clone()).collect()
 }
 
 /// 送進提示詞（GM、角色線、回歸事件）的卡：`strip` 時拿掉開場白與備用開場白段（政策見 `greeting::policy`）。
@@ -93,7 +114,8 @@ pub(crate) fn sole_present(
         .all(|meta| meta.id == speaker_id)
 }
 
-/// 有效在場集合：未封存的卡中「非 auto_hidden」或「本幕已回歸」（回歸只記事件、不改旗標）。
+/// 有效在場集合：發言角色，加上自動隱藏中「本幕已回歸」的（回歸只記事件、不改旗標）。
+/// 舞台卡不算在場：「1 角色＋1 舞台」算單角色桌〔模型判斷·未裁決〕。
 fn effective_present<'a>(
     metas: &'a [data::CharacterMeta],
     events: &[data::TranscriptEvent],
@@ -101,7 +123,11 @@ fn effective_present<'a>(
     let arrived = data::appeared_card_names(events);
     metas
         .iter()
-        .filter(|meta| !meta.archived && (!meta.auto_hidden || arrived.contains(&meta.name)))
+        .filter(|meta| match meta.cast_role() {
+            data::CastRole::Speaker => true,
+            data::CastRole::Hidden => arrived.contains(&meta.name),
+            data::CastRole::Stage | data::CastRole::Archived => false,
+        })
         .collect()
 }
 
@@ -151,6 +177,21 @@ pub(crate) fn reject_character_turn_on_takeover(
     }
 }
 
+/// 舞台卡只提供設定、不發言（stage-card-in-speaker-list）：它的角色回合一律拒收。只讀不寫，呼叫端
+/// 與 `reject_character_turn_on_takeover` 放在一起，被拒就不寫樓、不打模型、不扣容量。
+pub(crate) fn reject_stage_character_turn(
+    root: &std::path::Path,
+    world_id: &str,
+    character_id: &str,
+) -> Result<(), String> {
+    let card =
+        data::read_character(root, world_id, character_id).map_err(|error| error.to_string())?;
+    match card.stage {
+        true => Err(crate::ui_msg::UiMsg::StageCardNoTurn.into()),
+        false => Ok(()),
+    }
+}
+
 /// GM 點名對回角色 id：LLM 只認名字，同名取第一個；玩家哨兵原樣回傳。介面接管桌不點名，
 /// 模型照習慣寫了點名行（已由 `extract_next_speaker` 剝掉）也一律 None，前端不接力。
 pub(crate) fn next_speaker(
@@ -162,13 +203,12 @@ pub(crate) fn next_speaker(
     if takeover {
         return None;
     }
-    let roster: Vec<String> = cards.iter().map(|card| card.name.clone()).collect();
+    let roster = speaker_roster(cards);
     let picked = transport::pick_speaker(&next_raw?, &roster, player_name)?;
     if picked == transport::PLAYER_SENTINEL {
         return Some(picked);
     }
-    cards
-        .iter()
+    speakers(cards)
         .find(|card| card.name == picked)
         .map(|card| card.id.clone())
 }
@@ -360,11 +400,7 @@ pub(crate) fn gm_instruction(
     scan: &WorldScan,
     lang: &str,
 ) -> (transport::ChatMessage, &'static str) {
-    let roster: Vec<String> = materials
-        .cards
-        .iter()
-        .map(|card| card.name.clone())
-        .collect();
+    let roster = speaker_roster(&materials.cards);
     let player_name = materials.player.as_ref().map(|card| card.name.as_str());
     gm_turn_instruction(root, world_id, materials, scan, &roster, player_name, lang)
 }
@@ -549,6 +585,7 @@ mod takeover_gate_tests {
             gen_prompt: String::new(),
             public_md: String::new(),
             private_md: String::new(),
+            stage: false,
         };
         let cards = [fox];
         let named = || Some("狐狸".to_owned());

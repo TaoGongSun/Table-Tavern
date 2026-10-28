@@ -919,3 +919,39 @@ fn snapshot_updates_returns_only_snapshot_level_changes_with_user_macro_replaced
     // 全量桌一律回空
     assert!(snapshot_updates(&state, &Mechanism::default(), "阿濤").is_empty());
 }
+
+/// 舞台卡（stage-card-in-speaker-list）同名的狀態分支是場景狀態，比照玩家那支永遠送；缺席的人物照裁
+#[test]
+fn state_scope_always_keeps_the_stage_card_branch() {
+    let mut fortress = card("fortress-id", "灰岩要塞", "", "");
+    fortress.stage = true;
+    let crow = card("crow-id", "鴉", "", "");
+    let branch = |hp: &str| {
+        StateNode::Branch(BTreeMap::from([(
+            "狀態".to_owned(),
+            StateNode::Leaf(hp.to_owned()),
+        )]))
+    };
+    let mut state = TableState {
+        tree: BTreeMap::from([
+            ("灰岩要塞".to_owned(), branch("戒備")),
+            ("鴉".to_owned(), branch("睡")),
+        ]),
+        ..TableState::default()
+    };
+    state.table.insert("present".to_owned(), "阿濤".to_owned());
+    let mechanism = Mechanism {
+        incremental: true,
+        ..Mechanism::default()
+    };
+    let scope = state_scope(
+        &state,
+        &mechanism,
+        &[fortress, crow],
+        None,
+        &BTreeMap::new(),
+        false,
+        &[],
+    );
+    assert_eq!(scope.hidden, vec![vec!["鴉".to_owned()]]);
+}

@@ -43,6 +43,7 @@ fn card() -> data::CharacterCard {
         gen_prompt: String::new(),
         public_md: "### 簡介\n北境要塞\n\n### 開場白\n說明頁".to_owned(),
         private_md: format!("### 備用開場白 1\n{OPENING}"),
+        stage: false,
     }
 }
 

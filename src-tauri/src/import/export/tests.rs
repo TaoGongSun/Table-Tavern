@@ -130,6 +130,7 @@ fn exports_freeform_card_as_json() {
             gen_prompt: String::new(),
             public_md: "騎士，話少。\n### 開場白\n有事？".to_owned(),
             private_md: "其實是逃兵".to_owned(),
+            stage: false,
         },
     )
     .unwrap();

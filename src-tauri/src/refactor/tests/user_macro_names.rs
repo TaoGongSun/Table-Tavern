@@ -164,6 +164,7 @@ fn npc_names_use_existing_player_when_none_assigned() {
         gen_prompt: String::new(),
         public_md: String::new(),
         private_md: String::new(),
+        stage: false,
     };
     data::write_character(root.path(), &world_id, &existing).unwrap();
     let mut state = data::read_state(root.path(), &world_id).unwrap();

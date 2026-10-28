@@ -172,6 +172,7 @@ fn build(
             gen_prompt: String::new(),
             public_md: String::new(),
             private_md: String::new(),
+            stage: false,
         };
         data::write_character(root, world_id, &player)?;
         data::set_player_card(root, world_id, Some(player.id))?;

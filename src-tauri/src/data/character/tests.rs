@@ -25,6 +25,7 @@ fn list_characters_excludes_player_card() {
             show_image: npc.show_image,
             archived: npc.archived,
             auto_hidden: false,
+            stage: false,
             display_index: Some(1),
         }]
     );
@@ -59,6 +60,7 @@ fn character_round_trip_preserves_fields_and_sections() {
         gen_prompt: "暖色調 水彩風".to_owned(),
         public_md: "第一段\n\n- 公開條目\n".to_owned(),
         private_md: "秘密第一行\n\n秘密第二行".to_owned(),
+        stage: false,
     };
 
     write_character(root.path(), &world_id, &card).unwrap();
@@ -77,6 +79,7 @@ fn character_round_trip_preserves_fields_and_sections() {
             show_image: true,
             archived: true,
             auto_hidden: false,
+            stage: false,
             display_index: Some(0),
         }]
     );
@@ -558,6 +561,54 @@ fn write_character_preserves_auto_hidden_across_unrelated_edit() {
         .unwrap();
     assert!(meta.auto_hidden);
     assert_eq!(meta.color, "#ff0000");
+}
+
+/// 舞台旗標（stage-card-in-speaker-list）：開啟清 auto_hidden、讀卡帶出、編輯表單與拖曳排序延續、
+/// 關閉不動 auto_hidden；cast_role 舞台優先於自動隱藏、封存優先於舞台。
+#[test]
+fn stage_flag_round_trips_and_survives_edits() {
+    let root = TestRoot::new("stage-flag");
+    let world_id = create_world(root.path(), "測試桌").unwrap();
+    let mut card = character_card(&new_id(), "灰岩要塞");
+    write_character(root.path(), &world_id, &card).unwrap();
+    set_character_auto_hidden(root.path(), &world_id, &card.id, true).unwrap();
+    let meta_of = || {
+        list_characters(root.path(), &world_id)
+            .unwrap()
+            .into_iter()
+            .find(|meta| meta.id == card.id)
+            .unwrap()
+    };
+    assert_eq!(meta_of().cast_role(), CastRole::Hidden);
+
+    set_character_stage(root.path(), &world_id, &card.id, true).unwrap();
+    assert!(meta_of().stage);
+    assert!(!meta_of().auto_hidden, "開啟舞台清掉自動隱藏，設定恢復送出");
+    assert_eq!(meta_of().cast_role(), CastRole::Stage);
+    assert!(
+        read_character(root.path(), &world_id, &card.id)
+            .unwrap()
+            .stage
+    );
+
+    // 前端編輯表單送來的卡不帶 stage（serde skip → false），仍延續磁碟上的值
+    card.color = "#ff0000".to_owned();
+    card.stage = false;
+    write_character(root.path(), &world_id, &card).unwrap();
+    reorder_characters(root.path(), &world_id, std::slice::from_ref(&card.id)).unwrap();
+    assert!(meta_of().stage);
+    set_character_auto_hidden(root.path(), &world_id, &card.id, true).unwrap();
+    assert!(meta_of().stage, "改自動隱藏不碰舞台旗標");
+    assert_eq!(meta_of().cast_role(), CastRole::Stage);
+
+    set_character_stage(root.path(), &world_id, &card.id, false).unwrap();
+    assert!(!meta_of().stage);
+    assert!(meta_of().auto_hidden, "關閉舞台不動自動隱藏");
+
+    set_character_stage(root.path(), &world_id, &card.id, true).unwrap();
+    set_character_archived(root.path(), &world_id, &card.id, true).unwrap();
+    assert!(meta_of().stage);
+    assert_eq!(meta_of().cast_role(), CastRole::Archived);
 }
 
 /// 內文裡長得像分隔線的行（行前 0／1／多個反斜線、圍欄內、CRLF）逐字往返。

@@ -154,6 +154,8 @@ pub enum UiMsg {
     SceneSummaryStopped,
     /// 介面接管桌只走 GM 敘事線：角色回合一律拒收，不寫樓、不打模型、不扣容量
     InterfaceTableGmOnly,
+    /// 舞台卡只提供設定、不參與角色發言：它的角色回合一律拒收，不寫樓、不打模型、不扣容量
+    StageCardNoTurn,
     PreviousSceneEmpty,
     TranscriptEmpty,
     SceneNotFound {

@@ -653,6 +653,7 @@ fn character_measure_follows_lane_shape() {
         gen_prompt: String::new(),
         public_md: format!("{name}的公開設定。"),
         private_md: private.to_owned(),
+        stage: false,
     };
     let fox_id = ulid::Ulid::generate().to_string();
     data::write_character(&root, &world, &card(&fox_id, "狐狸", "狐狸的秘密甲")).unwrap();
@@ -924,3 +925,43 @@ fn worldbook_measurement_is_read_only_and_keeps_keywords_out_of_the_fixed_part()
 }
 
 mod greeting;
+
+/// 舞台卡（stage-card-in-speaker-list）不發言：只量發言角色的角色線，全舞台桌只剩 GM 那條
+#[test]
+fn stage_cards_have_no_character_path() {
+    let events = vec![event(TranscriptKind::Player, "玩家", "開始。")];
+    let (root, world) = world_with(&events, "stage-paths");
+    let mut card = data::CharacterCard {
+        id: ulid::Ulid::generate().to_string(),
+        name: "灰岩要塞".to_owned(),
+        color: "#336699".to_owned(),
+        avatar: String::new(),
+        tier: data::Tier::Balanced,
+        show_image: true,
+        archived: false,
+        gen_prompt: String::new(),
+        public_md: "北境山口的要塞。".to_owned(),
+        private_md: String::new(),
+        stage: false,
+    };
+    data::write_character(&root, &world, &card).unwrap();
+    data::set_character_stage(&root, &world, &card.id, true).unwrap();
+    card.stage = true;
+    let config = config_for("claude");
+    let materials = measure::load(&root, &world).unwrap();
+    assert!(materials
+        .cards
+        .iter()
+        .any(|loaded| loaded.id == card.id && loaded.stage));
+    let paths = measure::chat_paths(
+        &root,
+        &world,
+        &materials,
+        crate::transport::gm_tier(&config),
+        crate::transport::dispatch::lane_provider(&config),
+        &crate::transport::ui_language(&config),
+        "claude",
+        &|_| super::PathLimits::default(),
+    );
+    assert!(paths.iter().all(|path| path.kind != "chars"));
+}

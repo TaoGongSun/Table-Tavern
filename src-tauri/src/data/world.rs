@@ -236,6 +236,7 @@ pub fn create_sample_world(root: &Path, lang: &str) -> DataResult<String> {
                 gen_prompt: String::new(),
                 public_md: text.public_md,
                 private_md: text.private_md,
+                stage: false,
             },
         )?;
     }

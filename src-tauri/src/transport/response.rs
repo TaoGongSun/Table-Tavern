@@ -194,10 +194,10 @@ pub fn gm_closing(format: GmTurnFormat, has_roster: bool, lang: &str) -> &'stati
             "Now, as the GM, carry out the director instruction above. Output only the story and, if anything changed, the update block. Do not add a name prefix."
         }
         (true, GmTurnFormat::Narration, false) => {
-            "Now, as the GM, carry out the director instruction above. Output only the narration, any content the settings require, and the required state fence. Do not add a name prefix."
+            "Now, as the GM, carry out the director instruction above. Output only the narration, any content the settings require, and the required ```state fence. Do not add a name prefix."
         }
         (true, GmTurnFormat::Narration, true) => {
-            "Now, as the GM, carry out the director instruction above. Output only the narration, any content the settings require, the required state fence, and the `Next:` line. Do not add a name prefix."
+            "Now, as the GM, carry out the director instruction above. Output only the narration, any content the settings require, the required ```state fence, and the `Next:` line. Do not add a name prefix."
         }
         (false, GmTurnFormat::CardFormat, _) => {
             "現在請以 GM 身分，完全依照上述輸出格式產生本回合的回覆，不要加名字前綴，也不要輸出格式以外的任何內容。"
@@ -209,10 +209,10 @@ pub fn gm_closing(format: GmTurnFormat, has_roster: bool, lang: &str) -> &'stati
             "現在請以 GM 身分執行上述導演指示，只輸出劇情正文與有變動時的更新區塊，不要加名字前綴。"
         }
         (false, GmTurnFormat::Narration, false) => {
-            "現在請以 GM 身分執行上述導演指示，只輸出旁白本文、設定規定要附的內容與要求的狀態欄，不要加名字前綴。"
+            "現在請以 GM 身分執行上述導演指示，只輸出旁白本文、設定規定要附的內容與要求的 ```state 圍欄，不要加名字前綴。"
         }
         (false, GmTurnFormat::Narration, true) => {
-            "現在請以 GM 身分執行上述導演指示，只輸出旁白本文、設定規定要附的內容、要求的狀態欄與「下一位」行，不要加名字前綴。"
+            "現在請以 GM 身分執行上述導演指示，只輸出旁白本文、設定規定要附的內容、要求的 ```state 圍欄與「下一位」行，不要加名字前綴。"
         }
     }
 }
@@ -229,10 +229,10 @@ pub fn narration_update_note(lang: &str) -> &'static str {
 /// `narration_update_note` 那種桌的收尾句：允許更新區塊。
 pub fn narration_closing_with_updates(has_roster: bool, lang: &str) -> &'static str {
     match (scaffold_en(lang), has_roster) {
-        (true, false) => "Now, as the GM, carry out the director instruction above. Output only the narration, any content the settings require, the required state fence, and the update block if anything else changed. Do not add a name prefix.",
-        (true, true) => "Now, as the GM, carry out the director instruction above. Output only the narration, any content the settings require, the required state fence, the update block if anything else changed, and the `Next:` line. Do not add a name prefix.",
-        (false, false) => "現在請以 GM 身分執行上述導演指示，只輸出旁白本文、設定規定要附的內容、要求的狀態欄與其他欄位有變動時的更新區塊，不要加名字前綴。",
-        (false, true) => "現在請以 GM 身分執行上述導演指示，只輸出旁白本文、設定規定要附的內容、要求的狀態欄、其他欄位有變動時的更新區塊與「下一位」行，不要加名字前綴。",
+        (true, false) => "Now, as the GM, carry out the director instruction above. Output only the narration, any content the settings require, the required ```state fence, and the update block if anything else changed. Do not add a name prefix.",
+        (true, true) => "Now, as the GM, carry out the director instruction above. Output only the narration, any content the settings require, the required ```state fence, the update block if anything else changed, and the `Next:` line. Do not add a name prefix.",
+        (false, false) => "現在請以 GM 身分執行上述導演指示，只輸出旁白本文、設定規定要附的內容、要求的 ```state 圍欄與其他欄位有變動時的更新區塊，不要加名字前綴。",
+        (false, true) => "現在請以 GM 身分執行上述導演指示，只輸出旁白本文、設定規定要附的內容、要求的 ```state 圍欄、其他欄位有變動時的更新區塊與「下一位」行，不要加名字前綴。",
     }
 }
 

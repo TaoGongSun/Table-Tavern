@@ -129,6 +129,7 @@ fn match_unique(
 /// 出現過＝(a) 剛結束那幕的角色卡回歸事件集合 ∪ (b) 換幕當下 present 名單比對命中。
 /// 出現過→auto_hidden=false（拉回主區）；沒出現過→auto_hidden=true（收進隱藏區）；
 /// archived（手動封存）的卡完全不動，自動判斷不能覆蓋玩家的手動決定。
+/// 舞台卡（stage-card-in-speaker-list）同樣完全不動：它提供設定、不是人物，GM 不會把它寫進 present。
 ///
 /// 已知限制：幕開始就在主區、全程活躍，但最後一輪 GM 忘記把它列進 present、
 /// 這幕本文也沒有登場事件（因為它本來就沒被隱藏過）的卡，會在這裡被判定「沒出現」
@@ -155,6 +156,8 @@ pub(super) fn settle_card_visibility(
     let Ok(characters) = list_characters(root, world_id) else {
         return;
     };
+    // 舞台卡不參與結算、也不進比對名字池（它不是人物）；比對結果的索引對應過濾後的這份清單
+    let characters: Vec<_> = characters.into_iter().filter(|meta| !meta.stage).collect();
     let events = read_transcript(root, world_id, ended_scene).unwrap_or_default();
     let arrived = super::marker::appeared_card_names(&events);
     let present_names = present.map(split_present_names).unwrap_or_default();
@@ -259,6 +262,40 @@ mod tests {
             "沒出現過的卡（就算原本在主區）應該結算成隱藏"
         );
         assert!(!auto_hidden_of(&ghost.id), "archived 的卡完全不受結算影響");
+    }
+
+    /// 舞台卡（stage-card-in-speaker-list）：present 不會寫它，結算也不收進隱藏區；名字池排除它之後，
+    /// 排在它後面的人物仍對得上自己的比對結果（舞台卡排第一，索引錯位就會把熊判錯）。
+    #[test]
+    fn settlement_skips_stage_cards_and_keeps_person_indices() {
+        let root = TestRoot::new("card-settlement-stage");
+        let world_id = create_world(root.path(), "測試桌").unwrap();
+        let stage = character_card(&new_id(), "灰岩要塞");
+        let bear = character_card(&new_id(), "熊");
+        let badger = character_card(&new_id(), "獾");
+        for card in [&stage, &bear, &badger] {
+            write_character(root.path(), &world_id, card).unwrap();
+        }
+        set_character_stage(root.path(), &world_id, &stage.id, true).unwrap();
+        set_character_auto_hidden(root.path(), &world_id, &bear.id, true).unwrap();
+        let mut state = read_state(root.path(), &world_id).unwrap();
+        state
+            .state
+            .table
+            .insert("present".to_owned(), "熊".to_owned());
+        write_state(root.path(), &world_id, &state).unwrap();
+
+        begin_next_scene(root.path(), &world_id, "摘要", None).unwrap();
+
+        let metas = list_characters(root.path(), &world_id).unwrap();
+        let meta_of = |id: &str| metas.iter().find(|meta| meta.id == id).unwrap();
+        assert!(!meta_of(&stage.id).auto_hidden, "舞台卡不收進隱藏區");
+        assert!(meta_of(&stage.id).stage);
+        assert!(
+            !meta_of(&bear.id).auto_hidden,
+            "present 命中的人物照常拉回主區"
+        );
+        assert!(meta_of(&badger.id).auto_hidden, "缺席的人物照常隱藏");
     }
 
     /// present 缺席時只有「沒被要求報 present」的桌（介面接管、沒重構的顯示腳本桌）不結算，旗標原樣保留

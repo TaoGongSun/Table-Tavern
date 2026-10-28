@@ -140,21 +140,36 @@ pub(super) fn gm_system_prompt(
         system.push_str(worldbook_heading(lang));
         system.push_str(&front);
     }
-    if !cards.is_empty() {
-        let (heading, public_label, private_label) = match en {
-            true => (
-                "\n## Characters\n",
-                "Public profile:",
-                "Private profile (known only to you and that character):",
-            ),
-            false => (
-                "\n## 登場角色\n",
-                "公開設定：",
-                "私有設定（僅你與該角色知道）：",
-            ),
-        };
+    // 舞台卡（stage-card-in-speaker-list）：場景／世界設定，另起「舞台」段，不說它有扮演者
+    let (stage, cast): (Vec<&CharacterCard>, Vec<&CharacterCard>) =
+        cards.iter().partition(|card| card.stage);
+    let (public_label, private_label) = match en {
+        true => (
+            "Public profile:",
+            "Private profile (known only to you and that character):",
+        ),
+        false => ("公開設定：", "私有設定（僅你與該角色知道）："),
+    };
+    let stage_labels = match en {
+        true => ("Public setting:", "Private setting (known only to you):"),
+        false => ("公開設定：", "私有設定（只有你知道）："),
+    };
+    for (heading, group, (public_label, private_label)) in [
+        (stage_heading(lang), &stage, stage_labels),
+        (
+            match en {
+                true => "\n## Characters\n",
+                false => "\n## 登場角色\n",
+            },
+            &cast,
+            (public_label, private_label),
+        ),
+    ] {
+        if group.is_empty() {
+            continue;
+        }
         system.push_str(heading);
-        for card in cards {
+        for card in group {
             let card_texts = texts.card(card);
             system.push_str(&format!("### {}\n", card.name));
             if !card_texts.public.trim().is_empty() {
@@ -210,6 +225,14 @@ pub(super) fn gm_system_prompt(
         }
     }
     system
+}
+
+/// 舞台卡段標（GM 與角色線共用），前後各帶換行：舞台卡提供場景與世界設定，不是角色、不被點名發言。
+pub(super) fn stage_heading(lang: &str) -> &'static str {
+    match scaffold_en(lang) {
+        true => "\n## Stage (scene and world setting; not a character, never called on to speak)\n",
+        false => "\n## 舞台（場景與世界設定，不是角色，不會被點名發言）\n",
+    }
 }
 
 /// GM 側「世界書」段標（system 的 constant 條目與回合尾的 keyword 條目共用），前後各帶換行。

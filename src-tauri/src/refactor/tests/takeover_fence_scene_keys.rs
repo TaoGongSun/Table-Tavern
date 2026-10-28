@@ -23,6 +23,7 @@ fn card(name: &str) -> data::CharacterCard {
         gen_prompt: String::new(),
         public_md: String::new(),
         private_md: String::new(),
+        stage: false,
     }
 }
 

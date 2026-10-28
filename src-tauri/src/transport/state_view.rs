@@ -423,7 +423,7 @@ pub fn state_scope(
     let player_id = player.map(|player| player.id.as_str());
     // 先收齊候選（有卡的分支＝卡名、同容器手足＝分支鍵），再整批比對在場名單：單向包含（在場項目含名字），
     // 原文命中優先、簡繁折疊兜底；折疊後多個候選分不出是誰（沈郁／沈鬱）就都留，寧可多送不裁瞎。
-    let mut carded: Vec<(Vec<String>, &str, bool)> = Vec::new(); // (分支, 名字, 是玩家)
+    let mut carded: Vec<(Vec<String>, &str, bool)> = Vec::new(); // (分支, 名字, 永遠送)
     let mut containers: Vec<Vec<String>> = Vec::new();
     for card in cards {
         let Some(branch) = resolve_branch(&state.tree, bindings, &card.id, &card.name) else {
@@ -435,10 +435,11 @@ pub fn state_scope(
                 containers.push(container);
             }
         }
+        // 玩家那支與舞台卡那支（場景狀態；GM 不會把舞台寫進 present）永遠送
         carded.push((
             branch,
             card.name.as_str(),
-            Some(card.id.as_str()) == player_id,
+            Some(card.id.as_str()) == player_id || card.stage,
         ));
     }
     let mut siblings: Vec<(Vec<String>, &str)> = Vec::new();
@@ -469,9 +470,9 @@ pub fn state_scope(
     let found = data::match_present_with(&present, &names, |item, name| item.contains(name));
     let shown = |index: usize| found.matched.contains(&index) || found.ambiguous.contains(&index);
     let mut hidden: Vec<Vec<String>> = Vec::new();
-    for (index, (branch, _, is_player)) in carded.iter().enumerate() {
-        if !is_player && !shown(index) {
-            hidden.push(branch.clone()); // 玩家那支永遠送
+    for (index, (branch, _, always)) in carded.iter().enumerate() {
+        if !always && !shown(index) {
+            hidden.push(branch.clone());
         }
     }
     for (offset, (path, _)) in siblings.iter().enumerate() {

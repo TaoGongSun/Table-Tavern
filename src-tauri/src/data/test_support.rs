@@ -39,6 +39,7 @@ pub(super) fn character_card(id: &str, name: &str) -> CharacterCard {
         gen_prompt: String::new(),
         public_md: String::new(),
         private_md: String::new(),
+        stage: false,
     }
 }
 

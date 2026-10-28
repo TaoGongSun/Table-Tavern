@@ -391,6 +391,7 @@ fn refactor_receipt_append_failure_keeps_earlier_receipts_intact() {
             gen_prompt: String::new(),
             public_md: String::new(),
             private_md: String::new(),
+            stage: false,
         };
         data::write_character(root.path(), &world_id, &card).unwrap();
         receipts::record_refactor_apply(

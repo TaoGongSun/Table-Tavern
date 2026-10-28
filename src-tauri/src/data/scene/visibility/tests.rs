@@ -477,3 +477,21 @@ fn fork_retry_after_state_write_failure_keeps_leaving_snapshot() {
     assert_eq!(table.revert().unwrap(), 1);
     assert_eq!(table.hidden(), map(&[("甲", true), ("乙", false)]));
 }
+
+/// 舞台卡（stage-card-in-speaker-list）：換幕被收進隱藏區、之後開舞台（清掉隱藏），退回到「它還藏著」
+/// 的那幕時不把舊快照寫回；一般角色照常還原
+#[test]
+fn revert_does_not_rehide_stage_card() {
+    let table = Table::new("vis-stage", &["甲", "要塞"]);
+    table.say();
+    table.change(Some("甲"));
+    table.say();
+    table.change(Some("甲"));
+    assert!(table.is_hidden("要塞"), "還沒開舞台前，缺席照常被收");
+    assert_eq!(table.snapshot(1).unwrap()["要塞"], true);
+    set_character_stage(table.root(), &table.world, table.id("要塞"), true).unwrap();
+    table.set_hidden("甲", true);
+    assert_eq!(table.revert().unwrap(), 1);
+    assert!(!table.is_hidden("要塞"), "舞台卡不照舊快照寫回隱藏");
+    assert!(!table.is_hidden("甲"), "一般角色照快照還原");
+}

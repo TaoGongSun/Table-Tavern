@@ -87,6 +87,7 @@ fn apply_rejects_second_player_card_and_writes_nothing() {
         gen_prompt: String::new(),
         public_md: String::new(),
         private_md: String::new(),
+        stage: false,
     };
     data::write_character(root.path(), &world_id, &existing_player).unwrap();
     let mut state = data::read_state(root.path(), &world_id).unwrap();

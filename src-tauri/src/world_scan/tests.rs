@@ -49,6 +49,7 @@ pub(super) fn card(id: &str, name: &str, public_md: &str, private_md: &str) -> C
         gen_prompt: String::new(),
         public_md: public_md.to_owned(),
         private_md: private_md.to_owned(),
+        stage: false,
     }
 }
 

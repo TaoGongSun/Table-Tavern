@@ -117,6 +117,7 @@ fn refactor(root: &TestRoot, world_id: &str) {
             gen_prompt: String::new(),
             public_md: "拆出來的".to_owned(),
             private_md: String::new(),
+            stage: false,
         },
     )
     .unwrap();

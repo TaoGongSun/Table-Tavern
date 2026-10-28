@@ -701,6 +701,7 @@ pub fn worldbook_entry_to_character(
         gen_prompt: String::new(),
         public_md: entry.content.trim().to_owned(),
         private_md: String::new(),
+        stage: false,
     };
 
     write_character(root, world_id, &card)?;
@@ -718,6 +719,7 @@ pub fn worldbook_entry_to_character(
         show_image: card.show_image,
         archived: card.archived,
         auto_hidden: false,
+        stage: false,
         display_index: None,
     })
 }

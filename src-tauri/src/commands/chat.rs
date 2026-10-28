@@ -97,6 +97,8 @@ pub(crate) async fn chat_with_character(
     let root = data_root(&app)?;
     // 介面接管桌只走 GM：擋在容量記帳與代落之前，被拒什麼都不寫
     chat_assembly::reject_character_turn_on_takeover(&root, &world_id)?;
+    // 舞台卡不發言：同樣擋在任何副作用之前
+    chat_assembly::reject_stage_character_turn(&root, &world_id, &character_id)?;
     // 換幕容量鎖：排在代落上一回合待落正文之前（待落的已算進本幕），擋下就什麼都不寫。
     // 同一動作已在落玩家句時通過就不重扣（scene_budget::gate）
     crate::scene_budget::check_capacity(
@@ -280,8 +282,8 @@ pub(crate) async fn chat_with_character(
             "",
             &messages,
             usage_log::PromptShape::Turn {
-                roster: cards.len(),
-                solo: cards.len() <= 1,
+                roster: chat_assembly::speakers(&cards).count(),
+                solo: chat_assembly::speakers(&cards).count() <= 1,
             },
             false,
             emit,
@@ -306,7 +308,8 @@ fn load_hidden_cards(
     let (hidden, others): (Vec<_>, Vec<_>) = data::list_characters(root, world_id)
         .map_err(|error| error.to_string())?
         .into_iter()
-        .partition(|meta| meta.auto_hidden && !meta.archived);
+        .filter(|meta| !meta.stage)
+        .partition(|meta| meta.cast_role() == data::CastRole::Hidden);
     let hidden = hidden
         .into_iter()
         .map(|meta| {
@@ -609,7 +612,7 @@ pub(crate) async fn gm_narrate(
                 closing,
                 &messages,
                 usage_log::PromptShape::Turn {
-                    roster: materials.cards.len(),
+                    roster: chat_assembly::speakers(&materials.cards).count(),
                     solo: false,
                 },
                 false,
@@ -1082,8 +1085,8 @@ async fn prepare_play_lane_call(
 #[cfg(test)]
 mod tests {
     use super::{
-        aborted_narration, character_reply, gm_reply_parts, record_card_arrivals,
-        record_person_arrivals,
+        aborted_narration, character_reply, gm_reply_parts, load_hidden_cards,
+        record_card_arrivals, record_person_arrivals,
     };
     use crate::commands::{character_card, NEXT_TEMP_ID};
     use crate::data;
@@ -1190,11 +1193,7 @@ mod tests {
         };
         let root = std::path::PathBuf::from(root);
         let materials = super::gm_materials(&root, &world_id).unwrap();
-        let roster: Vec<String> = materials
-            .cards
-            .iter()
-            .map(|card| card.name.clone())
-            .collect();
+        let roster = crate::chat_assembly::speaker_roster(&materials.cards);
         let player_name = materials.player.as_ref().map(|card| card.name.as_str());
         let lang = "zh-TW";
         let scan = crate::chat_assembly::test_gm_scan(&root, &world_id, &materials, lang);
@@ -1338,6 +1337,38 @@ mod tests {
         ));
 
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// 回歸候選只看自動隱藏的人物：舞台卡（就算舊桌留著 auto_hidden、或已封存）不回歸、也不進折疊比對名字池
+    /// （與換幕結算同一規則）；封存的人物照舊留在名字池
+    #[test]
+    fn hidden_cards_skip_stage_cards() {
+        let root = crate::smart_free::test_root("hidden-cards-stage");
+        let world_id = data::create_world(&root, "測試桌").unwrap();
+        let stage = character_card(&data::new_id(), "灰岩要塞");
+        let fox = character_card(&data::new_id(), "狐狸");
+        let owl = character_card(&data::new_id(), "貓頭鷹");
+        let tower = character_card(&data::new_id(), "黑塔");
+        let ghost = character_card(&data::new_id(), "亡靈");
+        for card in [&stage, &fox, &owl, &tower, &ghost] {
+            data::write_character(&root, &world_id, card).unwrap();
+        }
+        data::set_character_stage(&root, &world_id, &stage.id, true).unwrap();
+        data::set_character_stage(&root, &world_id, &tower.id, true).unwrap();
+        data::set_character_archived(&root, &world_id, &tower.id, true).unwrap();
+        data::set_character_archived(&root, &world_id, &ghost.id, true).unwrap();
+        data::set_character_auto_hidden(&root, &world_id, &stage.id, true).unwrap();
+        data::set_character_auto_hidden(&root, &world_id, &fox.id, true).unwrap();
+        let (hidden, others) = load_hidden_cards(&root, &world_id, false).unwrap();
+        assert_eq!(
+            hidden
+                .iter()
+                .map(|card| card.name.as_str())
+                .collect::<Vec<_>>(),
+            ["狐狸"]
+        );
+        assert_eq!(others, ["貓頭鷹", "亡靈"]);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// AI 卡重構包 4b，鏡射 4a：present 有隱藏卡的名字就 append 回歸事件——私設先成一則

@@ -326,7 +326,8 @@ pub fn chat_paths(
         ),
         lane: provider.map(|_| (Lane::Gm, None)),
     }];
-    for card in &m.cards {
+    // 只量發言角色的角色線（舞台卡不發言，chat_with_character 會拒收）；素材仍是全卡
+    for card in chat_assembly::speakers(&m.cards) {
         // 與 chat_with_character 同一判定；讀卡失敗就當多角色（寧可多算機密段）
         let shape = provider.map(|provider| {
             let sole = provider == LaneProvider::Claude

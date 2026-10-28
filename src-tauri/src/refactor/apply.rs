@@ -297,6 +297,7 @@ fn apply_into(
             gen_prompt: String::new(),
             public_md: character.public_md.clone(),
             private_md: character.private_md.clone(),
+            stage: false,
         };
         // 先登記再寫：寫到一半失敗時收據也涵蓋這張，撤銷能把半截檔清掉
         progress.character_ids.push(card.id.clone());

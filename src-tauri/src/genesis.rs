@@ -210,6 +210,7 @@ pub fn materialize(root: &Path, title: &str, expanded: &Expanded) -> DataResult<
                 gen_prompt: String::new(),
                 public_md: character.public_md.clone(),
                 private_md: character.private_md.clone(),
+                stage: false,
             },
         )?;
     }

@@ -89,6 +89,7 @@ fn retired_tables_send_cards_without_greetings() {
         gen_prompt: String::new(),
         public_md: "### 簡介\n北境要塞\n\n### 開場白\n風雪\n<details><summary>状态栏</summary>天數</details>\n\n### 場景\n冬季".to_owned(),
         private_md: "玩家筆記\n\n### 備用開場白 1\n城門\n<details><summary>状态栏</summary>第 1 天</details>".to_owned(),
+        stage: false,
     };
     data::write_character(root.path(), &world_id, &card).unwrap();
     let sent = |root: &std::path::Path| {

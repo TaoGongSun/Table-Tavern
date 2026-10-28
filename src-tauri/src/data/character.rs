@@ -27,6 +27,10 @@ pub struct CharacterMeta {
     /// `settle_card_visibility` 與 `set_character_auto_hidden`。
     #[serde(default)]
     pub auto_hidden: bool,
+    /// 舞台卡（stage-card-in-speaker-list）：提供場景／世界設定、不參與角色發言。設定照送提示詞，
+    /// 但不進點名名單、發言對象與換幕結算；只由 `set_character_stage` 改寫，卡片編輯延續磁碟舊值。
+    #[serde(default)]
+    pub stage: bool,
     /// 側欄卡片的顯示順序；只在後端流通（前端拿到的已是排好的清單）
     #[serde(skip)]
     pub display_index: Option<u32>,
@@ -47,6 +51,44 @@ pub struct CharacterCard {
     pub gen_prompt: String,
     pub public_md: String,
     pub private_md: String,
+    /// 舞台卡旗標的唯讀投影：讀卡時從 frontmatter 帶出，給提示詞組裝分段用；不進前端卡片 JSON，
+    /// 寫卡時一律延續磁碟上的值（改寫只走 `set_character_stage`）。
+    #[serde(skip)]
+    pub stage: bool,
+}
+
+/// 這張卡在桌上的角色（stage-card-in-speaker-list）：所有「誰算發言者、誰算舞台、誰不在」的判斷都從這裡來。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CastRole {
+    /// 在主區、可被點名與選為發言對象的角色
+    Speaker,
+    /// 舞台卡：設定照送，不發言、不參與換幕結算（自動隱藏旗標對它無效）
+    Stage,
+    /// 自動隱藏中的角色（回歸候選）
+    Hidden,
+    /// 玩家手動封存
+    Archived,
+}
+
+impl CharacterMeta {
+    pub fn cast_role(&self) -> CastRole {
+        if self.archived {
+            CastRole::Archived
+        } else if self.stage {
+            CastRole::Stage
+        } else if self.auto_hidden {
+            CastRole::Hidden
+        } else {
+            CastRole::Speaker
+        }
+    }
+}
+
+/// 卡檔 frontmatter 裡不屬於編輯表單、由系統另外改寫的旗標；改寫其他欄位時延續磁碟上的值。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct SystemFlags {
+    auto_hidden: bool,
+    stage: bool,
 }
 
 /// 完整讀取用：角色卡解得開才算這棵目錄能當現行程式的桌。
@@ -72,6 +114,7 @@ fn parse_frontmatter(contents: &str) -> DataResult<(CharacterMeta, String, &str)
     let mut show_image = true;
     let mut archived = false;
     let mut auto_hidden = false;
+    let mut stage = false;
     let mut display_index = None;
     let mut gen_prompt = String::new();
     for line in frontmatter.lines() {
@@ -92,6 +135,7 @@ fn parse_frontmatter(contents: &str) -> DataResult<(CharacterMeta, String, &str)
             "show_image" => show_image = value != "false",
             "archived" => archived = value == "true",
             "auto_hidden" => auto_hidden = value == "true",
+            "stage" => stage = value == "true",
             "display_index" => display_index = value.parse().ok(),
             "gen_prompt" => gen_prompt = value.to_owned(),
             _ => {}
@@ -111,6 +155,7 @@ fn parse_frontmatter(contents: &str) -> DataResult<(CharacterMeta, String, &str)
             show_image,
             archived,
             auto_hidden,
+            stage,
             display_index,
         },
         gen_prompt,
@@ -178,14 +223,13 @@ fn parse_sections(body: &str) -> Option<(String, String)> {
     Some((unescape_body(public), unescape_body(&body[private_start..])))
 }
 
-/// `auto_hidden` 不是 `CharacterCard` 的欄位（那樣每個手動建卡的呼叫端都要補這個跟編輯
-/// 無關的欄位）：呼叫端自己決定要延續舊值（`write_character`）還是寫新值
-/// （`set_character_auto_hidden`），見兩者呼叫這支的方式。
-fn serialize_character(card: &CharacterCard, display_index: u32, auto_hidden: bool) -> String {
+/// `auto_hidden`、`stage` 不跟著編輯表單走：呼叫端自己決定要延續舊值（`write_character`）還是寫新值
+/// （`set_character_auto_hidden`、`set_character_stage`），見各自呼叫這支的方式。
+fn serialize_character(card: &CharacterCard, display_index: u32, flags: SystemFlags) -> String {
     // frontmatter 逐行解析，生成提示詞中的換行須在寫入前攤平。
     let gen_prompt = card.gen_prompt.replace(['\n', '\r'], " ");
     format!(
-        "---\nid: {}\nname: {}\ncolor: {}\navatar: {}\ntier: {}\nshow_image: {}\narchived: {}\nauto_hidden: {}\ndisplay_index: {}\ngen_prompt: {}\n---\n{PUBLIC_MARK}\n{}\n{PRIVATE_MARK}\n{}",
+        "---\nid: {}\nname: {}\ncolor: {}\navatar: {}\ntier: {}\nshow_image: {}\narchived: {}\nauto_hidden: {}\n{}display_index: {}\ngen_prompt: {}\n---\n{PUBLIC_MARK}\n{}\n{PRIVATE_MARK}\n{}",
         card.id,
         card.name,
         card.color,
@@ -193,7 +237,9 @@ fn serialize_character(card: &CharacterCard, display_index: u32, auto_hidden: bo
         card.tier.as_str(),
         card.show_image,
         card.archived,
-        auto_hidden,
+        flags.auto_hidden,
+        // 舞台旗標只在開啟時寫出：一般卡的 frontmatter 與加這欄之前逐字相同
+        if flags.stage { "stage: true\n" } else { "" },
         display_index,
         gen_prompt,
         escape_body(&card.public_md),
@@ -287,11 +333,11 @@ pub fn reorder_characters(root: &Path, world_id: &str, ids: &[String]) -> DataRe
             u32::try_from(index).map_err(|_| invalid_data("character display_index overflow"))?;
         let card = read_character(root, world_id, id)?;
         let path = character_path(root, world_id, id)?;
-        // 拖曳排序只改 display_index，跟 write_character 一樣延續磁碟上原有的 auto_hidden。
-        let auto_hidden = existing_auto_hidden(&path);
+        // 拖曳排序只改 display_index，跟 write_character 一樣延續磁碟上原有的系統旗標。
+        let flags = existing_flags(&path);
         super::world_file::commit_world_write(
             &path,
-            serialize_character(&card, index, auto_hidden).as_bytes(),
+            serialize_character(&card, index, flags).as_bytes(),
         )?;
     }
     Ok(())
@@ -325,6 +371,7 @@ fn card_from_contents(contents: &str) -> DataResult<Option<CharacterCard>> {
         gen_prompt,
         public_md,
         private_md,
+        stage: meta.stage,
     }))
 }
 
@@ -345,31 +392,34 @@ pub fn read_player_card(root: &Path, world_id: &str) -> DataResult<Option<Charac
     card_from_contents(&fs::read_to_string(path)?)
 }
 
-/// 這張卡目前落地的 auto_hidden 值；檔案不存在或解析失敗（新卡）一律當 false。
-fn existing_auto_hidden(path: &Path) -> bool {
+/// 這張卡目前落地的系統旗標；檔案不存在或解析失敗（新卡）一律當 false。
+fn existing_flags(path: &Path) -> SystemFlags {
     let Ok(contents) = fs::read_to_string(path) else {
-        return false;
+        return SystemFlags::default();
     };
     parse_frontmatter(&contents)
-        .map(|(meta, _, _)| meta.auto_hidden)
-        .unwrap_or(false)
+        .map(|(meta, _, _)| SystemFlags {
+            auto_hidden: meta.auto_hidden,
+            stage: meta.stage,
+        })
+        .unwrap_or_default()
 }
 
 /// id 由呼叫端先跟 new_id 要好（草稿期生圖需要落在正確的圖庫路徑）；空 id 直接回錯。
 /// `CharacterCard` 不帶 auto_hidden（AI 卡重構包 4b：那是換幕結算與退回／分岔復原的持久欄位，不是編輯表單
-/// 的一部分），這裡改寫其他欄位時，延續磁碟上原有的 auto_hidden，不會被前端編輯捎帶清掉。
+/// 的一部分），舞台旗標同理；這裡改寫其他欄位時延續磁碟上原有的值，不會被前端編輯捎帶清掉。
 pub fn write_character(root: &Path, world_id: &str, card: &CharacterCard) -> DataResult<()> {
     validate_id(&card.id)?;
     validate_single_line("name", &card.name)?;
     validate_single_line("color", &card.color)?;
     validate_single_line("avatar", &card.avatar)?;
     let path = character_path(root, world_id, &card.id)?;
-    let auto_hidden = existing_auto_hidden(&path);
+    let flags = existing_flags(&path);
     ensure_display_indices(root, world_id)?;
     let display_index = display_index_for(root, world_id, &path)?;
     super::world_file::commit_world_write(
         &path,
-        serialize_character(card, display_index, auto_hidden).as_bytes(),
+        serialize_character(card, display_index, flags).as_bytes(),
     )?;
     Ok(())
 }
@@ -395,11 +445,41 @@ pub fn set_character_auto_hidden(
     auto_hidden: bool,
 ) -> DataResult<()> {
     let card = read_character(root, world_id, character_id)?;
+    let flags = SystemFlags {
+        auto_hidden,
+        stage: card.stage,
+    };
+    write_flags(root, world_id, &card, flags)
+}
+
+/// 舞台旗標：開啟時一併清掉 auto_hidden（舊桌換幕時可能已把它收進隱藏區，清掉設定才恢復送出）；
+/// 關閉時不動 auto_hidden，卡留在原處、下次換幕照一般規則結算。整檔原子寫。
+pub fn set_character_stage(
+    root: &Path,
+    world_id: &str,
+    character_id: &str,
+    stage: bool,
+) -> DataResult<()> {
+    let card = read_character(root, world_id, character_id)?;
     let path = character_path(root, world_id, character_id)?;
+    let flags = SystemFlags {
+        auto_hidden: !stage && existing_flags(&path).auto_hidden,
+        stage,
+    };
+    write_flags(root, world_id, &card, flags)
+}
+
+fn write_flags(
+    root: &Path,
+    world_id: &str,
+    card: &CharacterCard,
+    flags: SystemFlags,
+) -> DataResult<()> {
+    let path = character_path(root, world_id, &card.id)?;
     let display_index = display_index_for(root, world_id, &path)?;
     super::world_file::commit_world_write_atomic(
         &path,
-        serialize_character(&card, display_index, auto_hidden).as_bytes(),
+        serialize_character(card, display_index, flags).as_bytes(),
     )?;
     Ok(())
 }

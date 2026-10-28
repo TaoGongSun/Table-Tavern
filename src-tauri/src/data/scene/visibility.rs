@@ -44,7 +44,8 @@ pub(super) fn restore_scene_visibility(
         return Ok(());
     };
     for meta in list_characters(root, world_id)? {
-        if meta.archived {
+        // 舞台卡比照換幕結算不參與：舊快照的 auto_hidden 不寫回（開舞台時已清掉）
+        if meta.archived || meta.stage {
             continue;
         }
         if let Some(&hidden) = snapshot.get(&meta.id) {

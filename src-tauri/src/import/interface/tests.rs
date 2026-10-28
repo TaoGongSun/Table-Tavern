@@ -122,6 +122,34 @@ fn read_card_interfaces_handles_plain_cards_without_extensions() {
     assert!(!interfaces[0].mvu);
 }
 
+/// 舞台卡（stage-card-in-speaker-list）常是介面／MVU 的載體：舊桌留著 auto_hidden 也照讀；
+/// 一般卡自動隱藏就略過、封存的舞台卡也略過
+#[test]
+fn read_card_interfaces_keeps_stage_cards() {
+    let root = TestRoot::new("interfaces-stage");
+    let world_id = data::create_world(root.path(), "酒館").unwrap();
+    let import = |name: &str| {
+        let raw = json!({"data": {"name": name}}).to_string();
+        import_character(root.path(), &world_id, raw.as_bytes(), "#3366ff", "zh-TW")
+            .unwrap()
+            .id
+    };
+    let (stage, fox) = (import("灰岩要塞"), import("狐狸"));
+    data::set_character_stage(root.path(), &world_id, &stage, true).unwrap();
+    data::set_character_auto_hidden(root.path(), &world_id, &stage, true).unwrap();
+    data::set_character_auto_hidden(root.path(), &world_id, &fox, true).unwrap();
+    let names = || {
+        read_card_interfaces(root.path(), &world_id)
+            .unwrap()
+            .into_iter()
+            .map(|interface| interface.character_name)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(names(), ["灰岩要塞"]);
+    data::set_character_archived(root.path(), &world_id, &stage, true).unwrap();
+    assert!(names().is_empty());
+}
+
 /// 載入 MVU 的判斷：新版 tavern_helper 與舊版 TavernHelper_scripts 都認，停用的腳本不算。
 #[test]
 fn card_interface_detects_mvu_script() {

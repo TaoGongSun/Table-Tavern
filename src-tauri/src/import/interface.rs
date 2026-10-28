@@ -110,7 +110,11 @@ fn read_card_interfaces_raw(root: &Path, world_id: &str) -> DataResult<Vec<CardI
     // 非匯入卡，略過；任一份讀得出就用它，都讀不出才算 unreadable。`.card.png` 只在匯入時寫、必帶
     // 卡片資料，所以讀出是一般圖也算損毀。
     for meta in data::list_characters(root, world_id)? {
-        if meta.archived || meta.auto_hidden {
+        // 主區的發言角色與舞台卡（舞台卡常是介面／MVU 載體）；封存與自動隱藏的略過
+        if !matches!(
+            meta.cast_role(),
+            data::CastRole::Speaker | data::CastRole::Stage
+        ) {
             continue;
         }
         let md_path = data::character_path(root, world_id, &meta.id)?;
