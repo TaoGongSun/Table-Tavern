@@ -54,6 +54,7 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [vendor-floor-b2](tasks/vendor-floor-b2.md) — 額度「已省」每輪先扣掉自帶底線，只算我方內容 — 下一步：開工〔作者裁決 2026-10-28〕
 - [non-claude-real-cache](tasks/non-claude-real-cache.md) — codex／agy／OpenRouter 沒有續聊，快取到底有沒有真的抓到 — 下一步：排在 multichar-next-speaker-silent 之後〔作者裁決 2026-10-28〕；先做離線 byte-LCP 與 codex 實抓，OpenRouter 只用免費模型每日額度確認回報欄位與一家嚴格前綴型
 - [no-cache-model-optout](tasks/no-cache-model-optout.md) — 零命中的模型不走共線：自動退回單角色組裝 — 下一步：排在 multichar-next-speaker-silent 之後〔作者裁決 2026-10-28〕；前提改為執行時逐模型判定，先確認帳本分得清「回報為 0」與「沒回報」
+- [codex-floor-sandbox-group](tasks/codex-floor-sandbox-group.md) — codex 自帶底線 12,288 vs 11,008，疑因沙盒模式不同而帳本分組沒算進去 — 下一步：未排程；先驗差額來源
 
 ## 階段 F：生圖
 [sponsor-features](handoffs/sponsor-features.md) 的 AI 生圖（梯 2 第 8）、[image-model-picker](handoffs/image-model-picker.md)（第 21）、[image-model-free-tier-hide](handoffs/image-model-free-tier-hide.md)（第 22）先實測；之後 vn-mode 前置實測 a／b／c（已有[實測報告](plans/vn-mode-image-spike.md)，待作者三項決定）。
