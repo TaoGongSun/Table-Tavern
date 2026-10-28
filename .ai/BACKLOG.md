@@ -52,7 +52,6 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 ## 階段 E：成本
 [api-shared-lane](handoffs/api-shared-lane.md) 四路成對測試先做；以下兩案依其數據決定做不做：
 - [vendor-floor-b2](tasks/vendor-floor-b2.md) — 額度「已省」每輪先扣掉自帶底線，只算我方內容 — 下一步：開工〔作者裁決 2026-10-28〕
-- [non-claude-real-cache](tasks/non-claude-real-cache.md) — codex／agy／OpenRouter 沒有續聊，快取到底有沒有真的抓到 — 下一步：排在 multichar-next-speaker-silent 之後〔作者裁決 2026-10-28〕；先做離線 byte-LCP 與 codex 實抓，OpenRouter 只用免費模型每日額度確認回報欄位與一家嚴格前綴型
 - [no-cache-model-optout](tasks/no-cache-model-optout.md) — 零命中的模型不走共線：自動退回單角色組裝 — 下一步：前提改為「近期無可觀測收益」：只計跨過門檻且在 TTL 內的零命中輪、保留恢復、帳本補記 provider
 - [codex-floor-sandbox-group](tasks/codex-floor-sandbox-group.md) — codex 自帶底線 12,288 vs 11,008，疑因沙盒模式不同而帳本分組沒算進去 — 下一步：未排程；先驗差額來源
 - [codex-lane-resume](tasks/codex-lane-resume.md) — codex 改走 lane 續聊讓我方內容吃到快取（單發零命中、resume 3 輪中 2） — 下一步：未排程；開工前作者裁決 session 存放位置
