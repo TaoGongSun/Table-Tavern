@@ -7,6 +7,7 @@
 ## 進行中
 - [flat-field-glyph-dup](handoffs/flat-field-glyph-dup.md) — 沒重構非增量桌，模型換字形寫鍵在平欄長出簡繁重複欄位：開案查證中
 - [agy-home-cleanup](handoffs/agy-home-cleanup.md) — app 專用 agy 家目錄（與 codex-lane-resume 的 codex-home）對話清理機制＋agy 資料目錄變數上游追蹤：查證提方案中
+- [grok-image-original-leftover](handoffs/grok-image-original-leftover.md) — grok 生圖原始 JPEG 留在 app 的 grok-home/sessions：查證提方案中
 - [card-mvu-shim](handoffs/card-mvu-shim.md) — 卡片介面沙盒墊 MVU 讀寫變數：全部已合併 main，剩實測佇列梯 1 項目（含 iframe 內按鈕實際互動）
 
 ## 等實機驗收（順序見[實測佇列](reference/verification-queue.md)）
