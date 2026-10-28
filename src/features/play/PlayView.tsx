@@ -10,6 +10,7 @@ import { StoryText } from "../../shared/ui/atoms";
 import { eventDisplayText, speakerDisplayName } from "../../shared/ui/event-text";
 import gmBook from "../../assets/gm-book.png";
 import { IconSend, IconStop } from "../../shared/ui/icons";
+import { callableAt, type NominatedCall } from "./next-speaker-call";
 import { useStickToBottom } from "../story-scroll/useStickToBottom";
 import { capacityHint, wouldOverflow, type SceneBudgetReply } from "./scene/scene-budget";
 import { streamDisplayText } from "./stream-display";
@@ -90,6 +91,13 @@ interface PlayViewProps {
   onRequestReply: () => void;
   onGmNarrate: () => void;
   onGmAdvance: () => void;
+  /** 這桌 GM 回合會點名：對 GM 發言時送出鍵旁多一顆「送出並接話」 */
+  relayable?: boolean;
+  onSendRelay?: () => void;
+  /** 上一則單次旁白點了誰；castIds＝側欄主區角色，被點的人不在就不掛「讓 X 接話」 */
+  nominated?: NominatedCall | null;
+  castIds?: readonly string[];
+  onCallNominated?: () => void;
   /** AI 錯誤訊息：跟換幕提醒同一處，限高內捲 */
   errorNote?: ReactNode;
   /** 換幕容量（後端 scene_budget）；null＝還沒量到或拿不到上限 */
@@ -135,6 +143,11 @@ export function PlayView({
   onRequestReply,
   onGmNarrate,
   onGmAdvance,
+  relayable = false,
+  onSendRelay,
+  nominated = null,
+  castIds = [],
+  onCallNominated,
   errorNote,
   sceneBudget = null,
   onAdvanceScene,
@@ -173,6 +186,9 @@ export function PlayView({
   const capacityFull = fullForActions || fullForSend;
   const capacityKind = locked ? null : capacityHint(sceneBudget);
   const frozen = busy || locked || fullForActions;
+  // 「讓 X 接話」掛在點名那則旁白正下方；生成中不畫，結束後重新推導
+  const callIndex = frozen ? null : callableAt(events, nominated, castIds);
+  const callName = nominated ? (metaOf(nominated.characterId)?.name ?? "") : "";
 
   // 非持久系統提示行：at 之後逐字稿被收回變短時，超出的一併排在最後
   const noticesAt = (index: number, tail = false) =>
@@ -223,6 +239,18 @@ export function PlayView({
           <Fragment key={index}>
             {noticesAt(index)}
             {renderEvent(event, index)}
+            {index === callIndex && (
+              <div className="next-call">
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => onCallNominated?.()}
+                  title={t("callNominatedHint", { name: callName })}
+                >
+                  {t("callNominated", { name: callName })}
+                </button>
+              </div>
+            )}
           </Fragment>
         ))}
         {noticesAt(events.length, true)}
@@ -444,22 +472,36 @@ export function PlayView({
               </span>
             </button>
           ) : (
-            <button
-              type="submit"
-              className="btn btn-primary composer-primary"
-              disabled={locked || (!speaker && castEmpty) || busy || fullForSend}
-            >
-              <span className="swap-label">
-                <span>
-                  {t("send")}
-                  <IconSend />
+            <>
+              {relayable && gmTargeted && !gmOnly && !castEmpty && (
+                <button
+                  type="button"
+                  className="btn composer-relay"
+                  onClick={() => onSendRelay?.()}
+                  disabled={locked || busy || fullForSend || !input.trim()}
+                  title={t("sendRelayHint")}
+                  aria-label={t("sendRelayHint")}
+                >
+                  <span className="btn-label">{t("sendRelay")}</span>
+                </button>
+              )}
+              <button
+                type="submit"
+                className="btn btn-primary composer-primary"
+                disabled={locked || (!speaker && castEmpty) || busy || fullForSend}
+              >
+                <span className="swap-label">
+                  <span>
+                    {t("send")}
+                    <IconSend />
+                  </span>
+                  <span className="swap-ghost" aria-hidden="true">
+                    <IconStop />
+                    {t("stopResponse")}
+                  </span>
                 </span>
-                <span className="swap-ghost" aria-hidden="true">
-                  <IconStop />
-                  {t("stopResponse")}
-                </span>
-              </span>
-            </button>
+              </button>
+            </>
           )}
         </div>
       </form>

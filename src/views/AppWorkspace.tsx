@@ -33,6 +33,8 @@ const GM_COLOR = "#8a6a3c";
 export type EditingTableName = { value: string } | null;
 
 interface AppWorkspaceProps {
+  /** 這桌 GM 回合會點名下一位：「送出並讓點名角色接話」才有意義 */
+  relayable: boolean;
   table: string;
   tableName: string;
   scene: number;
@@ -114,6 +116,7 @@ export function AppWorkspace({
   onUseBackup,
   onOpenRepairFolder,
   updateDot,
+  relayable,
 }: AppWorkspaceProps) {
   const {
     leaveGuard,
@@ -407,6 +410,11 @@ export function AppWorkspace({
                   onRequestReply={() => void chat.replyFromTarget()}
                   onGmNarrate={chat.gmNarrate}
                   onGmAdvance={chat.gmAdvance}
+                  relayable={relayable}
+                  onSendRelay={() => void chat.sendRelay()}
+                  nominated={chat.nominated}
+                  castIds={characters.active.map((character) => character.id)}
+                  onCallNominated={() => void chat.callNominated()}
                   errorNote={errorInComposer ? errorNote : null}
                   sceneBudget={sceneBudget}
                   onAdvanceScene={() => void advanceScene()}

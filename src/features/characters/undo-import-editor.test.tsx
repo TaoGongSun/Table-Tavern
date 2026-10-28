@@ -90,6 +90,7 @@ describe("undo last import with an editor open", () => {
     h.reclaim_world_if_empty = () => false;
     h.new_id = () => "new-card-id";
     h.smart_free_new_models = () => [];
+    h.gm_table_mode = () => ({ gm_only: false, nominates: true });
     h.card_interfaces = () => [];
     h.branch_bindings = () => [];
     h.mechanism_ledger = () => ({ entries: [], rejected: 0, clamped: 0, errors: 0, jumps: 0 });

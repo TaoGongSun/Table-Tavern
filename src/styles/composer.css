@@ -112,6 +112,16 @@ button.composer-primary {
   padding: 0 1.2em;
 }
 
+/* 送出並接話：貼在送出鍵左邊，兩顆一起靠右 */
+button.composer-relay {
+  flex: none;
+  margin-left: auto;
+}
+
+button.composer-relay + button.composer-primary {
+  margin-left: 0;
+}
+
 /* 送出／停止兩種字疊在同一格、只顯示其一：按鈕寬度取兩者較大，換字時不跳動 */
 .swap-label {
   display: grid;

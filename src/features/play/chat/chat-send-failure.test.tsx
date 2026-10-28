@@ -340,9 +340,10 @@ describe("chat turn failures", () => {
     );
     h.refreshWorlds.mockRejectedValueOnce("list broke");
     await typeAndSend(h, "你好");
-    expect(h.count("discard_unanswered_player")).toBe(1);
+    // 正文一落檔玩家句就不是檔尾：不去收、彈窗不帶原文（帶了會誘導玩家重送一句已在桌上的話）
+    expect(h.count("discard_unanswered_player")).toBe(0);
     expect(h.chat().events.map((event) => event.text)).toEqual(["你好", "門開了。"]);
-    expect(h.failures).toEqual([{ raw: "list broke", draft: "你好" }]);
+    expect(h.failures).toEqual([{ raw: "list broke" }]);
   });
 
   it("a GM reply that never landed shows up before the next player line, as the backend lands it", async () => {

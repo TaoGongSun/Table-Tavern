@@ -170,7 +170,7 @@ function App() {
 
   // 介面接管桌只走 GM 一條敘事線：發言對象鎖 GM；判定還沒讀回（換桌瞬間）不接受回合，
   // 免得空對象的送出留下沒人回的半回合
-  const gmOnlyTable = useGmOnlyTable(liveWorldId);
+  const gmOnlyTable = useGmOnlyTable(liveWorldId, characters);
   function whenTurnReady<A extends unknown[]>(fn: (...args: A) => Promise<void>) {
     return gmOnlyTable.whenReady(whenTableFree(fn));
   }
@@ -917,6 +917,8 @@ function App() {
     gmAdvance: whenTurnReady(chat.gmAdvance),
     replyFromTarget: whenTurnReady(chat.replyFromTarget),
     submitText: whenTurnReady(chat.submitText),
+    sendRelay: whenTurnReady(chat.sendRelay),
+    callNominated: whenTurnReady(chat.callNominated),
   };
 
   return (
@@ -987,6 +989,7 @@ function App() {
           onUseBackup={() => void useBackup()}
           onOpenRepairFolder={() => void openRepairFolder()}
           updateDot={updateDot}
+          relayable={gmOnlyTable.nominates}
         />
       )}
 

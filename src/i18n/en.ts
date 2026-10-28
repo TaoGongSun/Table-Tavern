@@ -577,6 +577,10 @@ export const en: Record<MsgKey, string> = {
   gmAdvance: "GM Advance",
   gmAdvanceHint:
     "The GM narrates, then calls on the next character to keep the scene moving, stopping at the player's turn or the per-round cap",
+  sendRelay: "Send + reply",
+  sendRelayHint: "Send this line; after the GM's narration, the character it names replies once",
+  callNominated: "Let {name} reply",
+  callNominatedHint: "Have “{name}”, named by the GM, reply now without rerunning the GM",
   undoLast: "Undo last",
   undoLastHint: "Delete the last entry in the log; press again to keep going back, within this scene only",
   undoRestore: "Restore that line",

@@ -127,7 +127,8 @@ export function useTranscriptStore({
     [reload, onError],
   );
 
-  // started＝發起這一輪時的世代，由回合一路傳下來：換桌之後才呼叫也不會把新世代當成自己的
+  // started＝發起這一輪時的世代，由回合一路傳下來：換桌之後才呼叫也不會把新世代當成自己的。
+  // 回傳換進畫面的那一則；世代已變（落檔了但不碰畫面）回 undefined
   const appendEvent = useCallback(
     // turn＝GM 回合的一部分（main 正文／state_update 變動紀錄）：後端以 (turn_id, turn_part) 冪等落檔，
     // main 掛上回合算好的變數表；characterTurn＝這則是那次角色聊天呼叫的回覆，後端憑它認世界書落地成功
@@ -136,7 +137,7 @@ export function useTranscriptStore({
       started: number,
       turn?: { turnId: string; part: "main" | "state_update" },
       characterTurn?: string,
-    ) => {
+    ): Promise<TranscriptEvent | undefined> => {
       // 空白事件一律不落地（stream-failure-visible）：AI 失敗時故事不該多出一則看不見的
       // 回合，它還會進下一次呼叫的歷史把模型帶偏。後端 API 路徑已擋，這裡是 CLI 路徑
       // 與任何未來新路徑的保險，錯誤碼與後端同一個
@@ -171,6 +172,7 @@ export function useTranscriptStore({
       }
       // 桌上一有新內容，收回的那幾句就不能再放回去了——位置已經被後面的話蓋掉
       onAppended();
+      return stamped;
     },
     [worldId, scene, beginWrite, actionIdRef, appendFailed, generation, setEvents, onAppended],
   );

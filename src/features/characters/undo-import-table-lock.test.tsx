@@ -117,6 +117,7 @@ describe("undo last import shares the table lock with imports", () => {
     h.world_has_state_bar = () => false;
     h.reclaim_world_if_empty = () => false;
     h.smart_free_new_models = () => [];
+    h.gm_table_mode = () => ({ gm_only: false, nominates: true });
     h.card_interfaces = () => [];
     h.branch_bindings = () => [];
     h.mechanism_ledger = () => ({ entries: [], rejected: 0, clamped: 0, errors: 0, jumps: 0 });

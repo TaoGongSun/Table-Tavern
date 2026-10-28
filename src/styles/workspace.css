@@ -549,6 +549,11 @@ button.scene-chip,
   color: var(--ink-3);
 }
 
+/* 「讓 X 接話」：掛在點名那則旁白正下方 */
+.next-call {
+  display: flex;
+}
+
 /* 清單底部的補救動作列：清單空也留著容器，補救鈕出現時不頂動版面 */
 .story-actions {
   flex: none;

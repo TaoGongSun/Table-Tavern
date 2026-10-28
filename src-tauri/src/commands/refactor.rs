@@ -646,19 +646,28 @@ pub(crate) fn refactor_interface_shell(
     data::read_interface_shell(&data_root(&app)?, &world_id).map_err(|error| error.to_string())
 }
 
-/// 介面接管桌（`data::is_interface_takeover`，與 GM 指示、角色回合拒收同一判定）：前端據此只走 GM 敘事線。
+/// `gm_table_mode` 的回傳：前端據此決定這桌的回合入口。
+#[derive(serde::Serialize)]
+pub(crate) struct GmTableMode {
+    /// 介面接管桌（`data::is_interface_takeover`，與 GM 指示、角色回合拒收同一判定）：只走 GM 敘事線。
+    gm_only: bool,
+    /// GM 回合會點名下一位（一般旁白格式，`data::requires_present_report` 與 GM 指示同一判定）：
+    /// 卡片自帶格式、接管桌不點名，「送出並讓點名角色接話」在這種桌不給。
+    nominates: bool,
+}
+
 #[tauri::command]
-pub(crate) fn interface_takeover_table(
+pub(crate) fn gm_table_mode(
     app: tauri::AppHandle,
     world_id: String,
-) -> Result<bool, String> {
+) -> Result<GmTableMode, String> {
     let root = data_root(&app)?;
     let state = data::read_state(&root, &world_id).map_err(|error| error.to_string())?;
-    Ok(data::is_interface_takeover(
-        &root,
-        &world_id,
-        state.refactor_mode.as_deref(),
-    ))
+    let mode = state.refactor_mode.as_deref();
+    Ok(GmTableMode {
+        gm_only: data::is_interface_takeover(&root, &world_id, mode),
+        nominates: data::requires_present_report(&root, &world_id, mode),
+    })
 }
 
 /// 桌面玩法標記（refactor-mode-split）：重構套用時寫入；"characters"＝前端停用這桌的

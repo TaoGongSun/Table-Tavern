@@ -5,17 +5,18 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const pending = new Map<string, (value: boolean) => void>();
+const pending = new Map<string, (value: { gm_only: boolean; nominates: boolean }) => void>();
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(
     (command: string, args: { worldId: string }) =>
       new Promise((resolve) => {
-        if (command === "interface_takeover_table") pending.set(args.worldId, resolve);
+        if (command === "gm_table_mode") pending.set(args.worldId, resolve);
         else resolve(null);
       }),
   ),
 }));
 
+import { invoke } from "@tauri-apps/api/core";
 import { useGmOnlyTable } from "./useGmOnlyTable";
 import {
   GM_TARGET,
@@ -43,8 +44,16 @@ describe("gm-only table", () => {
   let gate: ReturnType<typeof useGmOnlyTable> | null = null;
   let nav: WorkspaceNavigationController | null = null;
 
+  let cast = {
+    active: [{ id: "c1" }],
+    list: [
+      { id: "c1", archived: false, auto_hidden: false },
+      { id: "c2", archived: false, auto_hidden: true },
+    ],
+  };
+
   function Probe() {
-    gate = useGmOnlyTable(worldId);
+    gate = useGmOnlyTable(worldId, cast);
     nav = useWorkspaceNavigationController({ worldId, gmOnly: gate.gmOnly, characters, onError: () => {} });
     return null;
   }
@@ -53,8 +62,8 @@ describe("gm-only table", () => {
     await act(async () => root!.render(createElement(Probe)));
   }
 
-  async function answer(id: string, gmOnly: boolean) {
-    await act(async () => pending.get(id)!(gmOnly));
+  async function answer(id: string, gmOnly: boolean, nominates = !gmOnly) {
+    await act(async () => pending.get(id)!({ gm_only: gmOnly, nominates }));
   }
 
   beforeEach(() => {
@@ -77,6 +86,7 @@ describe("gm-only table", () => {
     expect(turn).not.toHaveBeenCalled();
     await answer("w1", true);
     expect(gate!.gmOnly).toBe(true);
+    expect(gate!.nominates).toBe(false);
     await gate!.whenReady(turn)();
     expect(turn).toHaveBeenCalledTimes(1);
 
@@ -84,12 +94,34 @@ describe("gm-only table", () => {
     worldId = "w2";
     await render();
     expect(gate!.gmOnly).toBeUndefined();
+    expect(gate!.nominates).toBe(false);
     expect(nav!.speaker).not.toBe(GM_TARGET);
     await gate!.whenReady(turn)();
     expect(turn).toHaveBeenCalledTimes(1);
     await answer("w2", false);
+    expect(gate!.nominates).toBe(true);
     await gate!.whenReady(turn)();
     expect(turn).toHaveBeenCalledTimes(2);
+    // 卡片自帶格式的桌：一般桌但不點名
+    worldId = "w3";
+    await render();
+    await answer("w3", false, false);
+    expect(gate!.gmOnly).toBe(false);
+    expect(gate!.nominates).toBe(false);
+  });
+
+  it("主區 id 不變、只翻轉某張卡的 auto_hidden 旗標也重讀會不會點名", async () => {
+    const reads = () => vi.mocked(invoke).mock.calls.filter(([command]) => command === "gm_table_mode").length;
+    await render();
+    await answer("w1", false);
+    const before = reads();
+    await render();
+    expect(reads()).toBe(before);
+    cast = { ...cast, list: [cast.list[0], { id: "c2", archived: false, auto_hidden: false }] };
+    await render();
+    expect(reads()).toBe(before + 1);
+    await answer("w1", false, false);
+    expect(gate!.nominates).toBe(false);
   });
 
   it("只走 GM 的桌：發言對象鎖 GM，點卡不選對象；一般桌照常選", async () => {
