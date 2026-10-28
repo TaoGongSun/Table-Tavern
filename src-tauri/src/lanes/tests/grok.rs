@@ -124,6 +124,7 @@ print(json.dumps({'type': 'end', 'stopReason': 'end_turn', 'usage': {'input_toke
         usage_log: Some(dir.join("usage.jsonl")),
         claude_home: PathBuf::new(),
         prompt_dir: dir.join("prompts"),
+        config_root: Some(dir.clone()),
         on_overage: None,
         effort: None,
     };
@@ -706,6 +707,7 @@ async fn real_grok_shared_lane_rewrites_verbatim_sessions() {
         usage_log: Some(dir.join("usage.jsonl")),
         claude_home: PathBuf::new(),
         prompt_dir: dir.join("prompts"),
+        config_root: Some(config_root.clone()),
         on_overage: None,
         effort: None,
     };
@@ -919,6 +921,7 @@ async fn switching_gm_lane_from_claude_to_grok_deletes_the_claude_session() {
         envs: grok.call.envs.clone(),
         usage_log: grok.call.usage_log.clone(),
         provider: LaneProvider::Grok,
+        config_root: grok.call.config_root.clone(),
         on_overage: None,
         effort: None,
     };

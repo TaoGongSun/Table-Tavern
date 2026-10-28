@@ -90,23 +90,10 @@ pub(crate) fn find_session_dirs(
     Ok(found)
 }
 
-/// 刪掉這個 id 的 session 目錄，回刪掉的個數（0＝本來就沒有，當已刪）；多個一個都不刪（不知道哪個才是），回錯。
-/// 只刪 `<群組>/<id>` 這一層，不碰上一層。
+/// 刪掉這個 id 的 session 目錄，回刪掉的個數（0＝本來就沒有，當已刪）。共用刪除規則
+/// （連結不跟隨、多個一個都不刪、讀不到的群組就不刪），見 `cli::home_cleanup`。
 pub(crate) fn remove_session(grok_home: &Path, session_id: &str) -> Result<usize, String> {
-    if session_id.is_empty() || session_id.contains(['/', '\\']) || session_id.starts_with('.') {
-        return Err(format!("session id 不合法：{session_id:?}"));
-    }
-    let dirs = find_session_dirs(grok_home, session_id)?;
-    match dirs.as_slice() {
-        [] => Ok(0),
-        [dir] => fs::remove_dir_all(dir)
-            .map(|()| 1)
-            .map_err(|error| format!("無法刪除 {}：{error}", dir.display())),
-        _ => Err(format!(
-            "session {session_id} 有 {} 個目錄，一個都不刪",
-            dirs.len()
-        )),
-    }
+    crate::cli::home_cleanup::remove_session(grok_home, session_id)
 }
 
 /// 回合後抹寫。`confidential` 是本輪送出的機密段（None／空字串＝這輪沒送）；

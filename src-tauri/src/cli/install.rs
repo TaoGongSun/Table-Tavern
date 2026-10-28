@@ -364,11 +364,15 @@ async fn run_hidden(
         .env_remove("PSModulePath")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
+        .stderr(Stdio::piped());
     #[cfg(target_os = "windows")]
     child.creation_flags(0x08000000);
-    let output = child.output().await.map_err(|error| error.to_string())?;
+    // 逾時（run_probe）時 spawned 被丟棄：grok 的在途票等收屍完才交回（cli::spawn）
+    let mut spawned = super::spawn::spawn(&mut child, envs).map_err(|error| error.to_string())?;
+    let output = spawned
+        .wait_with_output()
+        .await
+        .map_err(|error| error.to_string())?;
     Ok(CommandOutput {
         success: output.status.success(),
         stdout: output.stdout,
@@ -417,13 +421,10 @@ async fn run_terminal(
         .ok_or_else(|| "empty command argv".to_owned())?;
     let mut child = Command::new(program);
     crate::cli::proxy::apply_system_proxy(&mut child);
-    child
-        .args(args)
-        .envs(
-            envs.iter()
-                .map(|(key, value)| (key.as_str(), value.as_str())),
-        )
-        .kill_on_drop(true);
+    child.args(args).envs(
+        envs.iter()
+            .map(|(key, value)| (key.as_str(), value.as_str())),
+    );
     // 隱藏外層 cmd 自己的黑視窗；使用者看到的登入視窗由內層 start 另開，不受影響
     #[cfg(target_os = "windows")]
     child.creation_flags(0x08000000);
@@ -436,7 +437,8 @@ async fn run_terminal(
             serde_json::json!({ "aiProbe": true, "argv": args }),
         );
     }
-    match tokio::time::timeout(timeout, child.status()).await {
+    let mut spawned = super::spawn::spawn(&mut child, envs).map_err(|error| error.to_string())?;
+    match tokio::time::timeout(timeout, spawned.wait()).await {
         Ok(status) => Ok(CommandOutput {
             success: status.map_err(|error| error.to_string())?.success(),
             stdout: Vec::new(),

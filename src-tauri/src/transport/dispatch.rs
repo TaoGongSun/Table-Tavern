@@ -45,19 +45,34 @@ fn grok_profile(app: &tauri::AppHandle) -> Result<(PathBuf, PathBuf), String> {
             let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700));
         }
     }
+    ensure_grok_ttl(&grok_home);
     Ok((home, grok_home))
+}
+
+/// 把 grok 自帶的閒置清理（`storage.cleanup_ttl_days`）寫進 app 的 grok-home〔作者裁決 2026-10-28〕。
+/// 每個行程只試一次（成功、已設、拿不到鎖、失敗都算），同一行程的 grok spawn 都等它做完；
+/// 拿不到鎖就等下次 app 啟動，免得每次呼叫都等。
+fn ensure_grok_ttl(grok_home: &std::path::Path) {
+    static DONE: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    DONE.get_or_init(|| match cli::home_cleanup::ensure_ttl(grok_home) {
+        Ok(cli::home_cleanup::TtlOutcome::LockBusy) => {
+            log::warn!("grok config.toml 的初始化鎖被占用，這次不寫 TTL，下次啟動再試")
+        }
+        Ok(_) => {}
+        Err(error) => log::warn!("grok config.toml 寫 TTL 略過：{error}"),
+    });
 }
 
 /// app 專用的 GROK_HOME（設定根底下）；容量判定讀 grok 的模型快取也看這裡。
 pub(crate) fn grok_home_dir(config_root: &std::path::Path) -> PathBuf {
-    config_root.join("grok-home")
+    cli::home_cleanup::grok_home_dir(config_root)
 }
 
 /// agy 專用假 HOME（cli::agy_home）：對話與標題庫不再寫進使用者的 `~/.gemini`；
 /// macOS 另放一條 keychain symlink 共用登入〔作者裁決 2026-10-28〕。任何一步失敗都回錯，
 /// 不退回裸跑——退回就又寫進使用者自己的 agy。
 fn agy_profile(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    let home = config_root(app)?.join("agy-home");
+    let home = cli::home_cleanup::agy_home_dir(&config_root(app)?);
     cli::agy_home::prepare_home(&home)?;
     #[cfg(target_os = "macos")]
     {
@@ -243,6 +258,7 @@ pub(crate) async fn prepare_lane_call(
             .ok()
             .map(|root| root.join("prompt-cache.jsonl")),
         claude_home: claude_home_dir(),
+        config_root: Some(config_root(app)?),
         on_overage: None,
     })
 }
@@ -683,7 +699,17 @@ async fn stream_turn_inner(
             let combined = cli::agy_body(&system, &prompt);
             let args = cli::agy_args(model, allow_cli_tools);
             let envs = cli_envs(app, "agy")?;
-            cli::run_cli(
+            // 文字單發一結束（含中止）就刪這次的對話；生圖不刪（回覆的圖檔路徑可能在 agy-home 內，交給回收）
+            let conversation_id = std::sync::Mutex::new(None);
+            let _cleanup = (!allow_cli_tools)
+                .then(|| -> Result<_, String> {
+                    Ok(cli::home_cleanup::AgyOneshot {
+                        home: cli::home_cleanup::agy_home_dir(&config_root(app)?),
+                        slot: &conversation_id,
+                    })
+                })
+                .transpose()?;
+            let result = cli::run_cli(
                 &program,
                 &cli_working_dir,
                 &args,
@@ -703,7 +729,7 @@ async fn stream_turn_inner(
                     lane: None,
                     shape,
                     prompt_tokens_out: summary_probe.as_ref().map(|probe| &probe.prompt_tokens),
-                    conversation_id_out: None,
+                    conversation_id_out: Some(&conversation_id),
                     expected_conversation_id: None,
                     agy_usage_base: None,
                     agy_usage_out: None,
@@ -711,7 +737,8 @@ async fn stream_turn_inner(
                 }),
                 emit,
             )
-            .await
+            .await;
+            result
         }
         "grok" => {
             // system 頂掉 grok 內建那份（生圖那條例外，見 grok_payload）；未覆寫時使用 CLI 預設模型
@@ -733,7 +760,20 @@ async fn stream_turn_inner(
                 args.splice(0..0, ["-s".to_owned(), id.to_owned()]);
             }
             let envs = cli_envs(app, "grok")?;
-            cli::run_cli(
+            // 文字單發用 app 指定的 session id，結束（含中止）就交給 grok 閘：沒有 grok 在跑才刪，
+            // 中止時等程序收屍後再刪。生圖不刪（image.rs 可能讀 session 裡的原圖，由
+            // grok-image-original-leftover 在複製成功後刪）
+            let _cleanup = if allow_cli_tools || grok_session.is_some() {
+                None
+            } else {
+                let session = lanes::new_session_id();
+                args.extend(["-s".to_owned(), session.clone()]);
+                Some(cli::home_cleanup::GrokOneshot {
+                    home: cli::home_cleanup::grok_home_dir(&config_root(app)?),
+                    session,
+                })
+            };
+            let result = cli::run_cli(
                 &program,
                 &cli_working_dir,
                 &args,
@@ -761,7 +801,8 @@ async fn stream_turn_inner(
                 }),
                 emit,
             )
-            .await
+            .await;
+            result
         }
         other => Err(UiMsg::UnknownTransport {
             transport: other.to_owned(),

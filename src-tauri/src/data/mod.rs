@@ -109,7 +109,9 @@ pub(crate) use format::{
     delete_world_backup, discover_ids, list_world_backups, live_dir, loose_name, read_format,
     BackupList, FormatVersion, CURRENT_FORMAT,
 };
-pub(crate) use format::{remove_reset_build_root, replace_world_from_build, reset_build_root};
+pub(crate) use format::{
+    readonly_lane_scan, remove_reset_build_root, replace_world_from_build, reset_build_root,
+};
 #[allow(unused_imports)]
 pub(crate) use paths::{refactor_outcome_path, validate_id};
 #[allow(unused_imports)]

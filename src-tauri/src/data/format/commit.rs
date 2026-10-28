@@ -96,13 +96,13 @@ struct Presence {
 pub(crate) fn live_dir(root: &Path, id: &str) -> PathBuf {
     worlds_dir(root).join(id)
 }
-fn staging_dir(root: &Path, id: &str) -> PathBuf {
+pub(super) fn staging_dir(root: &Path, id: &str) -> PathBuf {
     worlds_dir(root).join(format!(".tt-staging-{id}"))
 }
 pub(crate) fn pre_dir(root: &Path, id: &str) -> PathBuf {
     worlds_dir(root).join(format!(".tt-pre-{id}"))
 }
-fn trash_dir(root: &Path, id: &str) -> PathBuf {
+pub(super) fn trash_dir(root: &Path, id: &str) -> PathBuf {
     worlds_dir(root).join(format!(".tt-trash-{id}"))
 }
 pub(crate) fn newer_dir(root: &Path, id: &str) -> PathBuf {
@@ -118,7 +118,7 @@ pub(crate) fn reset_build_root(root: &Path, id: &str) -> PathBuf {
 pub(crate) fn remove_reset_build_root(root: &Path, id: &str) -> DataResult<()> {
     world_file::remove_path_raw(&reset_build_root(root, id))
 }
-fn log_path(root: &Path, id: &str) -> PathBuf {
+pub(super) fn log_path(root: &Path, id: &str) -> PathBuf {
     worlds_dir(root).join(format!(".tt-op-{id}.json"))
 }
 fn log_tmp_path(root: &Path, id: &str) -> PathBuf {
@@ -954,7 +954,7 @@ pub fn recover_for_list(root: &Path, id: &str) -> DataResult<ListedWorld> {
     Ok(listed)
 }
 
-fn assess(root: &Path, id: &str) -> ListedWorld {
+pub(super) fn assess(root: &Path, id: &str) -> ListedWorld {
     let here = presence(root, id);
     let log_bad = log_path(root, id).exists()
         && read_log(&log_path(root, id))

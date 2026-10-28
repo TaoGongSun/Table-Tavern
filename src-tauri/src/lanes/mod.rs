@@ -32,7 +32,10 @@ mod session_file;
 mod snapshot_patch;
 mod store;
 
-use cleanup::{retire_claude_session, revoke_grok_lane, settle_abort, GrokRevoke};
+use cleanup::{
+    discard_new_agy, retire_agy_conversation, retire_claude_session, revoke_grok_lane,
+    settle_abort, GrokRevoke,
+};
 use plan::{
     events_fingerprint, expected_reply_for, next_cache_ttl, plan_turn, worldbook_fingerprint,
     ReopenReason, TurnPlan,
@@ -44,6 +47,7 @@ use rewrite::{
 };
 use rewrite_failure::at;
 pub(crate) use rewrite_failure::RewriteFailure;
+pub(crate) use store::referenced_session_ids;
 use store::{lane_lock, log_drop, log_drop_failure, read_store, write_store};
 
 use crate::cli;
@@ -96,6 +100,9 @@ pub(crate) struct LaneCall {
     pub claude_home: PathBuf,
     /// codex 的 reasoning effort（檔位映射）；其他 CLI None。同一條線換 effort 就重開
     pub effort: Option<String>,
+    /// 設定根：刪 agy／grok 的對話時由它推出家目錄（`cli::home_cleanup`），不從 envs 推。
+    /// None＝不刪（只有測試會這樣）。
+    pub config_root: Option<PathBuf>,
     /// 這一輪有嘗試落在 Claude 訂閱超額時呼叫一次（帶那次嘗試自己的寫入觀測）。
     /// 在那次嘗試結束當下呼叫，整輪後來失敗也照報——錢已經花了。
     pub on_overage: Option<OverageSink>,
@@ -510,6 +517,9 @@ pub(crate) async fn run_turn(
                 &store_path,
                 GrokRevoke::Reopen,
             )?;
+        } else if prior.provider == LaneProvider::Agy.as_str() {
+            // 被取代的 agy 對話不會再續用（本輪換成別家也一樣）：落檔成功就刪
+            retire_agy_conversation(call, &key, &old, &mut store, &store_path)?;
         } else if prior.provider == LaneProvider::Claude.as_str()
             && (input.lane == Lane::Gm
                 || prior.unerased_owner.is_some()
@@ -686,6 +696,7 @@ pub(crate) async fn run_turn(
             // 中止不是續聊失敗：不降級重試。私設照抹；抹不掉就棄用這條 session。
             // expected_reply 維持呼叫前寫下的 None，pending_rewrite 也留著，下一輪改由正典重建。
             Ok(cli::CliFinish::Aborted(partial)) => {
+                discard_new_agy(call, &slots.conversation_id, &session_id);
                 settle_abort(
                     call,
                     world_id,
@@ -705,6 +716,7 @@ pub(crate) async fn run_turn(
             // pending_rewrite 下一輪重開），但回錯而不是半截——不重開重試（A5）、半截不交出（A4）。
             // settle_abort 自己失敗就回那個錯，同樣不重派送。
             Ok(cli::CliFinish::Runaway { reason, chars }) => {
+                discard_new_agy(call, &slots.conversation_id, &session_id);
                 settle_abort(
                     call,
                     world_id,
@@ -728,6 +740,7 @@ pub(crate) async fn run_turn(
                 // 只有控制區塊、沒有台詞：收尾比照失控（claude 抹私設、grok 撤線、pending_rewrite 留著
                 // 下一輪重開），不重開重試；settle_abort 自己失敗就回那個錯
                 if cleaned.as_deref() == Some("") {
+                    discard_new_agy(call, &slots.conversation_id, &session_id);
                     settle_abort(
                         call,
                         world_id,
@@ -899,7 +912,11 @@ pub(crate) async fn run_turn(
             }
             // 續聊失敗（session 檔認不得、CLI 拒絕 resume 等）＝丟線重開全量再試一次
             Err(_) if !opening => {
-                if call.provider == LaneProvider::Grok {
+                // mismatch 時 agy 已另開新對話：它不會進 store，先刪
+                discard_new_agy(call, &slots.conversation_id, &session_id);
+                if call.provider == LaneProvider::Agy {
+                    retire_agy_conversation(call, &key, &session_id, &mut store, &store_path)?;
+                } else if call.provider == LaneProvider::Grok {
                     revoke_grok_lane(
                         call,
                         world_id,
@@ -938,6 +955,7 @@ pub(crate) async fn run_turn(
                         GrokRevoke::Drop("open-failed"),
                     )?;
                 } else {
+                    discard_new_agy(call, &slots.conversation_id, &session_id);
                     store.remove(&key);
                     write_store(&store_path, &store)?;
                 }

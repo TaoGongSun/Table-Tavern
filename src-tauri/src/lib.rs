@@ -239,6 +239,10 @@ pub fn run() {
             if let Ok(root) = config_root(app.handle()) {
                 smart_free::spawn_background_refresh(app.handle().clone(), root);
             }
+            // app 專用 CLI 家目錄的啟動回收（agy 對話、grok prompt 歷史與搜尋索引）
+            if let (Ok(config), Ok(data)) = (config_root(app.handle()), data_root(app.handle())) {
+                cli::home_cleanup::spawn_startup_sweep(config, data);
+            }
             #[cfg(feature = "test-harness")]
             harness::start(app.handle());
             Ok(())

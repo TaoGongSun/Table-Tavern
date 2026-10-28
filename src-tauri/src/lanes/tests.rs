@@ -154,6 +154,7 @@ rate('FAKE_RATE_AFTER')
         // 帳本開著 runner 才會回填用量，lane 才估得出快取壽命
         usage_log: Some(dir.join("prompt-cache.jsonl")),
         claude_home: claude_home.clone(),
+        config_root: None,
         on_overage: None,
         effort: None,
     };
@@ -233,6 +234,7 @@ if os.environ.get('FAKE_HANG_AFTER_RESULT') == '1':
         model: Some("gemini-test".to_owned()),
         usage_log: Some(usage_log),
         claude_home: dir.join("unused-claude-home"),
+        config_root: None,
         on_overage: None,
         effort: None,
     };
@@ -912,6 +914,7 @@ async fn lane_turns_open_rewrite_resume_and_degrade() {
         envs: call.envs.clone(),
         usage_log: None,
         claude_home: call.claude_home.clone(),
+        config_root: None,
         on_overage: None,
         effort: None,
     };
@@ -1002,6 +1005,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': '回覆',
         model: Some("sonnet".to_owned()),
         usage_log: Some(usage_log.clone()),
         claude_home,
+        config_root: None,
         on_overage: None,
         effort: None,
     };
@@ -1139,6 +1143,7 @@ fn abort_delete_failure_clears_lane_and_returns_error() {
         model: Some("sonnet".to_owned()),
         usage_log: Some(usage_log.clone()),
         claude_home: claude_home.clone(),
+        config_root: None,
         on_overage: None,
         effort: None,
     };
@@ -1273,6 +1278,7 @@ time.sleep(60)
         model: Some("sonnet".to_owned()),
         usage_log: None,
         claude_home: claude_home.clone(),
+        config_root: None,
         on_overage: None,
         effort: None,
     };
@@ -1581,6 +1587,7 @@ fn apply_rewrite_names_the_failing_stage() {
         usage_log: None,
         claude_home: claude_home.clone(),
         prompt_dir: working_dir.with_file_name("prompts"),
+        config_root: None,
         on_overage: None,
         effort: None,
     };
@@ -1674,6 +1681,7 @@ fn apply_rewrite_names_the_failing_stage() {
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
+mod agy_cleanup;
 mod cache_ttl;
 mod codex;
 mod gm_restart;

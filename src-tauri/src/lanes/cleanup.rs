@@ -43,7 +43,8 @@ pub(super) fn revoke_grok_lane(
     }
     store.remove(key);
     let written = write_store(store_path, store);
-    let removed = grok_home(call).and_then(|home| grok_session::remove_session(&home, session_id));
+    let removed = cleanup_home(call, LaneProvider::Grok)
+        .and_then(|home| grok_session::remove_session(&home, session_id));
     if let Err(detail) = removed {
         let failure = RewriteFailure {
             stage: "cleanup",
@@ -52,6 +53,77 @@ pub(super) fn revoke_grok_lane(
         log_drop_failure(call, world_id, key, "cleanup-failed", &failure, &paths);
     }
     written
+}
+
+/// 刪 agy／grok 對話用的家目錄：只由 `call.config_root` 推出。本輪就是這一家時，envs 裡的
+/// 家（agy 的 HOME、grok 的 GROK_HOME）必須與推出的路徑相同才放行；撤別家的舊線不看本輪 envs。
+pub(super) fn cleanup_home(call: &LaneCall, target: LaneProvider) -> Result<PathBuf, String> {
+    let root = call
+        .config_root
+        .as_deref()
+        .ok_or_else(|| "沒有設定根，不刪".to_owned())?;
+    let (home, key) = match target {
+        LaneProvider::Agy => (cli::home_cleanup::agy_home_dir(root), "HOME"),
+        LaneProvider::Grok => (cli::home_cleanup::grok_home_dir(root), "GROK_HOME"),
+        LaneProvider::Claude | LaneProvider::Codex => {
+            return Err(format!("{} 不走這條", target.as_str()))
+        }
+    };
+    if call.provider == target {
+        let env = call
+            .envs
+            .iter()
+            .rev()
+            .find(|(name, _)| name == key)
+            .map(|(_, value)| Path::new(value));
+        if env != Some(home.as_path()) {
+            return Err(format!("{key} 與 {} 不同，不刪", home.display()));
+        }
+    }
+    Ok(home)
+}
+
+/// 刪一個 agy 對話；失敗只記 warn（store 已不再指著它，留給啟動回收）。
+fn delete_agy(call: &LaneCall, id: &str) {
+    let result = cleanup_home(call, LaneProvider::Agy)
+        .and_then(|home| cli::home_cleanup::remove_conversation(&home, id));
+    if let Err(error) = result {
+        log::warn!("agy 對話 {id} 刪除略過：{error}");
+    }
+}
+
+/// 撤掉被取代的 agy 線：先從 store 拿掉並落檔，落檔成功才刪對話；落檔失敗回錯、對話留著
+/// （磁碟上的 lanes.json 仍指著它）。
+pub(super) fn retire_agy_conversation(
+    call: &LaneCall,
+    key: &str,
+    session_id: &str,
+    store: &mut LaneStore,
+    store_path: &Path,
+) -> Result<(), String> {
+    store.remove(key);
+    write_store(store_path, store)?;
+    delete_agy(call, session_id);
+    Ok(())
+}
+
+/// 這次嘗試 agy 回報的對話 id 若不是 store 裡那條（開線失敗、中止、mismatch 另開的新對話），
+/// 它從沒寫進 store，當場刪。
+pub(super) fn discard_new_agy(
+    call: &LaneCall,
+    reported: &std::sync::Mutex<Option<String>>,
+    kept: &str,
+) {
+    if call.provider != LaneProvider::Agy {
+        return;
+    }
+    let id = reported
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .take();
+    if let Some(id) = id.filter(|id| id != kept) {
+        delete_agy(call, &id);
+    }
 }
 
 /// 抹寫失敗：session 內容不可信，刪掉檔。檔案本來就不在（NotFound）當已刪。

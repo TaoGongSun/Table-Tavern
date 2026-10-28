@@ -1,10 +1,12 @@
-# agy-home-cleanup — app 專用 agy 家目錄的對話清理與上游追蹤
+# agy-home-cleanup — app 專用 CLI 家目錄（agy／grok／codex）的定期清理
 
-## Summary
-agy-conversation-isolation（作者裁決 A1，2026-10-28）讓 app 的 agy 對話改存 `<config_root>/agy-home`。這些對話只會累積，`lanes/cleanup.rs` 對 agy 不做任何清理；隔離後是 app 自己的資料，清理不再有隱私顧慮。另：agy 沒有資料目錄變數，我們靠換 HOME＋keychain symlink，agy 改版可能失效。
+## 狀態
+方案第 5 版三方共識，見 [plans/agy-home-cleanup.md](../plans/agy-home-cleanup.md)。包 1（agy＋grok＋prompt_history＋搜尋索引）已三方驗收通過（Sol、opus-review 複審 PASS），在分支 `agy-home-cleanup` 整理成一筆「包 1」commit，worktree `scratchpad/wt-agy-home-cleanup`。分包大案，整案結案才進 main〔專案規約〕。
 
-## Next action
-未排程，等 agy-conversation-isolation 結案。① 比照其他 lane 的清理規則處理 agy-home 的對話（刪桌／lane 重開時）；② 追蹤向 Google 提「資料目錄變數」需求（由作者決定是否提出），有了就改成一行設定取代 symlink。
+## 下一步
+1. 包 2（codex）等 codex-lane-resume 合入 main 後開工：在本分支 rebase 到當時的 origin/main，照計畫檔「包 2」施工、送審、驗收，成為第二筆 commit。
+2. 整案結案：rebase（先記 base）、root 與 `web/` 跑 `npm ci`、`build:mvu-bundle`、verify，整理成「一包一筆」、確認只含本案檔案，合進 main、push，確認 origin/main 含這兩筆後刪 worktree 與分支，交接檔歸檔、HANDOFF 那條移除。
 
 ## Constraints
-- 只清 agy-home，不碰使用者自己的 ~/.gemini。
+- 只清 app 自己的家目錄，不碰使用者的 ~/.gemini、~/.grok、~/.codex、~/.claude。
+- 不跟隨連結；agy 的 keychain symlink、codex 的 auth.json 不在可刪範圍。

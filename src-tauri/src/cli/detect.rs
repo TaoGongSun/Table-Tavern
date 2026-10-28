@@ -79,13 +79,20 @@ pub(super) async fn hidden_output(
         return None;
     }
     let mut command = Command::new(program);
-    command.arg(arg).kill_on_drop(true).envs(
-        envs.iter()
-            .map(|(key, value)| (key.as_str(), value.as_str())),
-    );
+    command
+        .arg(arg)
+        .envs(
+            envs.iter()
+                .map(|(key, value)| (key.as_str(), value.as_str())),
+        )
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
     #[cfg(target_os = "windows")]
     command.creation_flags(0x08000000);
-    timeout(Duration::from_secs(10), command.output())
+    // 逾時時 spawned 在這裡被丟棄：grok 的在途票等收屍完才交回（cli::spawn）
+    let mut spawned = super::spawn::spawn(&mut command, envs).ok()?;
+    timeout(Duration::from_secs(10), spawned.wait_with_output())
         .await
         .ok()
         .and_then(Result::ok)
@@ -96,17 +103,24 @@ pub(super) async fn hidden_output(
 async fn probe_cli(id: &str) -> Option<CliInfo> {
     let path = find_binary(id)?;
     let mut command = Command::new(&path);
-    command.arg("--version").kill_on_drop(true);
+    command
+        .arg("--version")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
     // GUI app 下 console 子程序會閃出黑視窗，一律 CREATE_NO_WINDOW
     #[cfg(target_os = "windows")]
     command.creation_flags(0x08000000);
-    let version = timeout(Duration::from_secs(5), command.output())
-        .await
-        .ok()
-        .and_then(Result::ok)
-        .filter(|output| output.status.success())
-        .map(|output| first_line(&output.stdout))
-        .unwrap_or_default();
+    let version = match super::spawn::spawn(&mut command, &[]) {
+        Ok(mut spawned) => timeout(Duration::from_secs(5), spawned.wait_with_output())
+            .await
+            .ok()
+            .and_then(Result::ok)
+            .filter(|output| output.status.success())
+            .map(|output| first_line(&output.stdout))
+            .unwrap_or_default(),
+        Err(_) => String::new(),
+    };
     Some(CliInfo {
         id: id.to_owned(),
         path: path.to_string_lossy().into_owned(),
@@ -155,12 +169,17 @@ pub(crate) async fn cli_version(
     command
         .current_dir(&working_dir)
         .arg("--version")
-        .envs(envs)
+        .envs(
+            envs.iter()
+                .map(|(key, value)| (key.as_str(), value.as_str())),
+        )
         .stdin(std::process::Stdio::null())
-        .kill_on_drop(true);
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
     #[cfg(target_os = "windows")]
     command.creation_flags(0x08000000);
-    let version = timeout(Duration::from_secs(5), command.output())
+    let mut spawned = super::spawn::spawn(&mut command, &envs).ok()?;
+    let version = timeout(Duration::from_secs(5), spawned.wait_with_output())
         .await
         .ok()?
         .ok()

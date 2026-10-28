@@ -214,9 +214,9 @@ pub async fn run_cli_cancellable(
         .stderr(Stdio::piped());
     #[cfg(target_os = "windows")]
     command.creation_flags(0x08000000);
-    // 呼叫端 future 被 drop（中止在途呼叫時 select 輸掉的分支）時，tokio 順手殺子程序。
-    command.kill_on_drop(true);
-    let spawned = command.spawn();
+    // 呼叫端 future 被 drop（中止在途呼叫時 select 輸掉的分支）時，tokio 順手殺子程序；
+    // grok 的在途票由 spawn helper 收屍後才交回。
+    let spawned = super::spawn::spawn(&mut command, envs);
     #[cfg(feature = "test-harness")]
     match &spawned {
         Ok(_) => crate::harness::ai_event(&harness_dispatch, "spawned", serde_json::Value::Null),
@@ -226,13 +226,13 @@ pub async fn run_cli_cancellable(
             serde_json::json!({ "error": error.to_string() }),
         ),
     }
-    let mut child = spawned?;
-    if let Some(pid) = child.id() {
+    let mut spawned = spawned?;
+    if let Some(pid) = spawned.id() {
         crate::inflight::register_child(pid);
     }
-    let _pid_guard = ChildPidGuard(child.id());
+    let _pid_guard = ChildPidGuard(spawned.id());
     let result = drive_child(
-        &mut child,
+        spawned.child(),
         stdin_data,
         protocol,
         thinking_to_delta,
@@ -248,7 +248,7 @@ pub async fn run_cli_cancellable(
     .await;
     // 不論怎麼收場（完成、錯誤、斷流、取消）都先收屍再返回：呼叫端接著會刪提示詞暫存檔，
     // Windows 上程序還開著檔就刪不掉。已經 wait 過的程序再收一次是空操作。
-    kill_child_and_wait(&mut child).await;
+    spawned.kill_and_wait().await;
     result
 }
 
@@ -445,6 +445,12 @@ async fn drive_child(
         };
         if let Some(log) = usage_log.as_ref().filter(|log| log.transport == "agy") {
             if let Some(id) = super::stream::agy_conversation_id(&line) {
+                // 先記實際 id 再比對：對不上時 agy 已另開了新對話，呼叫端要拿它去刪
+                if let Some(slot) = log.conversation_id_out {
+                    *slot
+                        .lock()
+                        .map_err(|_| UiMsg::AgyLockPoisoned.into_error())? = Some(id.clone());
+                }
                 if log
                     .expected_conversation_id
                     .is_some_and(|expected| expected != id)
@@ -454,11 +460,6 @@ async fn drive_child(
                         actual: id,
                     }
                     .into_error());
-                }
-                if let Some(slot) = log.conversation_id_out {
-                    *slot
-                        .lock()
-                        .map_err(|_| UiMsg::AgyLockPoisoned.into_error())? = Some(id.clone());
                 }
                 agy_conversation_id = Some(id);
             }

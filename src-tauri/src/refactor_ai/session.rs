@@ -160,6 +160,7 @@ print(json.dumps({'type': 'result', 'is_error': False, 'result': 'RECOMMEND: int
             model: Some("opus".to_owned()),
             usage_log: None,
             claude_home: dir.clone(),
+            config_root: None,
             on_overage: None,
             effort: None,
         };

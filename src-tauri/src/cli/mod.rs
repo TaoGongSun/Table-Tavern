@@ -9,12 +9,15 @@ pub(crate) mod agy_home;
 mod catalog;
 pub(crate) mod codex_home;
 mod detect;
+mod grok_gate;
+pub(crate) mod home_cleanup;
 #[allow(dead_code)]
 pub(crate) mod install;
 mod prompt_file;
 mod proxy;
 mod request;
 mod runner;
+mod spawn;
 mod stream;
 mod types;
 

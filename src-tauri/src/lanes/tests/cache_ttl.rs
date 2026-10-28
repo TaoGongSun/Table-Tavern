@@ -124,6 +124,7 @@ fn pin_lane_cache_ttl_only_touches_claude() {
         usage_log: None,
         claude_home: PathBuf::new(),
         prompt_dir: PathBuf::new(),
+        config_root: None,
         on_overage: None,
         effort: None,
     };

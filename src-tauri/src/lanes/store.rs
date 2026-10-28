@@ -69,3 +69,35 @@ pub(super) fn log_drop_failure(
         );
     }
 }
+
+/// 背景回收（cli::home_cleanup）用的引用集：所有桌（本體、副本、重設暫存）lanes.json 裡的全部
+/// session_id，不分 provider。讀前後各拍一次唯讀快照，兩次不同、有桌待修復、任何一份讀不到或
+/// 解析不了都回錯——引用集不完整寧可這輪不刪。只有 NotFound 算空。不用 `read_store`（它讀失敗回空）。
+pub(crate) fn referenced_session_ids(
+    root: &Path,
+) -> Result<std::collections::HashSet<String>, String> {
+    let before = crate::data::readonly_lane_scan(root)?;
+    let mut ids = std::collections::HashSet::new();
+    for dir in &before.dirs {
+        let path = dir.join("lanes.json");
+        let text = match std::fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(format!("{}：{error}", path.display())),
+        };
+        let store: serde_json::Map<String, serde_json::Value> = serde_json::from_str(&text)
+            .map_err(|error| format!("{} 解析失敗：{error}", path.display()))?;
+        for (key, state) in store {
+            let id = state
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| format!("{} 的 {key} 沒有 session_id", path.display()))?;
+            ids.insert(id.to_owned());
+        }
+    }
+    let after = crate::data::readonly_lane_scan(root)?;
+    if before != after {
+        return Err("讀 lanes.json 期間桌子有變動".to_owned());
+    }
+    Ok(ids)
+}

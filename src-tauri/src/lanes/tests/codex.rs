@@ -56,6 +56,7 @@ sys.exit(int(os.environ.get('FAKE_EXIT', '0')))
         model: None,
         usage_log: Some(dir.join("usage.jsonl")),
         claude_home: dir.join("unused-claude-home"),
+        config_root: None,
         on_overage: None,
         effort: Some("low".to_owned()),
     };

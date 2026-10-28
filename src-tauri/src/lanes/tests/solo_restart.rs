@@ -364,6 +364,7 @@ async fn solo_lane_deletes_the_old_session_for_other_reopen_reasons() {
         envs: agy.call.envs.clone(),
         usage_log: agy.call.usage_log.clone(),
         provider: LaneProvider::Agy,
+        config_root: None,
         on_overage: None,
         effort: None,
     };
@@ -398,6 +399,7 @@ async fn solo_resume_failure_deletes_the_old_session() {
         usage_log: fake.call.usage_log.clone(),
         claude_home: fake.call.claude_home.clone(),
         provider: LaneProvider::Claude,
+        config_root: None,
         on_overage: None,
         effort: None,
     };

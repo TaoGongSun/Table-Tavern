@@ -266,6 +266,7 @@ async fn gm_resume_failure_deletes_the_old_session_before_reopening() {
         usage_log: fake.call.usage_log.clone(),
         claude_home: fake.call.claude_home.clone(),
         provider: LaneProvider::Claude,
+        config_root: None,
         on_overage: None,
         effort: None,
     };
