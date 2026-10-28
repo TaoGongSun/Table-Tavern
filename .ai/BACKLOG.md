@@ -44,6 +44,8 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [card-prompt-only-regex](tasks/card-prompt-only-regex.md) — 後端套卡片 promptOnly 正則（含 depth），對齊 ST 送模型前的歷史處理 — 下一步：未排程；先盤點測試卡用法並估工
 - [agy-home-cleanup](tasks/agy-home-cleanup.md) — app 專用 agy 家目錄的對話只累積不清；agy 沒有資料目錄變數的上游追蹤 — 下一步：等 agy-conversation-isolation 結案
 - [gm-advance-hide-no-nomination](tasks/gm-advance-hide-no-nomination.md) — 不要求點名的卡片介面桌，「GM 推進」要不要藏 — 下一步：等 multichar-next-speaker-silent 結案
+- [grok-first-session-preamble-drop](tasks/grok-first-session-preamble-drop.md) — 新 grok-home 第一通回合後抹寫失敗、整條 lane 丟掉重開；冷啟動快取掉到 128 — 下一步：未排程；先在乾淨 grok-home 重現並保留 session 檔
+- [grok-image-original-leftover](tasks/grok-image-original-leftover.md) — grok 生圖原始 JPEG 累積在 app 的 grok-home/sessions，app 不清 — 下一步：未排程
 
 ## 階段 E：成本
 [api-shared-lane](handoffs/api-shared-lane.md) 四路成對測試先做；以下兩案依其數據決定做不做：
