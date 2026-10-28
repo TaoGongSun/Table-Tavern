@@ -93,6 +93,9 @@ interface PlayViewProps {
   onGmAdvance: () => void;
   /** 這桌 GM 回合會點名：對 GM 發言時送出鍵旁多一顆「送出並接話」 */
   relayable?: boolean;
+  /** 這桌 GM 回合確定不點名：「GM 推進」只剩一次旁白、與 GM 旁白同義，藏起來〔作者裁決 2026-10-28〕；
+   *  判定未讀回或讀取失敗時照常顯示 */
+  skipsNomination?: boolean;
   onSendRelay?: () => void;
   /** 上一則單次旁白點了誰；castIds＝側欄主區角色，被點的人不在就不掛「讓 X 接話」 */
   nominated?: NominatedCall | null;
@@ -144,6 +147,7 @@ export function PlayView({
   onGmNarrate,
   onGmAdvance,
   relayable = false,
+  skipsNomination = false,
   onSendRelay,
   nominated = null,
   castIds = [],
@@ -424,7 +428,8 @@ export function PlayView({
             主次分級＋分處兩端，送出不會跟「請某某發言」相鄰誤按（2026-07-28 使用者回報的問題） */}
         <div className="composer-actions">
           <div className="btn-seg" role="group">
-            {!gmOnly && (
+            {/* 全舞台卡桌（沒有發言角色）對象只剩 GM，「請他發言」＝GM 旁白，藏起來〔作者裁決 2026-10-28〕 */}
+            {!gmOnly && !castEmpty && (
               <button
                 type="button"
                 className="btn"
@@ -445,7 +450,7 @@ export function PlayView({
             >
               <span className="btn-label">{t("gmNarrate")}</span>
             </button>
-            {!gmOnly && (
+            {!gmOnly && !skipsNomination && (
               <button
                 type="button"
                 className="btn"

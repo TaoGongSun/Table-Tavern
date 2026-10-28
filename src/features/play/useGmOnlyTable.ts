@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
-type Known = { worldId: string; gmOnly: boolean; nominates: boolean } | null;
+/** nominates：true 會點名、false 確定不點名、undefined 從沒讀成；readFailed：這桌最近一次讀取失敗 */
+type Known = { worldId: string; gmOnly: boolean; nominates: boolean | undefined; readFailed: boolean } | null;
 /** 後端 `gm_table_mode` 的回傳 */
 type GmTableMode = { gm_only: boolean; nominates: boolean };
 
@@ -13,8 +14,9 @@ function isMode(value: unknown): value is GmTableMode {
 /**
  * 這桌是否只走 GM 一條敘事線（介面接管桌，與後端 `data::is_interface_takeover` 同一判定）〔作者裁決 2026-10-27〕。
  * 判定綁著讀回時的桌：換桌後、新桌讀回前是 undefined（未就緒），上一桌的值不會帶過來。
- * 同一次讀回帶 nominates：GM 回合會點名下一位（一般旁白格式）。讀取失敗保留這桌上次的結果；
- * 從沒讀成就當一般桌（角色回合在後端仍會被拒收）、不點名（「送出並接話」不給）。
+ * 同一次讀回帶 nominates：GM 回合會點名下一位（一般旁白格式）。讀取失敗保留這桌上次的結果（gmOnly 與
+ * 「送出並接話」沿用）；從沒讀成就當一般桌（角色回合在後端仍會被拒收）、點名與否未知、「送出並接話」不給。
+ * 「GM 推進」只在最近一次讀成且確定不點名時藏，未讀回或最近一次讀取失敗都照常顯示〔作者裁決 2026-10-28〕。
  */
 /** 判定看得到的卡片：主區名單＋全部卡的封存／auto_hidden 旗標 */
 interface CastFlags {
@@ -54,11 +56,15 @@ export function useGmOnlyTable(worldId: string, cast?: CastFlags) {
     }
     if (mine !== load.current) return;
     if (mode === null) {
-      // 讀不到：同一桌保留上次讀成的結果；這桌從沒讀成就當一般桌、不點名（藏「送出並接話」，不多花錢）
-      if (knownRef.current?.worldId === target) return;
-      mode = { gm_only: false, nominates: false };
+      // 讀不到：同一桌保留上次讀成的結果、只標記讀取失敗；這桌從沒讀成就當一般桌、點名與否未知
+      const previous = knownRef.current;
+      knownRef.current =
+        previous?.worldId === target
+          ? { ...previous, readFailed: true }
+          : { worldId: target, gmOnly: false, nominates: undefined, readFailed: true };
+    } else {
+      knownRef.current = { worldId: target, gmOnly: mode.gm_only, nominates: mode.nominates, readFailed: false };
     }
-    knownRef.current = { worldId: target, gmOnly: mode.gm_only, nominates: mode.nominates };
     setKnownState(knownRef.current);
   }, []);
 
@@ -87,8 +93,10 @@ export function useGmOnlyTable(worldId: string, cast?: CastFlags) {
   const here = known !== null && known.worldId === worldId ? known : null;
   return {
     gmOnly: here?.gmOnly,
-    /** GM 回合會點名（判定未就緒時 false） */
+    /** GM 回合確定會點名（未就緒、從沒讀成時 false；重讀失敗沿用上次）：「送出並接話」看這個 */
     nominates: here?.nominates === true,
+    /** 最近一次讀成且確定不點名（未就緒、讀取失敗時 false）：「GM 推進」看這個 */
+    skipsNomination: here?.nominates === false && !here.readFailed,
     refresh,
     whenReady,
   };

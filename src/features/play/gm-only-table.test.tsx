@@ -55,8 +55,12 @@ describe("gm-only table", () => {
     ],
   };
 
+  // 每次 render 的「確定不點名」：換桌過程中 GM 推進會不會閃藏
+  let skips: boolean[] = [];
+
   function Probe() {
     gate = useGmOnlyTable(worldId, cast);
+    skips.push(gate.skipsNomination);
     nav = useWorkspaceNavigationController({ worldId, gmOnly: gate.gmOnly, characters, onError: () => {} });
     return null;
   }
@@ -71,6 +75,7 @@ describe("gm-only table", () => {
 
   beforeEach(() => {
     pending.clear();
+    skips = [];
     worldId = "w1";
     host = document.createElement("div");
     document.body.appendChild(host);
@@ -111,6 +116,51 @@ describe("gm-only table", () => {
     await answer("w3", false, false);
     expect(gate!.gmOnly).toBe(false);
     expect(gate!.nominates).toBe(false);
+  });
+
+  it("確定不點名才算 skipsNomination；未讀回、讀取失敗、換到會點名的桌都不閃藏〔作者裁決 2026-10-28〕", async () => {
+    await render();
+    expect(gate!.skipsNomination).toBe(false);
+    await answer("w1", false);
+    expect(gate!.skipsNomination).toBe(false);
+    // 會點名的桌換到另一張會點名的桌：讀回前後每一次 render 都不藏
+    skips = [];
+    worldId = "w2";
+    await render();
+    await answer("w2", false);
+    expect(skips.length).toBeGreaterThan(0);
+    expect(skips.every((value) => value === false)).toBe(true);
+    // 確定不點名才藏；「送出並接話」照舊只認確定會點名
+    worldId = "w3";
+    await render();
+    await answer("w3", false, false);
+    expect(gate!.skipsNomination).toBe(true);
+    expect(gate!.nominates).toBe(false);
+    // 從沒讀成（回傳格式不對＝讀取失敗）：當一般桌、點名與否未知，GM 推進不藏、送出並接話不給
+    worldId = "w4";
+    await render();
+    await act(async () => pending.get("w4")!(null as never));
+    expect(gate!.gmOnly).toBe(false);
+    expect(gate!.skipsNomination).toBe(false);
+    expect(gate!.nominates).toBe(false);
+  });
+
+  it("同一桌先讀成不點名、重讀失敗：GM 推進恢復顯示，再讀成不點名又藏；送出並接話沿用上次", async () => {
+    await render();
+    await answer("w1", false, false);
+    expect(gate!.skipsNomination).toBe(true);
+    // 名單旗標變動觸發重讀，這次讀取失敗
+    cast = { ...cast, list: [cast.list[0], { ...cast.list[1], auto_hidden: !cast.list[1].auto_hidden }] };
+    await render();
+    await act(async () => pending.get("w1")!(null as never));
+    expect(gate!.skipsNomination).toBe(false);
+    expect(gate!.nominates).toBe(false);
+    expect(gate!.gmOnly).toBe(false);
+    // 再讀成：照新結果
+    cast = { ...cast, list: [cast.list[0], { ...cast.list[1], auto_hidden: !cast.list[1].auto_hidden }] };
+    await render();
+    await answer("w1", false, false);
+    expect(gate!.skipsNomination).toBe(true);
   });
 
   it("主區 id 不變、只翻轉某張卡的 auto_hidden 旗標也重讀會不會點名", async () => {
@@ -216,8 +266,12 @@ describe("gm-only table", () => {
       onAdvanceScene: noop,
       canAdvanceScene: false,
     } as unknown as Parameters<typeof PlayView>[0];
-    const labels = (gmOnly: boolean) => {
-      act(() => root!.render(<PlayView {...props} gmOnly={gmOnly} />));
+    const labels = (gmOnly: boolean, skipsNomination?: boolean, castEmpty = false) => {
+      act(() =>
+        root!.render(
+          <PlayView {...props} gmOnly={gmOnly} skipsNomination={skipsNomination} castEmpty={castEmpty} />,
+        ),
+      );
       return [...host!.querySelectorAll("button")].map((button) => button.textContent ?? "");
     };
     const normal = labels(false);
@@ -229,5 +283,17 @@ describe("gm-only table", () => {
     expect(gmOnly).not.toContain(t("requestReplyShort"));
     expect(gmOnly).not.toContain(t("clearTarget"));
     expect(gmOnly).toContain(t("gmNarrate"));
+    // 確定不點名的一般桌只藏 GM 推進；點名未知（沒傳）照常顯示
+    const noNomination = labels(false, true);
+    expect(noNomination).not.toContain(t("gmAdvance"));
+    expect(noNomination).toContain(t("requestReplyShort"));
+    expect(noNomination).toContain(t("gmNarrate"));
+    expect(labels(false, false)).toContain(t("gmAdvance"));
+    // 全舞台卡桌（沒有發言角色）藏請他發言；有發言角色時發言對象是 GM 也照常顯示〔作者裁決 2026-10-28〕
+    const allStage = labels(false, true, true);
+    expect(allStage).not.toContain(t("requestReplyShort"));
+    expect(allStage).not.toContain(t("gmAdvance"));
+    expect(allStage).toContain(t("gmNarrate"));
+    expect(labels(false, undefined, false)).toContain(t("requestReplyShort"));
   });
 });

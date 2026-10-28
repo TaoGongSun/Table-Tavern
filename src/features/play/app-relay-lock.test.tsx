@@ -194,6 +194,10 @@ describe("B／C 入口在 App 層", () => {
     onSubmit: (event: { preventDefault(): void }) => void;
   };
 
+  // 「GM 推進」只在確定不點名時藏〔作者裁決 2026-10-28〕
+  const advanceShown = () =>
+    [...document.querySelectorAll("button")].some((button) => button.textContent === t("gmAdvance"));
+
   async function type(text: string) {
     await act(async () => props().onInputChange(text));
   }
@@ -215,6 +219,7 @@ describe("B／C 入口在 App 層", () => {
     mode = () => pending.promise;
     await start();
     expect(props().relayable).toBe(false);
+    expect(advanceShown()).toBe(true);
     await type("我推門");
     await run(() => props().onSendRelay());
     await run(() => props().onCallNominated());
@@ -223,6 +228,7 @@ describe("B／C 入口在 App 層", () => {
     await act(async () => pending.resolve({ gm_only: false, nominates: true }));
     await settle();
     expect(props().relayable).toBe(true);
+    expect(advanceShown()).toBe(true);
     await run(() => props().onSendRelay());
     expect(called("gm_narrate")).toHaveLength(1);
     expect(called("chat_with_character")).toHaveLength(1);
@@ -259,9 +265,10 @@ describe("B／C 入口在 App 層", () => {
     expect(called("chat_with_character")).toHaveLength(2);
   });
 
-  it("旁白帶出隱藏卡、主區名單變了就重讀；新結果不點名時 B 藏起來", async () => {
+  it("旁白帶出隱藏卡、主區名單變了就重讀；新結果不點名時 B 與 GM 推進都藏起來", async () => {
     await start();
     expect(props().relayable).toBe(true);
+    expect(advanceShown()).toBe(true);
     const before = called("gm_table_mode").length;
     arrived = ["c2"];
     mode = () => ({ gm_only: false, nominates: false });
@@ -270,6 +277,7 @@ describe("B／C 入口在 App 層", () => {
     await settle();
     expect(called("gm_table_mode").length).toBeGreaterThan(before);
     expect(props().relayable).toBe(false);
+    expect(advanceShown()).toBe(false);
   });
 
   it("點名後那張卡被切成舞台卡：「讓 X 接話」不出現，硬呼叫也不寫點名列、不接話", async () => {
@@ -302,12 +310,14 @@ describe("B／C 入口在 App 層", () => {
     await settle();
     expect(called("gm_table_mode").length).toBeGreaterThan(before);
     expect(props().relayable).toBe(true);
+    expect(advanceShown()).toBe(true);
   });
 
-  it("這桌從沒讀成：當一般桌、藏 B", async () => {
+  it("這桌從沒讀成：當一般桌、藏 B，GM 推進照常顯示", async () => {
     mode = () => Promise.reject("disk");
     await start();
     expect(props().relayable).toBe(false);
+    expect(advanceShown()).toBe(true);
     await type("我推門");
     await act(async () => props().onSubmit({ preventDefault() {} }));
     await settle();

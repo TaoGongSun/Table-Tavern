@@ -990,6 +990,7 @@ function App() {
           onOpenRepairFolder={() => void openRepairFolder()}
           updateDot={updateDot}
           relayable={gmOnlyTable.nominates}
+          skipsNomination={gmOnlyTable.skipsNomination}
         />
       )}
 

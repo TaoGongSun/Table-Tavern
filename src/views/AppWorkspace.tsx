@@ -35,6 +35,8 @@ export type EditingTableName = { value: string } | null;
 interface AppWorkspaceProps {
   /** 這桌 GM 回合會點名下一位：「送出並讓點名角色接話」才有意義 */
   relayable: boolean;
+  /** 這桌 GM 回合確定不點名：「GM 推進」只剩一次旁白，藏起來 */
+  skipsNomination: boolean;
   table: string;
   tableName: string;
   scene: number;
@@ -117,6 +119,7 @@ export function AppWorkspace({
   onOpenRepairFolder,
   updateDot,
   relayable,
+  skipsNomination,
 }: AppWorkspaceProps) {
   const {
     leaveGuard,
@@ -413,6 +416,7 @@ export function AppWorkspace({
                   onGmNarrate={chat.gmNarrate}
                   onGmAdvance={chat.gmAdvance}
                   relayable={relayable}
+                  skipsNomination={skipsNomination}
                   onSendRelay={() => void chat.sendRelay()}
                   nominated={chat.nominated}
                   castIds={characters.speaking.map((character) => character.id)}
