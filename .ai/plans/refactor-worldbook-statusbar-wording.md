@@ -15,7 +15,7 @@
 - carry、absorb（原文鎖定）、SPLITS route=gm／unabsorbed 等原文照搬路徑不處理〔作者裁決 2026-10-28〕；退場桌靠導演指示壓住，未退場桌原卡寫的輸出要求原樣留著。
 - 只改生成契約，既有重構卡不批次改寫；既有卡要重新重構才換新內容。
 - 機制組偶爾仍多列一個欄位說明小節（C 組 1/10「### 状态字段」列兩欄含義；最終措辭 A 組 1/5「**狀態欄位**」列四欄、寫「由 GM 每回合回報」）；這類小節不含狀態欄、折疊區塊、每輪附完整數值等重印要求，重印要求殘留皆 0。
-- characters 模式把只為淘汰狀態欄存在的欄位（如「剧情阶段/要塞事件」）收進 FIELDS／RULES：見 [statusbar-only-fields](../tasks/statusbar-only-fields.md)。
+- characters 模式把只為淘汰狀態欄存在的欄位（如「剧情阶段/要塞事件」）收進 FIELDS／RULES：見 [statusbar-only-fields](../handoffs/statusbar-only-fields.md)。
 
 ## 驗收
 - 合組重播（`#[ignore]` dump 測試產生同一卡脈絡與材料的訊息，原卡世界書重建於 scratchpad；Haiku，`{{span:…}}` 展開後計數，「狀態欄位」字樣不計）：

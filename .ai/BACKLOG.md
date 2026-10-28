@@ -30,7 +30,6 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 ## 階段 D：引擎行為實聊
 已在 HANDOFF／實測佇列，不重列任務檔：[card-arrival-private-leak](handoffs/card-arrival-private-leak.md)、[worldbook-card-import](handoffs/worldbook-card-import.md)、[ui-redesign](handoffs/ui-redesign.md)（9、12）、順手驗梯 2 第 11／18／19、[hide-first-action](handoffs/archive/hide-first-action.md)。
 
-- [statusbar-only-fields](tasks/statusbar-only-fields.md) — 只為淘汰狀態欄存在的欄位（如剧情阶段/要塞事件）被收成 RULES，GM 每回合回報長文字 — 下一步：未排程；先盤點測試卡
 - [lane-session-superseded-leftover](tasks/lane-session-superseded-leftover.md) — 被取代的 grok lane session 目錄沒刪（測試 root 見兩例） — 下一步：未排程；先看 agy-home-cleanup 結案後是否已涵蓋
 - [interface-table-state-report](tasks/interface-table-state-report.md) — 未重構的真介面桌走中性版指示，不保證回報 time／place／present — 下一步：未排程；先量測缺欄頻率，動中性版需作者裁決
 - [refactor-preview-ellipsis](tasks/refactor-preview-ellipsis.md) — 重構進行中預覽文字夾雜「⋯」，純外觀、低優先 — 下一步：未排程

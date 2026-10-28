@@ -9,6 +9,7 @@
 - [card-mvu-shim](handoffs/card-mvu-shim.md) — 卡片介面沙盒墊 MVU 讀寫變數：全部已合併 main，剩實測佇列梯 1 項目（含 iframe 內按鈕實際互動）
 - [windows-ci-red](handoffs/windows-ci-red.md) — Windows verify CI 自 10-03 一直紅（測試 cfg 缺漏＋測試程式啟動即 0xc0000139）：查證提方案中
 - [cli-version-gate](handoffs/cli-version-gate.md) — 四家 CLI 升版改輸出格式只在執行期才發現：盤點與提方案中
+- [statusbar-only-fields](handoffs/statusbar-only-fields.md) — characters 盤點把只為淘汰狀態欄存在的欄位收成 FIELDS／RULES、GM 每回合回報長文字：盤點測試卡、提方案中
 
 ## 等實機驗收（順序見[實測佇列](reference/verification-queue.md)）
 - [desktop-tour](handoffs/desktop-tour.md) — 網頁版的桌面版導覽頁：2026-10-23 已上線（main 7f686cb）、WebKit e2e 與站上實開都過，無剩餘事項
