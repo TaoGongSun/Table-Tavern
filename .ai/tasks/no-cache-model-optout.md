@@ -12,7 +12,7 @@
 
 ## Next action
 
-開工前先重新立證：等帶 `cache_reporting: "reported"` 的 eligible zero 累積出來，確認真的有模型零命中。證據站得住再拍板規格檔的四項（solo 的 role 分配、要不要讓玩家看見、冷卻週期、與 usage-diag-non-claude 的先後）。
+排在 multichar-next-speaker-silent 結案之後〔作者裁決 2026-10-28〕。前提改寫：OpenRouter 背後各家快取行為不同，「證明某個模型沒有快取」靠我們實測沒有意義，退回本來就該是執行時逐模型判定。開工要先確認的是判定的可靠性——帳本能分清「回報為 0」與「沒回報」（`cache_reporting`），只有前者才計入連續零命中。可用免費模型每日額度取「回報為 0」與「沒回報」各一例驗判定。之後拍板規格檔的四項（solo 的 role 分配、要不要讓玩家看見、冷卻週期、與 usage-diag-non-claude 的先後）。
 
 ## Constraints
 

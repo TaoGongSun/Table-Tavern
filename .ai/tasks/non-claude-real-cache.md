@@ -10,9 +10,11 @@ OpenRouter 那條的根因 2026-08-22 實證定案：`stealth/ox-alpha` **只在
 
 ## Next action
 
-排在 [usage-cache-audit](../handoffs/archive/usage-cache-audit.md) 之後：等四家實跑對帳出來，命中率已可接受就降級或結案，確實沒中再照下面的分包動工〔作者裁決 2026-10-02〕。
-
-照規格檔實作三包：包 1 `CacheStrategy` 判定與帳本欄位；包 2 尾巴重播（`TranscriptEvent` 新欄位、GM 線與角色線組裝改寫、`<turn-context>` 包裝與 system 規則、十語系文案）；包 3 chain epoch 的重開條件。驗收看離線重算的 byte-LCP 要等於 100%，再實跑三輪看 `cached_tokens` 是否跟著上一輪的 `prompt_tokens` 走。
+排在 multichar-next-speaker-silent 結案之後〔作者裁決 2026-10-28〕。OpenRouter 背後各家快取機制不同（嚴格前綴、自動前綴門檻、不做快取、不回報），單一模型的實測不能推到全部，驗收主力放在不靠供應商的部分：
+1. 離線：同一桌連續幾輪的實際請求 byte-LCP（照規格要 100%），不花模型額度。
+2. codex：測試 root PATH 放包裝腳本抓兩通實際輸入比對共同前綴（CLI 額度）。
+3. OpenRouter 只用免費模型的每日額度（未儲值帳戶約 50 則／日）：確認各家回報欄位解析與 `cache_reporting`，並找一家會回報快取的嚴格前綴型實跑三輪，看 `cached_tokens` 是否跟著上一輪 `prompt_tokens` 走；免費端點不快取或不回報就記錄，不當成機制失敗。
+證據站得住再照規格檔三包施工。
 
 ## Constraints
 

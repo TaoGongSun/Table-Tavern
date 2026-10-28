@@ -48,8 +48,8 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 
 ## 階段 E：成本
 [api-shared-lane](handoffs/api-shared-lane.md) 四路成對測試先做；以下兩案依其數據決定做不做：
-- [non-claude-real-cache](tasks/non-claude-real-cache.md) — codex／agy／OpenRouter 沒有續聊，快取到底有沒有真的抓到 — 下一步：開工首步先在測試 root PATH 放包裝腳本抓兩通 codex 實際輸入、比對共同前綴長度：短＝我們組裝問題照規格做；長卻只中自帶段＝codex 自身插入變動內容，改記已知限制。agy 每角色一條 lane、6 通全 0，不適用；API 路缺數據（OpenRouter 未儲值）。
-- [no-cache-model-optout](tasks/no-cache-model-optout.md) — 零命中的模型不走共線：自動退回單角色組裝 — 下一步：仍缺數據（實測第 14 項 API 路因 OpenRouter 未儲值未測，2026-10-28）；開工前先重新立證：等帶 `cache_reporting: "reported"` 的 eligible zero 累積出來，確認真的有模型零命中。證據站得住再拍板規格檔的四項（solo 的 role 分配、要不要讓玩家看見、冷卻週期、與 usage-diag-non-claude 的先後）。
+- [non-claude-real-cache](tasks/non-claude-real-cache.md) — codex／agy／OpenRouter 沒有續聊，快取到底有沒有真的抓到 — 下一步：排在 multichar-next-speaker-silent 之後〔作者裁決 2026-10-28〕；先做離線 byte-LCP 與 codex 實抓，OpenRouter 只用免費模型每日額度確認回報欄位與一家嚴格前綴型
+- [no-cache-model-optout](tasks/no-cache-model-optout.md) — 零命中的模型不走共線：自動退回單角色組裝 — 下一步：排在 multichar-next-speaker-silent 之後〔作者裁決 2026-10-28〕；前提改為執行時逐模型判定，先確認帳本分得清「回報為 0」與「沒回報」
 
 ## 階段 F：生圖
 [sponsor-features](handoffs/sponsor-features.md) 的 AI 生圖（梯 2 第 8）、[image-model-picker](handoffs/image-model-picker.md)（第 21）、[image-model-free-tier-hide](handoffs/image-model-free-tier-hide.md)（第 22）先實測；之後 vn-mode 前置實測 a／b／c（已有[實測報告](plans/vn-mode-image-spike.md)，待作者三項決定）。
