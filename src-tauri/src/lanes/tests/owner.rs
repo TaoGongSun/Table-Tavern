@@ -80,6 +80,7 @@ impl Table {
             hoisted_worldbook: turn.worldbook.map(str::to_owned),
             tail_worldbook: None,
             tail_tracked: !turn.single,
+            opening_raw: false,
             capacity: None,
         }
     }

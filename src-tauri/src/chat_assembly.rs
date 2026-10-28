@@ -5,6 +5,8 @@ use crate::world_scan::{
 };
 use crate::{data, import, mechanism, transport};
 
+pub(crate) mod greeting;
+
 /// GM 上下文素材＝world.md＋世界書＋全部角色卡（含私有）＋公開 transcript（NewPlan §7.0）。
 /// 單發組裝與 claude lane 續聊共用同一份素材。
 #[derive(Clone)]
@@ -20,6 +22,10 @@ pub(crate) struct GmMaterials {
     pub metas: Vec<data::CharacterMeta>,
     /// 介面接管桌（讀殼失敗算否）：導演指示與這一輪套用狀態用同一個判定
     pub takeover: bool,
+    /// 送進提示詞的卡剝掉開場白段（`greeting::policy`；回歸事件的卡也用它）
+    pub strip_greetings: bool,
+    /// GM 送出層的開場白政策（`greeting::policy`）
+    pub opening: transport::GmOpening,
 }
 
 /// 這一桌在場的角色卡（未封存、未自動隱藏），照 `prompt_card` 整理成送進提示詞的樣子。
@@ -27,28 +33,35 @@ pub(crate) fn active_cards(
     root: &std::path::Path,
     world_id: &str,
 ) -> Result<Vec<data::CharacterCard>, String> {
-    let retired = statusbar_retired(root, world_id);
+    active_cards_with(
+        root,
+        world_id,
+        greeting::strip_card_greetings(root, world_id),
+    )
+}
+
+/// `active_cards`，剝不剝開場白段由呼叫端算好（一輪只算一次，往下傳）。
+pub(crate) fn active_cards_with(
+    root: &std::path::Path,
+    world_id: &str,
+    strip: bool,
+) -> Result<Vec<data::CharacterCard>, String> {
     data::list_characters(root, world_id)
         .map_err(|error| error.to_string())?
         .into_iter()
         .filter(|meta| !meta.archived && !meta.auto_hidden)
         .map(|meta| {
             data::read_character(root, world_id, &meta.id)
-                .map(|card| prompt_card(card, retired))
+                .map(|card| prompt_card(card, strip))
                 .map_err(|error| error.to_string())
         })
         .collect()
 }
 
-/// 這桌的卡片狀態欄已退場（讀不到狀態算否）。
-pub(crate) fn statusbar_retired(root: &std::path::Path, world_id: &str) -> bool {
-    data::read_state(root, world_id).is_ok_and(|state| state.statusbar_retired)
-}
-
-/// 送進提示詞（GM、角色線、登場事件）的卡：卡片狀態欄退場的桌拿掉開場白與備用開場白段，
-/// 免得 GM 照抄裡面已淘汰的狀態欄（gm-reprints-retired-statusbar）。卡檔不動。
-pub(crate) fn prompt_card(mut card: data::CharacterCard, retired: bool) -> data::CharacterCard {
-    if retired {
+/// 送進提示詞（GM、角色線、回歸事件）的卡：`strip` 時拿掉開場白與備用開場白段（政策見 `greeting::policy`）。
+/// 卡檔不動。
+pub(crate) fn prompt_card(mut card: data::CharacterCard, strip: bool) -> data::CharacterCard {
+    if strip {
         let (public, private) = crate::import::strip_greetings(&card.public_md, &card.private_md);
         card.public_md = public;
         card.private_md = private;
@@ -110,12 +123,15 @@ pub(crate) fn gm_materials(root: &std::path::Path, world_id: &str) -> Result<GmM
     let events = data::read_transcript(root, world_id, state.current_scene)
         .map_err(|error| error.to_string())?;
     let takeover = data::is_interface_takeover(root, world_id, state.refactor_mode.as_deref());
+    let greeting = greeting::policy(root, world_id, &state, &events, takeover);
     Ok(GmMaterials {
         world_md: data::read_world_md(root, world_id).map_err(|error| error.to_string())?,
         book: TableBook::load(root, world_id)?,
         state,
         events,
-        cards: active_cards(root, world_id)?,
+        cards: active_cards_with(root, world_id, greeting.strip_cards)?,
+        strip_greetings: greeting.strip_cards,
+        opening: greeting.gm,
         metas: data::list_characters(root, world_id).map_err(|error| error.to_string())?,
         player: data::read_player_card(root, world_id).map_err(|error| error.to_string())?,
         takeover,
@@ -362,13 +378,14 @@ pub(crate) fn gm_lane_parts(
     instruction: &str,
     lang: &str,
 ) -> (String, transport::LaneTurn) {
-    let frozen = transport::gm_lane_system(
+    let frozen = transport::gm_lane_system_with(
         &materials.cards,
         materials.player.as_ref(),
         scan,
         &materials.state.mechanism,
         lang,
         materials.takeover,
+        &materials.opening,
     );
     let turn = transport::gm_lane_turn(
         scan,
@@ -390,7 +407,7 @@ pub(crate) fn gm_messages(
     instruction_message: transport::ChatMessage,
     lang: &str,
 ) -> Vec<transport::ChatMessage> {
-    let mut messages = transport::assemble_gm_messages(
+    let mut messages = transport::assemble_gm_messages_with(
         &materials.cards,
         materials.player.as_ref(),
         &materials.events,
@@ -400,6 +417,7 @@ pub(crate) fn gm_messages(
         scope,
         lang,
         materials.takeover,
+        &materials.opening,
     );
     messages.push(instruction_message);
     messages

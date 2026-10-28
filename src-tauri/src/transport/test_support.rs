@@ -256,7 +256,15 @@ pub(crate) mod legacy {
         lang: &str,
     ) -> String {
         let scan = prepared(worldbook, Viewer::Gm, world_md, cards, player, &[], lang);
-        transport::gm_lane_system(cards, player, &scan, mechanism, lang, false)
+        transport::gm_lane_system_with(
+            cards,
+            player,
+            &scan,
+            mechanism,
+            lang,
+            false,
+            &Default::default(),
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -328,8 +336,17 @@ pub(crate) mod legacy {
         lang: &str,
     ) -> Vec<ChatMessage> {
         let scan = prepared(worldbook, Viewer::Gm, world_md, cards, player, events, lang);
-        transport::assemble_gm_messages(
-            cards, player, events, &scan, state, mechanism, scope, lang, false,
+        transport::assemble_gm_messages_with(
+            cards,
+            player,
+            events,
+            &scan,
+            state,
+            mechanism,
+            scope,
+            lang,
+            false,
+            &Default::default(),
         )
     }
 

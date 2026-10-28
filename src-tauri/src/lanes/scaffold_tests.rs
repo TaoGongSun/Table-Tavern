@@ -574,7 +574,15 @@ fn render_worldbook_placement(out: &mut String, f: &Fixture, branch: &[String], 
     dump(
         out,
         "worldbook gm_lane_system",
-        &transport::gm_lane_system(&f.cards, Some(&f.player), &gm, &plain, lang, false),
+        &transport::gm_lane_system_with(
+            &f.cards,
+            Some(&f.player),
+            &gm,
+            &plain,
+            lang,
+            false,
+            &Default::default(),
+        ),
     );
     let turn = transport::gm_lane_turn(
         &gm,
@@ -850,6 +858,7 @@ fn lane_input<'a>(events: &'a [TranscriptEvent], system: &str) -> TurnInput<'a> 
         hoisted_worldbook: None,
         tail_worldbook: None,
         tail_tracked: true,
+        opening_raw: false,
         capacity: None,
     }
 }

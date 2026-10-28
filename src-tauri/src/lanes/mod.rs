@@ -24,6 +24,7 @@
 mod cleanup;
 mod grok_session;
 mod plan;
+mod prompt;
 mod rewrite;
 mod rewrite_failure;
 mod session_file;
@@ -35,6 +36,7 @@ use plan::{
     events_fingerprint, expected_reply_for, next_cache_ttl, plan_turn, worldbook_fingerprint,
     ReopenReason, TurnPlan,
 };
+pub(crate) use prompt::{build_prompt, build_prompt_as, lane_side};
 use rewrite::{
     apply_rewrite, grok_home, note_reminder, record_rewrite_failure, rewrite_grok,
     scan_reminder_readonly,
@@ -187,6 +189,8 @@ pub(crate) struct TurnInput<'a> {
     /// 這條線的尾段會帶世界書（GM 線、角色線且非 `Hoist::All`）：舊尾段累積到門檻就重開，
     /// 舊 lanes.json 沒有計數時也據此重開一次。看線的形狀決定，不看 `tail_worldbook` 有沒有值
     pub tail_tracked: bool,
+    /// GM 線：本幕開場事件送原文（`transport::GmOpening::raw_history`）。chars 線一律 false
+    pub opening_raw: bool,
     /// 該路徑的固定容量（`scene_budget::path_limits` 的 total − reserve），比例門檻的分母；None＝上限未知，只看份數
     pub capacity: Option<crate::world_scan::Budget>,
 }
@@ -404,37 +408,6 @@ fn now_epoch() -> u64 {
         .as_secs()
 }
 
-/// 組本輪 prompt：水位之後的新事件＋回合尾段。開線（全量重建）帶對話紀錄標頭，
-/// 形狀比照單發 flatten；續聊只送增量，與 session 內既有歷史逐字銜接。
-/// `lane`：chars 線走角色側渲染（略過角色私設事件、遮 gm_only），
-/// GM 線一律全文。略過只發生在渲染，水位與指紋仍以原事件序列計。
-pub(crate) fn build_prompt(
-    events: &[TranscriptEvent],
-    base: usize,
-    tail: &str,
-    opening: bool,
-    lane: Lane,
-    lang: &str,
-) -> String {
-    let side = match lane {
-        Lane::Chars => transport::Side::Character,
-        Lane::Gm => transport::Side::Gm,
-    };
-    let lines: Vec<String> = events[base..]
-        .iter()
-        .filter_map(|event| transport::lane_event_line(event, lang, side))
-        .collect();
-    if lines.is_empty() {
-        return tail.to_owned();
-    }
-    let header = if opening {
-        transport::history_header(lang)
-    } else {
-        ""
-    };
-    format!("{header}{}\n\n——\n{tail}", lines.join("\n\n"))
-}
-
 /// 一輪 lane 的收場。`aborted` 時 `text` 是已經吐出的半截，呼叫端不再把它當完整回覆寫狀態。
 #[derive(Debug)]
 pub(crate) struct TurnOutcome {
@@ -584,7 +557,8 @@ pub(crate) async fn run_turn(
             .as_ref()
             .map(|patch| format!("{patch}\n\n{}", input.tail))
             .unwrap_or_else(|| input.tail.clone());
-        let prompt = build_prompt(input.events, base, &tail, opening, input.lane, input.lang);
+        let side = lane_side(input.lane, input.opening_raw);
+        let prompt = build_prompt_as(input.events, base, &tail, opening, side, input.lang);
         // 換幕容量的估計校正（計畫 §3.5）：只有重開全量那次「送出的就是整段」，估計與實報才配得上；
         // agy 量的是 bytes，不需要 token 校正
         let calibration_estimate = (opening && call.provider != LaneProvider::Agy).then(|| {

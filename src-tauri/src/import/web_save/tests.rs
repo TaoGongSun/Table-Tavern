@@ -992,7 +992,7 @@ fn worldbook_route_next_gm_turn_carries_constant_and_triggered_entries() {
     let (scope, _) = crate::chat_assembly::gm_scope(&materials);
     let scan =
         crate::chat_assembly::test_gm_scan(root.path(), &imported.world_id, &materials, LANG);
-    let messages = crate::transport::assemble_gm_messages(
+    let messages = crate::transport::assemble_gm_messages_with(
         &materials.cards,
         materials.player.as_ref(),
         &materials.events,
@@ -1002,6 +1002,7 @@ fn worldbook_route_next_gm_turn_carries_constant_and_triggered_entries() {
         &scope,
         LANG,
         materials.takeover,
+        &Default::default(),
     );
     let sent: String = messages
         .iter()

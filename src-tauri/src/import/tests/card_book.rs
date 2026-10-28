@@ -125,7 +125,7 @@ fn gm_texts(root: &Path, world_id: &str) -> [String; 2] {
     let materials = chat_assembly::gm_materials(root, world_id).unwrap();
     let (scope, _) = chat_assembly::gm_scope(&materials);
     let scan = chat_assembly::test_gm_scan(root, world_id, &materials, LANG);
-    let single = crate::transport::assemble_gm_messages(
+    let single = crate::transport::assemble_gm_messages_with(
         &materials.cards,
         materials.player.as_ref(),
         &materials.events,
@@ -135,6 +135,7 @@ fn gm_texts(root: &Path, world_id: &str) -> [String; 2] {
         &scope,
         LANG,
         materials.takeover,
+        &Default::default(),
     )
     .iter()
     .map(|message| message.content.clone())

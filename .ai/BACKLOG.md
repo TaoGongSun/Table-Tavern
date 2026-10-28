@@ -38,7 +38,6 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [story-html-style-attr](tasks/story-html-style-attr.md) — 訊息 HTML 放行 style 屬性（字色底色），需 CSS 消毒與網頁 CSP 取捨 — 下一步：等 story-html-whitelist 結案後評估
 - [story-html-style-class](tasks/story-html-style-class.md) — 支援 <style> 與 class，讓狀態欄卡外觀接近 ST（需 CSS 解析新依賴） — 下一步：等 story-html-whitelist 結案後評估
 - [desktop-csp](tasks/desktop-csp.md) — 桌面版 CSP 是 null，訊息渲染只靠 DOMPurify 一層 — 下一步：未排程；先盤點 app 需要的來源
-- [greeting-context-st-parity](tasks/greeting-context-st-parity.md) — 開場白與全部備用開場白每回合塞進 GM system，ST 只當第 0 則 — 下一步：等 gm-reprints-retired-statusbar 結案
 - [stage-card-in-speaker-list](tasks/stage-card-in-speaker-list.md) — 舞台卡出現在下一位點名名單；收尾句中英不一致 — 下一步：未排程
 - [state-update-echo-in-story](tasks/state-update-echo-in-story.md) — GM 照抄歷史裡的「（系統）狀態更新」事件進正文並顯示 — 下一步：未排程；先量一般桌長局發生率
 - [card-prompt-only-regex](tasks/card-prompt-only-regex.md) — 後端套卡片 promptOnly 正則（含 depth），對齊 ST 送模型前的歷史處理 — 下一步：未排程；先盤點測試卡用法並估工

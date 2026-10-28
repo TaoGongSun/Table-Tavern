@@ -279,6 +279,7 @@ fn turn_input<'a>(events: &'a [TranscriptEvent], scene: u64) -> TurnInput<'a> {
         hoisted_worldbook: None,
         tail_worldbook: None,
         tail_tracked: true,
+        opening_raw: false,
         capacity: None,
     }
 }
@@ -1621,6 +1622,7 @@ mod cache_ttl;
 mod gm_restart;
 mod grok;
 mod lane_lock;
+mod opening_raw;
 mod owner;
 mod runaway;
 mod solo_restart;

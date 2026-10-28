@@ -140,11 +140,14 @@ pub fn card_private(card: &CharacterCard, fill: NeutralFill<'_>) -> Option<(Even
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Side {
     Gm,
+    /// GM 送出層、開場事件改送原文（`transport::GmOpening::raw_history`）；其餘同 `Gm`。
+    /// 只用在送模型的那一份，世界書掃描與巨集一律 `Gm`。
+    GmOpeningRaw,
     Character,
 }
 
 /// 事件送 AI 的正文（標頭照 `prompt_lang` 組）；`None`＝這則不送。可見性只在這裡判斷：
-/// - GM 側：標頭＋段標＋本文。
+/// - GM 側：標頭＋段標＋本文；`GmOpeningRaw` 的開場事件送原文（`raw`，沒有退回 `text`）。
 /// - 角色側：角色私設整則略過；其他帶已知代碼的 gm_only 只出標頭（不含公開／私有段標）；
 ///   沒有代碼或代碼認不得的 gm_only 只留本文首行；其餘全文。
 pub fn prompt_text(event: &TranscriptEvent, lang: &str, side: Side) -> Option<String> {
@@ -163,7 +166,10 @@ pub fn prompt_text(event: &TranscriptEvent, lang: &str, side: Side) -> Option<St
         _ => event,
     };
     let lang = prompt_lang(lang);
-    if side == Side::Gm {
+    if side == Side::GmOpeningRaw && event.opening && event.marker.is_none() {
+        return Some(event.raw.clone().unwrap_or_else(|| event.text.clone()));
+    }
+    if side != Side::Character {
         return Some(event_full_text(event, lang));
     }
     if matches!(event.marker, Some(EventMarker::CardPrivate { .. })) {

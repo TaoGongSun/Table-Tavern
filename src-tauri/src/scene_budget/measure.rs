@@ -200,7 +200,8 @@ fn gm_request(
         Some(_) => {
             let joined = format!("{}\n{closing}", instruction.content);
             let (system, turn) = chat_assembly::gm_lane_parts(m, &scan, &scope, &joined, lang);
-            let prompt = lanes::build_prompt(&m.events, 0, &turn.tail, true, Lane::Gm, lang);
+            let side = lanes::lane_side(Lane::Gm, m.opening.raw_history);
+            let prompt = lanes::build_prompt_as(&m.events, 0, &turn.tail, true, side, lang);
             Request::Cli { system, prompt }
         }
         None => stateless_request(

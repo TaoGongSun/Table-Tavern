@@ -7,6 +7,7 @@ use super::messages::{
 };
 
 use super::context::{gm_system_prompt, gm_worldbook};
+use super::gm_opening::GmOpening;
 use super::worldbook::section_body;
 
 use super::state_view::{gm_dynamic_block, StateScope};
@@ -88,7 +89,7 @@ pub const PLAYER_SENTINEL: &str = "__PLAYER__";
 /// 不穩定的觸發條目、作者註記與依深度條目、「目前狀態」放 transcript 尾端獨立 user 訊息（快取友善），
 /// 穩定的觸發條目與角色卡留在 system（穩定且需要高遵循度）。
 #[allow(clippy::too_many_arguments)]
-pub fn assemble_gm_messages(
+pub fn assemble_gm_messages_with(
     cards: &[CharacterCard],
     player: Option<&CharacterCard>,
     events: &[TranscriptEvent],
@@ -98,11 +99,12 @@ pub fn assemble_gm_messages(
     scope: &StateScope,
     lang: &str,
     takeover: bool,
+    opening: &GmOpening,
 ) -> Vec<ChatMessage> {
     let user_name = player
         .map(|player| player.name.as_str())
         .unwrap_or_else(|| player_fallback_name(lang));
-    let rendered = render_for_prompt(events, lang, Side::Gm);
+    let rendered = render_for_prompt(events, lang, opening.side());
     let split = gm_worldbook(scan);
     let system = gm_system_prompt(
         &scan.texts,
@@ -113,6 +115,7 @@ pub fn assemble_gm_messages(
         mechanism,
         lang,
         takeover,
+        opening,
     );
 
     let mut messages = vec![message("system", system)];

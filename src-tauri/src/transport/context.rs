@@ -3,6 +3,7 @@ use crate::data::{
 };
 use crate::world_scan::{Placed, PromptTexts, WorldScan};
 
+use super::gm_opening::{example_section, GmOpening};
 use super::list_protocol::push_list_protocols;
 use super::messages::{language_rule, scaffold_en};
 use super::worldbook::{full_text_members, section_body};
@@ -73,7 +74,7 @@ pub fn gm_prompt_full_entries<'a>(
 /// GM 的 system prompt 本體：GM 指示＋world.md＋穩定的前組世界書＋全卡（含私設）＋玩家卡＋穩定的後組世界書。
 /// assemble_gm_messages（單發）與 gm_lane_system（resume 續聊凍結快照）共用。文字都是 `prepare` 代換好的。
 /// constant 人物條目改走名冊行，不進全文（包 4a）。`takeover`：介面接管桌（`data::is_interface_takeover`），
-/// 開頭換成唯一敘事者版（名單上的角色也由 GM 演、不點名）。
+/// 開頭換成唯一敘事者版（名單上的角色也由 GM 演、不點名）。`opening` 的範例段接在登場角色之後（見 `GmOpening`）。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn gm_system_prompt(
     texts: &PromptTexts,
@@ -84,6 +85,7 @@ pub(super) fn gm_system_prompt(
     mechanism: &Mechanism,
     lang: &str,
     takeover: bool,
+    opening: &GmOpening,
 ) -> String {
     let en = scaffold_en(lang);
     let intro = match (en, takeover) {
@@ -163,6 +165,7 @@ pub(super) fn gm_system_prompt(
             }
         }
     }
+    system.push_str(&example_section(opening, lang));
     if let Some(player) = player {
         system.push_str(&player_heading(&player.name, lang));
         if !texts.player.public.trim().is_empty() {
@@ -468,10 +471,28 @@ mod tests {
                 "do not reveal",
             ),
         ] {
-            let normal =
-                super::gm_system_prompt(&texts, &[], None, &[], &[], &mechanism, lang, false);
-            let takeover =
-                super::gm_system_prompt(&texts, &[], None, &[], &[], &mechanism, lang, true);
+            let normal = super::gm_system_prompt(
+                &texts,
+                &[],
+                None,
+                &[],
+                &[],
+                &mechanism,
+                lang,
+                false,
+                &Default::default(),
+            );
+            let takeover = super::gm_system_prompt(
+                &texts,
+                &[],
+                None,
+                &[],
+                &[],
+                &mechanism,
+                lang,
+                true,
+                &Default::default(),
+            );
             assert!(normal.contains(call) && !normal.contains(sole), "{lang}");
             assert!(
                 takeover.contains(sole) && !takeover.contains(call),

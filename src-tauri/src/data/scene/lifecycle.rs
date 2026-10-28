@@ -331,5 +331,47 @@ fn replace_scene_summary_locked(
     Ok(())
 }
 
+/// 本幕之前、本分支最近一則開場事件（greeting-context-st-parity：換幕後 GM 的格式範例）。沿 `scene_label`
+/// 的 parent 往回找，開場被收回的幕就再往上一層。分岔幕複製了來源幕的事件，來源有開場＝分岔幕本身就有。
+/// parent 記的是分岔當下所在的幕（退回用），不是來源幕：從較早的非開場幕分岔、且當下那條線貼過不同開場白時，
+/// 範例會取到當下那條線的（罕見，只影響格式範例）。
+pub fn branch_opening(
+    root: &Path,
+    world_id: &str,
+    state: &WorldState,
+    scene: u64,
+) -> DataResult<Option<TranscriptEvent>> {
+    let mut next = scene_label(state, scene).parent;
+    // parent 一定比本幕小（換幕、分岔都是往後開新幕），上限只防壞檔成環
+    let mut budget = scene;
+    while let Some(previous) = next {
+        if let Some(opening) = scene_opening(root, world_id, previous)? {
+            return Ok(Some(opening));
+        }
+        if budget == 0 {
+            break;
+        }
+        budget -= 1;
+        next = scene_label(state, previous).parent;
+    }
+    Ok(None)
+}
+
+/// 某一幕最後一則開場事件。先在原始位元組找開場旗標，沒有就不解析整幕。
+fn scene_opening(root: &Path, world_id: &str, scene: u64) -> DataResult<Option<TranscriptEvent>> {
+    let path = transcript_path(root, world_id, scene)?;
+    let Some(bytes) = super::super::world_file::with_file_lock(&path, |file| file.read())? else {
+        return Ok(None);
+    };
+    const FLAG: &[u8] = b"\"opening\":true";
+    if !bytes.windows(FLAG.len()).any(|window| window == FLAG) {
+        return Ok(None);
+    }
+    Ok(parse_transcript(&bytes)?
+        .into_iter()
+        .rev()
+        .find(|event| event.opening))
+}
+
 #[cfg(test)]
 mod tests;

@@ -7,6 +7,7 @@ mod client;
 mod context;
 pub(crate) mod context_overflow;
 pub(crate) mod dispatch;
+mod gm_opening;
 mod list_protocol;
 mod messages;
 mod own_prefix;
@@ -32,7 +33,7 @@ pub use arrivals::{
     NeutralFill, Side,
 };
 pub(crate) use arrivals::{prompt_speaker, prompt_text};
-pub use assemble::{assemble_gm_messages, assemble_shared_messages, PLAYER_SENTINEL};
+pub use assemble::{assemble_gm_messages_with, assemble_shared_messages, PLAYER_SENTINEL};
 pub(crate) use client::key_tier_for;
 pub(crate) use client::openrouter_api_base;
 #[cfg(feature = "test-harness")]
@@ -46,6 +47,7 @@ pub use client::{
 };
 pub(crate) use client::{describe, http_error};
 pub use context::{gm_prompt_full_entries, PromptEntry};
+pub use gm_opening::GmOpening;
 #[cfg(test)]
 pub(crate) use messages::language_rule;
 pub use messages::{history_header, speaker_prefix, ChatMessage};
@@ -68,7 +70,7 @@ pub use runaway::{RunawayGuard, RunawayPolicy, RunawayReason};
 pub(crate) use stall::STALLED_CODE;
 pub use state_view::{resolve_branch, snapshot_updates, state_scope, StateScope};
 pub use turns::{
-    chars_lane_system, chars_lane_turn, gm_lane_system, gm_lane_turn, lane_event_line,
+    chars_lane_system, chars_lane_turn, gm_lane_system_with, gm_lane_turn, lane_event_line,
     merge_summary_messages, segment_summary_messages, shorten_summary_messages, summary_lines,
     summary_messages, system_worldbook, Hoist, LaneTurn, SEGMENT_SUMMARY_CHARS,
 };

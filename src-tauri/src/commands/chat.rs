@@ -1,7 +1,6 @@
 #[cfg(test)]
 use crate::chat_assembly::gm_turn_instruction;
 use crate::chat_assembly::{self, gm_materials, GmMaterials};
-use crate::commands::character::load_active_cards;
 use crate::transport::dispatch::{
     ai_call_failure, lane_provider, prepare_lane_call, stream_turn_reporting_truncation,
     stream_turn_via_transport,
@@ -114,13 +113,17 @@ pub(crate) async fn chat_with_character(
     let card =
         data::read_character(&root, &world_id, &character_id).map_err(|error| error.to_string())?;
     let state = data::read_state(&root, &world_id).map_err(|error| error.to_string())?;
-    let card = chat_assembly::prompt_card(card, state.statusbar_retired);
     let scene = state.current_scene;
     let events =
         data::read_transcript(&root, &world_id, scene).map_err(|error| error.to_string())?;
+    // 開場白政策這一輪只算一次：本角色的卡與桌上全卡共用
+    let takeover = data::is_interface_takeover(&root, &world_id, state.refactor_mode.as_deref());
+    let strip =
+        chat_assembly::greeting::policy(&root, &world_id, &state, &events, takeover).strip_cards;
+    let card = chat_assembly::prompt_card(card, strip);
     let player = data::read_player_card(&root, &world_id).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
-    let cards = load_active_cards(&root, &world_id)?;
+    let cards = chat_assembly::active_cards_with(&root, &world_id, strip)?;
     // 世界書（方案三之 2）：交接之後先結算上一次落地，再以這個角色的視角掃一次；結果供組裝與落地共用
     let perspective = data::world_info_store::Perspective::Character(card.id.clone());
     let timed = world_scan::landing::before_scan(&root, &world_id, scene, &turn_id, &perspective)?;
@@ -222,6 +225,7 @@ pub(crate) async fn chat_with_character(
                 tail_worldbook: turn.tail_worldbook,
                 // Hoist::All 的線世界書在 system，尾段沒有世界書，不累計（看線的形狀，不看欄位巧合）
                 tail_tracked: !shape.hoist_private,
+                opening_raw: false,
                 capacity: path.budget,
             },
             Some(&mut cancel),
@@ -292,22 +296,22 @@ pub(crate) async fn chat_with_character(
 }
 
 /// 這一桌自動隱藏、且未手動封存的角色卡（回合登場檢測用，AI 卡重構包 4b）；
-/// 與 load_active_cards 互補，present 名單命中就是「回歸」。
+/// 與 chat_assembly::active_cards 互補，present 名單命中就是「回歸」。
 /// 自動隱藏中的卡（回歸候選）＋桌上其餘卡的名字（只拿來判折疊歧義）。
 fn load_hidden_cards(
     root: &std::path::Path,
     world_id: &str,
+    strip: bool,
 ) -> Result<(Vec<data::CharacterCard>, Vec<String>), String> {
     let (hidden, others): (Vec<_>, Vec<_>) = data::list_characters(root, world_id)
         .map_err(|error| error.to_string())?
         .into_iter()
         .partition(|meta| meta.auto_hidden && !meta.archived);
-    let retired = chat_assembly::statusbar_retired(root, world_id);
     let hidden = hidden
         .into_iter()
         .map(|meta| {
             data::read_character(root, world_id, &meta.id)
-                .map(|card| chat_assembly::prompt_card(card, retired))
+                .map(|card| chat_assembly::prompt_card(card, strip))
                 .map_err(|error| error.to_string())
         })
         .collect::<Result<_, _>>()?;
@@ -364,6 +368,7 @@ async fn gm_lane_reply(
             hoisted_worldbook: None,
             tail_worldbook: turn.tail_worldbook,
             tail_tracked: true,
+            opening_raw: materials.opening.raw_history,
             capacity,
         },
         cancel,
@@ -678,7 +683,7 @@ pub(crate) async fn gm_narrate(
             log::warn!("偵測人物登場時讀世界書失敗，這輪不記登場：{error}");
             Vec::new()
         });
-        let cards = load_hidden_cards(&root, &world_id);
+        let cards = load_hidden_cards(&root, &world_id, materials.strip_greetings);
         // 整桌人物名字（角色卡＋人物條目）一個候選池判折疊歧義，人物登場與卡回歸互不搶錯人
         let card_names: Vec<String> = match &cards {
             Ok((hidden, others)) => hidden
@@ -1154,13 +1159,14 @@ mod tests {
             false,
             &[],
         );
-        let system = crate::transport::gm_lane_system(
+        let system = crate::transport::gm_lane_system_with(
             &materials.cards,
             materials.player.as_ref(),
             &scan,
             &materials.state.mechanism,
             lang,
             materials.takeover,
+            &Default::default(),
         );
         let instruction = format!("{}\n{closing}", instruction_message.content);
         let turn = crate::transport::gm_lane_turn(
@@ -1438,13 +1444,14 @@ mod tests {
             let materials = super::gm_materials(&root, &world_id).unwrap();
             assert_eq!(materials.state.mechanism.numeric_update, expected);
             let scan = crate::chat_assembly::test_gm_scan(&root, &world_id, &materials, "zh-TW");
-            let system = crate::transport::gm_lane_system(
+            let system = crate::transport::gm_lane_system_with(
                 &materials.cards,
                 materials.player.as_ref(),
                 &scan,
                 &materials.state.mechanism,
                 "zh-TW",
                 materials.takeover,
+                &Default::default(),
             );
             assert!(system.contains(prompt), "{system}");
             let mut state = data::read_state(&root, &world_id).unwrap();
@@ -1513,13 +1520,14 @@ mod tests {
             let scan = crate::chat_assembly::test_gm_scan(&root, &world_id, &materials, lang);
             let (instruction, closing) =
                 super::gm_turn_instruction(&root, &world_id, &materials, &scan, &[], None, lang);
-            let system = crate::transport::gm_lane_system(
+            let system = crate::transport::gm_lane_system_with(
                 &materials.cards,
                 materials.player.as_ref(),
                 &scan,
                 &materials.state.mechanism,
                 lang,
                 materials.takeover,
+                &Default::default(),
             );
             let prompt = format!("{system}\n{}\n{closing}", instruction.content);
             // 卡的格式條目照原卡啟用、全文進提示；上游版協定在

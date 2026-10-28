@@ -922,3 +922,5 @@ fn worldbook_measurement_is_read_only_and_keeps_keywords_out_of_the_fixed_part()
     assert_eq!(after.pending.unwrap().stage, Stage::Writing);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+mod greeting;

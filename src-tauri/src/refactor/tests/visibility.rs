@@ -155,7 +155,7 @@ fn gm_sent(root: &Path, world_id: &str, said: &str) -> String {
         &events,
         LANG,
     );
-    crate::transport::assemble_gm_messages(
+    crate::transport::assemble_gm_messages_with(
         &cards,
         None,
         &events,
@@ -165,6 +165,7 @@ fn gm_sent(root: &Path, world_id: &str, said: &str) -> String {
         &crate::transport::StateScope::default(),
         LANG,
         false,
+        &Default::default(),
     )
     .iter()
     .map(|message| message.content.clone())
