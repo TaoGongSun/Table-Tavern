@@ -378,6 +378,32 @@ async fn gm_lane_reply(
     .map_err(ai_call_failure)
 }
 
+/// 完成回合的 GM 回覆拆解：機制吃原文剝出的 `block`，點名行，落檔正文與原文。
+struct GmReplyParts {
+    block: transport::StateBlock,
+    next_raw: Option<String>,
+    display: String,
+    /// 正文與原文不同時存原文（卡片介面重畫、回溯用）
+    raw: Option<String>,
+}
+
+/// 剝狀態區塊→剝點名行→剝尾端照抄的狀態變動段（只動顯示；raw 與 `block` 都來自原文）。
+fn gm_reply_parts(
+    reply: &str,
+    tree: &std::collections::BTreeMap<String, data::StateNode>,
+) -> GmReplyParts {
+    let block = transport::extract_state_block(reply);
+    let (next_raw, display) = transport::extract_next_speaker(&block.display);
+    let display = transport::strip_state_echo(&display, tree).unwrap_or(display);
+    let raw = (reply != display).then(|| reply.to_owned());
+    GmReplyParts {
+        block,
+        next_raw,
+        display,
+        raw,
+    }
+}
+
 /// 中止的旁白：半截原文照正常剝法留成 text，其餘寫入一律空著。
 fn aborted_narration(reply: &str) -> GmNarration {
     // 自閉合標籤先拿掉（免得配到後面的閉標籤），剝完照中止規則切掉沒閉合的尾巴
@@ -599,8 +625,12 @@ pub(crate) async fn gm_narrate(
         }
         spoken.text
     };
-    let block = transport::extract_state_block(&reply);
-    let (next_raw, display) = transport::extract_next_speaker(&block.display);
+    let GmReplyParts {
+        block,
+        next_raw,
+        display,
+        raw,
+    } = gm_reply_parts(&reply, &materials.state.state.tree);
     // 剝掉 state／next 控制欄後沒有正文＝這一輪沒東西寫進故事。必須擋在下面的
     // apply_block 之前：狀態套用只要 incremental 為真就必跑，失敗回合會白白重擲一輪骰
     // （stream-failure-visible）。CLI 那條路沒有 stream_chat 的收工判定，這裡是唯一防線。
@@ -615,7 +645,7 @@ pub(crate) async fn gm_narrate(
     // 等前端落檔。狀態沒寫成要明確回報（state_error），不吞掉
     let main = data::message_vars::PendingMain {
         text: display.clone(),
-        raw: (reply != display).then(|| reply.clone()),
+        raw,
         truncated: cut.load(std::sync::atomic::Ordering::Relaxed),
     };
     // 變動紀錄與正文在同一次提交登記：前端沒落成時跟正文一起代落（長欄位變動靠它進歷史）
@@ -1051,14 +1081,38 @@ async fn prepare_play_lane_call(
 
 #[cfg(test)]
 mod tests {
-    use super::{aborted_narration, character_reply, record_card_arrivals, record_person_arrivals};
+    use super::{
+        aborted_narration, character_reply, gm_reply_parts, record_card_arrivals,
+        record_person_arrivals,
+    };
     use crate::commands::{character_card, NEXT_TEMP_ID};
     use crate::data;
     use std::sync::atomic::Ordering;
 
-    /// 零額度讀出 GM lane 實際送出的提示詞（凍結 system＋回合尾段），不打 AI。手動執行：
-    /// `TT_PROMPT_ROOT=<資料根目錄> TT_PROMPT_WORLD=<桌 id> cargo test --lib dump_gm_lane_prompt -- --ignored --nocapture`
-    /// 會把 system 與回合尾段印到 stdout，並把兩段寫進 TT_PROMPT_OUT（有設才寫）。
+    /// state-update-echo-in-story：照抄的狀態變動段只從落檔正文剝，raw 與機制輸入（block）照用原文
+    #[test]
+    fn gm_reply_parts_strip_state_echo_from_text_only() {
+        let tree = std::collections::BTreeMap::from([(
+            "驻守天数".to_owned(),
+            data::StateNode::Leaf("2".to_owned()),
+        )]);
+        let reply = "托倫點頭。\n\n（系統）狀態更新\n驻守天数：3\n\n```state\nplace: 作戰室\n```\n\n<UpdateVariable>\n<JSONPatch>\n[{\"op\":\"delta\",\"path\":\"/驻守天数\",\"value\":1}]\n</JSONPatch>\n</UpdateVariable>\n\n下一位：托伦";
+        let parts = gm_reply_parts(reply, &tree);
+        assert_eq!(parts.display, "托倫點頭。");
+        assert_eq!(parts.raw.as_deref(), Some(reply));
+        assert_eq!(parts.next_raw.as_deref(), Some("托伦"));
+        assert_eq!(parts.block.updates.len(), 1);
+        assert!(parts
+            .block
+            .fields
+            .iter()
+            .any(|(path, value)| path == &["place".to_owned()] && value == "作戰室"));
+        // 不是照抄段（路徑認不得）就整段留在正文
+        let kept = gm_reply_parts("托倫點頭。\n\n（系統）狀態更新\n好感度：5", &tree);
+        assert_eq!(kept.display, "托倫點頭。\n\n（系統）狀態更新\n好感度：5");
+        assert_eq!(kept.raw, None);
+    }
+
     /// char-line-status-strip：完成回合剝完沒台詞回錯；中止沒台詞照舊交回（settle 撤回落地）
     #[test]
     fn character_reply_errors_only_when_a_finished_turn_has_no_text() {
@@ -1121,6 +1175,9 @@ mod tests {
         }
     }
 
+    /// 零額度讀出 GM lane 實際送出的提示詞（凍結 system＋回合尾段），不打 AI。手動執行：
+    /// `TT_PROMPT_ROOT=<資料根目錄> TT_PROMPT_WORLD=<桌 id> cargo test --lib dump_gm_lane_prompt -- --ignored --nocapture`
+    /// 會把 system 與回合尾段印到 stdout，並把兩段寫進 TT_PROMPT_OUT（有設才寫）。
     #[test]
     #[ignore]
     fn dump_gm_lane_prompt() {

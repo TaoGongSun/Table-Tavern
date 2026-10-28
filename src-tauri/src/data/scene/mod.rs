@@ -15,7 +15,7 @@ pub use lifecycle::{
 };
 pub use marker::{
     appeared_card_names, appeared_person_titles, event_full_text, marker_heading, prompt_lang,
-    EventMarker,
+    prompt_state_heading, state_update_headings, EventMarker,
 };
 pub(crate) use marker::{lang_key, player_fallback_name};
 pub(crate) use presence::{match_present, match_present_with, name_matches, split_present_names};

@@ -3,7 +3,9 @@
 //! 角色自加的本輪「名字：」。未閉合規則與前端串流截斷共用一份案例
 //! （`src/shared/contracts/reply-cleanup/cases.json`）。
 use super::response::extract_state_block;
+use crate::data::{state_update_headings, StateNode};
 use regex::Regex;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::LazyLock;
 
 /// 自閉合的狀態類標籤（`<StatusPlaceHolderImpl/>`、`<status …/>`）。`find_state_tag` 不認自閉合，
@@ -160,6 +162,73 @@ pub fn finish_character_reply(reply: &str, prefix: &str, aborted: bool) -> Chara
     let text = cut_unclosed_tail(&display, aborted).trim_end().to_owned();
     let raw = (raw != text).then_some(raw);
     CharacterReply { text, raw, aborted }
+}
+
+/// 模型照抄進正文的「系統」標頭寫法（`system_line` 的兩種骨架，另收簡體）。
+const SYSTEM_PREFIXES: [&str; 4] = ["（系統）", "（系统）", "(System) ", "(System)"];
+
+/// GM 正文尾端照抄的狀態變動段（state-update-echo-in-story 的保險；主修是送模型的標頭）。
+/// 傳入的是剝完狀態圍欄、更新區塊與下一位行的顯示文字；全部成立才剝，回剝完的文字：
+/// 有一行（行首不縮排）完全等於「系統前綴＋狀態變動標頭」（字典十語系或送模型標頭）、不在 CommonMark 程式碼區塊裡（圍欄或縮排），
+/// 且它之後到結尾每個非空行都是「本桌狀態樹葉子路徑：值」。任何一行對不上就回 None、整段保留。
+pub fn strip_state_echo(display: &str, tree: &BTreeMap<String, StateNode>) -> Option<String> {
+    let headings: BTreeSet<String> = state_update_headings()
+        .into_iter()
+        .flat_map(|heading| SYSTEM_PREFIXES.map(|prefix| format!("{prefix}{heading}")))
+        .collect();
+    let mut offset = 0;
+    let mut start = None;
+    for line in display.split_inclusive('\n') {
+        // trim_end：行首有縮排的不算標頭（四空白縮排的程式碼區塊自然保留）
+        if headings.contains(line.trim_end()) {
+            start = Some(offset);
+        }
+        offset += line.len();
+    }
+    let start = start?;
+    if in_code_block(display, start) {
+        return None;
+    }
+    let mut paths = BTreeSet::new();
+    collect_leaf_paths(tree, &mut Vec::new(), &mut paths);
+    let mut body = display[start..]
+        .lines()
+        .skip(1)
+        .filter(|line| !line.trim().is_empty());
+    let is_path_line = |line: &str| {
+        line.find(['：', ':'])
+            .is_some_and(|at| paths.contains(line[..at].trim()))
+    };
+    let first = body.next()?;
+    if !is_path_line(first) || !body.all(is_path_line) {
+        return None;
+    }
+    Some(display[..start].trim_end().to_owned())
+}
+
+/// `at` 這個位置是否落在程式碼區塊裡（圍欄、縮排；沒閉合的圍欄照 CommonMark 延伸到文末）。
+fn in_code_block(text: &str, at: usize) -> bool {
+    use pulldown_cmark::{Event, Parser, Tag};
+    Parser::new(text).into_offset_iter().any(|(event, range)| {
+        matches!(event, Event::Start(Tag::CodeBlock(_))) && range.contains(&at)
+    })
+}
+
+fn collect_leaf_paths(
+    tree: &BTreeMap<String, StateNode>,
+    path: &mut Vec<String>,
+    paths: &mut BTreeSet<String>,
+) {
+    for (key, node) in tree {
+        path.push(key.clone());
+        match node {
+            StateNode::Leaf(_) => {
+                paths.insert(path.join("."));
+            }
+            StateNode::Branch(children) => collect_leaf_paths(children, path, paths),
+        }
+        path.pop();
+    }
 }
 
 /// 剝完控制區塊沒有正文的回合錯誤（GM 與角色線同一個錯誤碼）。

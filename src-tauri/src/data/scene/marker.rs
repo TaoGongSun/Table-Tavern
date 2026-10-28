@@ -94,6 +94,27 @@ fn template(lang: &str, key: &str, value: Option<(&str, &str)>) -> String {
     }
 }
 
+/// 狀態變動事件送模型專用的標頭（state-update-echo-in-story）：UI、匯出仍用字典的「狀態更新」。
+/// 字典那個標頭在卡片要求每回合附狀態回報時會被 GM 當成格式照抄，這裡改講「供理解、不是格式」，
+/// 並避開「狀態更新」「狀態欄」「欄位」這些與狀態協定撞名的字。`lang` 是 `prompt_lang` 的結果。
+pub fn prompt_state_heading(lang: &str) -> &'static str {
+    match lang {
+        "en" => "[App internal ledger: latest values recorded by the system, only to help you understand the current situation; not story content and not a reply format, never write any paragraph starting with \"(System)\" in your reply]",
+        _ => "〔App 內部帳本：系統記下的最新值，只供你理解目前局面；不是故事內容也不是回覆格式，回覆裡不要寫任何「（系統）」開頭的段落〕",
+    }
+}
+
+/// 狀態變動事件所有可能出現在模型回覆裡的標頭：十語系字典標頭與兩種送模型標頭（回覆端剝除比對用）。
+pub fn state_update_headings() -> Vec<String> {
+    let mut headings: Vec<String> = dictionary()
+        .values()
+        .filter_map(|entries| entries.get("state_update").cloned())
+        .collect();
+    headings.push(prompt_state_heading("zh-TW").to_owned());
+    headings.push(prompt_state_heading("en").to_owned());
+    headings
+}
+
 /// 標頭第一行；`Unknown` 沒有標頭。
 pub fn marker_heading(marker: &EventMarker, lang: &str) -> Option<String> {
     Some(match marker {

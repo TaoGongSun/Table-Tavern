@@ -39,7 +39,7 @@ pub(crate) use paths::{
 pub use scene::pop_transcript;
 pub use scene::{
     appeared_card_names, appeared_person_titles, event_full_text, marker_heading, prompt_lang,
-    EventMarker,
+    prompt_state_heading, state_update_headings, EventMarker,
 };
 pub use scene::{
     append_character_reply, append_event, append_opening, append_opening_keyed, append_transcript,

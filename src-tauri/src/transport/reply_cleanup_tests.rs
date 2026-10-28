@@ -162,3 +162,85 @@ fn nested_details_are_matched_by_level() {
     // 中止停在 maintext 外殼的前半也切
     assert_eq!(aborted("<maintext>正文</maint"), "正文");
 }
+
+fn echo_tree() -> BTreeMap<String, StateNode> {
+    let leaf = |value: &str| StateNode::Leaf(value.to_owned());
+    BTreeMap::from([
+        ("驻守天数".to_owned(), leaf("2")),
+        ("当前环境".to_owned(), leaf("作戰室")),
+        (
+            "Heroes".to_owned(),
+            StateNode::Branch(BTreeMap::from([(
+                "艾德温".to_owned(),
+                StateNode::Branch(BTreeMap::from([("Status".to_owned(), leaf("平稳"))])),
+            )])),
+        ),
+    ])
+}
+
+/// 正例：尾端「系統前綴＋狀態變動標頭」段，每行都是本桌路徑——剝到只剩正文（舊標頭、送模型標頭、英文骨架都認）。
+#[test]
+fn strip_state_echo_removes_trailing_ledger_paragraph() {
+    let tree = echo_tree();
+    for heading in [
+        "（系統）狀態更新".to_owned(),
+        "（系统）状态更新".to_owned(),
+        "(System) State update".to_owned(),
+        format!("（系統）{}", crate::data::prompt_state_heading("zh-TW")),
+        format!("(System) {}", crate::data::prompt_state_heading("en")),
+    ] {
+        let display = format!("托倫看著地圖。\n\n{heading}\n驻守天数：3\nHeroes.艾德温.Status: 戒备\n当前环境：作戰室\n");
+        // 前面有已閉合的圍欄不影響
+        let fenced =
+            format!("```\n代碼\n```\n~~~\n更多\n~~~\n托倫看著地圖。\n\n{heading}\n驻守天数：3");
+        assert_eq!(
+            strip_state_echo(&fenced, &tree).as_deref(),
+            Some("```\n代碼\n```\n~~~\n更多\n~~~\n托倫看著地圖。"),
+            "{heading}"
+        );
+        assert_eq!(
+            strip_state_echo(&display, &tree).as_deref(),
+            Some("托倫看著地圖。"),
+            "{heading}"
+        );
+    }
+}
+
+/// 反例：任何一處對不上就整段保留。
+#[test]
+fn strip_state_echo_keeps_anything_not_exactly_an_echo() {
+    let tree = echo_tree();
+    let cases = [
+        // 卡片自訂的狀態段（沒有系統標頭）
+        "正文。\n\n状态：平稳\n驻守天数：3",
+        // 跨行值：第二行不是路徑行
+        "正文。\n\n（系統）狀態更新\n当前环境：作戰室，\n窗外仍在下雪",
+        // 對話裡引用「（系統）」
+        "正文。\n\n他低聲說：「（系統）狀態更新」\n驻守天数：3",
+        // 混入不認得的路徑
+        "正文。\n\n（系統）狀態更新\n驻守天数：3\n好感度：5",
+        // 在程式碼區塊裡
+        "正文。\n\n```\n（系統）狀態更新\n驻守天数：3",
+        // 四空白縮排的程式碼區塊
+        "正文。\n\n    （系統）狀態更新\n    驻守天数：3",
+        // 未閉合的 ~~~ 區塊
+        "正文。\n\n~~~\n（系統）狀態更新\n驻守天数：3",
+        // ``` 開著時遇到 ~~~ 不算關閉
+        "正文。\n\n```\n~~~\n（系統）狀態更新\n驻守天数：3",
+        // 四個反引號開的圍欄，三個反引號關不掉
+        "正文。\n\n````\n```\n（系統）狀態更新\n驻守天数：3",
+        // 關閉記號後面有文字不算關閉
+        "正文。\n\n```\n```text\n（系統）狀態更新\n驻守天数：3",
+        // 縮排三格的圍欄開頭仍算圍欄
+        "正文。\n\n   ~~~\n（系統）狀態更新\n驻守天数：3",
+        // 標頭之後還有正文（不在尾端）
+        "正文。\n\n（系統）狀態更新\n驻守天数：3\n\n托倫點了點頭。",
+        // 只有標頭
+        "正文。\n\n（系統）狀態更新",
+        // 標頭行不是完整一行
+        "正文。\n\n（系統）狀態更新：驻守天数：3",
+    ];
+    for display in cases {
+        assert_eq!(strip_state_echo(display, &tree), None, "{display}");
+    }
+}

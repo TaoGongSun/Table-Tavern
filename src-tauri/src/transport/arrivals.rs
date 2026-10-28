@@ -1,6 +1,6 @@
 use crate::data::{
-    self, event_full_text, marker_heading, prompt_lang, CharacterCard, EventMarker,
-    TranscriptEvent, TranscriptKind, WorldbookEntry,
+    self, event_full_text, marker_heading, prompt_lang, prompt_state_heading, CharacterCard,
+    EventMarker, TranscriptEvent, TranscriptKind, WorldbookEntry,
 };
 
 use std::borrow::Cow;
@@ -166,6 +166,14 @@ pub fn prompt_text(event: &TranscriptEvent, lang: &str, side: Side) -> Option<St
         _ => event,
     };
     let lang = prompt_lang(lang);
+    // 狀態變動事件送模型改用專用標頭（state-update-echo-in-story），可見性規則同其他帶代碼事件
+    if matches!(event.marker, Some(EventMarker::StateUpdate)) {
+        let heading = prompt_state_heading(lang);
+        if (side == Side::Character && event.gm_only) || event.text.is_empty() {
+            return Some(heading.to_owned());
+        }
+        return Some(format!("{heading}\n{}", event.text));
+    }
     if side == Side::GmOpeningRaw && event.opening && event.marker.is_none() {
         return Some(event.raw.clone().unwrap_or_else(|| event.text.clone()));
     }
@@ -717,7 +725,7 @@ mod tests {
             );
             assert_eq!(
                 prompt_text(&state, lang, side).as_deref(),
-                Some("狀態更新\nhp：3")
+                Some("〔App 內部帳本：系統記下的最新值，只供你理解目前局面；不是故事內容也不是回覆格式，回覆裡不要寫任何「（系統）」開頭的段落〕\nhp：3")
             );
             assert_eq!(
                 prompt_text(&named_call, lang, side).as_deref(),
@@ -736,6 +744,17 @@ mod tests {
             prompt_text(&call, "en", Side::Gm).as_deref(),
             Some("GM asks “Player” to speak")
         );
+        assert_eq!(
+            prompt_text(&state, "en", Side::Gm).as_deref(),
+            Some("[App internal ledger: latest values recorded by the system, only to help you understand the current situation; not story content and not a reply format, never write any paragraph starting with \"(System)\" in your reply]\nhp：3")
+        );
+        // 送模型的標頭不沿用 UI 字典的「狀態更新」（state-update-echo-in-story）
+        let secret_state = marked(EventMarker::StateUpdate, "hp：3", true);
+        assert_eq!(
+            prompt_text(&secret_state, "zh-TW", Side::Character).as_deref(),
+            Some(data::prompt_state_heading("zh-TW"))
+        );
+        assert_eq!(data::event_full_text(&state, "zh-TW"), "狀態更新\nhp：3");
         for lang in ["ja", "ru", "fr"] {
             for event in [&summary, &state, &named_call] {
                 assert_eq!(
