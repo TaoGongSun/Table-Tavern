@@ -666,6 +666,13 @@
   color: var(--ok);
 }
 
+/* 只中到 CLI 自帶段＝沒省到我方內容，用明細黃燈同一個琥珀色，不跟「已省」同綠 */
+.usage-headline-vendor {
+  font-size: 1.15em;
+  font-weight: 600;
+  color: var(--amber);
+}
+
 .usage-headline-cost {
   font-weight: 600;
   color: var(--ok);

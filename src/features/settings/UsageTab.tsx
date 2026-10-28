@@ -235,7 +235,7 @@ export function UsageTab({ currentWorld }: { currentWorld: string }) {
         <>
           {vendorOnlyHeadline ? (
             <p className="usage-headline">
-              <span className="usage-headline-saved">{t(vendorOnlyKey)}</span>
+              <span className="usage-headline-vendor">{t(vendorOnlyKey)}</span>
             </p>
           ) : totals.priced_tokens > 0 && (
             <p className="usage-headline">
