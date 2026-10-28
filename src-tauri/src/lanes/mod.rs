@@ -467,6 +467,13 @@ pub(crate) async fn run_turn(
     if !keeps_tail {
         input.has_state_block = false;
     }
+    // CLI 正在更新：什麼都不動（lane 狀態、session 檔）就回錯，擋板撤掉後照常續聊
+    if crate::cli::update::gate::is_raised(call.provider.as_str()) {
+        return Err(UiMsg::CliUpdating {
+            cli: call.provider.as_str().to_owned(),
+        }
+        .into());
+    }
     let store_path = data::lanes_path(root, world_id).map_err(|error| error.to_string())?;
     let key = lane_key(input.lane, call.model_label(), input.scope.as_deref());
     let lock = lane_lock(&store_path);
@@ -601,7 +608,11 @@ pub(crate) async fn run_turn(
         let command =
             provider_args::provider_command(call, opening, &session_id, &system, &prompt)?;
         let prompt_files = command.files;
+        #[cfg(test)]
+        tests::after_provider_command();
 
+        // 擋板在這之後才立起（spawn 時被擋）：還原成這次嘗試之前的狀態，當作沒送
+        let prior_state = store.get(&key).cloned();
         store.insert(
             key.clone(),
             LaneState {
@@ -901,6 +912,15 @@ pub(crate) async fn run_turn(
                     text: reply,
                     aborted: false,
                 });
+            }
+            // CLI 正在更新：程序根本沒起，續聊線完好。原樣回錯，不撤線、不重開重試
+            Err(error) if cli::is_updating_error(&error.to_string()) => {
+                match prior_state {
+                    Some(state) => store.insert(key.clone(), state),
+                    None => store.remove(&key),
+                };
+                write_store(&store_path, &store)?;
+                return Err(error.to_string());
             }
             // 斷流逾時不重開重試（重試會把等待疊成兩倍，超過玩家耐性）：收尾比照輸出失控，
             // 下一輪靠 pending_rewrite／撤線重開，這輪回錯

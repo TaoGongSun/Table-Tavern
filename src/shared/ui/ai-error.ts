@@ -1,7 +1,7 @@
 // AI 失敗訊息分流：各家 CLI／API 的錯誤格式不一，只認指得出下一步的幾類，
 // 認不出來回 null 讓呼叫端決定（誤判比不判更糟，見 .ai/tasks/ai-error-messages.md）。
 // 不診斷根因——聚合 router 會把上游任何失敗都轉包成自己的 5xx，真正的原因在轉包時就沒了。
-import { backendCode } from "./backend-text";
+import { backendChain, backendCode } from "./backend-text";
 
 const QUOTA_ERROR = /usage limit|quota|out of credit|insufficient[ _]credit|insufficient_quota|rate.?limit|resource_exhausted|too many requests|\b402\b|\b429\b/i;
 const AUTH_ERROR = /not logged in|not authenticated|unauthorized|authentication|api[ _]key|credential|expired token|\b401\b/i;
@@ -43,6 +43,13 @@ const IMAGE_CODES = [
 // 這是最後的保底：CLI 吐的原話（限流、未登入）還是要先走下面的正則分流，
 // 被包了一層就退化成籠統一句是拿掉玩家本來看得到的線索。只認開頭，body 抄不進來。
 const CALL_FAILED = /^(?:Error:\s*)?AI_CALL_FAILED:/;
+
+const NEEDS_CLI_UPDATE = new Set([
+  "cli_model_unavailable",
+  "cli_too_old",
+  "cli_too_old_required",
+  "cli_output_unrecognized_older",
+]);
 
 /** 缺 OpenRouter key 的後端代碼；可能被 stream_via_transport 包一層 AI_CALL_FAILED。 */
 export function isOpenRouterKeyMissing(raw: string): boolean {
@@ -111,6 +118,9 @@ export function explainAiError(
   // 再認傳輸層自己的失敗碼；供應商中途送的 error 塊刻意不帶碼，原話往下走既有正則
   const coded = FAILURE_CODES.find(([prefix]) => prefix.test(raw));
   if (coded) return coded[1];
+  // 需要更新 CLI 的錯誤（後端分類過的結構化碼）排在所有「往原文找字樣」的判斷之前：
+  // 訊息本身已說清楚下一步（旁邊有更新鈕），原文剛好帶到限流、登入字樣也不再蓋一句「重新登入」「再試一次」
+  if (backendChain(raw).some((msg) => NEEDS_CLI_UPDATE.has(msg.code))) return null;
   // REFUSED／NO_IMAGE 是生圖 prompt 跟 CLI 約好的暗號：不肯生這一張（內容規範）
   // 與根本生不出圖（多半是生圖額度或方案），玩家的下一步不同。這兩個是模型回話裡的
   // 暗號、不一定在開頭，只能用 includes——所以更要排在 HTTP 碼後面

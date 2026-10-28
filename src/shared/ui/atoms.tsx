@@ -3,19 +3,37 @@ import { t } from "../../i18n";
 import { renderStoryMarkdown } from "./story-markdown";
 import { explainAiError, redactAiErrorDetail } from "./ai-error";
 import { backendCode, backendText } from "./backend-text";
+import { cliUpdateOffer } from "./cli-update";
+import { CliUpdateAction } from "./CliUpdateAction";
 
 // AI 失敗的呈現：命中分流就顯示人話，原始字串一律保留在小字（玩家與協助者仍看得到真相）。
 // transport 給得出來就傳：認證失敗要指對地方（API 換金鑰／CLI 重新登入）。
 // text 存後端原文：分流吃原文，顯示時才經 backendText 翻譯代碼、再遮掉帳號識別碼。錯誤列與失敗彈窗共用。
+// 需要更新 CLI 的錯誤（模型叫不到、CLI 太舊、無法分類的 CLI 錯誤）在訊息下方接「檢查 CLI 更新」。
 export function AiErrorText({ text, transport }: { text: string; transport?: string }) {
   const key = explainAiError(text, transport);
   const shown = redactAiErrorDetail(backendText(text));
-  if (!key) return <>{shown}</>;
+  const offer = cliUpdateOffer(text, transport);
+  const update = offer && (
+    <>
+      <br />
+      <CliUpdateAction offer={offer} />
+    </>
+  );
+  if (!key) {
+    return (
+      <>
+        {shown}
+        {update}
+      </>
+    );
+  }
   return (
     <>
       {t(key)}
       <br />
       <small>{shown}</small>
+      {update}
     </>
   );
 }

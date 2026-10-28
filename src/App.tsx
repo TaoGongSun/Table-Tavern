@@ -64,6 +64,7 @@ import { SmartFreeNewModelBanner } from "./features/ai-connection/SmartFreeNewMo
 import { SmartFreeNoticeToast } from "./features/ai-connection/SmartFreeNoticeToast";
 import { ClaudeOverageToast } from "./features/ai-connection/ClaudeOverageToast";
 import { ErrorNote } from "./shared/ui/atoms";
+import { OPEN_SETTINGS_EVENT } from "./shared/ui/cli-update";
 import "./App.css";
 import type { PendingRefactorCard } from "./features/refactor/refactor-card";
 import type { EntryChanges } from "./features/worldbook/worldbook-model";
@@ -117,6 +118,15 @@ function App() {
     setSettingsOpen(tab);
     setSettingsRequestKey((key) => key + 1);
   }, []);
+  // CLI 更新鈕旁的「改選模型」「開啟設定」：錯誤可能出在任何畫面，用視窗事件直接開設定
+  useEffect(() => {
+    const open = (event: Event) => {
+      const tab = (event as CustomEvent<SettingsTab>).detail;
+      openSettings(tab === "appearance" || tab === "versions" ? tab : "ai");
+    };
+    window.addEventListener(OPEN_SETTINGS_EVENT, open);
+    return () => window.removeEventListener(OPEN_SETTINGS_EVENT, open);
+  }, [openSettings]);
   // 設定頁改語言後問一次「範例桌要不要換語言重生」；值＝改之前的語言，取消時用來回退
   const [regenAsk, setRegenAsk] = useState<Lang | null>(null);
   const [error, setError] = useState("");

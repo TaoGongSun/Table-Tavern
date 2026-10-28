@@ -213,14 +213,20 @@ pub(crate) async fn prepare_lane_call(
         lanes::LaneProvider::Grok => "grok",
         lanes::LaneProvider::Codex => "codex",
     };
+    // 這支 CLI 正在更新：直接回 CliUpdating，不去偵測（擋板期間 --version 也跑不了）
+    if cli::update::gate::is_raised(id) {
+        return Err(UiMsg::CliUpdating { cli: id.to_owned() }.into());
+    }
     let info = cli::detect_clis()
         .await
         .into_iter()
         .find(|info| info.id == id)
         .ok_or_else(|| UiMsg::CliNotFound { cli: id.to_owned() }.to_string())?;
-    if provider == lanes::LaneProvider::Agy && !cli::agy_version_supported(&info.version) {
-        return Err(UiMsg::AgyTooOld {
+    if let Some(required) = cli::tested_versions::below_minimum(id, &info.version) {
+        return Err(UiMsg::CliTooOldRequired {
+            cli: id.to_owned(),
             version: info.version,
+            required: required.to_owned(),
         }
         .into());
     }
@@ -588,6 +594,12 @@ async fn stream_turn_inner(
     if config.preferences.get("cli_risk_accepted") != Some(&serde_json::Value::Bool(true)) {
         return Err(UiMsg::CliRiskNotAccepted.into());
     }
+    if cli::update::gate::is_raised(&transport_kind) {
+        return Err(UiMsg::CliUpdating {
+            cli: transport_kind.clone(),
+        }
+        .into());
+    }
     let info = cli::detect_clis()
         .await
         .into_iter()
@@ -598,9 +610,11 @@ async fn stream_turn_inner(
             }
             .to_string()
         })?;
-    if transport_kind == "agy" && !cli::agy_version_supported(&info.version) {
-        return Err(UiMsg::AgyTooOld {
+    if let Some(required) = cli::tested_versions::below_minimum(&transport_kind, &info.version) {
+        return Err(UiMsg::CliTooOldRequired {
+            cli: transport_kind.clone(),
             version: info.version,
+            required: required.to_owned(),
         }
         .into());
     }

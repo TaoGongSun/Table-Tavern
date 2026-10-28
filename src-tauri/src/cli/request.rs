@@ -210,23 +210,6 @@ pub fn codex_session_args(model: Option<&str>, effort: &str, resume: Option<&str
     args
 }
 
-/// app 支援的 agy 最低版本 1.2.1：`--output-format stream-json`（1.1.8）、`--agent`（1.1.1）與
-/// 自訂代理的 `excludeDefaultComponents`（1.2.1）都要有，精簡工具集代理才成立；更舊的版本一律
-/// 擋下（AgyTooOld），不會在沒精簡的狀態下照跑。版本字串解析不出來時放行並照帶 `--agent`——
-/// 寧可讓呼叫失敗時帶著 CLI 自己的錯誤訊息，也不要因為版本字串換了格式就把整條路擋死。
-pub fn agy_version_supported(version: &str) -> bool {
-    let numbers: Vec<u64> = version
-        .split(|ch: char| !ch.is_ascii_digit())
-        .filter(|part| !part.is_empty())
-        .take(3)
-        .filter_map(|part| part.parse().ok())
-        .collect();
-    match numbers.as_slice() {
-        [major, minor, patch] => (*major, *minor, *patch) >= (1, 2, 1),
-        _ => true,
-    }
-}
-
 /// agy 沒有 system prompt 旗標，呼叫端把 system 併進正文。正文走 stdin（不帶 `-p`
 /// 就是單發模式），不佔命令列長度。
 /// allow_tools＝false（聊天、旁白、卡重構）：帶 `--agent` 走 app 的精簡工具集代理

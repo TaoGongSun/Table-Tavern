@@ -19,7 +19,9 @@ mod request;
 mod runner;
 mod spawn;
 mod stream;
+pub(crate) mod tested_versions;
 mod types;
+pub(crate) mod update;
 
 pub use agy_home::agy_envs;
 pub use catalog::cli_model_catalog;
@@ -28,11 +30,13 @@ pub use detect::detect_clis;
 pub(crate) use detect::find_binary;
 pub use prompt_file::PromptFile;
 pub use request::{
-    agy_args, agy_body, agy_session_args, agy_session_body, agy_version_supported, claude_args,
-    claude_model_for, claude_session_args, codex_args, codex_effort_for, codex_session_args,
-    flatten_messages, grok_args, grok_envs, grok_payload, grok_session_args, tier_override,
+    agy_args, agy_body, agy_session_args, agy_session_body, claude_args, claude_model_for,
+    claude_session_args, codex_args, codex_effort_for, codex_session_args, flatten_messages,
+    grok_args, grok_envs, grok_payload, grok_session_args, tier_override,
 };
-pub use runner::{is_stall_error, run_cli, run_cli_cancellable, CliFinish};
+pub use runner::{is_stall_error, is_updating_error, run_cli, run_cli_cancellable, CliFinish};
+#[cfg(target_os = "windows")]
+pub(crate) use spawn::auto_update_off;
 pub use stream::{
     parse_agy_usage, parse_claude_usage, parse_codex_usage, parse_grok_usage, AGY_PROTOCOL,
     CLAUDE_PROTOCOL, CODEX_PROTOCOL, GROK_PROTOCOL,

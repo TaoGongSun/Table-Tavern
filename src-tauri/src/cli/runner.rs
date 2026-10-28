@@ -11,6 +11,7 @@ use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::watch;
 
+pub(super) mod classify;
 mod lines;
 mod unrecognized;
 mod verdict;
@@ -50,6 +51,11 @@ pub fn is_stall_error(message: &str) -> bool {
             message.contains(&format!(r#"\"code\":\"{code}\""#))
                 || message.contains(&format!(r#""code":"{code}""#))
         })
+}
+
+/// 這則錯誤是不是「CLI 正在更新」（擋板立著，程序根本沒起）。lane 據此原樣回錯：不撤線、不重試。
+pub fn is_updating_error(message: &str) -> bool {
+    message.contains(r#"\"code\":\"cli_updating\""#) || message.contains(r#""code":"cli_updating""#)
 }
 
 /// `run_cli_cancellable` 的收場。中止不是錯誤：呼叫端要拿半截文字去做抹寫，不能走失敗重試。
@@ -236,6 +242,7 @@ pub async fn run_cli_cancellable(
     let result = drive_child(
         spawned.child(),
         stdin_data,
+        classify::model_arg(args),
         protocol,
         thinking_to_delta,
         policy,
@@ -300,6 +307,7 @@ impl VersionProbe {
 async fn drive_child(
     child: &mut Child,
     stdin_data: &str,
+    model: Option<&str>,
     protocol: &CliProtocol,
     thinking_to_delta: bool,
     policy: RunawayPolicy,
@@ -337,6 +345,8 @@ async fn drive_child(
     let mut agy_conversation_id: Option<String> = None;
     // codex 頂層 error（非致命通知）的最後一則：回合最後失敗時當錯誤文字
     let mut soft_error: Option<String> = None;
+    // claude 回報模型叫不到（assistant 事件的 `error: "model_not_found"`）
+    let mut model_not_found = false;
     // 認不得的 stdout 行（格式可能隨 CLI 升版改了）
     let mut unrecognized = unrecognized::Unrecognized::default();
     // 子程序死法收網（2026-08-12，跨平台 tokio API）：
@@ -420,6 +430,16 @@ async fn drive_child(
                                 // 設定類錯誤重試不會好，立即中止（kill_on_drop 收掉子程序）
                                 if let Some(coded) = context_overflow::cli_failure(&line) {
                                     return Err(crate::data::invalid_data(coded));
+                                }
+                                if let Some(msg) = classify::needs_update(
+                                    protocol.id,
+                                    &line,
+                                    &stderr_text,
+                                    model_not_found,
+                                    model,
+                                    &version.finish().await.unwrap_or_default(),
+                                ) {
+                                    return Err(msg.into_error());
                                 }
                                 return Err(UiMsg::CliReplyError { error: line }.into_error());
                             }
@@ -655,7 +675,10 @@ async fn drive_child(
             rollout_unsaved = true;
         }
         let parsed = (protocol.parse)(&line);
-        if !matches!(parsed, CliLine::Other | CliLine::SoftError(_)) {
+        if !matches!(
+            parsed,
+            CliLine::Other | CliLine::SoftError(_) | CliLine::ModelUnavailable
+        ) {
             progressed = true;
         }
         match parsed {
@@ -701,6 +724,7 @@ async fn drive_child(
                 eprintln!("[cli] soft error: {text}");
                 soft_error = Some(text);
             }
+            CliLine::ModelUnavailable => model_not_found = true,
             CliLine::Other => {}
         }
     }
@@ -759,9 +783,28 @@ async fn drive_child(
             if text.starts_with("AI_INCOMPLETE_RESPONSE:") {
                 return Err(crate::data::invalid_data(text));
             }
+            // 需要更新 CLI 的（模型叫不到、CLI 太舊）掛自己的碼，前端接更新鈕
+            if let Some(msg) = classify::needs_update(
+                protocol.id,
+                &text,
+                &stderr_text,
+                model_not_found,
+                model,
+                &version.finish().await.unwrap_or_default(),
+            ) {
+                return Err(msg.into_error());
+            }
             return Err(UiMsg::CliReplyError { error: text }.into_error());
         }
         verdict::Verdict::Crashed => {
+            // 不認得旗標：CLI 比 app 用到的旗標舊
+            if let Some(msg) = classify::too_old_flag(
+                protocol.id,
+                &stderr_text,
+                &version.finish().await.unwrap_or_default(),
+            ) {
+                return Err(msg.into_error());
+            }
             // 死法④：CLI crash／被系統殺（無收尾事件＋exit 非零）——殘缺正文不能往下走
             let msg = UiMsg::CliCrashed {
                 status: status.to_string(),
@@ -826,3 +869,6 @@ mod codex_tests;
 
 #[cfg(test)]
 mod gate_tests;
+
+#[cfg(test)]
+mod update_codes_tests;

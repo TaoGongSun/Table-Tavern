@@ -423,6 +423,15 @@
   box-sizing: border-box;
 }
 
+.transport-option > .cli-tested-prompt {
+  flex: 1 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--ink-1);
+}
+
 .inline {
   flex-direction: row !important;
   align-items: center;
@@ -926,4 +935,8 @@
   min-width: 6rem;
   color: var(--ink-1);
   overflow-wrap: anywhere;
+}
+
+.cli-tested-prompt .cli-update-action {
+  margin-top: 0;
 }

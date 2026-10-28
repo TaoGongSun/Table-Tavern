@@ -70,9 +70,21 @@ pub(crate) fn smart_free_dismiss_recommendations(
     Ok(())
 }
 
+/// 偵測結果附上更新狀態（更新中／停不下來／還原失敗待重新安裝）；跑得起來的順手清掉還原失敗標記。
 #[tauri::command]
-pub(crate) async fn detect_clis() -> Vec<cli::CliInfo> {
-    cli::detect_clis().await
+pub(crate) async fn detect_clis(app: tauri::AppHandle) -> Vec<cli::CliInfo> {
+    let mut found = cli::detect_clis().await;
+    if let Ok(root) = data_root(&app) {
+        for info in &mut found {
+            cli::update::clear_if_runs(
+                &root,
+                &info.id,
+                cli::tested_versions::parse(&info.version).is_some(),
+            );
+            info.update_state = cli::update::state(&root, &info.id);
+        }
+    }
+    found
 }
 
 /// 設定 UI 下拉用：列出 CLI 訂閱模式可選的模型（見 cli::cli_model_catalog）。

@@ -43,7 +43,8 @@ export type ProbeFailureKind = "aborted" | "not_sent" | "failed" | "unparsable";
 const NOT_SENT_CODES = new Set([
   "cli_risk_not_accepted",
   "cli_not_found",
-  "agy_too_old",
+  "cli_too_old",
+  "cli_updating",
   "unknown_transport",
   "update_gate_closed",
   "tier_model_missing",

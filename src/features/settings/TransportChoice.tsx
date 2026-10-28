@@ -3,6 +3,7 @@
 import { t } from "../../i18n";
 import { backendText } from "../../shared/ui/backend-text";
 import { CLI_LABELS, CliInfo, cliConnectedKey } from "../ai-connection/cli";
+import { CliUpdateAction } from "../../shared/ui/CliUpdateAction";
 import { AppConfig } from "../../shared/contracts/backend-contracts";
 
 type CliInstallStage = "detect" | "install" | "login" | "verify" | "done" | "error";
@@ -73,6 +74,7 @@ export function TransportChoice({
   installingCli,
   installProgress,
   onInstall,
+  testedPrompts,
 }: {
   transport: string;
   onTransport: (id: string) => void;
@@ -82,6 +84,8 @@ export function TransportChoice({
   installingCli: string | null;
   installProgress: Record<string, CliInstallProgress>;
   onInstall: (id: string, switchAccount: boolean) => void;
+  /** 這次顯示「有測試過的新版本」提示的 CLI（只出現一次，見 SettingsForm） */
+  testedPrompts: Record<string, string>;
 }) {
   return (
     <fieldset className="transport-list">
@@ -124,6 +128,29 @@ export function TransportChoice({
               <span className="cli-version" role="status">
                 {t("cliDetecting")}
               </span>
+            ) : found?.update_state === "updating" ? (
+              <span className="cli-version" role="status">
+                {t("cliStateUpdating")}
+              </span>
+            ) : found?.update_state === "stuck" ? (
+              <span className="cli-version cli-install-error" role="status">
+                {t("cliStateStuck")}
+              </span>
+            ) : found?.update_state === "broken" ? (
+              <>
+                {/* 上次 app 內更新連還原都失敗：執行檔在但跑不起來，安裝腳本會不看「已安裝」直接重裝 */}
+                <span className="cli-version cli-install-error">{t("cliStateBroken")}</span>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  disabled={othersBusy}
+                  onClick={() => onInstall(id, false)}
+                >
+                  {installingCli === id
+                    ? t("cliInstalling", { provider: CLI_LABELS[id] })
+                    : t("cliReinstallBtn")}
+                </button>
+              </>
             ) : found ? (
               <>
                 <span className="cli-version">{t("cliDetected", { version: found.version })}</span>
@@ -177,6 +204,13 @@ export function TransportChoice({
                     : t("cliInstallBtn")}
                 </button>
               </>
+            )}
+            {/* 「有測試過的新版本」一次性提示：該 CLI 那列底下獨佔一行 */}
+            {found && testedPrompts[id] && (
+              <span className="cli-tested-prompt" role="status">
+                {t("cliTestedPrompt", { version: testedPrompts[id] })}
+                <CliUpdateAction offer={{ cli: id, kind: "older" }} />
+              </span>
             )}
             {progress && (
               <span

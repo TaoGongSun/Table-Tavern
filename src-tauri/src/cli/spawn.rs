@@ -1,10 +1,18 @@
-//! CLI 子程序唯一的 spawn 入口（plans/agy-home-cleanup.md）。envs 帶 `GROK_HOME` 的呼叫先進 grok 閘拿票，
-//! 票跟著 `Spawned` 走、程序真的 wait 收屍後才交回：正常路徑在 `wait`／`wait_with_output`／
+//! CLI 子程序唯一的 spawn 入口（plans/agy-home-cleanup.md、plans/cli-version-gate.md 包 2）。
+//! - 四家 CLI 一律注入關閉自動更新的 env（版本由 app 掌控，方案拍板 B）。
+//! - 四家 CLI 先過更新擋板（`update::gate`）：擋板立著立即回 `CliUpdating`；否則在途表寫一筆佔位，
+//!   spawn 成功回填 pid，收屍後才移除。
+//! - envs 帶 `GROK_HOME` 的呼叫另進 grok 閘拿票。
+//! 票與佔位跟著 `Spawned` 走、程序真的 wait 收屍後才交回：正常路徑在 `wait`／`wait_with_output`／
 //! `kill_and_wait` 回來時交回；`Spawned` 沒收屍就被丟棄（future 被取消、逾時、提早返回）時，
 //! Drop 把 Child 交給 tokio 任務 kill＋wait，收屍完才交回。`kill_on_drop` 送出終止不算退出。
+//! 更新模式（`spawn_update`）不過擋板、不注入關閉變數，放進獨立程序群組。
 //! cli/ 底下的程序一律走這裡（本檔測試掃原始碼把關）。
 
 use super::grok_gate::{self, Ticket};
+use super::update::gate::{self, Slot};
+use super::update::tree::{self, TreeChild};
+use crate::ui_msg::UiMsg;
 use std::io;
 use std::path::Path;
 use std::process::{ExitStatus, Output};
@@ -14,10 +22,37 @@ use tokio::process::{Child, Command};
 pub(crate) struct Spawned {
     child: Option<Child>,
     ticket: Option<Ticket>,
+    slot: Option<Slot>,
 }
 
-/// spawn 失敗時票立刻交回（`ticket` 在這裡 drop）。
+/// 四家關閉自動更新的 env（方案「前提」表）。codex `exec` 本來就不觸發，不帶。
+/// claude 不用 `DISABLE_UPDATES`（會連更新鈕的 `claude update` 一起擋）；agy 只認 "true"。
+pub(crate) fn auto_update_off(cli: &str) -> &'static [(&'static str, &'static str)] {
+    match cli {
+        "claude" => &[("DISABLE_AUTOUPDATER", "1")],
+        "agy" => &[("AGY_CLI_DISABLE_AUTO_UPDATE", "true")],
+        "grok" => &[("GROK_DISABLE_AUTOUPDATER", "1")],
+        _ => &[],
+    }
+}
+
+/// spawn 失敗時票與佔位立刻交回（在這裡 drop）。
 pub(crate) fn spawn(command: &mut Command, envs: &[(String, String)]) -> io::Result<Spawned> {
+    let cli = gate::cli_of(command.as_std().get_program());
+    let slot = match cli {
+        Some(cli) => {
+            command.envs(auto_update_off(cli).iter().copied());
+            Some(gate::enter(cli).map_err(|()| {
+                io::Error::other(
+                    UiMsg::CliUpdating {
+                        cli: cli.to_owned(),
+                    }
+                    .to_string(),
+                )
+            })?)
+        }
+        None => None,
+    };
     let ticket = envs
         .iter()
         .rev()
@@ -25,10 +60,22 @@ pub(crate) fn spawn(command: &mut Command, envs: &[(String, String)]) -> io::Res
         .map(|(_, home)| grok_gate::enter(Path::new(home)));
     command.kill_on_drop(true);
     let child = command.spawn()?;
+    if let Some(slot) = &slot {
+        slot.set_pid(child.id());
+    }
     Ok(Spawned {
         child: Some(child),
         ticket,
+        slot,
     })
+}
+
+/// 更新模式：CLI 的更新／還原指令與安裝腳本。不過擋板（擋板就是更新流程自己立的），
+/// 不注入關閉自動更新的變數，放進獨立程序群組（逾時殺整組）。環境由呼叫端組好。
+pub(crate) fn spawn_update(command: &mut Command) -> io::Result<TreeChild> {
+    tree::prepare(command);
+    command.kill_on_drop(true);
+    tree::adopt(command.spawn()?)
 }
 
 impl Spawned {
@@ -40,9 +87,10 @@ impl Spawned {
         self.child.as_ref().and_then(Child::id)
     }
 
-    /// 收屍完成：交回票。
+    /// 收屍完成：交回票與在途佔位。
     fn reaped(&mut self) {
         self.ticket.take();
+        self.slot.take();
     }
 
     pub(crate) async fn wait(&mut self) -> io::Result<ExitStatus> {
@@ -86,24 +134,31 @@ async fn read_all(pipe: Option<impl AsyncReadExt + Unpin>) -> io::Result<Vec<u8>
 
 impl Drop for Spawned {
     fn drop(&mut self) {
-        let Some(ticket) = self.ticket.take() else {
-            return; // 沒有票（非 grok）或已收屍：kill_on_drop 處理剩下的
-        };
+        if self.ticket.is_none() && self.slot.is_none() {
+            return; // 不是四家 CLI 或已收屍：kill_on_drop 處理剩下的
+        }
         let Some(mut child) = self.child.take() else {
             return;
         };
         let _ = child.start_kill();
+        let ticket = self.ticket.take();
+        let slot = self.slot.take();
         let Ok(handle) = tokio::runtime::Handle::try_current() else {
-            // 沒有 runtime 就沒辦法等它退出：票不交回
-            ticket.leak();
+            // 沒有 runtime 就沒辦法等它退出：票不交回；佔位隨這裡返回一併移除（程序已送殺）
+            if let Some(ticket) = ticket {
+                ticket.leak();
+            }
             return;
         };
         // 收屍任務被 runtime 中止時，Unreaped 的 Drop 也不交回票
-        let ticket = Unreaped(Some(ticket));
+        let ticket = Unreaped(ticket);
         handle.spawn(async move {
             let mut ticket = ticket;
             let waited = child.wait().await;
-            settle(ticket.0.take().expect("票在收屍前都在"), waited);
+            drop(slot);
+            if let Some(ticket) = ticket.0.take() {
+                settle(ticket, waited);
+            }
         });
     }
 }
@@ -160,6 +215,36 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
         panic!("票沒交回");
+    }
+
+    /// 四家一律帶關閉自動更新的 env（codex exec 本來不觸發、不帶）；安裝腳本之類的程式不帶。
+    #[tokio::test]
+    async fn cli_spawns_carry_auto_update_switches() {
+        let env = |command: &Command, key: &str| {
+            command
+                .as_std()
+                .get_envs()
+                .find(|(name, _)| *name == key)
+                .and_then(|(_, value)| value)
+                .map(|value| value.to_string_lossy().into_owned())
+        };
+        for (cli, key, value) in [
+            ("claude", "DISABLE_AUTOUPDATER", "1"),
+            ("agy", "AGY_CLI_DISABLE_AUTO_UPDATE", "true"),
+            ("grok", "GROK_DISABLE_AUTOUPDATER", "1"),
+        ] {
+            let mut command = Command::new(format!("/nonexistent-tt/{cli}"));
+            assert!(spawn(&mut command, &[]).is_err());
+            assert_eq!(env(&command, key).as_deref(), Some(value), "{cli}");
+        }
+        let mut codex = Command::new("/nonexistent-tt/codex");
+        let _ = spawn(&mut codex, &[]);
+        assert_eq!(codex.as_std().get_envs().count(), 0);
+        let mut bash = Command::new("/nonexistent-tt/bash");
+        let _ = spawn(&mut bash, &[]);
+        assert_eq!(env(&bash, "DISABLE_AUTOUPDATER"), None);
+        // spawn 失敗：在途佔位不留
+        assert_eq!(super::gate::inflight_count("claude"), 0);
     }
 
     #[tokio::test]

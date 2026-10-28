@@ -1881,3 +1881,179 @@ async fn agy_lane_resumes_after_self_prefixed_reply() {
     assert!(calls.lines().nth(1).unwrap().contains("--conversation"));
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+/// CLI 更新擋板立著時續聊：程序根本沒起，原樣回 CliUpdating，lane 保住；擋板撤掉後照常續聊同一條線。
+#[cfg(unix)]
+#[tokio::test]
+async fn lane_survives_a_cli_update_barrier() {
+    let _serial = crate::inflight::lock_real_process_tests();
+    let FakeCli {
+        dir,
+        mut call,
+        root,
+        world_id,
+        session_dir,
+        ..
+    } = fake_claude("updating");
+    // 擋板依程式檔名認 CLI：假 CLI 換名成 claude
+    let program = dir.join("claude");
+    std::fs::copy(&call.program, &program).unwrap();
+    call.program = program;
+    let mut events = vec![event(TranscriptKind::Player, "", "阿濤", "老闆晚安")];
+    let reply1 = run_turn(
+        &call,
+        &root,
+        &world_id,
+        turn_input(&events, 0),
+        None,
+        |_| {},
+    )
+    .await
+    .unwrap()
+    .text;
+    let store_path = data::lanes_path(&root, &world_id).unwrap();
+    let before = read_store(&store_path);
+    assert_eq!(before.len(), 1);
+
+    events.push(event(TranscriptKind::Dialogue, "fox-id", "狐狸", &reply1));
+    events.push(event(TranscriptKind::Player, "", "阿濤", "來一杯麥酒"));
+    let barrier = crate::cli::update::gate::raise_now("claude").unwrap();
+    let error = match run_turn(
+        &call,
+        &root,
+        &world_id,
+        turn_input(&events, 0),
+        None,
+        |_| {},
+    )
+    .await
+    {
+        Err(error) => error,
+        Ok(_) => panic!("擋板期間應該回錯"),
+    };
+    assert!(crate::cli::is_updating_error(&error), "{error}");
+    let during = read_store(&store_path);
+    assert_eq!(
+        serde_json::to_string(&during).unwrap(),
+        serde_json::to_string(&before).unwrap(),
+        "擋板期間 lane 不能被撤"
+    );
+    drop(barrier);
+
+    let reply2 = run_turn(
+        &call,
+        &root,
+        &world_id,
+        turn_input(&events, 0),
+        None,
+        |_| {},
+    )
+    .await
+    .unwrap()
+    .text;
+    assert_eq!(reply2, "回覆2");
+    let calls = std::fs::read_to_string(session_dir.join("calls.jsonl")).unwrap();
+    assert_eq!(calls.lines().count(), 2, "擋板那輪不該起程序");
+    let resumed = calls.lines().nth(1).unwrap();
+    assert!(resumed.contains("--resume"));
+    // 擋板那輪沒送出去：玩家新句照常在這輪送
+    let resumed: serde_json::Value = serde_json::from_str(resumed).unwrap();
+    assert!(resumed["prompt"].as_str().unwrap().contains("來一杯麥酒"));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+thread_local! {
+    /// 一次性 hook：`provider_command` 之後、預寫 lane 狀態之前呼叫（模擬擋板在前置檢查之後才立起）
+    static AFTER_PROVIDER_COMMAND: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
+        std::cell::RefCell::new(None);
+}
+
+pub(super) fn after_provider_command() {
+    if let Some(hook) = AFTER_PROVIDER_COMMAND.with(|cell| cell.borrow_mut().take()) {
+        hook();
+    }
+}
+
+/// 擋板在前置檢查之後、spawn 之前才立起：預寫的 lane 狀態還原成這次嘗試之前（prior_state），
+/// 程序沒起、線保住；擋板撤掉後照常續聊同一條線。
+#[cfg(unix)]
+#[tokio::test]
+async fn barrier_raised_after_the_prewrite_restores_the_prior_lane() {
+    let _serial = crate::inflight::lock_real_process_tests();
+    let FakeCli {
+        dir,
+        mut call,
+        root,
+        world_id,
+        session_dir,
+        ..
+    } = fake_claude("late-barrier");
+    let program = dir.join("claude");
+    std::fs::copy(&call.program, &program).unwrap();
+    call.program = program;
+    let mut events = vec![event(TranscriptKind::Player, "", "阿濤", "老闆晚安")];
+    let reply1 = run_turn(
+        &call,
+        &root,
+        &world_id,
+        turn_input(&events, 0),
+        None,
+        |_| {},
+    )
+    .await
+    .unwrap()
+    .text;
+    let store_path = data::lanes_path(&root, &world_id).unwrap();
+    let before = read_store(&store_path);
+    assert_eq!(before.len(), 1);
+
+    events.push(event(TranscriptKind::Dialogue, "fox-id", "狐狸", &reply1));
+    events.push(event(TranscriptKind::Player, "", "阿濤", "來一杯麥酒"));
+    let held = std::rc::Rc::new(std::cell::RefCell::new(None));
+    let slot = held.clone();
+    AFTER_PROVIDER_COMMAND.with(|cell| {
+        *cell.borrow_mut() = Some(Box::new(move || {
+            *slot.borrow_mut() = crate::cli::update::gate::raise_now("claude");
+        }))
+    });
+    let error = match run_turn(
+        &call,
+        &root,
+        &world_id,
+        turn_input(&events, 0),
+        None,
+        |_| {},
+    )
+    .await
+    {
+        Err(error) => error,
+        Ok(_) => panic!("spawn 時擋板已立起，應該回錯"),
+    };
+    assert!(held.borrow().is_some(), "hook 應已立起擋板");
+    assert!(crate::cli::is_updating_error(&error), "{error}");
+    assert_eq!(
+        serde_json::to_string(&read_store(&store_path)).unwrap(),
+        serde_json::to_string(&before).unwrap(),
+        "預寫的狀態要還原成嘗試之前"
+    );
+    let calls = std::fs::read_to_string(session_dir.join("calls.jsonl")).unwrap();
+    assert_eq!(calls.lines().count(), 1, "擋板那輪不該起程序");
+    held.borrow_mut().take();
+
+    let reply2 = run_turn(
+        &call,
+        &root,
+        &world_id,
+        turn_input(&events, 0),
+        None,
+        |_| {},
+    )
+    .await
+    .unwrap()
+    .text;
+    assert_eq!(reply2, "回覆2");
+    let calls = std::fs::read_to_string(session_dir.join("calls.jsonl")).unwrap();
+    assert_eq!(calls.lines().count(), 2);
+    assert!(calls.lines().nth(1).unwrap().contains("--resume"));
+    let _ = std::fs::remove_dir_all(&dir);
+}

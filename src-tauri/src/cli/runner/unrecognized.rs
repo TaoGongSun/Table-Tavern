@@ -136,6 +136,21 @@ pub(super) fn message(
     }
 }
 
+/// 已裝版本比已測版舊（agy 不算：它只能裝最新版，裝了也不保證相容）。
+fn older_message(protocol: &CliProtocol, version: Option<&str>, tail: &str) -> Option<UiMsg> {
+    let version = version?;
+    if protocol.id == "agy" || !crate::cli::tested_versions::older_than_tested(protocol.id, version)
+    {
+        return None;
+    }
+    Some(UiMsg::CliOutputUnrecognizedOlder {
+        cli: protocol.name.to_owned(),
+        version: version_number(version),
+        tested: crate::cli::tested_versions::tested(protocol.id)?.to_owned(),
+        tail: tail.to_owned(),
+    })
+}
+
 pub(super) fn stderr_tail(stderr_text: &str) -> String {
     stderr_text
         .lines()
@@ -155,6 +170,10 @@ pub(super) async fn failure(
 ) -> Box<dyn std::error::Error + Send + Sync> {
     let current = version.finish().await;
     seen.log_once(protocol.id, current.as_deref());
+    // claude、codex、grok 已裝版本比已測版舊：文案改成「比本 app 測過的舊」，前端旁邊放只裝已測版的更新鈕
+    if let Some(older) = older_message(protocol, current.as_deref(), &tail) {
+        return older.into_error();
+    }
     let last_ok = usage_log
         .as_ref()
         .and_then(|log| read_last_ok(&last_ok_path(log.path), protocol.id));
@@ -261,5 +280,20 @@ mod tests {
             message("Grok", None, Some("1.0.70"), tail()),
             UiMsg::CliOutputUnrecognizedUnknownVersion { .. }
         ));
+    }
+
+    /// claude、codex、grok 比已測版舊才改「比測過的舊」；agy、同版、更新的都不改。
+    #[test]
+    fn older_than_tested_wording_only_for_pinnable_clis() {
+        use crate::cli::stream::{AGY_PROTOCOL, CLAUDE_PROTOCOL, GROK_PROTOCOL};
+        assert!(matches!(
+            older_message(&CLAUDE_PROTOCOL, Some("2.1.200 (Claude Code)"), ""),
+            Some(UiMsg::CliOutputUnrecognizedOlder { ref version, ref tested, .. })
+                if version == "2.1.200" && tested == "2.1.311"
+        ));
+        assert!(older_message(&GROK_PROTOCOL, Some("grok 1.0.70 (x) [stable]"), "").is_none());
+        assert!(older_message(&GROK_PROTOCOL, Some("grok 1.1.0 (x) [stable]"), "").is_none());
+        assert!(older_message(&AGY_PROTOCOL, Some("1.2.5"), "").is_none());
+        assert!(older_message(&CLAUDE_PROTOCOL, None, "").is_none());
     }
 }

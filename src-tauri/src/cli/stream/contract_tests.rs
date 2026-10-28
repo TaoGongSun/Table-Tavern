@@ -157,6 +157,7 @@ struct Parsed {
     thinking: bool,
     done: Option<(String, bool)>,
     unrecognized: Vec<String>,
+    model_unavailable: bool,
 }
 
 fn replay(fixture: &Fixture) -> Parsed {
@@ -174,6 +175,7 @@ fn replay(fixture: &Fixture) -> Parsed {
                     parsed.done = Some((text, is_error));
                 }
             }
+            CliLine::ModelUnavailable => parsed.model_unavailable = true,
             CliLine::SoftError(_) | CliLine::Other => {}
         }
     }
@@ -283,6 +285,47 @@ fn bad_model_recordings_never_look_successful() {
             "{label}：模型叫不到要解析成失敗收尾"
         );
         assert_ne!(fixture.record["exit"], 0, "{label}：退出碼應非 0");
+    }
+}
+
+/// 模型叫不到的錄音要辨識成 `CliModelUnavailable`（包 2 第 2 點：claude、codex 認結構化欄位，agy、grok 認文字）。
+#[test]
+fn bad_model_recordings_are_classified_as_model_unavailable() {
+    use super::super::runner::classify;
+    for fixture in load().iter().filter(|f| f.scenario == "badmodel") {
+        let label = format!("{}-{}", fixture.cli, fixture.version);
+        let parsed = replay(fixture);
+        let (text, _) = parsed.done.clone().unwrap();
+        let stderr = fixture.record["stderr_tail"].as_str().unwrap_or_default();
+        let args: Vec<String> = serde_json::from_value(fixture.record["args"].clone()).unwrap();
+        assert_eq!(
+            classify::needs_update(
+                &fixture.cli,
+                &text,
+                stderr,
+                parsed.model_unavailable,
+                classify::model_arg(&args),
+                "",
+            ),
+            Some(crate::ui_msg::UiMsg::CliModelUnavailable {
+                cli: fixture.cli.clone(),
+                model: "no-such-model-xyz".to_owned(),
+            }),
+            "{label}"
+        );
+        // 成功的錄音不會被誤判
+        for ok in load()
+            .iter()
+            .filter(|f| f.cli == fixture.cli && f.scenario == "oneshot")
+        {
+            let parsed = replay(ok);
+            let text = parsed.done.map(|(text, _)| text).unwrap_or_default();
+            assert_eq!(
+                classify::needs_update(&ok.cli, &text, "", parsed.model_unavailable, None, ""),
+                None,
+                "{label}"
+            );
+        }
     }
 }
 

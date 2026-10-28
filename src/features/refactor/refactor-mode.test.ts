@@ -48,7 +48,7 @@ describe("probeFailureKind（初判失敗分類，2026-10-12 作者裁決）", (
       msg("cli_risk_not_accepted"),
       `Error: ${msg("cli_risk_not_accepted")}`,
       msg("cli_not_found", { cli: "claude" }),
-      msg("agy_too_old", { version: "1.0.0" }),
+      msg("cli_too_old", { cli: "agy", version: "1.0.0", required: "1.2.1" }),
       msg("unknown_transport", { transport: "x" }),
       msg("update_gate_closed"),
       msg("tier_model_missing", { tier: "gm" }),

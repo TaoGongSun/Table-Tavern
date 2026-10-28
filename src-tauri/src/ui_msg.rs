@@ -362,8 +362,27 @@ pub enum UiMsg {
     CliNotFound {
         cli: String,
     },
-    AgyTooOld {
+    /// CLI 太舊（不認得 app 用的旗標）：cli 是 id 原文，version 是 `--version` 原文（可能空）。
+    CliTooOld {
+        cli: String,
         version: String,
+    },
+    /// CLI 太舊、知道要求的最低版本（app 的版本門檻或伺服器要求升級）；required 是版本號。
+    CliTooOldRequired {
+        cli: String,
+        version: String,
+        required: String,
+    },
+    /// CLI 叫不到這個模型（模型退場、帳號沒權限或 CLI 太舊不認得）；cli 是 id 原文，model 是模型 id 原文（可能空）。
+    CliModelUnavailable {
+        cli: String,
+        model: String,
+    },
+    /// 一鍵安裝時已測版下載不到、改裝了最新版（非已測版本）；cli 是 id 原文。
+    CliInstalledUntested,
+    /// 這支 CLI 正在更新（更新鈕或啟動復原）；新呼叫立即回這個，不排隊。cli 是 id 原文。
+    CliUpdating {
+        cli: String,
     },
     UnknownTransport {
         transport: String,
@@ -417,6 +436,13 @@ pub enum UiMsg {
     CliOutputUnrecognizedNever {
         cli: String,
         version: String,
+        tail: String,
+    },
+    /// 同上，已裝版本比本 app 測過的舊（claude、codex、grok）；tested 是測過的版本。
+    CliOutputUnrecognizedOlder {
+        cli: String,
+        version: String,
+        tested: String,
         tail: String,
     },
     /// 同上，查不到版本。

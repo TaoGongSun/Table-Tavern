@@ -34,6 +34,31 @@ export function backendCode(raw: unknown): string | null {
   return parsed === SYNTAX ? null : (parsed?.code ?? null);
 }
 
+export interface BackendMsg {
+  code: string;
+  params: Record<string, string | number | boolean>;
+}
+
+/**
+ * 給程式判斷用：起首那一則訊息，以及它 `error` 欄位一路包著的內層訊息（外到內，最多 MAX_DEPTH 層）。
+ * 起首容許 invoke 的 `Error: ` 與傳輸層保底的 `AI_CALL_FAILED: `；同樣只認起首，中間夾著的不算。
+ */
+export function backendChain(raw: unknown): BackendMsg[] {
+  const chain: BackendMsg[] = [];
+  let text = String(raw).replace(/^(?:Error:\s*)?(?:AI_CALL_FAILED:\s*)?/, "");
+  while (chain.length < MAX_DEPTH && text.startsWith(MARK)) {
+    const end = jsonObjectEnd(text, MARK.length);
+    if (end < 0) break;
+    const parsed = parse(text.slice(MARK.length, end));
+    if (parsed === SYNTAX || parsed === null) break;
+    chain.push(parsed);
+    const inner = parsed.params.error;
+    if (typeof inner !== "string") break;
+    text = inner;
+  }
+  return chain;
+}
+
 function render(text: string, depth: number): string {
   let out = "";
   let from = 0;

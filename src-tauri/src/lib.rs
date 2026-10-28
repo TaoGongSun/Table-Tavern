@@ -188,6 +188,7 @@ pub fn run() {
             commands::settings::detect_clis,
             commands::cli_setup::install_cli,
             commands::cli_setup::cli_verified,
+            commands::cli_update::update_cli,
             commands::settings::sponsor_status,
             commands::settings::import_sponsor_pack,
             commands::settings::list_cli_models,
@@ -238,6 +239,11 @@ pub fn run() {
             }
             if let Ok(root) = config_root(app.handle()) {
                 smart_free::spawn_background_refresh(app.handle().clone(), root);
+            }
+            // CLI 更新的啟動復原：同步立起有標記那幾家的擋板，再背景處理；排在家目錄回收之前，
+            // 回收（codex delete 會經過 spawn）在擋板立著時拿到 CliUpdating，不會搶在復原前面
+            if let Ok(data) = data_root(app.handle()) {
+                commands::cli_update::spawn_startup_recovery(app.handle(), data);
             }
             // app 專用 CLI 家目錄的啟動回收（agy 對話、grok prompt 歷史與搜尋索引）
             if let (Ok(config), Ok(data)) = (config_root(app.handle()), data_root(app.handle())) {
@@ -408,6 +414,7 @@ mod command_classification {
         "list_versions",
         "rollback_install",
         "update_check",
+        "update_cli",
         "update_config",
         "update_download",
         "update_install",

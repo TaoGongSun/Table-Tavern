@@ -256,3 +256,22 @@ describe("explainAiError 生圖專屬碼", () => {
     );
   });
 });
+
+describe("需要更新 CLI 的錯誤", () => {
+  it("包在 AI_CALL_FAILED 裡也不蓋籠統的「再試一次」", () => {
+    const model = `TTMSG:${JSON.stringify({ code: "cli_model_unavailable", cli: "claude", model: "opus" })}`;
+    expect(explainAiError(`AI_CALL_FAILED: ${model}`, "claude")).toBeNull();
+    const old = `TTMSG:${JSON.stringify({ code: "cli_too_old", cli: "grok", version: "" })}`;
+    expect(explainAiError(`Error: AI_CALL_FAILED: ${old}`, "grok")).toBeNull();
+    expect(explainAiError("AI_CALL_FAILED: something else", "claude")).toBe("errAiUnknown");
+  });
+
+  it("排在限流、額度、登入判斷之前：原文帶到那些字樣也不出「重新登入」", () => {
+    const old = `TTMSG:${JSON.stringify({ code: "cli_too_old", cli: "claude", version: "Not logged in 401" })}`;
+    expect(explainAiError(`AI_CALL_FAILED: ${old}`, "claude")).toBeNull();
+    const model = `TTMSG:${JSON.stringify({ code: "cli_model_unavailable", cli: "codex", model: "rate-limit-429" })}`;
+    expect(explainAiError(model, "codex")).toBeNull();
+    // 沒有更新碼的照舊分流
+    expect(explainAiError("Not logged in · Please run /login", "claude")).toBe("errAuthCli");
+  });
+});

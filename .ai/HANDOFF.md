@@ -6,7 +6,6 @@
 
 ## 進行中
 - [card-mvu-shim](handoffs/card-mvu-shim.md) — 卡片介面沙盒墊 MVU 讀寫變數：全部已合併 main，剩實測佇列梯 1 項目（含 iframe 內按鈕實際互動）
-- [cli-version-gate](handoffs/cli-version-gate.md) — 四家 CLI 升版改輸出格式只在執行期才發現：盤點與提方案中
 
 ## 等實機驗收（順序見[實測佇列](reference/verification-queue.md)）
 - [desktop-tour](handoffs/desktop-tour.md) — 網頁版的桌面版導覽頁：2026-10-23 已上線（main 7f686cb）、WebKit e2e 與站上實開都過，無剩餘事項

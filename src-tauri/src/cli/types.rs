@@ -7,6 +7,12 @@ pub struct CliInfo {
     pub id: String,
     pub path: String,
     pub version: String,
+    /// 已裝版本比 app 測過的舊時＝測過的版本（claude、codex、grok；設定頁的一次性提示）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tested: Option<String>,
+    /// 更新狀態：updating＝更新或啟動復原中；broken＝還原失敗、請重新安裝（`update::state`）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub update_state: Option<&'static str>,
 }
 
 /// 設定 UI 下拉用的模型選項。清單讀自各 CLI 自身（codex：app 的 codex-home，退回 ~/.codex 的 models_cache.json；
@@ -99,6 +105,9 @@ pub enum CliLine {
     /// 非致命的錯誤通知（codex 頂層 error：重試中的 Reconnecting 也走這裡）：記下來，不結束回合；
     /// 回合最後失敗時拿最後一則當錯誤文字。
     SoftError(String),
+    /// 模型叫不到的結構化訊號（claude assistant 事件的 `error: "model_not_found"`）：收尾報錯時據此掛
+    /// `CliModelUnavailable`，不結束回合。
+    ModelUnavailable,
     Other,
 }
 

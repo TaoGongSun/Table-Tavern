@@ -121,10 +121,15 @@ async fn probe_cli(id: &str) -> Option<CliInfo> {
             .unwrap_or_default(),
         Err(_) => String::new(),
     };
+    let tested = (id != "agy" && super::tested_versions::older_than_tested(id, &version))
+        .then(|| super::tested_versions::tested(id).map(str::to_owned))
+        .flatten();
     Some(CliInfo {
         id: id.to_owned(),
         path: path.to_string_lossy().into_owned(),
         version,
+        tested,
+        update_state: None,
     })
 }
 

@@ -167,3 +167,12 @@ button.menu-item-danger,
   border: 0;
   background: var(--line);
 }
+
+/* CLI 錯誤旁與設定頁的更新鈕（shared/ui/CliUpdateAction）：結果文字與按鈕同一行、放不下就折行 */
+.cli-update-action {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}

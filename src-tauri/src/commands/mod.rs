@@ -2,6 +2,7 @@ pub(crate) mod card_vars;
 pub(crate) mod character;
 pub(crate) mod chat;
 pub(crate) mod cli_setup;
+pub(crate) mod cli_update;
 pub(crate) mod genesis;
 pub(crate) mod image;
 pub(crate) mod openrouter_key;

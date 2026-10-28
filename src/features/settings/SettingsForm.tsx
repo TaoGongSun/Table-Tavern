@@ -11,7 +11,15 @@ import { useKeyTier } from "./key-tier";
 import { updateConfig } from "./update-config";
 import { AppConfig } from "../../shared/contracts/backend-contracts";
 import { Dialog } from "../../shared/ui/Dialog";
-import { cachedClis, CLI_LABELS, CliInfo, cliConnectedKey, detectClis } from "../ai-connection/cli";
+import {
+  cachedClis,
+  CLI_LABELS,
+  CliInfo,
+  cliConnectedKey,
+  cliTestedPromptedKey,
+  detectClis,
+} from "../ai-connection/cli";
+import { CLI_CHANGED_EVENT } from "../../shared/ui/cli-update";
 import { CACHE_UPDATED_EVENT } from "../ai-connection/SmartFreeNewModelBanner";
 import { FAILOVER_EVENT, SWITCHED_EVENT } from "../ai-connection/smart-free-events";
 import { type CliInstallProgress, TransportChoice } from "./TransportChoice";
@@ -204,6 +212,22 @@ export function Settings({
     setPermissionNoticeState(provider);
     reportBlocking();
   }
+  // 「有測試過的新版本」提示（claude、codex、grok）：清單版本還沒提示過才出現，實際顯示時記進偏好；
+  // 這次設定頁開著期間照樣顯示，下次（同一個清單版本）就不再出現
+  const [testedPrompts, setTestedPrompts] = useState<Record<string, string>>({});
+  useEffect(() => {
+    for (const cli of clis ?? []) {
+      const tested = cli.tested;
+      if (!tested || cli.id === "agy" || cli.update_state) continue;
+      if (config.preferences[cliTestedPromptedKey(cli.id)] === tested || testedPrompts[cli.id] === tested) {
+        continue;
+      }
+      setTestedPrompts((previous) => ({ ...previous, [cli.id]: tested }));
+      void updateConfig({ preferences: { [cliTestedPromptedKey(cli.id)]: tested } })
+        .then((saved) => onSavedRef.current(saved))
+        .catch(() => {});
+    }
+  }, [clis, config.preferences, testedPrompts]);
   const [installingCli, setInstallingCli] = useState<string | null>(null);
   const [installProgress, setInstallProgress] = useState<Record<string, CliInstallProgress>>({});
   const cliPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -214,6 +238,21 @@ export function Settings({
       cliPollRef.current = null;
     }
   }
+
+  // 更新鈕換了 CLI 版本：重探，版本與提示跟著更新
+  useEffect(() => {
+    const refresh = () => void detectClis(true).then(setClis).catch(() => {});
+    window.addEventListener(CLI_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(CLI_CHANGED_EVENT, refresh);
+  }, []);
+
+  // 更新或啟動復原進行中：每 3 秒重探，結束就回到正常狀態
+  const cliUpdating = clis?.some((cli) => cli.update_state === "updating") ?? false;
+  useEffect(() => {
+    if (!cliUpdating) return;
+    const timer = setInterval(() => void detectClis(true).then(setClis).catch(() => {}), 3000);
+    return () => clearInterval(timer);
+  }, [cliUpdating]);
 
   useEffect(() => {
     detectClis().then(setClis).catch(() => setClis([]));
@@ -285,6 +324,7 @@ export function Settings({
           loginHint: t("cliInstallLoginHint", params),
           success: t("cliInstallSuccess", params),
           fail: t("cliInstallFail", params),
+          untested: t("cliInstallUntested"),
         },
       });
     } catch (reason) {
@@ -577,6 +617,7 @@ export function Settings({
             installingCli={installingCli}
             installProgress={installProgress}
             onInstall={(id, switchAccount) => void installCli(id, switchAccount)}
+            testedPrompts={testedPrompts}
           />
           {transport !== "api" && (
             <div className="risk-box" role="note">

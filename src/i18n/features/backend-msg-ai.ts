@@ -15,7 +15,16 @@ const COPY = {
       "App 讀不到 codex 登入（{path}）。請到設定頁登入 codex；如果你把 codex 登入設成存在系統鑰匙圈，App 無法共用，需改回檔案儲存。",
     be_cli_risk_not_accepted: "尚未確認 CLI 訂閱模式的風險告知，請到設定完成確認",
     be_cli_not_found: "找不到 {cli} CLI，請確認已安裝並登入",
-    be_agy_too_old: "Gemini CLI {version} 太舊，本 app 需要 1.2.1 以上。請執行 `agy update` 後重新驗證。",
+    be_cli_too_old:
+      "{cli} CLI 版本太舊（{version}），本 app 無法使用。",
+    be_cli_too_old_required:
+      "{cli} CLI 版本太舊（{version}），本 app 需要 {required} 以上。",
+    be_cli_model_unavailable:
+      "{cli} CLI 叫不到模型 {model}：模型可能已退場，或這版 CLI 還不認得它。",
+    be_cli_updating:
+      "{cli} CLI 正在更新，請等更新完成再試一次。",
+    be_cli_installed_untested:
+      "本 app 測過的版本下載不到，已改裝最新版（非已測版本）。",
     be_unknown_transport: "未知的連線方式：{transport}",
     be_tier_model_missing: "尚未設定「{tier}」檔位對應的模型，請先到設定填寫",
     be_openrouter_api_key_missing: "尚未設定 OpenRouter API key，請先到設定貼上",
@@ -36,6 +45,8 @@ const COPY = {
       "{cli} CLI {version} 這次的回覆格式無法辨識。{tail}",
     be_cli_output_unrecognized_never:
       "{cli} CLI {version} 的回覆格式無法辨識，需要等本 app 更新支援。{tail}",
+    be_cli_output_unrecognized_older:
+      "{cli} CLI {version} 比本 app 測過的版本（{tested}）舊，回覆格式無法辨識。{tail}",
     be_cli_output_unrecognized_unknown_version:
       "{cli} CLI 的回覆格式無法辨識，也查不到版本，需要等本 app 更新支援。{tail}",
     be_cli_turn_failed: "{cli} CLI 回合失敗",
@@ -61,7 +72,16 @@ const COPY = {
       "App 读不到 codex 登录（{path}）。请到设定页登录 codex；如果你把 codex 登录设成存在系统钥匙串，App 无法共用，需改回文件存储。",
     be_cli_risk_not_accepted: "尚未确认 CLI 订阅模式的风险告知，请到设定完成确认",
     be_cli_not_found: "找不到 {cli} CLI，请确认已安装并登录",
-    be_agy_too_old: "Gemini CLI {version} 太旧，本 app 需要 1.2.1 以上。请执行 `agy update` 后重新验证。",
+    be_cli_too_old:
+      "{cli} CLI 版本太旧（{version}），本 app 无法使用。",
+    be_cli_too_old_required:
+      "{cli} CLI 版本太旧（{version}），本 app 需要 {required} 以上。",
+    be_cli_model_unavailable:
+      "{cli} CLI 调用不到模型 {model}：模型可能已下线，或这版 CLI 还不认得它。",
+    be_cli_updating:
+      "{cli} CLI 正在更新，请等更新完成后再试一次。",
+    be_cli_installed_untested:
+      "本 app 测过的版本下载不到，已改装最新版（非已测版本）。",
     be_unknown_transport: "未知的连接方式：{transport}",
     be_tier_model_missing: "尚未设定“{tier}”档位对应的模型，请先到设定填写",
     be_openrouter_api_key_missing: "尚未设定 OpenRouter API key，请先到设定粘贴",
@@ -82,6 +102,8 @@ const COPY = {
       "{cli} CLI {version} 这次的回复格式无法识别。{tail}",
     be_cli_output_unrecognized_never:
       "{cli} CLI {version} 的回复格式无法识别，需要等本 app 更新支持。{tail}",
+    be_cli_output_unrecognized_older:
+      "{cli} CLI {version} 比本 app 测过的版本（{tested}）旧，回复格式无法识别。{tail}",
     be_cli_output_unrecognized_unknown_version:
       "{cli} CLI 的回复格式无法识别，也查不到版本，需要等本 app 更新支持。{tail}",
     be_cli_turn_failed: "{cli} CLI 回合失败",
@@ -108,8 +130,16 @@ const COPY = {
     be_cli_risk_not_accepted:
       "The risk notice for CLI subscription mode hasn't been confirmed yet. Confirm it in Settings.",
     be_cli_not_found: "Couldn't find the {cli} CLI. Make sure it's installed and signed in.",
-    be_agy_too_old:
-      "Gemini CLI {version} is too old; this app needs 1.2.1 or later. Run `agy update`, then re-verify.",
+    be_cli_too_old:
+      "{cli} CLI {version} is too old for this app.",
+    be_cli_too_old_required:
+      "{cli} CLI {version} is too old; this app needs {required} or later.",
+    be_cli_model_unavailable:
+      "{cli} CLI can't reach model {model}: it may have been retired, or this CLI version doesn't know it yet.",
+    be_cli_updating:
+      "{cli} CLI is updating; try again once it finishes.",
+    be_cli_installed_untested:
+      "The version this app was tested with couldn't be downloaded, so the latest version was installed instead (not a tested version).",
     be_unknown_transport: "Unknown connection type: {transport}",
     be_tier_model_missing: "No model is set for the “{tier}” tier yet. Fill it in under Settings.",
     be_openrouter_api_key_missing: "No OpenRouter API key yet. Paste one in Settings.",
@@ -132,6 +162,8 @@ const COPY = {
       "This {cli} CLI {version} reply was in a format this app can't read. {tail}",
     be_cli_output_unrecognized_never:
       "{cli} CLI {version} replies in a format this app can't read; this app needs an update to support it. {tail}",
+    be_cli_output_unrecognized_older:
+      "{cli} CLI {version} is older than the version this app was tested with ({tested}), and its reply format can't be read. {tail}",
     be_cli_output_unrecognized_unknown_version:
       "{cli} CLI replies in a format this app can't read, and its version couldn't be found; this app needs an update to support it. {tail}",
     be_cli_turn_failed: "{cli} CLI turn failed",
@@ -161,8 +193,16 @@ const COPY = {
     be_cli_risk_not_accepted:
       "CLIサブスクリプションモードのリスク確認がまだです。設定で確認を済ませてください。",
     be_cli_not_found: "{cli} CLI が見つかりません。インストールとログインを確認してください。",
-    be_agy_too_old:
-      "Gemini CLI {version} は古すぎます。このアプリには 1.2.1 以上が必要です。`agy update` を実行してから再認証してください。",
+    be_cli_too_old:
+      "{cli} CLI {version} は古すぎて、このアプリでは使えません。",
+    be_cli_too_old_required:
+      "{cli} CLI {version} は古すぎます。このアプリには {required} 以上が必要です。",
+    be_cli_model_unavailable:
+      "{cli} CLI からモデル {model} を呼び出せません。モデルが提供終了したか、この CLI のバージョンがまだ認識していない可能性があります。",
+    be_cli_updating:
+      "{cli} CLI を更新中です。完了してからもう一度お試しください。",
+    be_cli_installed_untested:
+      "このアプリで検証済みのバージョンをダウンロードできなかったため、最新版をインストールしました（検証済みではありません）。",
     be_unknown_transport: "不明な接続方式：{transport}",
     be_tier_model_missing: "「{tier}」ランクのモデルが未設定です。先に設定で入力してください。",
     be_openrouter_api_key_missing: "OpenRouter の APIキーが未設定です。先に設定で貼り付けてください。",
@@ -185,6 +225,8 @@ const COPY = {
       "{cli} CLI {version} の今回の返答は形式を読み取れませんでした。{tail}",
     be_cli_output_unrecognized_never:
       "{cli} CLI {version} の返答形式を読み取れません。このアプリの更新を待つ必要があります。{tail}",
+    be_cli_output_unrecognized_older:
+      "{cli} CLI {version} はこのアプリで検証済みのバージョン（{tested}）より古く、返答形式を読み取れません。{tail}",
     be_cli_output_unrecognized_unknown_version:
       "{cli} CLI の返答形式を読み取れず、バージョンも確認できません。このアプリの更新を待つ必要があります。{tail}",
     be_cli_turn_failed: "{cli} CLI のターンが失敗しました",
@@ -214,8 +256,16 @@ const COPY = {
     be_cli_risk_not_accepted:
       "CLI 구독 모드의 리스크 고지를 아직 확인하지 않았습니다. 설정에서 확인을 마쳐 주세요.",
     be_cli_not_found: "{cli} CLI를 찾을 수 없습니다. 설치와 로그인 상태를 확인해 주세요.",
-    be_agy_too_old:
-      "Gemini CLI {version}은(는) 너무 오래되었습니다. 이 앱은 1.2.1 이상이 필요합니다. `agy update`를 실행한 뒤 재인증해 주세요.",
+    be_cli_too_old:
+      "{cli} CLI {version}은(는) 너무 오래되어 이 앱에서 사용할 수 없습니다.",
+    be_cli_too_old_required:
+      "{cli} CLI {version}은(는) 너무 오래되었습니다. 이 앱은 {required} 이상이 필요합니다.",
+    be_cli_model_unavailable:
+      "{cli} CLI가 모델 {model}을(를) 호출하지 못했습니다. 모델이 종료되었거나 이 CLI 버전이 아직 모델을 알지 못할 수 있습니다.",
+    be_cli_updating:
+      "{cli} CLI를 업데이트하는 중입니다. 끝난 뒤 다시 시도해 주세요.",
+    be_cli_installed_untested:
+      "이 앱에서 검증한 버전을 내려받지 못해 최신 버전을 설치했습니다(검증되지 않은 버전).",
     be_unknown_transport: "알 수 없는 연결 방식: {transport}",
     be_tier_model_missing: "“{tier}” 등급에 연결된 모델이 없습니다. 먼저 설정에서 입력해 주세요.",
     be_openrouter_api_key_missing: "OpenRouter API 키가 아직 없습니다. 먼저 설정에 붙여 넣어 주세요.",
@@ -238,6 +288,8 @@ const COPY = {
       "{cli} CLI {version}의 이번 답변 형식을 읽을 수 없습니다. {tail}",
     be_cli_output_unrecognized_never:
       "{cli} CLI {version}의 답변 형식을 읽을 수 없습니다. 이 앱의 업데이트를 기다려야 합니다. {tail}",
+    be_cli_output_unrecognized_older:
+      "{cli} CLI {version}은(는) 이 앱에서 검증한 버전({tested})보다 오래되어 답변 형식을 읽을 수 없습니다. {tail}",
     be_cli_output_unrecognized_unknown_version:
       "{cli} CLI의 답변 형식을 읽을 수 없고 버전도 확인할 수 없습니다. 이 앱의 업데이트를 기다려야 합니다. {tail}",
     be_cli_turn_failed: "{cli} CLI 턴이 실패했습니다",
@@ -267,8 +319,16 @@ const COPY = {
     be_cli_risk_not_accepted:
       "Aún no has confirmado el aviso de riesgos del modo de suscripción por CLI. Confírmalo en los ajustes.",
     be_cli_not_found: "No se encontró la CLI de {cli}. Comprueba que esté instalada y con la sesión iniciada.",
-    be_agy_too_old:
-      "Gemini CLI {version} es demasiado antigua; esta app necesita la 1.2.1 o posterior. Ejecuta `agy update` y vuelve a verificar.",
+    be_cli_too_old:
+      "La CLI de {cli} {version} es demasiado antigua para esta app.",
+    be_cli_too_old_required:
+      "La CLI de {cli} {version} es demasiado antigua; esta app necesita la {required} o posterior.",
+    be_cli_model_unavailable:
+      "La CLI de {cli} no puede usar el modelo {model}: puede que lo hayan retirado o que esta versión de la CLI aún no lo conozca.",
+    be_cli_updating:
+      "La CLI de {cli} se está actualizando; vuelve a intentarlo cuando termine.",
+    be_cli_installed_untested:
+      "No se pudo descargar la versión con la que se probó esta app, así que se instaló la más reciente (no es una versión probada).",
     be_unknown_transport: "Tipo de conexión desconocido: {transport}",
     be_tier_model_missing: "Todavía no hay modelo para el nivel «{tier}». Rellénalo en los ajustes.",
     be_openrouter_api_key_missing: "Aún no hay API key de OpenRouter. Pégala en los ajustes.",
@@ -292,6 +352,8 @@ const COPY = {
       "Esta respuesta de la CLI de {cli} {version} tenía un formato que esta app no puede leer. {tail}",
     be_cli_output_unrecognized_never:
       "La CLI de {cli} {version} responde en un formato que esta app no puede leer; hay que esperar una actualización de esta app. {tail}",
+    be_cli_output_unrecognized_older:
+      "La CLI de {cli} {version} es más antigua que la versión con la que se probó esta app ({tested}) y su formato de respuesta no se puede leer. {tail}",
     be_cli_output_unrecognized_unknown_version:
       "La CLI de {cli} responde en un formato que esta app no puede leer y no se pudo averiguar su versión; hay que esperar una actualización de esta app. {tail}",
     be_cli_turn_failed: "Falló el turno de la CLI de {cli}",
@@ -321,8 +383,16 @@ const COPY = {
     be_cli_risk_not_accepted:
       "O aviso de risco do modo de assinatura da CLI ainda não foi confirmado. Confirme nas configurações.",
     be_cli_not_found: "A CLI do {cli} não foi encontrada. Confira se ela está instalada e logada.",
-    be_agy_too_old:
-      "Gemini CLI {version} é antiga demais; este app precisa da 1.2.1 ou mais recente. Rode `agy update` e reverifique.",
+    be_cli_too_old:
+      "A CLI do {cli} {version} é antiga demais para este app.",
+    be_cli_too_old_required:
+      "A CLI do {cli} {version} é antiga demais; este app precisa da {required} ou mais recente.",
+    be_cli_model_unavailable:
+      "A CLI do {cli} não consegue usar o modelo {model}: ele pode ter sido descontinuado, ou esta versão da CLI ainda não o conhece.",
+    be_cli_updating:
+      "A CLI do {cli} está sendo atualizada; tente de novo quando terminar.",
+    be_cli_installed_untested:
+      "Não deu para baixar a versão com que este app foi testado, então foi instalada a mais recente (não é uma versão testada).",
     be_unknown_transport: "Tipo de conexão desconhecido: {transport}",
     be_tier_model_missing: "Ainda não há modelo para o nível “{tier}”. Preencha nas configurações.",
     be_openrouter_api_key_missing: "Ainda não há API key do OpenRouter. Cole uma nas configurações.",
@@ -346,6 +416,8 @@ const COPY = {
       "Esta resposta da CLI do {cli} {version} veio num formato que este app não consegue ler. {tail}",
     be_cli_output_unrecognized_never:
       "A CLI do {cli} {version} responde num formato que este app não consegue ler; é preciso esperar uma atualização deste app. {tail}",
+    be_cli_output_unrecognized_older:
+      "A CLI do {cli} {version} é mais antiga que a versão com que este app foi testado ({tested}), e o formato da resposta não pode ser lido. {tail}",
     be_cli_output_unrecognized_unknown_version:
       "A CLI do {cli} responde num formato que este app não consegue ler e a versão não foi encontrada; é preciso esperar uma atualização deste app. {tail}",
     be_cli_turn_failed: "O turno da CLI do {cli} falhou",
@@ -375,8 +447,16 @@ const COPY = {
     be_cli_risk_not_accepted:
       "Der Risikohinweis für den CLI-Abonnementmodus ist noch nicht bestätigt. Bestätige ihn in den Einstellungen.",
     be_cli_not_found: "Die {cli}-CLI wurde nicht gefunden. Prüfe, ob sie installiert und angemeldet ist.",
-    be_agy_too_old:
-      "Gemini CLI {version} ist zu alt; diese App braucht 1.2.1 oder neuer. Führe `agy update` aus und verifiziere dann neu.",
+    be_cli_too_old:
+      "Die {cli}-CLI {version} ist für diese App zu alt.",
+    be_cli_too_old_required:
+      "Die {cli}-CLI {version} ist zu alt; diese App braucht {required} oder neuer.",
+    be_cli_model_unavailable:
+      "Die {cli}-CLI erreicht das Modell {model} nicht: Es wurde vielleicht eingestellt, oder diese CLI-Version kennt es noch nicht.",
+    be_cli_updating:
+      "Die {cli}-CLI wird gerade aktualisiert; versuche es danach noch einmal.",
+    be_cli_installed_untested:
+      "Die mit dieser App getestete Version ließ sich nicht herunterladen, deshalb wurde die neueste installiert (keine getestete Version).",
     be_unknown_transport: "Unbekannte Verbindungsart: {transport}",
     be_tier_model_missing: "Für die Stufe „{tier}“ ist noch kein Modell eingestellt. Trage es in den Einstellungen ein.",
     be_openrouter_api_key_missing: "Noch kein OpenRouter-API-Schlüssel. Füge ihn in den Einstellungen ein.",
@@ -400,6 +480,8 @@ const COPY = {
       "Diese Antwort der {cli}-CLI {version} hatte ein Format, das diese App nicht lesen kann. {tail}",
     be_cli_output_unrecognized_never:
       "Die {cli}-CLI {version} antwortet in einem Format, das diese App nicht lesen kann; diese App braucht ein Update, um es zu unterstützen. {tail}",
+    be_cli_output_unrecognized_older:
+      "Die {cli}-CLI {version} ist älter als die mit dieser App getestete Version ({tested}), und ihr Antwortformat lässt sich nicht lesen. {tail}",
     be_cli_output_unrecognized_unknown_version:
       "Die {cli}-CLI antwortet in einem Format, das diese App nicht lesen kann, und ihre Version war nicht zu ermitteln; diese App braucht ein Update, um es zu unterstützen. {tail}",
     be_cli_turn_failed: "Runde der {cli}-CLI fehlgeschlagen",
@@ -430,8 +512,16 @@ const COPY = {
     be_cli_risk_not_accepted:
       "L'avertissement sur les risques du mode abonnement CLI n'est pas encore confirmé. Confirme-le dans les réglages.",
     be_cli_not_found: "CLI {cli} introuvable. Vérifie qu'elle est installée et connectée.",
-    be_agy_too_old:
-      "Gemini CLI {version} est trop ancienne\u00a0; cette app nécessite la 1.2.1 ou plus récente. Lance `agy update`, puis revalide.",
+    be_cli_too_old:
+      "La CLI {cli} {version} est trop ancienne pour cette app.",
+    be_cli_too_old_required:
+      "La CLI {cli} {version} est trop ancienne\u00a0; cette app nécessite la {required} ou plus récente.",
+    be_cli_model_unavailable:
+      "La CLI {cli} n'arrive pas à utiliser le modèle {model}\u00a0: il a peut-être été retiré, ou cette version de la CLI ne le connaît pas encore.",
+    be_cli_updating:
+      "La CLI {cli} est en cours de mise à jour\u00a0; réessaie une fois terminé.",
+    be_cli_installed_untested:
+      "La version testée avec cette app n'a pas pu être téléchargée, la plus récente a donc été installée (version non testée).",
     be_unknown_transport: "Type de connexion inconnu\u00a0: {transport}",
     be_tier_model_missing: "Aucun modèle n'est défini pour la catégorie «\u00a0{tier}\u00a0». Renseigne-le dans les réglages.",
     be_openrouter_api_key_missing: "Pas encore de clé API OpenRouter. Colle-la dans les réglages.",
@@ -455,6 +545,8 @@ const COPY = {
       "Cette réponse de la CLI {cli} {version} était dans un format que cette app ne sait pas lire. {tail}",
     be_cli_output_unrecognized_never:
       "La CLI {cli} {version} répond dans un format que cette app ne sait pas lire\u00a0; il faut attendre une mise à jour de cette app. {tail}",
+    be_cli_output_unrecognized_older:
+      "La CLI {cli} {version} est plus ancienne que la version testée avec cette app ({tested}) et son format de réponse est illisible. {tail}",
     be_cli_output_unrecognized_unknown_version:
       "La CLI {cli} répond dans un format que cette app ne sait pas lire et sa version est introuvable\u00a0; il faut attendre une mise à jour de cette app. {tail}",
     be_cli_turn_failed: "Échec du tour de la CLI {cli}",
@@ -484,8 +576,16 @@ const COPY = {
     be_cli_risk_not_accepted:
       "Согласие с рисками режима подписки CLI ещё не подтверждено. Подтверди его в настройках.",
     be_cli_not_found: "CLI {cli} не найден. Проверь, что он установлен и в нём выполнен вход.",
-    be_agy_too_old:
-      "Gemini CLI {version} слишком старый: приложению нужна версия 1.2.1 или новее. Выполни `agy update` и проверь заново.",
+    be_cli_too_old:
+      "CLI {cli} {version} слишком старый для этого приложения.",
+    be_cli_too_old_required:
+      "CLI {cli} {version} слишком старый: приложению нужна версия {required} или новее.",
+    be_cli_model_unavailable:
+      "CLI {cli} не может обратиться к модели {model}: возможно, её сняли с поддержки или эта версия CLI её ещё не знает.",
+    be_cli_updating:
+      "CLI {cli} обновляется; попробуй снова, когда обновление закончится.",
+    be_cli_installed_untested:
+      "Не удалось скачать версию, с которой проверено приложение, поэтому установлена последняя (непроверенная) версия.",
     be_unknown_transport: "Неизвестный способ подключения: {transport}",
     be_tier_model_missing: "Для уровня «{tier}» ещё не задана модель. Укажи её в настройках.",
     be_openrouter_api_key_missing: "API key OpenRouter ещё не задан. Вставь его в настройках.",
@@ -508,6 +608,8 @@ const COPY = {
       "Этот ответ CLI {cli} {version} пришёл в формате, который приложение не может прочитать. {tail}",
     be_cli_output_unrecognized_never:
       "CLI {cli} {version} отвечает в формате, который приложение не может прочитать; нужно дождаться обновления этого приложения. {tail}",
+    be_cli_output_unrecognized_older:
+      "CLI {cli} {version} старее версии, с которой проверено приложение ({tested}), и формат его ответа не читается. {tail}",
     be_cli_output_unrecognized_unknown_version:
       "CLI {cli} отвечает в формате, который приложение не может прочитать, и его версию не удалось определить; нужно дождаться обновления этого приложения. {tail}",
     be_cli_turn_failed: "Ход {cli} CLI завершился ошибкой",

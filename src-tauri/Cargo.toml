@@ -53,12 +53,17 @@ rquickjs = { version = "=0.14.0", features = ["loader"] }
 # GM 回覆端剝除判斷某行是否在程式碼區塊內，照 CommonMark 規則（transport/reply_cleanup.rs）；只用解析器。
 pulldown-cmark = { version = "=0.13.4", default-features = false }
 
+# CLI 更新：程序群組整組殺、在途 pid 存活檢查（cli/update）；已在依賴樹內
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = { version = "0.6", optional = true }
 block2 = { version = "0.6", optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+# Job Object（CLI 更新程序樹逾時整組殺）與在途 pid 存活檢查（cli/update）
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Diagnostics_ToolHelp", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 winreg = "0.56"
 # codex-home 硬連結的檔案身分（磁碟序號＋file index）；same-file 也是靠它，已在依賴樹內
 winapi-util = "0.1.11"

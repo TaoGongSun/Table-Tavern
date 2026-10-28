@@ -23,22 +23,6 @@ fn flatten_restores_speaker_prefix_and_appends_turn_instruction() {
     assert!(prompt.ends_with("現在輪到「狐狸」回應。"));
 }
 
-/// agy 1.2.1 以下沒有精簡工具集代理要的 `excludeDefaultComponents`（更舊的連 stream-json 都沒有），
-/// 要在打過去之前擋下；版本字串認不得就放行。
-#[test]
-fn agy_version_gates_on_1_2_1() {
-    assert!(!agy_version_supported("1.2.0"));
-    assert!(!agy_version_supported("1.1.17"));
-    assert!(!agy_version_supported("1.1.7"));
-    assert!(!agy_version_supported("0.9.9"));
-    assert!(agy_version_supported("1.2.1"));
-    assert!(agy_version_supported("1.4.8"));
-    assert!(agy_version_supported("2.0.0"));
-    assert!(agy_version_supported("agy version 1.4.8 (darwin)"));
-    assert!(agy_version_supported("")); // 認不得就放行
-    assert!(agy_version_supported("nightly"));
-}
-
 /// 共線後 messages 已自足：label 傳空就不再補名字前綴（否則「加爾：雷恩：……」），
 /// closing 傳空就不再接收尾指示（否則本輪指定會出現兩次）。
 #[test]

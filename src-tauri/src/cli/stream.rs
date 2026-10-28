@@ -31,6 +31,11 @@ pub fn parse_claude_line(line: &str) -> CliLine {
             }
         }
         Some("result") => claude_result(&value),
+        Some("assistant")
+            if value.get("error").and_then(|e| e.as_str()) == Some("model_not_found") =>
+        {
+            CliLine::ModelUnavailable
+        }
         _ => CliLine::Other,
     }
 }
@@ -491,10 +496,18 @@ pub fn parse_agy_line(line: &str) -> CliLine {
                         .to_owned(),
                     is_error: false,
                 },
+                // 有原因就交 CLI 的原話（模型叫不到等要靠它辨識），沒有才退回狀態碼
                 other => CliLine::Done {
-                    text: match other.is_empty() {
-                        true => turn_failed("Gemini"),
-                        false => UiMsg::CliTurnFailedStatus {
+                    text: match (
+                        other.is_empty(),
+                        value
+                            .pointer("/result/error")
+                            .and_then(|error| error.as_str())
+                            .filter(|error| !error.trim().is_empty()),
+                    ) {
+                        (_, Some(error)) => error.to_owned(),
+                        (true, None) => turn_failed("Gemini"),
+                        (false, None) => UiMsg::CliTurnFailedStatus {
                             cli: "Gemini".to_owned(),
                             status: other.to_owned(),
                         }
