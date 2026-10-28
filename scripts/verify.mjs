@@ -19,6 +19,7 @@ const steps = [
   { name: "structure", cmd: "node", args: ["scripts/check-structure.mjs"], cwd: ROOT },
   { name: "version", cmd: "node", args: ["scripts/check-version.mjs"], cwd: ROOT },
   { name: "harness isolation", cmd: "node", args: ["scripts/check-harness-isolation.mjs"], cwd: ROOT },
+  { name: "personal info", cmd: "node", args: ["scripts/check-personal-info.mjs"], cwd: ROOT },
   { name: "cargo fmt", cmd: "cargo", args: ["fmt", "--check"], cwd: TAURI },
   { name: "vitest", cmd: "npm", args: ["test"], cwd: ROOT, shell: WIN },
   { name: "i18n", cmd: "npm", args: ["run", "check:i18n"], cwd: ROOT, shell: WIN },
