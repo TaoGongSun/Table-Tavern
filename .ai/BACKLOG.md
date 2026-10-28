@@ -48,8 +48,7 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [refactor-worldbook-statusbar-wording](tasks/refactor-worldbook-statusbar-wording.md) — 重構產出的世界書仍要求「每回合在狀態欄回報」，誘發 GM 自寫狀態段 — 下一步：未排程
 
 ## 階段 E：成本
-[api-shared-lane](handoffs/api-shared-lane.md) 四路成對測試先做；以下兩案依其數據決定做不做：
-- [no-cache-model-optout](tasks/no-cache-model-optout.md) — 零命中的模型不走共線：自動退回單角色組裝 — 下一步：前提改為「近期無可觀測收益」：只計跨過門檻且在 TTL 內的零命中輪、保留恢復、帳本補記 provider
+[api-shared-lane](handoffs/api-shared-lane.md) 四路成對測試先做；以下各案依其數據決定做不做：
 - [codex-floor-sandbox-group](tasks/codex-floor-sandbox-group.md) — codex 自帶底線 12,288 vs 11,008，疑因沙盒模式不同而帳本分組沒算進去 — 下一步：未排程；先驗差額來源
 - [codex-lane-resume](tasks/codex-lane-resume.md) — codex 改走 lane 續聊讓我方內容吃到快取（單發零命中、resume 3 輪中 2） — 下一步：未排程；開工前作者裁決 session 存放位置
 - [codex-skills-in-prompt](tasks/codex-skills-in-prompt.md) — 使用者自己的 codex 技能清單（4.9–19.5KB）被帶進跑團 prompt — 下一步：未排程；先查來源與關閉方式

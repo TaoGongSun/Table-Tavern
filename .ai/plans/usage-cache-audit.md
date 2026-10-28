@@ -8,7 +8,7 @@
 |---|---|---|
 | non-claude-real-cache | 實跑量出 codex／agy／OpenRouter 在本次模型與樣本下的命中 | 尾巴重播等機制改動；看本案數字決定做不做 |
 | vendor-prefix-floor | 記下各家首輪觀測到的白送底線 | 額度分頁扣底線的判定與顯示 |
-| no-cache-model-optout | 記下有沒有「原始 usage 有欄位、值為 0」的零命中 | 零命中自動退回 |
+| no-cache-model-optout | 記下有沒有「原始 usage 有欄位、值為 0」的零命中 | 已結案不做〔作者裁決 2026-10-28〕 |
 | prompt-cache-optimization | 驗一次離開提醒 | undo 截尾等其餘尾巴 |
 | api-cache-visibility（已結案） | 只讀它定的 `cache_reporting` 語意 | — |
 

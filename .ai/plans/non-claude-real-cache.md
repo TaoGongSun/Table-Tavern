@@ -17,7 +17,7 @@
 - 未涵蓋：換幕摘要後那輪、undo／收回後那輪、真實大桌、長間隔；樣本小、間隔短。
 
 ### OpenRouter 免費模型（2026-10-28，未儲值 key，約 32 次）
-- 16 個 `:free` 裡能打的 6 個；只有 `nvidia/nemotron-3.5-super-vl`（Nvidia，4,336 一格）與 `dots-studio/dots-3-note-preview`（AtlasCloud，4,096 一格）會快取，兩家都是**一般前綴型**：
+- 16 個 `:free` 裡能打的 6 個；只有 `nvidia/nemotron-3.5-super-vl`（Nvidia，4,336 一格）與 `dots-studio/dots-3-note-preview`（AtlasCloud，4,096 一格；作者帳本另見 2,048 命中，未定）會快取，兩家都是**一般前綴型**：
   - A＝一輪；B＝同歷史、尾巴換掉（app 現形態）；C＝B 的嚴格延伸。Nvidia A 0／B 8,672（10,145 中）／C 8,672；AtlasCloud A 0／B 8,192（8,611 中）／C 0。
 - Nvidia ultra、Poolside、Cohere 回 `cached_tokens: 0`：OpenRouter 對不快取的端點也回 0，「回報 0」不代表該家有快取。
 - 測試通道實跑 nemotron 6 輪：帳本 `cache_reporting: reported`、`cached_tokens` 解析正確，7k–8k 輸入中 4,336。

@@ -125,7 +125,7 @@ agy **1.1.8** 的 release note：JSON 與 stream-json 輸出的 usage 物件開�
    - **包 B｜共線組裝器（約 125 行）**：一支統一組裝器同時修好四條路。全部台詞改 assistant＋名字前綴後，role 序列只跟事件種類有關 → `push_merged` 分組變成角色無關 → CLI 攤平文字自動逐字相同，雙重前綴那個洞順帶解掉。
    - **包 C｜anthropic block（約 70 行）**：**降為條件觸發，不再是上線門檻**。帳本 638 筆裡 `api` 走過的模型只有 `stealth/ox-alpha` 與 `deepseek`，零筆 `anthropic/`；三條量過的路徑全是供應商自動前綴快取，不看顯式斷點。
 6. **包 C 的兩條附帶條款**：未完成 C 前，`anthropic/*` 共線後**只保證 system 快取**，不能宣稱完整支援；若日後預設模型、使用者設定或發行對象開始包含 `anthropic/*`，**C 自動升回上線門檻**。C 的內容不變——歷史拆成「一正典事件一個 content block」（不可變、只追加），動態世界書、狀態、私設、「現在你是 X」留在斷點後方，**不動全域 `push_merged`**（它同時服務 GM 路徑），斷點改由組裝器明確交付「最後一個穩定 block」的位置，`anthropic_messages` 不再用 `role == "assistant"` 猜。
-7. **包 B 的已知取捨：對沒有快取的模型是純增。** 共線每輪多送約 1,500 tokens，對真的沒有快取的模型零回收；輸入越小佔比越大（`deepseek-v4-pro-0813-free` 平均輸入 4,411，最壞情況 **+34%**）。**哪個模型真的沒快取目前無實測**——那 27 筆 deepseek 全部缺 `cache_reporting` 欄，0 分不出是真沒中還是量不到（2026-08-22 查證）。自動退回機制另案處理：[no-cache-model-optout](no-cache-model-optout.md)。
+7. **包 B 的已知取捨：對沒有快取的模型是純增。** 共線每輪多送約 1,500 tokens，對真的沒有快取的模型零回收；輸入越小佔比越大（`deepseek-v4-pro-0813-free` 平均輸入 4,411，最壞情況 **+34%**）。**哪個模型真的沒快取目前無實測**——那 27 筆 deepseek 全部缺 `cache_reporting` 欄，0 分不出是真沒中還是量不到（2026-08-22 查證）。不做自動退回、維持共線〔作者裁決 2026-10-28〕，見 [no-cache-model-optout](no-cache-model-optout.md)。
 
 各路徑的成本佔比（帳本實測平均輸入，動工前粗估即可，正式答案靠包 B 後的多輪實測）：
 

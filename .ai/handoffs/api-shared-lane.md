@@ -21,6 +21,6 @@ API 路徑的實機 runtime 驗收（要使用者在電腦前）：錯認前言�
 ## Constraints
 
 - 包 C 未完成前，`anthropic/*` 共線後只保證 system 快取，不能宣稱完整支援。
-- 包 B 對沒有快取的模型是純增（輸入最小的 deepseek 最壞 +34%）；**哪個模型真的沒快取尚無實測**（2026-08-22 查證：那 27 筆缺 `cache_reporting` 欄，0 不可判讀）。自動退回另案 no-cache-model-optout。
+- 包 B 對沒有快取的模型是純增（輸入最小的 deepseek 最壞 +34%）；**哪個模型真的沒快取尚無實測**（2026-08-22 查證：那 27 筆缺 `cache_reporting` 欄，0 不可判讀）。不做自動退回、維持共線〔作者裁決 2026-10-28〕，見 [no-cache-model-optout](../plans/no-cache-model-optout.md)。
 - 同名兩張卡在共線逐字稿裡不再可分（都是「名字：」），與 claude lane 行為一致。
 - agy、grok 已不走本案共線：agy 2026-09-09 起續聊一角一線（5d2177ad），grok 2026-08-22 起續聊、10-07 起改 grok-shared-lane 共線；詳見規格「現況」節。agy 小桌（prompt 低於約 16k–20k）快取為 0 屬預期（觀測推論）。
