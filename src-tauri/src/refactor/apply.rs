@@ -1,11 +1,13 @@
 use super::apply_mechanism::{
-    filter_scope, namespace, open_rule_reporting, pin_once_flag_rules, Candidates,
+    align_lenient, filter_scope, namespace, needs_rule_reporting, open_rule_reporting,
+    pin_once_flag_rules, Candidates,
 };
 use super::card_file::{RefactorApplied, RefactorAppliedCharacter, RefactorCardFile};
 use super::card_png::{AssetKind, CardAsset};
 use super::collections;
 use super::flat_migration;
 use super::interface::{normalize_interface_paths, rebuild_state_fields};
+use super::opening_fields::{self, OpeningContext};
 use super::sources::{new_entry_shape, Sources};
 use super::types::{
     ApplyFailure, ApplyProgress, RefactorApplyResult, RefactorApplySummary, RefactorOutcome,
@@ -106,6 +108,22 @@ fn apply_into(
         .map(str::trim)
         .filter(|mode| matches!(*mode, "interface" | "characters"));
     let apply_interface = selection.apply_interface && mode != Some("characters");
+    // 退場桌開場格子（statusbar-only-fields）要知道這桌是不是 MVU 來源：在套用前的狀態上算（之後會打開
+    // incremental）；讀卡失敗照既有契約回錯，不當成非 MVU。
+    let mvu_before = if mode == Some("characters") {
+        Some(crate::mechanism::mvu_source(root, world_id, &state)?)
+    } else {
+        None
+    };
+    // 盤點 MIRRORS 在任何寫入之前對齊一次（字形、斜線前段），之後開場格子與標鏡像共用；歧義只略過那一行
+    let mirror_space = namespace(&state.state.tree, &state.state.table);
+    let mut aligned_mirrors: BTreeMap<String, String> = outcome
+        .mirrors
+        .iter()
+        .filter_map(|(name, key)| {
+            align_lenient(name, &mirror_space).map(|path| (path, key.clone()))
+        })
+        .collect();
     // 舞台卡目標在任何寫入之前、用寫入前的名單快照對：這次新建的同名人物卡對不到
     let stage_ids = super::stage::stage_targets(
         &existing_characters,
@@ -436,14 +454,52 @@ fn apply_into(
 
     // 收編了規則或觸發、但沒有殼路徑替它開增量協定（characters 桌、介面沒套成的桌）：GM 原本沒有
     // 回報這些欄位的管道，規則與觸發形同虛設（ai-card-refactor 紅 3）
-    if !state.mechanism.incremental && (!merged_rules.is_empty() || !merged_triggers.is_empty()) {
-        moved_table_keys = open_rule_reporting(&mut state, &merged_rules, &merged_triggers);
+    // 卡片狀態欄退場的非 MVU 桌（statusbar-only-fields）：開場格子照酒館追蹤，沒有規則或觸發也開協定
+    let retired_opening =
+        mode == Some("characters") && state.statusbar_retired && mvu_before == Some(false);
+    let opening = retired_opening && opening_fields::has_opening_cells(&state);
+    if needs_rule_reporting(&state, &merged_rules, &merged_triggers, opening) {
+        moved_table_keys.extend(open_rule_reporting(
+            &mut state,
+            &merged_rules,
+            &merged_triggers,
+            opening,
+        ));
+        state_dirty = true;
+    }
+    if retired_opening && state.mechanism.incremental && state.mechanism.incremental_by_refactor {
+        let mut known_names: Vec<String> = data::list_characters(root, world_id)?
+            .into_iter()
+            .map(|character| character.name)
+            .collect();
+        known_names.extend(names.iter().cloned());
+        known_names.push("{{user}}".to_owned());
+        let entry_texts: Vec<String> = data::read_worldbook(root, world_id)?
+            .into_iter()
+            .map(|entry| entry.content)
+            .collect();
+        let statusbar_texts: Vec<String> = outcome
+            .dropped
+            .iter()
+            .filter(|item| item.statusbar)
+            .map(|item| item.content.clone())
+            .collect();
+        let context = OpeningContext {
+            names: &known_names,
+            entry_texts: &entry_texts,
+            statusbar_texts: &statusbar_texts,
+        };
+        moved_table_keys.extend(opening_fields::adopt(
+            &mut state,
+            &context,
+            &mut aligned_mirrors,
+        ));
         state_dirty = true;
     }
     pin_once_flag_rules(&mut state.mechanism.rules, &merged_triggers);
     // 卡欄位與固定鍵同義的標記：收圍欄的桌改成 App 鏡像，不要模型雙報
     let fence_table = data::requires_present_report(root, world_id, state.refactor_mode.as_deref());
-    let unmatched = mechanism::mark_survey_mirrors(&mut state, &outcome.mirrors, fence_table);
+    let unmatched = mechanism::mark_survey_mirrors(&mut state, &aligned_mirrors, fence_table);
     if !unmatched.is_empty() {
         log::warn!("refactor mirrors without a matching tree leaf, dropped: {unmatched:?}");
     }

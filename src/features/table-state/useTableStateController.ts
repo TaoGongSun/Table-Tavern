@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { type BranchBinding, type StateNode, type WorldState } from "../../shared/contracts/backend-contracts";
-import { parseWithFormat } from "./state-format";
+import { parseWithFormat, prefixFor, stripPrefix } from "./state-format";
 
 // 路徑指到的葉子值；中途撞到分支或缺節點都當空字串（面板只讀，取不到就是沒東西可改）
 export function treeValueAt(tree: Record<string, StateNode>, path: string[]): string {
@@ -41,6 +41,10 @@ export interface TableStateController {
   displayFormats: Record<string, string>;
   /** 鏡像欄：路徑（點分）→ 跟著哪個固定鍵（place／present）走，畫面上唯讀 */
   mirrors: Record<string, string>;
+  /** 顯示前綴：路徑（點分，可含 *）→「👤 」這類開頭符號 */
+  displayPrefixes: Record<string, string>;
+  /** 在場名單集合的路徑（點分）：狀態列只列 present 裡的人 */
+  presentScoped: string[];
   /** 每條分支目前綁給哪個角色 */
   bindings: BranchBinding[];
   editing: EditingStateField | null;
@@ -50,6 +54,8 @@ export interface TableStateController {
     bindings: BranchBinding[],
     displayFormats?: Record<string, string>,
     mirrors?: Record<string, string>,
+    displayPrefixes?: Record<string, string>,
+    collections?: MechanismCollections,
   ) => void;
   /** 重讀這桌的狀態與綁定 */
   refresh: () => Promise<void>;
@@ -66,6 +72,14 @@ export interface TableStateController {
   clearEdit: () => void;
 }
 
+type MechanismCollections = NonNullable<WorldState["mechanism"]>["collections"];
+
+function presentScopedPaths(collections: MechanismCollections): string[] {
+  return Object.entries(collections ?? {})
+    .filter(([, spec]) => spec.present_scoped)
+    .map(([path]) => path);
+}
+
 export function useTableStateController(input: {
   worldId: string;
   onError: (message: string) => void;
@@ -80,6 +94,8 @@ export function useTableStateController(input: {
   const [tableJumps, setTableJumps] = useState<Record<string, string>>({});
   const [displayFormats, setDisplayFormats] = useState<Record<string, string>>({});
   const [mirrors, setMirrors] = useState<Record<string, string>>({});
+  const [displayPrefixes, setDisplayPrefixes] = useState<Record<string, string>>({});
+  const [presentScoped, setPresentScoped] = useState<string[]>([]);
   // 分支指認清單：每條狀態樹分支目前綁給哪個角色，換桌／讀狀態一起重載
   const [branchBindings, setBranchBindings] = useState<BranchBinding[]>([]);
   const [editingStateField, setEditingStateField] = useState<EditingStateField | null>(null);
@@ -95,6 +111,8 @@ export function useTableStateController(input: {
       bindings: BranchBinding[],
       formats?: Record<string, string>,
       mirrorPaths?: Record<string, string>,
+      prefixes?: Record<string, string>,
+      collections?: MechanismCollections,
     ) => {
       readGeneration.current += 1;
       setTableState(state?.table ?? {});
@@ -102,6 +120,8 @@ export function useTableStateController(input: {
       setTableJumps(state?.jumps ?? {});
       setDisplayFormats(formats ?? {});
       setMirrors(mirrorPaths ?? {});
+      setDisplayPrefixes(prefixes ?? {});
+      setPresentScoped(presentScopedPaths(collections));
       setBranchBindings(bindings);
     },
     [],
@@ -136,6 +156,8 @@ export function useTableStateController(input: {
           setTableJumps(state.state?.jumps ?? {});
           setDisplayFormats(state.mechanism?.display_formats ?? {});
           setMirrors(state.mechanism?.mirrors ?? {});
+          setDisplayPrefixes(state.mechanism?.display_prefixes ?? {});
+          setPresentScoped(presentScopedPaths(state.mechanism?.collections));
           setBranchBindings(bindings);
         } while (job.again);
       } finally {
@@ -150,7 +172,10 @@ export function useTableStateController(input: {
   const save = useCallback(
     async (path: string[], tree: boolean, input: string) => {
       if (stateFieldSaveBusy.current || stateFieldEditCancelled.current) return;
-      const value = tree ? parseWithFormat(input, displayFormats[path.join(".")]) : input;
+      // 先剝前綴、再照數字模板解析（顯示時反過來：先套模板、再接前綴）
+      const value = tree
+        ? parseWithFormat(stripPrefix(input, prefixFor(displayPrefixes, path)), displayFormats[path.join(".")])
+        : input;
       setEditingStateField(null);
       if (value === (tree ? treeValueAt(tableTree, path) : (tableState[path[0]] ?? ""))) return;
       stateFieldSaveBusy.current = true;
@@ -166,7 +191,7 @@ export function useTableStateController(input: {
         stateFieldSaveBusy.current = false;
       }
     },
-    [tableTree, tableState, displayFormats, worldId, onError, refresh],
+    [tableTree, tableState, displayFormats, displayPrefixes, worldId, onError, refresh],
   );
 
   // 玩家點跳動記號：把該欄永久標成計數器，之後全量桌跳動比對不再對它示警
@@ -219,6 +244,8 @@ export function useTableStateController(input: {
       jumps: tableJumps,
       displayFormats,
       mirrors,
+      displayPrefixes,
+      presentScoped,
       bindings: branchBindings,
       editing: editingStateField,
       hydrate,
@@ -237,6 +264,8 @@ export function useTableStateController(input: {
       tableJumps,
       displayFormats,
       mirrors,
+      displayPrefixes,
+      presentScoped,
       branchBindings,
       editingStateField,
       hydrate,

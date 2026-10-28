@@ -12,6 +12,8 @@ mod card_png;
 mod collections;
 mod flat_migration;
 mod interface;
+mod opening_fields;
+mod opening_notes;
 mod reset;
 mod rule_merge;
 mod sources;

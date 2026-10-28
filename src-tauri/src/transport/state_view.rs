@@ -64,6 +64,10 @@ pub(super) fn gm_dynamic_block(
             dynamic.push_str(&field_line("", display_name, value, en));
         }
         dynamic.push_str(&tree_text);
+        for line in absent_lines(state, mechanism, user_name, en) {
+            dynamic.push_str(&line);
+            dynamic.push('\n');
+        }
     }
     if mechanism.incremental && !state.triggers.is_empty() {
         let lines: Vec<&str> = mechanism
@@ -103,6 +107,66 @@ pub(super) fn gm_dynamic_block(
         }
     }
     dynamic.trim_end().to_owned()
+}
+
+/// 在場名單集合（statusbar-only-fields）裡不在場、但已有資料的項目：每個集合一行，提醒 GM 回場時只報變動、
+/// 不要整筆重新 insert（不在場的分支被 `state_scope` 裁掉時 GM 看不到存著的值）。present 沒有值就不附；
+/// 誰在場跟 `state_scope` 同一套比對（在場項目含名字、原字優先、字形折疊兜底，歧義算在場）。
+fn absent_lines(
+    state: &TableState,
+    mechanism: &Mechanism,
+    user_name: &str,
+    en: bool,
+) -> Vec<String> {
+    if !mechanism.incremental {
+        return Vec::new();
+    }
+    let raw = state.table.get("present").map(String::as_str).unwrap_or("");
+    let present = data::split_present_names(&raw.replace("{{user}}", user_name));
+    if present.is_empty() {
+        return Vec::new();
+    }
+    let mut lines = Vec::new();
+    for (path, spec) in &mechanism.collections {
+        if !spec.present_scoped {
+            continue;
+        }
+        let segments: Vec<String> = path.split('.').map(str::to_owned).collect();
+        let Some(StateNode::Branch(items)) = data::node_at(&state.tree, &segments) else {
+            continue;
+        };
+        let names: Vec<&str> = items
+            .iter()
+            .filter(|(_, node)| matches!(node, StateNode::Branch(_)))
+            .map(|(name, _)| name.as_str())
+            .collect();
+        let found = data::match_present_with(&present, &names, |item, name| item.contains(name));
+        let absent: Vec<&str> = names
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| !found.matched.contains(index) && !found.ambiguous.contains(index))
+            .map(|(_, name)| *name)
+            .collect();
+        if absent.is_empty() {
+            continue;
+        }
+        let pointer: String = segments
+            .iter()
+            .map(|segment| format!("/{}", segment.replace('~', "~0").replace('/', "~1")))
+            .collect();
+        lines.push(if en {
+            format!(
+                "`{pointer}` absent but already recorded: {}. When they come back, report only the fields that changed; do not insert them again.",
+                absent.join(", ")
+            )
+        } else {
+            format!(
+                "`{pointer}` 不在場但已有資料：{}；回場時只報有變動的格子，不要重新 insert。",
+                absent.join("、")
+            )
+        });
+    }
+    lines
 }
 
 /// 一次注入要用的渲染參數；路徑與輸出隨遞迴走，其餘整趟固定。
@@ -625,6 +689,8 @@ fn collect_snapshot_updates(
     }
 }
 
+#[cfg(test)]
+mod absent_tests;
 #[cfg(test)]
 mod collection_tests;
 #[cfg(test)]

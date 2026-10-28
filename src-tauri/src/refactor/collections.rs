@@ -85,6 +85,7 @@ pub(super) fn build(
                 item: CollectionItem::Scalar,
                 fields: BTreeMap::new(),
                 value_type: Some(common_type(items.into_iter())),
+                present_scoped: false,
             }
         } else {
             let prefix = format!("{path}.*.");
@@ -102,6 +103,7 @@ pub(super) fn build(
                 item: CollectionItem::Object,
                 fields,
                 value_type: None,
+                present_scoped: false,
             }
         };
         out.insert(path, spec);

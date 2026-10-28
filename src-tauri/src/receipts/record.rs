@@ -121,6 +121,11 @@ fn diff_mechanism(
     let display_formats_before = (before.mechanism.display_formats
         != after.mechanism.display_formats)
         .then(|| before.mechanism.display_formats.clone());
+    let display_prefixes_before = (before.mechanism.display_prefixes
+        != after.mechanism.display_prefixes)
+        .then(|| before.mechanism.display_prefixes.clone());
+    let opening_before = (before.mechanism.opening != after.mechanism.opening)
+        .then(|| before.mechanism.opening.clone());
     let collections_before = (before.mechanism.collections != after.mechanism.collections)
         .then(|| before.mechanism.collections.clone());
     let mirrors_before = (before.mechanism.mirrors != after.mechanism.mirrors)
@@ -149,6 +154,8 @@ fn diff_mechanism(
         guide_before,
         value_types_before,
         display_formats_before,
+        display_prefixes_before,
+        opening_before,
         collections_before,
         mirrors_before,
         statusbar_retired_before,

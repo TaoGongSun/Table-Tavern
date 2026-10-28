@@ -62,7 +62,14 @@ export interface WorldState {
     jumps?: Record<string, string>;
   };
   // 數字欄的顯示寫法（點分路徑→模板，`{}` 是數字的位置，例：「第 {} 天」）：樹上存數字，畫面照模板套回原寫法
-  mechanism?: { display_formats?: Record<string, string>; mirrors?: Record<string, string> };
+  // 顯示前綴（點分路徑→「👤 」這類開頭符號，路徑可含 *）：樹上存不帶符號的值，畫面接回原寫法
+  mechanism?: {
+    display_formats?: Record<string, string>;
+    mirrors?: Record<string, string>;
+    display_prefixes?: Record<string, string>;
+    // 集合形狀；present_scoped＝在場名單集合（狀態列只列 present 裡的人）
+    collections?: Record<string, { present_scoped?: boolean }>;
+  };
 }
 
 // 分支指認清單：auto＝後端同名自動比對出來的結果，還沒真的存進 state.json

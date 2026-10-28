@@ -15,8 +15,15 @@ fn segments(path: &str) -> Vec<String> {
 
 /// 只寫既有的葉子：欄位被刪掉或變成分支就不再鏡像，不替它重建。空值照存成空葉子（`set_tree_value`
 /// 寫空會刪鍵，下一輪就鏡像不回來）。
-fn write_leaf(tree: &mut BTreeMap<String, StateNode>, path: &str, value: &str) {
+fn write_leaf(
+    tree: &mut BTreeMap<String, StateNode>,
+    prefixes: &BTreeMap<String, String>,
+    path: &str,
+    value: &str,
+) {
     let segments = segments(path);
+    // 固定鍵的值可能帶卡片原寫法的前綴（「📍 北境驿站」），鏡像欄跟其他寫入一樣剝掉
+    let value = super::prefix::strip(prefixes, &segments, value);
     let Some((last, parents)) = segments.split_last() else {
         return;
     };
@@ -39,7 +46,12 @@ fn write_leaf(tree: &mut BTreeMap<String, StateNode>, path: &str, value: &str) {
 pub(crate) fn sync_mirrors(world: &mut WorldState) {
     for (path, key) in &world.mechanism.mirrors {
         if let Some(value) = world.state.table.get(key) {
-            write_leaf(&mut world.state.tree, path, value);
+            write_leaf(
+                &mut world.state.tree,
+                &world.mechanism.display_prefixes,
+                path,
+                value,
+            );
         }
     }
 }
@@ -49,13 +61,19 @@ pub(crate) fn sync_mirrors(world: &mut WorldState) {
 pub fn sync_mirrors_from_edit(world: &mut WorldState, fields: &BTreeMap<String, String>) {
     for (path, key) in &world.mechanism.mirrors {
         if let Some(value) = fields.get(key) {
-            write_leaf(&mut world.state.tree, path, value);
+            write_leaf(
+                &mut world.state.tree,
+                &world.mechanism.display_prefixes,
+                path,
+                value,
+            );
         }
     }
 }
 
 /// 盤點的 MIRRORS 對照蓋到規則上（盤點是唯一標記來源：先清掉規則上既有的 `same_as`）。只在收圍欄的桌、
-/// 名字與樹上頂層葉子整段精確相等時標（斜線鍵是一整段）；對不上、命中分支就丟掉該行，不建空葉、不捏初值。
+/// 名字是樹上的點分路徑葉子時標（呼叫端先把盤點寫法對齊到樹上的鍵；斜線鍵是一整段）；對不上、命中分支就丟掉
+/// 該行，不建空葉、不捏初值。
 /// 標上的欄位沒有規則就補一條文字規則承載標記（`adopt_mirror_marks` 收件時會拿掉）。回傳丟掉的行。
 pub fn mark_survey_mirrors(
     world: &mut WorldState,
@@ -70,7 +88,10 @@ pub fn mark_survey_mirrors(
     }
     let mut dropped = Vec::new();
     for (name, key) in mirrors {
-        if matches!(world.state.tree.get(name), Some(StateNode::Leaf(_))) {
+        if matches!(
+            data::node_at(&world.state.tree, &segments(name)),
+            Some(StateNode::Leaf(_))
+        ) {
             world
                 .mechanism
                 .rules

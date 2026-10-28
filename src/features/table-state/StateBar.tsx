@@ -6,8 +6,8 @@ import { BranchBinding, StateNode } from "../../shared/contracts/backend-contrac
 import { CharacterCard, CharacterMeta } from "../characters/card-model";
 import { EditingStateField, treeValueAt } from "./useTableStateController";
 import { IconExpand } from "../../shared/ui/icons";
-import { displayWithFormat } from "./state-format";
-import { usePresentDisplay } from "./present-glyphs";
+import { displayWithFormat, prefixFor, withPrefix } from "./state-format";
+import { presentItems, useGlyphFold, usePresentDisplay } from "./present-glyphs";
 import { ORDER_KEY, orderedItemKeys } from "../refactor/refactor-shell-sections";
 
 const STATE_BAR_OPEN_KEY = "state_bar_open";
@@ -45,6 +45,10 @@ interface StateBarProps {
   displayFormats?: Record<string, string>;
   /** 鏡像欄（點分路徑）：跟著地點／在場自動更新，不給手改 */
   mirrors?: Record<string, string>;
+  /** 顯示前綴（點分路徑，可含 *）：樹上存不帶符號的值，畫面接回「👤 」這類開頭符號 */
+  displayPrefixes?: Record<string, string>;
+  /** 在場名單集合（點分路徑）：只列 present 裡的人，離場的資料留著、回場再列 */
+  presentScoped?: readonly string[];
   bindings: BranchBinding[];
   editing: EditingStateField | null;
   onBeginEdit: (path: string[], tree: boolean, value: string) => void;
@@ -69,6 +73,8 @@ export function StateBar({
   jumps,
   displayFormats = {},
   mirrors = {},
+  displayPrefixes = {},
+  presentScoped = [],
   bindings,
   editing,
   onBeginEdit,
@@ -102,6 +108,7 @@ export function StateBar({
   ];
   const playerName = player?.name || t("playerLabel");
   const presentDisplay = usePresentDisplay(currentLang(), knownNames);
+  const fold = useGlyphFold();
   // present 只在顯示時轉成介面字形（玩家巨集先代換）；編輯與存回仍是原字
   const displayValue = (key: string, value: string) => {
     const text = displayUserMacro(value, playerName);
@@ -148,7 +155,10 @@ export function StateBar({
       editing.path.length === path.length &&
       editing.path.every((segment, index) => segment === path[index]);
     const value = isTree ? treeValueAt(tree, path) : (fields[path[0]] ?? "");
-    const shown = isTree ? displayWithFormat(value, displayFormats[path.join(".")]) : value;
+    // 先套數字模板、再接前綴（存值時反過來）
+    const shown = isTree
+      ? withPrefix(displayWithFormat(value, displayFormats[path.join(".")]), prefixFor(displayPrefixes, path))
+      : value;
     const jumpMark = jumps[path.join(".")];
     const shownText = value
       ? isTree
@@ -217,7 +227,9 @@ export function StateBar({
     depth: number,
     inList = false,
   ): ReactNode {
-    const entries = branchEntries(nodes);
+    const entries = presentScoped.includes(path.join("."))
+      ? presentItems(branchEntries(nodes), displayUserMacro(fields.present ?? "", playerName), fold)
+      : branchEntries(nodes);
     // 空分支（例如清空的清單）內容區顯示空值字樣；根層空樹什麼都不印
     if (entries.length === 0 && depth > 0) {
       return <div className="state-tree-empty">{t("stateEmptyValue")}</div>;
@@ -234,6 +246,8 @@ export function StateBar({
       // （如「人物列表/0」及其底下）不是誰的狀態包，掛指認下拉會被讀成「挑誰出場」；
       // 只有名字鍵的物件分支才提供指認。年份那種不連號的數字鍵照常是名字鍵。
       const indexBranch = isIndexBranch(node) || isCollection(node);
+      // 具名集合的項目標題（名字當鍵）接回名字欄的前綴
+      const title = isCollection(nodes) ? withPrefix(key, prefixFor(displayPrefixes, childPath)) : key;
       const isList = inList || indexBranch || Object.keys(node).length === 0;
       return (
         <details
@@ -242,7 +256,7 @@ export function StateBar({
           open={depth === 0 || openBranchPaths.has(childPath.join("/"))}
         >
           <summary>
-            {key}
+            {title}
             {castCount > 0 && !isList && (
               <select
                 className="state-tree-bind"

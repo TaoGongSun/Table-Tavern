@@ -5,9 +5,9 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setLang, t } from "../../i18n";
-import { loadGlyphEngine } from "./present-glyphs";
+import { loadGlyphEngine, presentItems } from "./present-glyphs";
 import { StateBar } from "./StateBar";
-import { displayWithFormat, parseWithFormat } from "./state-format";
+import { displayWithFormat, parseWithFormat, prefixFor, stripPrefix, withPrefix } from "./state-format";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -235,5 +235,136 @@ describe("StateBar 鏡像欄", () => {
     expect(row("当前环境")?.querySelector("button")).toBeNull();
     expect(row("当前环境")?.textContent).toContain("北坡");
     expect(row("剧情阶段")?.querySelector("button.state-bar-value")).not.toBeNull();
+  });
+});
+
+describe("StateBar 顯示前綴", () => {
+  const prefixes = {
+    "状态栏.人物列表.*": "👤 ",
+    "状态栏.人物列表.*.身份": "🪪 ",
+    "状态栏.人物列表.林远.身份": "🧭 ",
+    "*.*.身份": "❓ ",
+    "状态栏.天气": "🌨️ ",
+    驻守天数: "📅 ",
+  };
+
+  it("路徑比對：精確優先，再找段數相同、萬用段最少的", () => {
+    expect(prefixFor(prefixes, ["状态栏", "人物列表", "林远", "身份"])).toBe("🧭 ");
+    expect(prefixFor(prefixes, ["状态栏", "人物列表", "贺铮", "身份"])).toBe("🪪 ");
+    expect(prefixFor(prefixes, ["别处", "贺铮", "身份"])).toBe("❓ ");
+    expect(prefixFor(prefixes, ["状态栏", "人物列表", "贺铮", "心情"])).toBeUndefined();
+  });
+
+  it("顯示接回前綴、值已帶前綴不重複接；輸入帶前綴就剝掉", () => {
+    expect(withPrefix("新任驿丞", "🪪 ")).toBe("🪪 新任驿丞");
+    expect(withPrefix("🪪 新任驿丞", "🪪 ")).toBe("🪪 新任驿丞");
+    expect(withPrefix("", "🪪 ")).toBe("");
+    expect(stripPrefix("🪪 斥候队长", "🪪 ")).toBe("斥候队长");
+    expect(stripPrefix("🪪斥候队长", "🪪 ")).toBe("斥候队长");
+    expect(stripPrefix("斥候队长", "🪪 ")).toBe("斥候队长");
+  });
+
+  it("狀態列：葉子接前綴、集合項目標題接名字欄前綴；先套數字模板再接前綴", () => {
+    act(() =>
+      root.render(
+        <StateBar
+          fields={{}}
+          tree={
+            {
+              状态栏: {
+                天气: "北风小雪",
+                人物列表: { 林远: { _序: "0", 身份: "新任驿丞" }, 贺铮: { _序: "1", 身份: "🪪 老驿长" } },
+              },
+              驻守天数: "7",
+            } as never
+          }
+          jumps={{}}
+          displayFormats={{ 驻守天数: "第 {} 天" }}
+          displayPrefixes={prefixes}
+          bindings={[]}
+          editing={null}
+          onBeginEdit={noop}
+          onChangeEditValue={noop}
+          onSave={noop}
+          onCancelEdit={noop}
+          onMarkCounter={noop}
+          onBind={noop}
+          player={null}
+          castCount={0}
+          cast={[]}
+        />,
+      ),
+    );
+    const values = [...host.querySelectorAll(".state-bar-value")].map((node) => node.textContent);
+    expect(values).toContain("🌨️ 北风小雪");
+    expect(values).toContain("🧭 新任驿丞");
+    expect(values).toContain("🪪 老驿长");
+    expect(values).toContain("📅 第 7 天");
+    const summaries = [...host.querySelectorAll("details.state-tree-branch > summary")].map(
+      (summary) => summary.firstChild?.textContent ?? "",
+    );
+    expect(summaries).toContain("👤 林远");
+    expect(summaries).toContain("人物列表");
+  });
+});
+
+describe("StateBar 在場名單集合", () => {
+  const people = {
+    林远: { _序: "0", 心情: "警觉" },
+    贺铮: { _序: "1", 心情: "冷淡" },
+    周掌柜: { _序: "2", 心情: "殷勤" },
+  };
+
+  function titles(present: string, scoped: string[]) {
+    act(() =>
+      root.render(
+        <StateBar
+          fields={{ present }}
+          tree={{ 状态栏: { 人物列表: people } } as never}
+          jumps={{}}
+          presentScoped={scoped}
+          bindings={[]}
+          editing={null}
+          onBeginEdit={noop}
+          onChangeEditValue={noop}
+          onSave={noop}
+          onCancelEdit={noop}
+          onMarkCounter={noop}
+          onBind={noop}
+          player={{ name: "林远" } as never}
+          castCount={0}
+          cast={[]}
+        />,
+      ),
+    );
+    return [...host.querySelectorAll("details.state-tree-branch > summary")]
+      .map((summary) => summary.firstChild?.textContent ?? "")
+      .filter((title) => !["状态栏", "人物列表"].includes(title));
+  }
+
+  it("只列 present 裡的人；離場的回場再列；{{user}} 照玩家名比", () => {
+    expect(titles("{{user}}、周掌柜", ["状态栏.人物列表"])).toEqual(["林远", "周掌柜"]);
+    expect(titles("林远、贺铮、周掌柜", ["状态栏.人物列表"])).toEqual(["林远", "贺铮", "周掌柜"]);
+  });
+
+  it("沒標在場名單、或還沒有在場資料就全列", () => {
+    expect(titles("林远", [])).toEqual(["林远", "贺铮", "周掌柜"]);
+    expect(titles("", ["状态栏.人物列表"])).toEqual(["林远", "贺铮", "周掌柜"]);
+  });
+
+  it("已有明確名單卻一個都對不上：集合是空的，不把離場的人列回來", () => {
+    expect(titles("某路人", ["状态栏.人物列表"])).toEqual([]);
+    expect(host.textContent).toContain(t("stateEmptyValue"));
+  });
+
+  it("名字字形不同時用折疊比對", () => {
+    const fold = (text: string) => text.replace("遠", "远").replace("賀", "贺");
+    const entries: [string, number][] = [
+      ["林远", 0],
+      ["贺铮", 1],
+    ];
+    expect(presentItems(entries, "林遠", fold)).toEqual([["林远", 0]]);
+    expect(presentItems(entries, "林遠", null)).toEqual([]);
+    expect(presentItems(entries, "", null)).toEqual(entries);
   });
 });

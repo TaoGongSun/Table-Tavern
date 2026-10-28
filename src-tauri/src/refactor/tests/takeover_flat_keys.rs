@@ -228,7 +228,7 @@ fn non_object_state_fields_leave_the_flat_table_alone() {
     assert!(state.state.tree.is_empty());
 }
 
-fn narration(root: &Path, world_id: &str, text: &str) {
+pub(super) fn narration(root: &Path, world_id: &str, text: &str) {
     data::append_transcript(
         root,
         world_id,

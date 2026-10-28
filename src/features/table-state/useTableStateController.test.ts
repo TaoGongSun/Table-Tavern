@@ -70,6 +70,45 @@ describe("useTableStateController 數字欄顯示模板", () => {
   });
 });
 
+describe("useTableStateController 顯示前綴", () => {
+  it("輸入帶前綴先剝掉、再照數字模板解析", async () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    let controller: TableStateController | null = null;
+    function Probe() {
+      controller = useTableStateController({ worldId: "w1", onError: () => {} });
+      return null;
+    }
+    const root = createRoot(document.createElement("div"));
+    await act(async () => root.render(createElement(Probe)));
+    // 每次存完會重讀（假後端回的狀態沒有前綴表），所以每筆存之前重新 hydrate
+    const hydrate = () =>
+      act(() =>
+        controller!.hydrate(
+          { table: {}, tree: { 驻守天数: "7", 人物: { 林远: { 身份: "驿丞" } } } },
+          [],
+          { 驻守天数: "第 {} 天" },
+          {},
+          { 驻守天数: "📅 ", "人物.*.身份": "🪪 " },
+        ),
+      );
+    hydrate();
+    vi.mocked(invoke).mockClear();
+    await act(async () => {
+      await controller!.save(["驻守天数"], true, "📅 第 8 天");
+    });
+    hydrate();
+    await act(async () => {
+      await controller!.save(["人物", "林远", "身份"], true, "🪪 新任驿丞");
+    });
+    const writes = vi.mocked(invoke).mock.calls.filter(([command]) => command === "set_state_path");
+    expect(writes).toEqual([
+      ["set_state_path", { worldId: "w1", path: ["驻守天数"], value: "8" }],
+      ["set_state_path", { worldId: "w1", path: ["人物", "林远", "身份"], value: "新任驿丞" }],
+    ]);
+    await act(async () => root.unmount());
+  });
+});
+
 describe("useTableStateController 重讀競態", () => {
   afterEach(() => {
     handler.current = null;
@@ -133,6 +172,37 @@ describe("useTableStateController 重讀競態", () => {
     act(() => controller!.hydrate({ table: {}, tree: { 玩家: { 金幣: "新" } } }, []));
     await act(async () => state.resolve({ state: { table: {}, tree: { 玩家: { 金幣: "舊" } } } }));
     expect(controller!.tree).toEqual({ 玩家: { 金幣: "新" } });
+    await act(async () => root.unmount());
+  });
+});
+
+describe("useTableStateController 在場名單集合", () => {
+  it("hydrate 與重讀都從集合形狀取出 present_scoped 的路徑", async () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    handler.current = async (command) =>
+      command === "read_state"
+        ? {
+            state: { table: {}, tree: {} },
+            mechanism: { collections: { 人物: { present_scoped: true }, 选项: {} } },
+          }
+        : [];
+    let controller: TableStateController | null = null;
+    function Probe() {
+      controller = useTableStateController({ worldId: "w1", onError: () => {} });
+      return null;
+    }
+    const root = createRoot(document.createElement("div"));
+    await act(async () => root.render(createElement(Probe)));
+    act(() =>
+      controller!.hydrate({ table: {}, tree: {} }, [], undefined, undefined, undefined, {
+        甲: { present_scoped: true },
+        乙: {},
+      }),
+    );
+    expect(controller!.presentScoped).toEqual(["甲"]);
+    await act(async () => controller!.refresh());
+    expect(controller!.presentScoped).toEqual(["人物"]);
+    handler.current = null;
     await act(async () => root.unmount());
   });
 });

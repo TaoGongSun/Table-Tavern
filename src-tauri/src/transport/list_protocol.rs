@@ -145,6 +145,24 @@ fn collection_protocol(mechanism: &Mechanism, en: bool) -> Option<String> {
             },
         ));
     }
+    // 在場名單集合（statusbar-only-fields）：離場不刪，App 依在場人物自動隱藏；逐一列出，其他集合照常 remove
+    for (path, _) in mechanism
+        .collections
+        .iter()
+        .filter(|(_, spec)| spec.present_scoped)
+    {
+        lines.push(if en {
+            format!(
+                "- `{}` lists only who is present; the app hides absent items by itself. When someone leaves, do not remove them; remove only when they leave the story for good.",
+                pointer(path)
+            )
+        } else {
+            format!(
+                "- `{}` 只列在場人物，不在場的由 App 自動隱藏：人物離場不要 remove，只有永久退出故事才 remove。",
+                pointer(path)
+            )
+        });
+    }
     Some(lines.join("\n"))
 }
 
@@ -183,6 +201,29 @@ mod tests {
         // 協定只教整批 replace：逐筆 remove 會因索引從 0、殼上序號從 1 刪錯
         assert!(!system.contains("/行動選項/"));
         assert!(!system.contains("完整字串"));
+    }
+
+    /// 在場名單集合逐一列出、提示離場不 remove；其他集合沒有這一行。
+    #[test]
+    fn present_scoped_collections_are_listed_with_no_remove_on_leave() {
+        let mut mechanism = north_hall();
+        let mut system = String::new();
+        push_list_protocols(&mut system, &mechanism, "zh-TW");
+        assert!(!system.contains("離場不要 remove"), "{system}");
+        mechanism
+            .collections
+            .get_mut("在場人物")
+            .unwrap()
+            .present_scoped = true;
+        let mut system = String::new();
+        push_list_protocols(&mut system, &mechanism, "zh-TW");
+        assert!(
+            system.contains(
+                "- `/在場人物` 只列在場人物，不在場的由 App 自動隱藏：人物離場不要 remove"
+            ),
+            "{system}"
+        );
+        assert!(!system.contains("`/行動選項` 只列"), "{system}");
     }
 
     #[test]

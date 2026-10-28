@@ -5,6 +5,8 @@ mod flat_field_reporting;
 mod interface;
 mod mechanism;
 mod mechanism_filter;
+mod opening_fields;
+mod opening_notes;
 mod played_gate;
 mod rerun;
 mod rule_merge;

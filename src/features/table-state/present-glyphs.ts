@@ -141,6 +141,62 @@ export function usePresentDisplay(lang: string, knownNames: readonly string[]): 
   return (raw) => (ready && lock ? displayPresent(raw, lock, ready) : raw);
 }
 
+let foldTable: Promise<(text: string) => string> | undefined;
+
+/** 只載字形折疊表（不分介面語言）：在場名單比對用；失敗不快取，下次再試 */
+function loadFold(): Promise<(text: string) => string> {
+  foldTable ??= import("../../../src-tauri/src/data/scene/opencc/TSCharacters.txt?raw")
+    .then((raw) => {
+      const table = parseFoldTable(raw.default);
+      return (text: string) => [...text].map((char) => table.get(char) ?? char).join("");
+    })
+    .catch((error: unknown) => {
+      foldTable = undefined;
+      throw error;
+    });
+  return foldTable;
+}
+
+/** 名字比對用的字形折疊；還沒載入或載入失敗時回 null（呼叫端改用原字比對） */
+export function useGlyphFold(): ((text: string) => string) | null {
+  const [fold, setFold] = useState<((text: string) => string) | null>(null);
+  useEffect(() => {
+    let alive = true;
+    loadFold().then(
+      (loaded) => {
+        if (alive) setFold(() => loaded);
+      },
+      () => {},
+    );
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return fold;
+}
+
+/**
+ * 在場名單集合（後端 `present_scoped`）：只留鍵名對得上 present 的項目。還沒有在場資料（present 空）就全留；
+ * 已有明確名單卻一個都對不上（例如在場的人還沒被加進集合）就是空的，不把離場的人重新列出來。
+ * 比對與後端 state_scope 相同：在場項目含名字就算，先比原字，再比折疊後字形。
+ */
+export function presentItems<T>(
+  entries: [string, T][],
+  present: string,
+  fold: ((text: string) => string) | null,
+): [string, T][] {
+  const names = splitPresentNames(present);
+  if (names.length === 0) return entries;
+  // 與後端 state_scope 同一套：在場項目含名字就算（「林远（受伤）」含「林远」），原字比不到再比折疊字形
+  const foldedNames = fold ? names.map(fold) : null;
+  const kept = entries.filter(
+    ([key]) =>
+      names.some((name) => name.includes(key)) ||
+      (foldedNames !== null && fold !== null && foldedNames.some((name) => name.includes(fold(key)))),
+  );
+  return kept;
+}
+
 interface PersonEntry {
   title: string;
   is_person?: boolean;

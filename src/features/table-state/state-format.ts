@@ -22,3 +22,33 @@ export function parseWithFormat(input: string, format: string | undefined): stri
   const number = compact.slice(prefix.length, compact.length - suffix.length);
   return PLAIN_NUMBER.test(number) ? number : input;
 }
+
+// 顯示前綴（mechanism.display_prefixes，例「👤 」）：原卡狀態欄格子開頭的符號，樹上存不帶符號的值。
+// 比對比照後端 rules::rule_for：先精確路徑，再找段數相同、含 * 的鍵（萬用段最少者）
+export function prefixFor(prefixes: Record<string, string>, path: string[]): string | undefined {
+  const exact = prefixes[path.join(".")];
+  if (exact !== undefined) return exact;
+  let best: { wild: number; prefix: string } | undefined;
+  for (const [key, prefix] of Object.entries(prefixes)) {
+    const segments = key.split(".");
+    if (segments.length !== path.length || !segments.includes("*")) continue;
+    if (!segments.every((segment, index) => segment === "*" || segment === path[index])) continue;
+    const wild = segments.filter((segment) => segment === "*").length;
+    if (!best || wild < best.wild) best = { wild, prefix };
+  }
+  return best?.prefix;
+}
+
+// 顯示時接回前綴；值已經以它開頭（舊資料或玩家手打）就不再接一次
+export function withPrefix(value: string, prefix: string | undefined): string {
+  if (!prefix || !value) return value;
+  return value.startsWith(prefix.trimEnd()) ? value : prefix + value;
+}
+
+// 玩家照原寫法輸入（帶前綴）就剝掉再存
+export function stripPrefix(input: string, prefix: string | undefined): string {
+  const head = prefix?.trimEnd();
+  if (!head || !input.startsWith(head)) return input;
+  const rest = input.slice(head.length).trimStart();
+  return rest ? rest : input;
+}

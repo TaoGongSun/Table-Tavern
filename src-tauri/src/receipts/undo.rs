@@ -375,6 +375,12 @@ fn undo_last(
             if let Some(display_formats) = &mechanism.display_formats_before {
                 state.mechanism.display_formats = display_formats.clone();
             }
+            if let Some(display_prefixes) = &mechanism.display_prefixes_before {
+                state.mechanism.display_prefixes = display_prefixes.clone();
+            }
+            if let Some(opening) = &mechanism.opening_before {
+                state.mechanism.opening = opening.clone();
+            }
             if let Some(collections) = &mechanism.collections_before {
                 state.mechanism.collections = collections.clone();
             }

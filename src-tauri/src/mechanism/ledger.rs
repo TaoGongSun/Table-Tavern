@@ -297,13 +297,15 @@ pub fn apply_block_typed(
         if skipped.iter().any(|list| path.starts_with(list)) {
             continue;
         }
+        // 寫進樹的值剝掉開頭相同的顯示前綴（平欄是固定鍵，鏡像同步時才剝）
+        let tree_value = super::prefix::strip(&world.mechanism.display_prefixes, path, value);
         let written = match target {
             Target::TreeReplace => {
                 parsed.push(Parsed::Patch(Patch {
                     op: PatchOp::Replace,
                     path: path.clone(),
                     from: Vec::new(),
-                    value: Some(serde_json::Value::String(value.clone())),
+                    value: Some(serde_json::Value::String(tree_value.to_owned())),
                 }));
                 true
             }
@@ -311,7 +313,7 @@ pub fn apply_block_typed(
                 world.state.table.insert(path[0].clone(), value.clone());
                 true
             }
-            Target::Tree => data::set_tree_value(&mut world.state.tree, path, value),
+            Target::Tree => data::set_tree_value(&mut world.state.tree, path, tree_value),
         };
         // 沒寫進去（撞到既有葉子等）的欄位不留跳動記號
         if !written {
@@ -321,15 +323,51 @@ pub fn apply_block_typed(
         }
     }
     parsed.extend(block.updates.iter().flat_map(|update| parse_block(update)));
+    let mut moves = Vec::new();
+    for item in &mut parsed {
+        if let Parsed::Patch(patch) = item {
+            if let Some(value) = patch.value.as_mut() {
+                super::prefix::strip_json(&world.mechanism.display_prefixes, &patch.path, value);
+            }
+            if patch.op == PatchOp::Move {
+                moves.push((patch.from.clone(), patch.path.clone()));
+            }
+        }
+    }
     let mut view = TypedView::for_table(
         &world.mechanism,
         base,
         entry.as_ref().unwrap_or(&world.state.tree),
         &world.state.tree,
     );
+    // 時間格子同步要知道 GM 本回合自己寫了哪些格子（那些以 GM 為準）
+    let reported_paths: std::collections::BTreeSet<String> = parsed
+        .iter()
+        .filter_map(|item| match item {
+            Parsed::Patch(patch) => Some(patch.path.join(".")),
+            _ => None,
+        })
+        .chain(
+            block
+                .fields
+                .iter()
+                .filter(|(path, _)| path.len() > 1)
+                .map(|(path, _)| path.join(".")),
+        )
+        .collect();
+    let reported_time = block
+        .fields
+        .iter()
+        .find(|(path, _)| path.len() == 1 && path[0] == "time")
+        .map(|(_, value)| value.clone());
     let mut outcome =
         apply_updates_typed(&mut world.state.tree, &world.mechanism, &parsed, &mut view);
     outcome.records.splice(0..0, list_records);
+    super::prefix::reconcile(
+        &mut world.mechanism.display_prefixes,
+        &world.state.tree,
+        &moves,
+    );
     if base.is_some() && view.is_active() {
         outcome.typed = Some(crate::data::message_vars::TypedBatch {
             doc: view.finish(),
@@ -338,6 +376,9 @@ pub fn apply_block_typed(
     }
     if jump_check {
         detect_jumps(world, &block.fields, &old_values, &mut outcome.records);
+    }
+    for path in super::time_sync::sync(world, reported_time.as_deref(), &reported_paths) {
+        outcome.changes.insert(path, "更新".to_owned());
     }
     local_rules(world, user_name, &mut outcome.records);
     if let Some(record) = scope_record {

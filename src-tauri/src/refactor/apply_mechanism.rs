@@ -55,6 +55,17 @@ fn align_path(
     Ok(aligned.join("."))
 }
 
+/// 不回錯的對齊（盤點 MIRRORS 用）：歧義就略過那一行並記 warn，不整次拒套。
+pub(super) fn align_lenient(path: &str, namespace: &BTreeMap<String, StateNode>) -> Option<String> {
+    match align_path(path, namespace, true) {
+        Ok(aligned) => Some(aligned),
+        Err(error) => {
+            log::warn!("重構套用：{path} 對齊時有歧義，略過：{error}");
+            None
+        }
+    }
+}
+
 /// 單段路徑對不上任何鍵時，找含「/」的頂層鍵：第一個「/」之前那段跟它精確或只差字形
 /// （AI 規則寫 `劇情階段`、平欄鍵是 `剧情阶段/要塞事件`）。唯一回 Some，多個回 Err，沒有回 None。
 pub(super) fn slash_head_match(
@@ -344,14 +355,18 @@ impl Candidates {
 /// - 平欄其餘 time／place／present 以外的鍵也全搬進樹並補文字規則（樹上已有同名的以樹為準）。
 /// - 只有觸發在讀、沒有規則的欄位補一條規則（range→number、contains→text 每輪送），回合尾才列得出來。
 ///
+/// `opening`：卡片狀態欄退場的非 MVU 桌、桌上有開場格子（statusbar-only-fields）——沒有規則或觸發也照開協定，
+/// 平欄其餘鍵留給 `opening_fields::adopt` 依格子型別處理（不在這裡一律補文字規則）。
+///
 /// 回傳從平欄搬進樹的鍵（呼叫端同步把事件快照裡的平欄也拿掉）。
 pub(super) fn open_rule_reporting(
     state: &mut WorldState,
     rules: &BTreeMap<String, FieldRule>,
     triggers: &[data::Trigger],
+    opening: bool,
 ) -> Vec<String> {
     let mut moved = Vec::new();
-    if state.mechanism.incremental || (rules.is_empty() && triggers.is_empty()) {
+    if !needs_rule_reporting(state, rules, triggers, opening) {
         return moved;
     }
     state.mechanism.incremental = true;
@@ -429,6 +444,9 @@ pub(super) fn open_rule_reporting(
             state.mechanism.rules.insert(path.clone(), turn_rule(kind));
         }
     }
+    if opening {
+        return moved;
+    }
     // 其餘開場平欄（沒有規則或觸發讀的）也全搬進樹、補文字規則：留在平欄 GM 看得到卻回報不了，
     // 用 insert 硬寫又會在樹上長出第二份。
     let rest: Vec<String> = state
@@ -455,6 +473,16 @@ pub(super) fn open_rule_reporting(
         moved.push(key);
     }
     moved
+}
+
+/// 開回報管道的入口：還沒開增量，且「本次有規則或觸發」或「退場桌的開場格子」（`opening`）。
+pub(super) fn needs_rule_reporting(
+    state: &WorldState,
+    rules: &BTreeMap<String, FieldRule>,
+    triggers: &[data::Trigger],
+    opening: bool,
+) -> bool {
+    !state.mechanism.incremental && (!rules.is_empty() || !triggers.is_empty() || opening)
 }
 
 pub(super) fn turn_rule(kind: FieldKind) -> FieldRule {

@@ -37,6 +37,8 @@ pub(super) fn mechanism_with(rules: &[(&str, FieldRule)]) -> Mechanism {
         collections: Default::default(),
         value_types: Default::default(),
         display_formats: Default::default(),
+        display_prefixes: Default::default(),
+        opening: Default::default(),
         numeric_update: Default::default(),
         version: 1,
         rules: rules
@@ -112,6 +114,8 @@ pub(super) fn once_mechanism() -> Mechanism {
         collections: Default::default(),
         value_types: Default::default(),
         display_formats: Default::default(),
+        display_prefixes: Default::default(),
+        opening: Default::default(),
         numeric_update: Default::default(),
         version: 1,
         rules: BTreeMap::new(),

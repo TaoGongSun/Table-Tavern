@@ -148,6 +148,12 @@ struct MechanismUndo {
     /// 這次操作改了數字欄顯示模板表（mechanism.display_formats）：整份原表，undo 寫回；None＝沒改。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     display_formats_before: Option<BTreeMap<String, String>>,
+    /// 這次操作改了顯示前綴表（mechanism.display_prefixes，statusbar-only-fields）：整份原表，undo 寫回；None＝沒改。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    display_prefixes_before: Option<BTreeMap<String, String>>,
+    /// 這次操作改了開場補齊資料（mechanism.opening，statusbar-only-fields）：整份原值，undo 寫回；None＝沒改。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    opening_before: Option<crate::data::OpeningMeta>,
     /// 這次操作改了集合描述（mechanism.collections）：整份原表（含原本的空表），undo 寫回；None＝沒改。
     /// 不寫回的話撤銷後樹與規則回到舊樣子、描述卻還是新集合，GM 的寫入會被形狀檢查拒收。
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -176,6 +182,8 @@ impl MechanismUndo {
             && self.guide_before.is_none()
             && self.value_types_before.is_none()
             && self.display_formats_before.is_none()
+            && self.display_prefixes_before.is_none()
+            && self.opening_before.is_none()
             && self.collections_before.is_none()
             && self.mirrors_before.is_none()
             && self.statusbar_retired_before.is_none()

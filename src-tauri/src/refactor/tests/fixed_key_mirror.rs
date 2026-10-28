@@ -350,6 +350,7 @@ fn ineligible_marks_are_dropped_and_rules_kept() {
             item: data::CollectionItem::Object,
             fields: Default::default(),
             value_type: None,
+            present_scoped: false,
         },
     );
     state
@@ -380,10 +381,10 @@ fn ineligible_marks_are_dropped_and_rules_kept() {
     assert!(takeover.mechanism.rules[PLACE].same_as.is_none());
 }
 
-/// 盤點是唯一標記來源：AI 規則上自帶的 same_as 不算；MIRRORS 名字只認樹上頂層葉子整段精確相等，
-/// 字形不同、不存在的行丟掉，規則照舊（開回報管道補的文字規則留著）。
+/// 盤點是唯一標記來源：MIRRORS 名字先對齊到樹上的鍵（字形折疊，statusbar-only-fields），對上的收成鏡像、
+/// 不存在的行丟掉（不建空葉）；AI 規則上自帶的 same_as 照樣被盤點蓋過。
 #[test]
-fn survey_mirrors_match_exact_leaf_names_only() {
+fn survey_mirrors_align_glyphs_and_drop_missing_names() {
     let root = TestRoot::new("mirror-exact");
     let (world_id, source_uid) = orc_world(root.path(), &[]);
     let (mut outcome, selection) = orc_outcome_with(
@@ -397,16 +398,19 @@ fn survey_mirrors_match_exact_leaf_names_only() {
     );
     outcome.entries[0]
         .rules
-        .insert(PLACE.to_owned(), marked(Some("place")));
+        .insert(PLACE.to_owned(), marked(Some("present")));
     apply(root.path(), &world_id, &outcome, &selection).unwrap();
     let state = data::read_state(root.path(), &world_id).unwrap();
     assert_eq!(
         state.mechanism.mirrors,
-        [(ROSTER.to_owned(), "present".to_owned())]
-            .into_iter()
-            .collect()
+        [
+            (PLACE.to_owned(), "place".to_owned()),
+            (ROSTER.to_owned(), "present".to_owned())
+        ]
+        .into_iter()
+        .collect()
     );
-    assert!(state.mechanism.rules.contains_key(PLACE));
+    assert!(!state.mechanism.rules.contains_key(PLACE));
     assert!(state
         .mechanism
         .rules

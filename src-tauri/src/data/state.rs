@@ -1,7 +1,7 @@
 use super::paths::world_dir;
 use super::DataResult;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 
@@ -210,6 +210,13 @@ pub struct Mechanism {
     /// 收編成數字規則後，樹上只存數字（觸發與增量要比大小），玩家畫面照模板套回原寫法〔作者裁決 2026-10-27〕。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub display_formats: BTreeMap<String, String>,
+    /// 顯示前綴（statusbar-only-fields，點分路徑→前綴，路徑可含 `*`）：原卡狀態欄格子開頭的「表情符號＋空白」
+    /// 重構時剝掉，樹上與 GM 只看不帶符號的值，玩家畫面接回原寫法；寫入時開頭相同的前綴照樣剝（`mechanism::prefix`）。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub display_prefixes: BTreeMap<String, String>,
+    /// 退場桌開場格子補齊的附帶資料（statusbar-only-fields 第 11 版）：套用時從淘汰的狀態欄原文算好，之後只讀。
+    #[serde(default, skip_serializing_if = "OpeningMeta::is_empty")]
+    pub opening: OpeningMeta,
     /// 集合（takeover-list-structured）：點分路徑 → 形狀。樹把物件與陣列都存成分支、空的 `{}`／`[]` 分不出來，
     /// 所以形狀另記在這裡、跟規則一起落檔；由套用重構時從驗證過的產物產生，驗證、套用、GM 狀態、前端填殼共用。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -224,6 +231,38 @@ pub struct Mechanism {
     pub mirrors: BTreeMap<String, String>,
 }
 
+/// 退場桌開場格子補齊的附帶資料。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OpeningMeta {
+    /// 開場格子已補規則（`opening_fields::adopt` 跑過）：GM 提示附欄位說明與同回合更新提示。
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub tracked: bool,
+    /// 欄位註記：點分路徑（集合用萬用 `*`）→ 一行說明，取自原卡狀態欄模板 `${…}`。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub field_notes: BTreeMap<String, String>,
+    /// 時間格子：點分路徑 → 開場值的時間成分；本回合圍欄報的 time 成分完全相同時由 App 補寫。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub time_cells: BTreeMap<String, BTreeSet<TimePart>>,
+}
+
+impl OpeningMeta {
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// 時間文字的成分。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TimePart {
+    Year,
+    Month,
+    Day,
+    Hour,
+    Minute,
+    Quarter,
+}
+
 /// 一個集合的形狀。具名集合以名字為鍵、項目一律是物件（項目帶 app 管的順序葉子 `_序`）；序列集合是 0..n-1。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CollectionSpec {
@@ -235,6 +274,10 @@ pub struct CollectionSpec {
     /// 純量項目的型別
     #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
     pub value_type: Option<CollectionValueType>,
+    /// 在場名單集合（statusbar-only-fields）：原卡狀態欄寫明只顯示在場人物的人物集合。資料全留，狀態列只列
+    /// 鍵名對得上 present 的項目（一個都對不上就全列）；離場的人回場時照舊顯示。
+    #[serde(default, skip_serializing_if = "crate::data::is_false")]
+    pub present_scoped: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -275,6 +318,8 @@ impl Default for Mechanism {
         Self {
             value_types: Default::default(),
             display_formats: Default::default(),
+            display_prefixes: Default::default(),
+            opening: Default::default(),
             collections: Default::default(),
             version: mechanism_version(),
             rules: BTreeMap::new(),

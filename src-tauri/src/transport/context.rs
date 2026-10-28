@@ -221,6 +221,11 @@ pub(super) fn gm_system_prompt(
                 system.push_str("\n\n");
                 system.push_str(&example);
             }
+            // 退場桌開場補齊（statusbar-only-fields）：逐格說明追蹤什麼＋同回合更新提示；只讀套用時存下的資料
+            if mechanism.opening.tracked {
+                system.push_str("\n\n");
+                system.push_str(&super::field_notes::section(mechanism, lang));
+            }
             push_list_protocols(&mut system, mechanism, lang);
         }
     }

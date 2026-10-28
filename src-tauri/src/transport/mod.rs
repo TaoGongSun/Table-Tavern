@@ -7,6 +7,7 @@ mod client;
 mod context;
 pub(crate) mod context_overflow;
 pub(crate) mod dispatch;
+mod field_notes;
 mod gm_opening;
 mod list_protocol;
 mod messages;
