@@ -39,6 +39,9 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [story-html-style-class](tasks/story-html-style-class.md) — 支援 <style> 與 class，讓狀態欄卡外觀接近 ST（需 CSS 解析新依賴） — 下一步：等 story-html-whitelist 結案後評估
 - [desktop-csp](tasks/desktop-csp.md) — 桌面版 CSP 是 null，訊息渲染只靠 DOMPurify 一層 — 下一步：未排程；先盤點 app 需要的來源
 - [card-prompt-only-regex](tasks/card-prompt-only-regex.md) — 後端套卡片 promptOnly 正則（含 depth），對齊 ST 送模型前的歷史處理 — 下一步：未排程；先盤點測試卡用法並估工
+- [refactor-outcome-fields](tasks/refactor-outcome-fields.md) — 重構產物帶盤點 FIELDS 與不收格子名單（開場沒附狀態欄的卡也能追蹤；地圖、記憶不收） — 下一步：等 statusbar-only-fields 結案
+- [text-field-verbose](tasks/text-field-verbose.md) — GM 回報文字欄偏長（一次 60–80 字） — 下一步：等 statusbar-only-fields 的輸出字數對照再定
+- [unix-only-fake-cli-tests](tasks/unix-only-fake-cli-tests.md) — 123 個測試用 shell 假 CLI，Windows 跑不到 — 下一步：未排程；先盤點假 CLI 行為，評估改成 Rust 假 CLI
 
 ## 階段 E：成本
 [api-shared-lane](handoffs/api-shared-lane.md) 四路成對測試先做；以下各案依其數據決定做不做：
