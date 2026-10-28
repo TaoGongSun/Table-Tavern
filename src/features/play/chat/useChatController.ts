@@ -381,9 +381,10 @@ export function useChatController({
   );
 
   // 單次角色接話（不含 busy 防護），供手動點名與 GM 推進共用；失敗往外拋由呼叫端收尾。
-  // 世代已變就不開新的 AI 呼叫；已在路上的回覆照樣落進原桌（closure 的 worldId），只是不碰現在的畫面
+  // 世代已變就不開新的 AI 呼叫；已在路上的回覆照樣落進原桌（closure 的 worldId），只是不碰現在的畫面。
+  // onLanded：對白（含停止留下的半截）落檔當下呼叫，換桌後才落的也算
   const replyOnce = useCallback(
-    async (characterId: string, started: number) => {
+    async (characterId: string, started: number, onLanded?: () => void) => {
       if (generation.current !== started) return;
       noteChatStarted();
       const turnId = beginTurn();
@@ -421,6 +422,7 @@ export function useChatController({
             ...(reply.raw ? { raw: reply.raw } : {}),
             truncated: true,
           }, started, undefined, turnId);
+          onLanded?.();
           await markCliConnected();
         }
         return;
@@ -435,6 +437,7 @@ export function useChatController({
         ...(reply.raw ? { raw: reply.raw } : {}),
         ...(truncated ? { truncated: true } : {}),
       }, started, undefined, turnId);
+      onLanded?.();
       await markCliConnected();
     },
     [noteChatStarted, worldId, metaOf, appendEvent, markCliConnected, takeResponseTruncated, reload],
@@ -684,7 +687,7 @@ export function useChatController({
   // 失敗時也只有它走「乾淨路徑」自動收回：玩家句落檔並拿到收據、之後沒回成，後端核對那一行
   // 確實還是檔尾才截掉，確定刪了才把原文放回輸入框；其他任何情況都不收、不放回，
   // 原文改放在失敗彈窗裡（見 .ai/plans/quota-insufficient-alert.md）。
-  // GM 正文一落檔玩家句就不是檔尾：之後任何一步失敗都保留玩家句、彈窗不帶原文（免得誘導重送）。
+  // GM 正文或角色對白一落檔玩家句就不是檔尾：之後任何一步失敗都保留玩家句、彈窗不帶原文（免得誘導重送）。
   // relay＝「送出並讓點名角色接話」：旁白點到角色就接一句就停，點到玩家只寫點名列
   const submitTurn = useCallback(
     async (raw: string, fromComposer: boolean, relay = false) => {
@@ -702,7 +705,7 @@ export function useChatController({
       appendFailed.current = false;
       const started = generation.current;
       onError("");
-      let narrated = false;
+      let replied = false;
       if (fromComposer) {
         setSending(true);
         setInput("");
@@ -744,18 +747,22 @@ export function useChatController({
         if (gmTargeted) {
           let relayTo = null as string | null;
           await narrateOnce(started, (landed) => {
-            narrated = true;
+            replied = true;
             relayTo = landed.next;
             rememberCall(started, landed);
           });
           if (relay && relayTo !== null && !stopRequested.current && generation.current === started) {
             await callAndReply(relayTo, started);
           }
-        } else if (speaker) await replyOnce(speaker, started);
+        } else if (speaker) {
+          await replyOnce(speaker, started, () => {
+            replied = true;
+          });
+        }
         await refreshWorlds();
       } catch (reason) {
         endWrite();
-        if (!fromComposer || narrated) {
+        if (!fromComposer || replied) {
           await failTurn(reason, started);
           return;
         }

@@ -64,6 +64,7 @@ describe("chat turn failures", () => {
     const failures: TurnFailure[] = [];
     const refreshState = vi.fn(async () => {});
     const refreshWorlds = vi.fn(async () => {});
+    const markCliConnected = vi.fn(async () => {});
     const config = { preferences: { max_round_speakers: 1 } } as unknown as AppConfig;
     let chat!: ChatController;
     let place = { worldId: "w1", scene: 0 };
@@ -81,7 +82,7 @@ describe("chat turn failures", () => {
         refreshState,
         refreshWorlds,
         noteChatStarted: () => {},
-        markCliConnected: async () => {},
+        markCliConnected,
         onError: (message) => {
           if (message) errors.push(message);
         },
@@ -101,6 +102,7 @@ describe("chat turn failures", () => {
       failures,
       refreshState,
       refreshWorlds,
+      markCliConnected,
       count: (command: string) => calls.filter((call) => call.command === command).length,
       moveTo(worldId: string, scene = 0) {
         place = { worldId, scene };
@@ -346,6 +348,53 @@ describe("chat turn failures", () => {
     expect(h.failures).toEqual([{ raw: "list broke" }]);
   });
 
+  describe("a landed character line is never offered back as a draft", () => {
+    // 對白一落檔玩家句就不是檔尾：之後任何一步失敗都不收、彈窗不帶原文（帶了會誘導玩家重送一句已在桌上的話）
+    const landedOnly = (h: ReturnType<typeof mount>, reply: string, raw: string) => {
+      expect(h.count("discard_unanswered_player")).toBe(0);
+      expect(h.chat().events.map((event) => event.text)).toEqual(["你好", reply]);
+      expect(h.chat().input).toBe("");
+      expect(h.failures).toEqual([{ raw }]);
+      expect(h.chat().busy).toBe(false);
+    };
+
+    it("table list refresh fails after the reply lands", async () => {
+      const h = mount({
+        append_player_event: appendPlayer(),
+        chat_with_character: () => ({ text: "嗯。", raw: null, aborted: false }),
+        append_transcript: (args) => args.event,
+        discard_unanswered_player: () => false,
+      });
+      h.refreshWorlds.mockRejectedValueOnce("list broke");
+      await typeAndSend(h, "你好");
+      landedOnly(h, "嗯。", "list broke");
+    });
+
+    it("marking the CLI connected fails after the reply lands", async () => {
+      const h = mount({
+        append_player_event: appendPlayer(),
+        chat_with_character: () => ({ text: "嗯。", raw: null, aborted: false }),
+        append_transcript: (args) => args.event,
+        discard_unanswered_player: () => false,
+      });
+      h.markCliConnected.mockRejectedValueOnce("config write broke");
+      await typeAndSend(h, "你好");
+      landedOnly(h, "嗯。", "config write broke");
+    });
+
+    it("a stopped half line landed, then a later step fails", async () => {
+      const h = mount({
+        append_player_event: appendPlayer(),
+        chat_with_character: () => ({ text: "晚", raw: null, aborted: true }),
+        append_transcript: (args) => args.event,
+        discard_unanswered_player: () => false,
+      });
+      h.markCliConnected.mockRejectedValueOnce("config write broke");
+      await typeAndSend(h, "你好");
+      landedOnly(h, "晚", "config write broke");
+    });
+  });
+
   it("a GM reply that never landed shows up before the next player line, as the backend lands it", async () => {
     const disk: TranscriptEvent[] = [];
     const handlers: Record<string, Handler> = {
@@ -584,6 +633,32 @@ describe("chat turn failures", () => {
       expect(h.chat().events).toEqual([fresh]);
       const landed = h.calls.filter((call) => call.command === "append_transcript");
       expect(landed.map((call) => call.args.worldId)).toEqual(["w1"]);
+    });
+
+    it("reply lands in the old table after a switch, then a later step fails: no draft", async () => {
+      const reply = gate<unknown>();
+      const h = mount({
+        append_player_event: appendPlayer(),
+        chat_with_character: () => reply.promise,
+        append_transcript: (args) => args.event,
+        discard_unanswered_player: () => false,
+      });
+      h.refreshWorlds.mockRejectedValueOnce("list broke");
+      act(() => h.chat().setInput("原桌玩家句"));
+      let sending!: Promise<void>;
+      await act(async () => {
+        sending = h.chat().send(formEvent);
+      });
+      await vi.waitFor(() => expect(h.count("chat_with_character")).toBe(1));
+      h.moveTo("w2");
+      await act(async () => {
+        reply.resolve({ text: "舊桌成功回覆", aborted: false });
+        await sending;
+      });
+      // 換桌後落檔回 undefined，但對白已在原桌：照樣算已回覆，不收、彈窗不帶原文
+      expect(h.calls.filter((call) => call.command === "append_transcript").map((call) => call.args.worldId)).toEqual(["w1"]);
+      expect(h.count("discard_unanswered_player")).toBe(0);
+      expect(h.failures).toEqual([{ raw: "list broke" }]);
     });
 
     it("GM narration pending when the table changes: no state refresh, arrivals or relay on the new table", async () => {
