@@ -7,6 +7,8 @@ export type ReadyReason = "raf" | "timer";
 export interface ReadyMessage {
   token: string;
   reason: ReadyReason;
+  /** 送出前有外部 script 載入失敗（例：CDN 拒連）：宿主據以保留舊殼 */
+  failed: boolean;
   /** 殼內時刻（timeOrigin＋now，跨 frame 可比）：dcl、第二次 rAF（只有 reason=raf 才有）、送出 */
   t: { dcl: number | null; raf: number | null; sent: number };
 }
@@ -37,11 +39,22 @@ export function buildReadySignalSource(tokenLiteral: string): string {
   }
   var t = { dcl: null, raf: null, sent: 0 };
   var sent = false;
+  var failed = false;
+  // 資源載入失敗不冒泡，要在捕獲階段收。只算外部 script（Vue、tailwind 這類載不到殼就畫不出來）；
+  // 樣式表、字型、圖片失敗殼照樣畫得出來，算進來的話連不到某個字型站的卡每份殼都成了「失敗」
+  window.addEventListener(
+    "error",
+    function (event) {
+      var target = event.target;
+      if (target && target !== window && String(target.tagName || "").toUpperCase() === "SCRIPT") failed = true;
+    },
+    true
+  );
   function send(reason) {
     if (sent) return;
     sent = true;
     t.sent = now();
-    post({ kind: "ready", reason: reason, t: t });
+    post({ kind: "ready", reason: reason, failed: failed, t: t });
   }
   function arm() {
     if (document.visibilityState === "hidden") {
@@ -100,9 +113,10 @@ export function parseReady(data: unknown): ReadyMessage | null {
   const message = data as Record<string, unknown>;
   if (message.source !== "table-tavern-card" || message.kind !== "ready" || typeof message.token !== "string") return null;
   if (message.reason !== "raf" && message.reason !== "timer") return null;
+  if (message.failed !== undefined && typeof message.failed !== "boolean") return null;
   const t = message.t as Record<string, unknown> | null;
   if (typeof t !== "object" || t === null || !finiteOrNull(t.dcl) || !finiteOrNull(t.raf) || typeof t.sent !== "number") return null;
-  return { token: message.token, reason: message.reason, t: { dcl: t.dcl, raf: t.raf, sent: t.sent } };
+  return { token: message.token, reason: message.reason, failed: message.failed === true, t: { dcl: t.dcl, raf: t.raf, sent: t.sent } };
 }
 
 /** 跨 frame 可比的宿主時刻 */

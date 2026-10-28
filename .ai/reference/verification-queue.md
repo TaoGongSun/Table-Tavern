@@ -22,7 +22,7 @@
 
 4g. [shell-update-flash](../handoffs/archive/shell-update-flash.md) 等待期鍵盤：送出後新殼在背面載的那段時間，用原生 Tab／Shift+Tab（真鍵盤，測試通道的 press 不觸發原生移焦）焦點進不了兩支 iframe 內的控制項。 2026-10-28 主線真鍵盤（isTrusted）測：卡住模式鎖定期按 Tab／Shift+Tab，焦點始終在宿主（rail 按鈕／BODY），從沒落到 IFRAME，兩支 iframe 都是 inert、tabIndex -1；但鎖定期間 Tab 後出現 3 次 window blur 隨即 focusin 回宿主（鎖定前也有 1 次），原因未定，不記為過（原始紀錄 `vq/4g-mainline.json`）。
 
-4h. [shell-update-flash](../handoffs/archive/shell-update-flash.md) 離線：毛絨轉變桌（殼靠 CDN 的 tailwind、daisyui、字型）斷網後走一回合：新殼最遲 1500 ms 強制翻上來（可能是半載好的殼），之後介面可繼續用、不卡住。 2026-10-28 替代做法（CDN 網址改走本機代理，切「直接拒絕／連線卡住」；非整機斷網）：拒絕模式殼照常 ready、鎖 129–163 ms；卡住模式 7 次中 6 次鎖 1501–1503 ms 強制翻面，之後殼半載、宿主介面與下一回合照常可用；第一次卡住鎖了 7.7 秒未再重現；卡住期間主頁計時器最大間隔約 1 秒（測試包內，原因未查）。
+4h. [shell-update-flash](../handoffs/archive/shell-update-flash.md) 離線：毛絨轉變桌（殼靠 CDN 的 tailwind、daisyui、字型）斷網後走一回合：新殼最遲 1500 ms 強制翻上來（可能是半載好的殼），之後介面可繼續用、不卡住。 2026-10-28 替代做法（CDN 網址改走本機代理，切「直接拒絕／連線卡住」；非整機斷網）：拒絕模式殼照常 ready、鎖 129–163 ms；卡住模式 7 次中 6 次鎖 1501–1503 ms 強制翻面，之後殼半載、宿主介面與下一回合照常可用；第一次卡住鎖了 7.7 秒未再重現；卡住期間主頁計時器最大間隔約 1 秒（測試包內，原因未查）。 **舊數據降級**：當時的 `vq/tools/rewrite_cdn.py` 改網址漏了主機名那段，代理抓不到，連線正常模式也全部 502，上述鎖定時間與「殼半載」不代表真 CDN 行為。2026-10-28 [shell-keep-old-on-timeout](../handoffs/archive/shell-keep-old-on-timeout.md) 改成逾時或載入失敗保留舊殼後，用修好的工具重跑（scratchpad `keepold-tools/`：cdn-proxy.mjs 加暫扣／503 模式、rewrite_cdn.py、run.mjs，截圖在 `keepold-tools/shots/`）10/10 過：暫扣逾時保留舊殼並解鎖、放行後翻面畫出新數值、503 與拒連保留舊殼、下一回合恢復；暫扣中關開面板空白（已知限制）。→ 本項過。
 
 排這梯前先確認該項驗收步驟裡沒有換幕：換幕一定走模型產前情提要摘要（`advance_scene`），避不開。
 

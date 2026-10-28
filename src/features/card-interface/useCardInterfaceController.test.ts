@@ -472,7 +472,7 @@ describe("useCardInterfaceController", () => {
         );
       });
 
-      it("parseMessage 的值解析：token 相符才交給 Worker、結果回給送來的沙盒；形狀不對或 token 不符不理；關面板終止 Worker", async () => {
+      it("parseMessage 的值解析：token 相符才交給 Worker、結果回給送來的沙盒；形狀不對不理、舊殼 token 回 stale-shell；關面板終止 Worker", async () => {
         evalWorkers.created.length = 0;
         await render({ events: [tabled("e0", "r0", 1, "開場白"), tabled("e1", "r1", 5)] });
         await act(async () => controller!.open());
@@ -491,18 +491,23 @@ describe("useCardInterfaceController", () => {
         const quiet = [
           fromCard({ kind: "mvu-eval", requestId: "t:e2", op: "run", text: "1" }),
           fromCard({ kind: "mvu-eval", requestId: 3, op: "value", text: "1" }),
-          fromCard({ kind: "mvu-eval", token: "別份殼", requestId: "t:e4", op: "value", text: "1" }),
         ];
+        const stale = fromCard({ kind: "mvu-eval", token: "別份殼", requestId: "t:e4", op: "value", text: "1" });
         await act(async () => {
           await new Promise((resolve) => setTimeout(resolve, 0));
         });
         quiet.forEach((other) => expect(other.postMessage).not.toHaveBeenCalled());
+        // 舊殼的請求不交 Worker，但回錯（帶它自己的 token），殼端不會一直等
+        expect(stale.postMessage).toHaveBeenCalledWith(
+          { source: "table-tavern-host", token: "別份殼", kind: "mvu-eval-result", requestId: "t:e4", ok: false, error: "stale-shell" },
+          { targetOrigin: "*" },
+        );
         expect(evalWorkers.created).toHaveLength(1);
         await act(async () => controller!.close());
         expect(evalWorkers.created[0].terminated).toBe(true);
       });
 
-      it("zod 桌 parseMessage：token 相符才交後端只算不寫、結果與錯誤回給送來的沙盒；token 不符不理", async () => {
+      it("zod 桌 parseMessage：token 相符才交後端只算不寫、結果與錯誤回給送來的沙盒；舊殼 token 回 stale-shell、不送後端", async () => {
         await render({ events: [tabled("e0", "r0", 1, "開場白"), tabled("e1", "r1", 5)] });
         await act(async () => controller!.open());
         let ok!: { postMessage: ReturnType<typeof vi.fn> };
@@ -524,7 +529,10 @@ describe("useCardInterfaceController", () => {
           { targetOrigin: "*" },
         );
         expect(bad.postMessage.mock.calls[0][0]).toMatchObject({ requestId: "p2", ok: false, error: "detect: 讀不到桌" });
-        expect(other.postMessage).not.toHaveBeenCalled();
+        expect(other.postMessage).toHaveBeenCalledWith(
+          { source: "table-tavern-host", token: "別份殼", kind: "mvu-parse-result", requestId: "p3", ok: false, error: "stale-shell" },
+          { targetOrigin: "*" },
+        );
         expect(backend.writes).toEqual([]);
       });
 
@@ -883,15 +891,20 @@ describe("useCardInterfaceController", () => {
         });
       });
 
-      it("token 不對的寫入不理；關面板時未結算的寫入一律 closed", async () => {
+      it("舊殼 token 的寫入不送後端、回 stale-shell 拒絕（殼端不卡住）；關面板時未結算的寫入一律 closed", async () => {
         const events = [tabled("e0", "r0", 1, "開場白"), tabled("e1", "r1", 5)];
         await render({ events });
         await act(async () => controller!.open());
         backend.write = () => new Promise(() => {});
+        let stale: { postMessage: ReturnType<typeof vi.fn> } | null = null;
         await act(async () => {
-          fromCard({ kind: "mvu-write", token: "別的殼", requestId: "x", target: "e1", base: "r1", payload: "{}" });
+          stale = fromCard({ kind: "mvu-write", token: "別的殼", requestId: "x", target: "e1", base: "r1", payload: "{}" });
         });
         expect(backend.writes).toHaveLength(0);
+        expect(stale!.postMessage).toHaveBeenCalledWith(
+          { source: "table-tavern-host", token: "別的殼", kind: "mvu-settle", results: [{ requestId: "x", ok: false, error: "stale-shell" }] },
+          { targetOrigin: "*" },
+        );
         let frame: { postMessage: ReturnType<typeof vi.fn> } | null = null;
         await act(async () => {
           frame = fromCard({ kind: "mvu-write", requestId: "q1", target: "e1", base: "r1", payload: "{}" });

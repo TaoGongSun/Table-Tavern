@@ -133,6 +133,16 @@ interface ShellHolder {
   reply: MessageEventSource | null;
 }
 
+/** 舊殼的 MVU 請求回的錯誤碼 */
+const STALE_SHELL = "stale-shell";
+
+/** 回給送來的那份舊殼（帶它自己的 token，殼端只認自己的） */
+function replyStale(event: MessageEvent, message: Record<string, unknown>): void {
+  const data = event.data as { token?: unknown };
+  if (typeof data.token !== "string") return;
+  event.source?.postMessage({ source: "table-tavern-host", token: data.token, ...message }, { targetOrigin: "*" });
+}
+
 export function useCardInterfaceController(input: {
   worldId: string;
   events: TranscriptEvent[];
@@ -562,17 +572,29 @@ export function useCardInterfaceController(input: {
       // 卡片寫入變數：token 要是目前這份殼的，形狀不對一律不理
       if (data.kind === "mvu-write") {
         const holder = writeQueue.current;
-        const request = holder !== null && data.token === holder.token ? parseWriteRequest(data) : null;
+        const request = holder !== null ? parseWriteRequest(data) : null;
         if (holder === null || request === null) return;
+        if (data.token !== holder.token) {
+          // 舊殼（例：新殼逾時、保留著的上一回合殼）寫入不收，但要回拒絕：殼端等結算沒有逾時，不回就卡死
+          replyStale(event, { kind: "mvu-settle", results: [{ requestId: request.requestId, ok: false, error: STALE_SHELL }] });
+          return;
+        }
         holder.reply = event.source;
         holder.queue.enqueue(request);
         return;
       }
       // parseMessage：值解析交宿主專用 Worker（單筆 200 ms 逾時）；zod 桌整次交後端的 zod 引擎只算不寫。
-      // 結果回給送來的那份沙盒，殼換了就不回
+      // 結果回給送來的那份沙盒；舊殼送來的直接回錯（同寫入，不讓請求懸著）
       if (data.kind === "mvu-eval" || data.kind === "mvu-parse") {
         const holder = writeQueue.current;
-        if (holder === null || data.token !== holder.token) return;
+        if (holder === null) return;
+        if (data.token !== holder.token) {
+          if (typeof data.requestId === "string") {
+            const kind = data.kind === "mvu-eval" ? "mvu-eval-result" : "mvu-parse-result";
+            replyStale(event, { kind, requestId: data.requestId, ok: false, error: STALE_SHELL });
+          }
+          return;
+        }
         const source = event.source;
         const reply = (message: Record<string, unknown>) => {
           if (writeQueue.current !== holder) return;

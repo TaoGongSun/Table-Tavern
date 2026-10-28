@@ -120,20 +120,25 @@ export function CardInterfaceOverlay({
   composer,
 }: CardInterfaceOverlayProps) {
   // 單向推送：只送到這份殼的那支 iframe（opaque origin 只能用 "*"），帶 token 讓舊殼與別桌的殼不收
-  const push = useCallback(() => {
-    if (chat === null) return;
-    const target = [shellRegistry.pending, shellRegistry.front].find((slot) => slot?.key === shellKey);
-    slotWindow(target ?? null)?.postMessage({ source: "table-tavern-host", kind: "chat", token: shellKey, chat, mvu }, "*");
-  }, [chat, mvu, shellKey, shellRegistry]);
-  // 逐字稿變了就推（本樓沒變、不換殼的情形）；殼回報 ready 時再推一次，補文件建好到殼初始化之間漏掉的更新
-  useEffect(() => {
-    push();
-  }, [push]);
-  const onReady = useCallback(
-    (key: string) => {
-      if (key === shellKey) push();
+  const post = useCallback(
+    (target: Window | null) => {
+      if (chat === null) return;
+      target?.postMessage({ source: "table-tavern-host", kind: "chat", token: shellKey, chat, mvu }, "*");
     },
-    [push, shellKey],
+    [chat, mvu, shellKey],
+  );
+  // 逐字稿變了就推（本樓沒變、不換殼的情形）
+  useEffect(() => {
+    const target = [shellRegistry.pending, shellRegistry.front].find((slot) => slot?.key === shellKey);
+    post(slotWindow(target ?? null));
+  }, [post, shellKey, shellRegistry]);
+  // 殼回報 ready 時再推一次，補文件建好到殼初始化之間漏掉的更新。直接推給已核對過的那個視窗：
+  // 早到的 ready 在 iframe 登記當下補報，那時 registry 還沒寫入這支
+  const onReady = useCallback(
+    (key: string, target: Window) => {
+      if (key === shellKey) post(target);
+    },
+    [post, shellKey],
   );
 
   return (

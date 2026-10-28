@@ -1,12 +1,12 @@
 // @vitest-environment happy-dom
-// 覆蓋層：殼雙緩衝（背面載、ready 翻面、逾時強制翻、硬切、鎖定）與讀訊息推送（帶這份殼的 token，只送進它的 iframe）。
+// 覆蓋層：殼雙緩衝（背面載、ready 翻面、逾時保留載好過的舊殼或強制翻、硬切、鎖定）與讀訊息推送（帶這份殼的 token，只送進它的 iframe）。
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildOverlayComposer, CardInterfaceOverlay, type OverlayComposer } from "./CardInterfaceOverlay";
 import { type CardChat } from "./card-chat-shim";
-import { createShellRegistry, type ShellRegistry } from "./shell-frames/shell-frames-state";
+import { acceptsInput, createShellRegistry, type ShellRegistry } from "./shell-frames/shell-frames-state";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -82,11 +82,11 @@ describe("CardInterfaceOverlay 殼雙緩衝與讀訊息推送", () => {
     return { frame, postMessage, view };
   }
 
-  async function ready(source: unknown, token: string) {
+  async function ready(source: unknown, token: string, failed = false) {
     await act(async () => {
       window.dispatchEvent(
         new MessageEvent("message", {
-          data: { source: "table-tavern-card", kind: "ready", token, reason: "raf", t: { dcl: 1, raf: 2, sent: 2 } },
+          data: { source: "table-tavern-card", kind: "ready", token, reason: "raf", failed, t: { dcl: 1, raf: 2, sent: 2 } },
           source: source as Window,
         }),
       );
@@ -144,7 +144,7 @@ describe("CardInterfaceOverlay 殼雙緩衝與讀訊息推送", () => {
     );
   });
 
-  it("等待期又換殼：丟掉舊的背面那支、front 不動；逾時從鎖定起點算，到時強制翻到最新的", async () => {
+  it("等待期又換殼：丟掉舊的背面那支、front 不動；逾時從鎖定起點算，舊殼沒回報 ready 時到時強制翻到最新的", async () => {
     vi.useFakeTimers();
     await render(chatA, "k1");
     await render(chatA, "k2");
@@ -161,6 +161,83 @@ describe("CardInterfaceOverlay 殼雙緩衝與讀訊息推送", () => {
       vi.advanceTimersByTime(10);
     });
     expect(frames().map((frame) => [frame.dataset.shellKey, frame.dataset.shellRole])).toEqual([["k3", "front"]]);
+  });
+
+  it("逾時保留載好過的舊殼：解鎖、擋板消失、舊殼可操作、新殼留背面且 inert；晚到 ready 翻面並推最新快照", async () => {
+    vi.useFakeTimers();
+    await render(chatA, "k1");
+    const old = spyFrame("k1");
+    await ready(old.view, "k1");
+    await render(chatA, "k2");
+    const fresh = spyFrame("k2");
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(frames().map((frame) => [frame.dataset.shellKey, frame.dataset.shellRole])).toEqual([
+      ["k1", "front"],
+      ["k2", "pending"],
+    ]);
+    expect(host!.querySelector("[data-shell-lock]")).toBeNull();
+    expect(registry).toMatchObject({ locked: false, front: { key: "k1" }, pending: { key: "k2" } });
+    expect(old.frame.inert).toBe(false);
+    expect(old.frame.tabIndex).not.toBe(-1);
+    expect(fresh.frame.inert).toBe(true);
+    expect(fresh.frame.tabIndex).toBe(-1);
+    expect(acceptsInput(registry, old.view, "k1")).toBe(true);
+    // 卡住期間逐字稿又變：只推給最新的殼，不推給舊殼
+    old.postMessage.mockClear();
+    await render(chatB, "k2");
+    expect(old.postMessage).not.toHaveBeenCalled();
+    fresh.postMessage.mockClear();
+    await ready(fresh.view, "k2");
+    expect(frames()).toEqual([fresh.frame]);
+    expect(fresh.frame.dataset.shellRole).toBe("front");
+    expect(fresh.frame.inert).toBe(false);
+    expect(fresh.postMessage).toHaveBeenLastCalledWith(
+      { source: "table-tavern-host", kind: "chat", token: "k2", chat: chatB, mvu: null },
+      "*",
+    );
+  });
+
+  it("逾時保留後又換殼：重新鎖定、換掉背面那支；被換掉的殼晚到 ready 不翻；再逾時仍保留舊殼", async () => {
+    vi.useFakeTimers();
+    await render(chatA, "k1");
+    const old = spyFrame("k1");
+    await ready(old.view, "k1");
+    await render(chatA, "k2");
+    const replaced = spyFrame("k2");
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+    });
+    await render(chatA, "k3");
+    expect(frames().map((frame) => frame.dataset.shellKey)).toEqual(["k1", "k3"]);
+    expect(host!.querySelector("[data-shell-lock]")).not.toBeNull();
+    expect(registry.locked).toBe(true);
+    await ready(replaced.view, "k2");
+    expect(frames().map((frame) => frame.dataset.shellKey)).toEqual(["k1", "k3"]);
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(frames().map((frame) => [frame.dataset.shellKey, frame.dataset.shellRole])).toEqual([
+      ["k1", "front"],
+      ["k3", "pending"],
+    ]);
+    expect(registry.locked).toBe(false);
+  });
+
+  it("新殼載入失敗：舊殼載好過就保留、解鎖，失敗的殼不翻上去", async () => {
+    await render(chatA, "k1");
+    const old = spyFrame("k1");
+    await ready(old.view, "k1");
+    await render(chatA, "k2");
+    const fresh = spyFrame("k2");
+    await ready(fresh.view, "k2", true);
+    expect(frames().map((frame) => [frame.dataset.shellKey, frame.dataset.shellRole])).toEqual([
+      ["k1", "front"],
+      ["k2", "pending"],
+    ]);
+    expect(registry.locked).toBe(false);
+    expect(host!.querySelector("[data-shell-lock]")).toBeNull();
   });
 
   it("換桌（顯示對象不同）硬切：舊的立刻卸、新的直接當 front", async () => {

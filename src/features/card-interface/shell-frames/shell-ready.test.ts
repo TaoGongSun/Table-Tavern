@@ -49,6 +49,40 @@ describe("buildReadySignalSource", () => {
     expect(t.raf).not.toBeNull();
   });
 
+  it("外部 script 載入失敗（捕獲階段的 error）：ready 帶 failed；樣式表、圖片失敗不算", () => {
+    vi.useFakeTimers();
+    const { posts, runFrames } = install("T-fail");
+    const image = document.createElement("img");
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    document.body.append(image, link);
+    image.dispatchEvent(new Event("error"));
+    link.dispatchEvent(new Event("error"));
+    document.dispatchEvent(new Event("DOMContentLoaded"));
+    runFrames();
+    runFrames();
+    expect(parseReady(readies(posts).find((post) => post.token === "T-fail"))).toMatchObject({ failed: false });
+
+    const second = install("T-fail2");
+    const script = document.createElement("script");
+    document.head.appendChild(script);
+    script.dispatchEvent(new Event("error"));
+    document.dispatchEvent(new Event("DOMContentLoaded"));
+    second.runFrames();
+    second.runFrames();
+    expect(parseReady(readies(second.posts).find((post) => post.token === "T-fail2"))).toMatchObject({ failed: true });
+    image.remove();
+    link.remove();
+    script.remove();
+  });
+
+  it("parseReady：failed 缺省當 false、不是布林就不收", () => {
+    const base = { source: "table-tavern-card", kind: "ready", token: "k", reason: "raf", t: { dcl: 1, raf: 2, sent: 3 } };
+    expect(parseReady(base)?.failed).toBe(false);
+    expect(parseReady({ ...base, failed: true })?.failed).toBe(true);
+    expect(parseReady({ ...base, failed: "yes" })).toBeNull();
+  });
+
   it("可見但 rAF 300 ms 內一次都沒跑：送 timer，raf 留空", () => {
     vi.useFakeTimers();
     const { posts } = install();
