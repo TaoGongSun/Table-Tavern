@@ -41,6 +41,9 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [greeting-context-st-parity](tasks/greeting-context-st-parity.md) — 開場白與全部備用開場白每回合塞進 GM system，ST 只當第 0 則 — 下一步：等 gm-reprints-retired-statusbar 結案
 - [stage-card-in-speaker-list](tasks/stage-card-in-speaker-list.md) — 舞台卡出現在下一位點名名單；收尾句中英不一致 — 下一步：未排程
 - [state-update-echo-in-story](tasks/state-update-echo-in-story.md) — GM 照抄歷史裡的「（系統）狀態更新」事件進正文並顯示 — 下一步：未排程；先量一般桌長局發生率
+- [card-prompt-only-regex](tasks/card-prompt-only-regex.md) — 後端套卡片 promptOnly 正則（含 depth），對齊 ST 送模型前的歷史處理 — 下一步：未排程；先盤點測試卡用法並估工
+- [agy-home-cleanup](tasks/agy-home-cleanup.md) — app 專用 agy 家目錄的對話只累積不清；agy 沒有資料目錄變數的上游追蹤 — 下一步：等 agy-conversation-isolation 結案
+- [gm-advance-hide-no-nomination](tasks/gm-advance-hide-no-nomination.md) — 不要求點名的卡片介面桌，「GM 推進」要不要藏 — 下一步：等 multichar-next-speaker-silent 結案
 
 ## 階段 E：成本
 [api-shared-lane](handoffs/api-shared-lane.md) 四路成對測試先做；以下兩案依其數據決定做不做：
