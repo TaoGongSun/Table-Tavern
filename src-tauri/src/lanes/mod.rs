@@ -33,8 +33,8 @@ mod snapshot_patch;
 mod store;
 
 use cleanup::{
-    discard_new_agy, retire_agy_conversation, retire_claude_session, revoke_grok_lane,
-    settle_abort, GrokRevoke,
+    delete_codex, discard_new, retire_agy_conversation, retire_claude_session, retire_codex_thread,
+    revoke_grok_lane, settle_abort, GrokRevoke,
 };
 use plan::{
     events_fingerprint, expected_reply_for, next_cache_ttl, plan_turn, worldbook_fingerprint,
@@ -520,6 +520,8 @@ pub(crate) async fn run_turn(
         } else if prior.provider == LaneProvider::Agy.as_str() {
             // 被取代的 agy 對話不會再續用（本輪換成別家也一樣）：落檔成功就刪
             retire_agy_conversation(call, &key, &old, &mut store, &store_path)?;
+        } else if prior.provider == LaneProvider::Codex.as_str() {
+            retire_codex_thread(call, &key, &old, &mut store, &store_path).await?;
         } else if prior.provider == LaneProvider::Claude.as_str()
             && (input.lane == Lane::Gm
                 || prior.unerased_owner.is_some()
@@ -696,7 +698,7 @@ pub(crate) async fn run_turn(
             // 中止不是續聊失敗：不降級重試。私設照抹；抹不掉就棄用這條 session。
             // expected_reply 維持呼叫前寫下的 None，pending_rewrite 也留著，下一輪改由正典重建。
             Ok(cli::CliFinish::Aborted(partial)) => {
-                discard_new_agy(call, &slots.conversation_id, &session_id);
+                discard_new(call, &slots, &session_id).await;
                 settle_abort(
                     call,
                     world_id,
@@ -716,7 +718,7 @@ pub(crate) async fn run_turn(
             // pending_rewrite 下一輪重開），但回錯而不是半截——不重開重試（A5）、半截不交出（A4）。
             // settle_abort 自己失敗就回那個錯，同樣不重派送。
             Ok(cli::CliFinish::Runaway { reason, chars }) => {
-                discard_new_agy(call, &slots.conversation_id, &session_id);
+                discard_new(call, &slots, &session_id).await;
                 settle_abort(
                     call,
                     world_id,
@@ -740,7 +742,7 @@ pub(crate) async fn run_turn(
                 // 只有控制區塊、沒有台詞：收尾比照失控（claude 抹私設、grok 撤線、pending_rewrite 留著
                 // 下一輪重開），不重開重試；settle_abort 自己失敗就回那個錯
                 if cleaned.as_deref() == Some("") {
-                    discard_new_agy(call, &slots.conversation_id, &session_id);
+                    discard_new(call, &slots, &session_id).await;
                     settle_abort(
                         call,
                         world_id,
@@ -772,6 +774,11 @@ pub(crate) async fn run_turn(
                 if actual_session_id.is_none() || unclean {
                     store.remove(&key);
                     write_store(&store_path, &store)?;
+                    // codex 丟掉的這條 thread 不會再續用：刪
+                    let dropped = actual_session_id.or((!opening).then_some(session_id));
+                    if let (LaneProvider::Codex, Some(id)) = (call.provider, dropped) {
+                        delete_codex(call, &id).await;
+                    }
                     return Ok(TurnOutcome {
                         text: reply,
                         aborted: false,
@@ -912,10 +919,12 @@ pub(crate) async fn run_turn(
             }
             // 續聊失敗（session 檔認不得、CLI 拒絕 resume 等）＝丟線重開全量再試一次
             Err(_) if !opening => {
-                // mismatch 時 agy 已另開新對話：它不會進 store，先刪
-                discard_new_agy(call, &slots.conversation_id, &session_id);
+                // mismatch 時 agy／codex 已另開新對話：它不會進 store，先刪
+                discard_new(call, &slots, &session_id).await;
                 if call.provider == LaneProvider::Agy {
                     retire_agy_conversation(call, &key, &session_id, &mut store, &store_path)?;
+                } else if call.provider == LaneProvider::Codex {
+                    retire_codex_thread(call, &key, &session_id, &mut store, &store_path).await?;
                 } else if call.provider == LaneProvider::Grok {
                     revoke_grok_lane(
                         call,
@@ -955,7 +964,7 @@ pub(crate) async fn run_turn(
                         GrokRevoke::Drop("open-failed"),
                     )?;
                 } else {
-                    discard_new_agy(call, &slots.conversation_id, &session_id);
+                    discard_new(call, &slots, &session_id).await;
                     store.remove(&key);
                     write_store(&store_path, &store)?;
                 }

@@ -1684,6 +1684,8 @@ fn apply_rewrite_names_the_failing_stage() {
 mod agy_cleanup;
 mod cache_ttl;
 mod codex;
+#[cfg(unix)]
+mod codex_cleanup;
 mod gm_restart;
 mod grok;
 mod lane_lock;

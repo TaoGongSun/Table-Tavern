@@ -5,7 +5,6 @@
 分類規則：仍需程式施工／規格落地才放「進行中」；施工已完成、只剩可執行環境／使用者實機／外部條件驗收則移到「等實機驗收」，並同步列入[實測佇列](reference/verification-queue.md)。
 
 ## 進行中
-- [agy-home-cleanup](handoffs/agy-home-cleanup.md) — app 專用 CLI 家目錄（agy／grok，codex 待 codex-lane-resume）定期清理＋prompt_history 私設外洩：包 1 已三方驗收、在分支上，包 2 codex 等 codex-lane-resume 合 main 後開工
 - [card-mvu-shim](handoffs/card-mvu-shim.md) — 卡片介面沙盒墊 MVU 讀寫變數：全部已合併 main，剩實測佇列梯 1 項目（含 iframe 內按鈕實際互動）
 - [cli-version-gate](handoffs/cli-version-gate.md) — 四家 CLI 升版改輸出格式只在執行期才發現：盤點與提方案中
 - [statusbar-only-fields](handoffs/statusbar-only-fields.md) — characters 盤點把只為淘汰狀態欄存在的欄位收成 FIELDS／RULES、GM 每回合回報長文字：盤點測試卡、提方案中

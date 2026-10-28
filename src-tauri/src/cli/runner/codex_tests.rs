@@ -269,7 +269,10 @@ async fn thread_id_is_captured_without_usage_log_and_mismatch_aborts() {
         counters.lock().unwrap().map(|c| c.input_tokens),
         Some(42034)
     );
+    // mismatch：實際 id 先記進 slot（呼叫端要拿它去刪 codex 另開的 thread）再回錯
+    let actual = Mutex::new(None);
     let session = SessionWatch {
+        id_out: Some(&actual),
         expected_id: Some("t-other"),
         ..SessionWatch::default()
     };
@@ -279,6 +282,7 @@ async fn thread_id_is_captured_without_usage_log_and_mismatch_aborts() {
         .unwrap()
         .to_string();
     assert!(error.contains("cli_session_mismatch"), "{error}");
+    assert_eq!(actual.lock().unwrap().as_deref(), Some("t-1"));
 }
 
 fn usage_log<'a>(

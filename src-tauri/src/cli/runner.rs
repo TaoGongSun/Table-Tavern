@@ -466,6 +466,12 @@ async fn drive_child(
         }
         if session.id_out.is_some() || session.expected_id.is_some() {
             if let Some(id) = super::stream::codex_thread_id(&line) {
+                // 先記實際 id 再比對：對不上時 codex 另開了新 thread，呼叫端要拿它去刪
+                if let Some(slot) = session.id_out {
+                    if let Ok(mut held) = slot.lock() {
+                        *held = Some(id.clone());
+                    }
+                }
                 if let Some(expected) = session.expected_id.filter(|expected| *expected != id) {
                     return Err(UiMsg::CliSessionMismatch {
                         cli: "codex".to_owned(),
@@ -473,11 +479,6 @@ async fn drive_child(
                         actual: id,
                     }
                     .into_error());
-                }
-                if let Some(slot) = session.id_out {
-                    if let Ok(mut held) = slot.lock() {
-                        *held = Some(id);
-                    }
                 }
             }
         }

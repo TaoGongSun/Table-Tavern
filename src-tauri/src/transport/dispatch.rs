@@ -87,7 +87,7 @@ fn agy_profile(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 /// app 專用的 CODEX_HOME（設定根底下）。純路徑：換幕容量讀 codex 的模型快取也看這裡，
 /// 那條路不建目錄、不確保登入連結，也不因為還沒登入就失敗。
 pub(crate) fn codex_home_dir(config_root: &std::path::Path) -> PathBuf {
-    config_root.join("codex-home")
+    cli::home_cleanup::codex_home_dir(config_root)
 }
 
 /// codex 專用 CODEX_HOME（cli::codex_home）：session 不再寫進使用者的 `~/.codex`；

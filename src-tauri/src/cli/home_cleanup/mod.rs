@@ -1,13 +1,15 @@
-//! app 專用 CLI 家目錄（agy-home、grok-home）的清理（plans/agy-home-cleanup.md）。
+//! app 專用 CLI 家目錄（agy-home、grok-home、codex-home）的清理（plans/agy-home-cleanup.md）。
 //! 共用規則：家目錄只由 config_root 推出；從家目錄起逐層驗證是實體目錄（任一層是連結就不動）；
 //! 只刪固定前綴下、名稱合格的項目，項目本身是連結只刪連結、不解析目標。
 
 mod agy;
+mod codex;
 mod grok;
 #[cfg(test)]
 mod tests;
 
 pub(crate) use agy::{remove_conversation, sweep_agy};
+pub(crate) use codex::{codex_home_dir, delete_thread as delete_codex_thread, sweep_codex};
 pub(crate) use grok::{
     ensure_ttl, remove_prompt_history, remove_search_index, remove_session, TtlOutcome,
 };
@@ -96,8 +98,9 @@ pub(crate) fn newest_mtime(path: &Path) -> io::Result<SystemTime> {
     Ok(newest)
 }
 
-/// app 啟動時背景跑一次：agy 依引用集＋7 天回收；grok 刪 prompt 歷史與（沒有 grok 在跑時）搜尋索引。
-/// grok 的 session 交給它自帶的 `storage.cleanup_ttl_days`。失敗只記 warn。
+/// app 啟動時背景跑一次：agy、codex 依引用集＋7 天回收；grok 刪 prompt 歷史與（沒有 grok 在跑時）
+/// 搜尋索引，session 交給它自帶的 `storage.cleanup_ttl_days`。失敗只記 warn。
+/// 同步檔案操作留在這條 std thread；只有 codex delete 用 tauri 的 async runtime 跑（spawn helper 是 tokio）。
 pub(crate) fn spawn_startup_sweep(config_root: PathBuf, data_root: PathBuf) {
     std::thread::spawn(move || {
         let agy = agy_home_dir(&config_root);
@@ -115,7 +118,37 @@ pub(crate) fn spawn_startup_sweep(config_root: PathBuf, data_root: PathBuf) {
             log::warn!("grok prompt 歷史清理失敗：{error}");
         }
         super::grok_gate::clear_if_idle(&grok);
+        sweep_codex_home(&config_root, &data_root);
     });
+}
+
+fn sweep_codex_home(config_root: &Path, data_root: &Path) {
+    let home = codex_home_dir(config_root);
+    let workspace = config_root.join("cli-workspace");
+    let cwd = if workspace.is_dir() {
+        workspace
+    } else {
+        config_root.to_path_buf()
+    };
+    let program = super::find_binary("codex");
+    let delete = |id: &str| match &program {
+        Some(program) => {
+            tauri::async_runtime::block_on(delete_codex_thread(program, &home, &cwd, id))
+        }
+        None => Err("找不到 codex".to_owned()),
+    };
+    match sweep_codex(
+        &home,
+        || crate::lanes::referenced_session_ids(data_root),
+        SystemTime::now(),
+        delete,
+    ) {
+        Ok((0, 0)) => {}
+        Ok((threads, images)) => {
+            log::info!("codex-home 回收 {threads} 個 thread、{images} 個生圖目錄")
+        }
+        Err(error) => log::warn!("codex-home 回收略過：{error}"),
+    }
 }
 
 /// agy 文字單發的善後：結束（正常、出錯、future 被丟棄）就刪這次的對話。被中止時程序可能

@@ -1,6 +1,6 @@
 # agy-home-cleanup — app 專用 CLI 家目錄（agy／grok／codex）的清理
 
-狀態：方案第 5 版三方共識（Sol 串 01a18196-444c-76d3-a9ce-b9d5fb752043、opus-review）。包 1 已三方驗收通過（在分支上，整案結案才進 main）；包 2 等 codex-lane-resume 合入 main。
+狀態：方案第 5 版三方共識（Sol 串 01a18196-444c-76d3-a9ce-b9d5fb752043、opus-review）。包 1 已三方驗收通過，rebase 到含 codex-lane-resume 的 main 後複審 PASS；包 2 方案第 7 版（依 main 實作與實測改寫、併入複審必改，Sol 查證串 01a18236-0d37-7fc2-b363-8ccaa8ac0a5b、複審串 01a18257-014a-7c60-b01c-2043a4279cf8）已三方驗收、2026-10-28 合併 main。
 
 ## 拍板〔作者裁決 2026-10-28〕
 1. 保留天數 7 天。
@@ -35,9 +35,15 @@
 - `session_search.sqlite`（實測）：grok 每次啟動（含 `-p`）從磁碟重建索引（`last_bootstrap_at` 跟著更新）。① 直接刪 session 目錄後下一次呼叫，該 id 的列不見；② TTL 刪掉的 session，列也不見；③ 改寫 session 檔拿掉標記、再續聊一次，索引是改寫後的版本。但 ④ 一輪結束、抹掉 session 檔裡的標記後**不再啟動 grok**，索引列仍含標記（原始檔 `strings` 也找得到）——兩次重建之間索引留著抹寫前的內容，最後一輪之後會一直留著。⑤ 刪掉 `session_search.sqlite` 後跑一次 `-p`：rc=0，索引自動重建（20 列）。⑥ 把索引檔寫壞（`integrity_check` 報 malformed）再跑 `-p`：rc=0 照常回覆，grok 把壞檔改名成 `session_search.sqlite.corrupt.<時間戳>`（連同 `-wal`、`-shm` 的 `.corrupt.<時間戳>`）、重建新索引——改名的壞檔留著舊內容，要一併刪。另有 `session_search.sqlite.lock`，是 grok 的鎖檔，不刪。
 - `.config-init.lock`（實測）：grok 執行檔字串有「`.config-init.lock` timed out waiting for … after 1s」「skipping official marketplace auto-register: failed to acquire init lock」。只含 `[storage]` 的 config.toml 跑 `-p`：不持鎖時 grok 補上 `[marketplace]` 段；外部以 `flock` 或 `lockf` 持有這把鎖時，grok 跳過、不寫 config.toml。結論：grok 用它當 config.toml 的寫入鎖（等 1 秒、拿不到就放棄這次寫入），與 flock 互斥。
 
-### codex 0.164.0
-- 沒有 rollout 保留期設定（Sol）；app 的單發已帶 `--ephemeral`，不寫 rollout。
-- `codex delete <uuid> --force` 可非互動刪，不收 `--ignore-user-config`（Sol）。沒登入的測試家複本實測：rollout 檔刪了、`state_5.sqlite` 的 threads 列還在、rc=1。有登入的環境要重驗。
+### codex 0.164.0（Sol 查原始碼＋有登入測試家實測）
+- 沒有 thread／rollout 保留期設定，也沒有批次清理指令；只有單筆 `codex delete <uuid> --force`（Sol）。
+- 開線（非 ephemeral）留下：`sessions/YYYY/MM/DD/rollout-*-<id>.jsonl`、`state_5.sqlite` threads 列（title／first_user_message／preview 都是 prompt 開頭原文，含私設）、`thread_history_1.sqlite` items（實測）。`--ephemeral` 單發：threads 0 列、無 rollout（實測）。
+- `codex delete <id> --force`（實測）：rc=0、約 0.05 秒，rollout、threads 列、thread_history 全清；不需登入（拿掉 auth.json 照樣乾淨）；另一個 thread 正在 `exec resume` 時刪別的 thread 互不影響；刪正在使用中的 thread → rc=1、該 thread 完好（codex 的 writer lock）。Sol 讀原始碼另確認會清該 thread 的 logs／queue／memory／goals、name index、spawn 子 thread，不清 `generated_images/`。
+- 失敗一律 rc=1、stderr 只有「failed to delete session」：CLI 丟掉內層原因（`cli/src/main.rs:929–939`），連 id 不存在也一樣，分不出來（實測＋Sol）。刪除順序是 rollout → name index → state，後兩段失敗會留下「rollout 已刪、state 列還在」（Sol）。
+- 刪完後 state_5／thread_history 的空閒頁與 WAL 仍找得到已刪 prompt 的位元組（實測）：codex 不設 secure_delete，state／thread_history 不做背景 vacuum（Sol）。
+- 生圖存在 `CODEX_HOME/generated_images/<thread>/<call>.png`，ephemeral 也是（Sol；app `commands/image.rs` 測試樣本是真實輸出 `.codex/generated_images/…`）。
+- 其他累積物自帶上限或不寫：`logs_2.sqlite` exec 不寫（log_db None），且有 10 天／64 MiB 自動回收；`history.jsonl` 只有 TUI 寫；shell snapshot 3 天自動回收（Sol）。
+- 包 1 舊紀錄「沒登入的家複本刪不乾淨、rc=1」：那份是整包複製的家，threads 列的 rollout_path 指著原家，delete 檢查路徑須在本家（`thread-store/src/local/helpers.rs:33–61`），推測是此因；有登入、正常建立的家實測乾淨。
 - resume 不存在的 id 回 `no rollout found` → 重開（codex-lane-resume 已實測）。
 
 ## 包 1：agy＋grok＋prompt_history
@@ -133,32 +139,78 @@
 - Windows 對話落點未驗（agy-conversation-isolation 已列）：目錄不在就不做事。
 - agy 沒有資料目錄變數，繼續靠換 HOME＋keychain symlink；向 Google 提需求不做〔模型判斷·未裁決〕。
 
-## 包 2：codex（codex-lane-resume 合入 main 後）
-- 單發已是 `--ephemeral`，不另做。
-- lane 重開（含 ResumeFailed）時撤銷舊 thread，落檔成功才刪；啟動回收只動 `sessions/YYYY/MM/DD/rollout-*-<uuid>.jsonl`，mark 與失敗規則同 agy。
-- 刪法待開工時在有登入的測試環境重驗：`codex delete <id> --force` 若乾淨（rc=0、threads 列也清）就用它，否則直接刪 rollout 檔＋列已知限制。
-- `auth.json`（mac symlink、Windows 硬連結）、各 SQLite、`installation_id` 不在可刪範圍。
+## 包 2：codex（第 7 版，依 main 上 codex-lane-resume 實作改寫、併入複審必改）
 
-## 包 1 實際行數（前 → 後）
+### 刪法
+- 一律走官方 `codex delete <thread id> --force`，不自己刪 rollout（自己刪會留 threads 列與 thread_history 的 prompt 原文）。
+- 經 `cli/spawn.rs` 的 helper 執行；env＝繼承＋`CODEX_HOME`（由 config_root 推出），cwd＝`<config_root>/cli-workspace`（不存在就用 config_root，免得切 cwd 失敗刪不掉）。程式：本輪就是 codex 用 `call.program`，否則 `find_binary("codex")`，找不到就略過記 warn。codex-home 不存在就不呼叫。
+- app 行程內一把全域 tokio Mutex 串行所有 codex delete；每次 10 秒逾時。整個刪除（spawn、等待、逾時或讀取失敗時 kill＋wait 收屍）放在獨立 tokio 任務裡、持鎖做完才放鎖，呼叫端 future 被取消也不會中斷；確認程序退出前不放鎖（spawn helper 對非 grok 程序被丟棄時只靠 kill_on_drop，不等退出）。
+- spawn 失敗（含將來 cli-version-gate 擋板）、逾時、rc≠0 一律只記 warn、不當成功，不讓 lane 回錯。
+- 家目錄比對同包 1：本輪是 codex 時，envs 的 `CODEX_HOME` 必須等於推出的路徑才刪。`cleanup_home` 加 Codex 分支。
+
+### lane（`lanes/mod.rs`，比照 agy）
+- 重開（Reopen、ResumeFailed）時舊線 provider=codex：先從 store 拿掉並 `write_store`，落檔成功才刪；落檔失敗回錯、thread 留著。retire 改成 async，await 刪除（實測 0.05 秒）。codex 的 retire／discard 放 `lanes/cleanup.rs`（mod.rs 已 973 行）。
+- 開線嘗試失敗、中止、失控、空回覆：這次 `slots.codex_thread` 拿到的 id 若不是 store 留著的那條，當場刪（從沒進 store）。`run_cli` 返回前已收屍，不會撞到 codex 的使用中保護。
+- codex 專屬：`unclean`（completed 但非正常退出）分支 main 現在 store.remove 後返回——這條 thread 已被丟棄，一併刪。
+- mismatch：runner 改成先把實際 thread id 記進 slot 再比對（同包 1 對 agy 的改法），另開的新 thread 也刪。
+- 單發已是 `--ephemeral`，不另做。
+
+### 啟動回收（`spawn_startup_sweep` 加 codex 段）
+- 執行模型：維持既有 std thread（同步檔案操作不放 async worker），只有 codex delete 用 `tauri::async_runtime::block_on` 跑（spawn helper 用 tokio process；`cli/` 底下禁 std Command）。
+- 先列候選 → 再讀 mark（與 agy 共用 `referenced_session_ids`，失敗整輪停）→ 每個刪前重新 stat：
+  - rollout：`sessions/<YYYY>/<MM>/<DD>/rollout-*-<uuid>.jsonl`（含 `.jsonl.zst`），mtime 早於 7 天、不在 mark → `codex delete`。路徑每層照包 1 的 `real_dir` 驗。
+  - 生圖：`generated_images/<uuid>/` 整樹 mtime 早於 7 天 → `remove_entry`。這些是單發生圖的 ephemeral thread，不會在 lanes.json；仍照套 mark（便宜）。
+- 不在範圍：`auth.json`（mac symlink、Windows 硬連結）、各 SQLite 檔本身、`installation_id`、`cache/`、`skills/`、`tmp/`、`logs_2`（自帶回收）、shell snapshot（自帶回收）。
+
+### 測試
+- 單元：rollout 檔名解析（含 `.zst`、不合格名跳過）、層層 symlink 不刪、mark 內不刪、7 天內不刪、刪前重新 stat、generated_images 整樹 mtime。
+- lane（假 codex 腳本記錄 delete 呼叫）：重開後舊 thread 送 delete、store 落檔在先；落檔失敗不刪；ResumeFailed、unclean、mismatch、開線中止各自刪對的 id；CODEX_HOME 與推出路徑不同時不刪。本輪換成別家時撤舊 codex 線不做單元測試：程式改由 `find_binary("codex")` 找，測試裡會打到真 codex；家目錄判定與刪除路徑和已測的同一條。
+- 串行：兩個 delete 同時要求時依序執行；前一次逾時或呼叫端被取消時，下一次要等前一個程序真的退出才啟動。
+- 原始碼掃描測試照舊涵蓋新 spawn。
+- 實測（測試通道真 app、codex 真登入）：lane 重開後舊 thread 的 rollout 與 threads 列不在；啟動回收刪掉人為調舊 mtime 的未引用 rollout、留下 lanes.json 指著的。
+
+### 已知限制（包 2）
+- codex 刪到一半（rollout 已刪、threads 列與 thread_history 沒刪）時，之後列舉不到、不再重試，prompt 原文留在 SQLite〔作者裁決 2026-10-28〕。codex 自己的 SQLite 忙碌逾時，或 app 的 10 秒逾時在刪除途中把程序殺掉，都可能造成這種狀態。
+- 刪後 SQLite 空閒頁／WAL 仍留已刪內容的位元組，直到被覆寫；app 不對 codex 可能開著的 DB 跑 VACUUM。
+- codex delete 失敗原因看不到（CLI 丟掉內層訊息），一律只記 warn。
+- lane 等刪除任務時外層沒有設時限：收到 SIGKILL 的程序若卡在不可中斷的 I/O，這一輪會跟著卡住，風險與 `cli/runner.rs` 既有的 `kill_and_wait` 同級。
+- 外部程序同時替 codex-home 的 thread 命名時 session_index 可能互蓋（app 不命名，實際不會發生）。
+
+## 包 1 實際行數（rebase 後；前＝main 4695d009，後＝包 1 commit）
 | 檔案 | 前 | 後 |
 |---|---|---|
 | cli/home_cleanup/mod.rs | 新檔 | 154 |
 | cli/home_cleanup/agy.rs | 新檔 | 143 |
-| cli/home_cleanup/grok.rs | 新檔 | 225 |
+| cli/home_cleanup/grok.rs | 新檔 | 236 |
 | cli/home_cleanup/tests.rs | 新檔 | 647 |
 | cli/grok_gate.rs | 新檔 | 261 |
 | cli/spawn.rs | 新檔 | 333 |
 | data/format/lane_scan.rs | 新檔 | 79 |
-| lanes/tests/agy_cleanup.rs | 新檔 | 329 |
-| cli/runner.rs | 617 | 618 |
+| lanes/tests/agy_cleanup.rs | 新檔 | 331 |
+| cli/runner.rs | 803 | 804 |
 | cli/detect.rs | 236 | 255 |
 | cli/install.rs | 938 | 940 |
-| cli/mod.rs | 36 | 39 |
-| lanes/mod.rs | 968 | 986 |
-| lanes/cleanup.rs | 164 | 234 |
-| lanes/grok_session.rs | 591 | 577 |
+| cli/mod.rs | 42 | 45 |
+| lanes/mod.rs | 955 | 973 |
+| lanes/cleanup.rs | 164 | 236 |
+| lanes/grok_session.rs | 606 | 593 |
 | lanes/store.rs | 71 | 103 |
-| transport/dispatch.rs | 734 | 775 |
+| transport/dispatch.rs | 848 | 889 |
 | lib.rs | 445 | 449 |
 | data/format/commit.rs | 991 | 991 |
-| Cargo.toml | 78 | 80 |
+| Cargo.toml | 80 | 82 |
+
+## 包 2 實際行數（前＝包 1 commit，後＝包 2）
+| 檔案 | 前 | 後 |
+|---|---|---|
+| cli/home_cleanup/codex.rs | 新檔 | 223 |
+| cli/home_cleanup/codex/tests.rs | 新檔 | 257 |
+| lanes/tests/codex_cleanup.rs | 新檔 | 277 |
+| cli/home_cleanup/mod.rs | 154 | 187 |
+| cli/mod.rs | 45 | 43 |
+| cli/runner.rs | 804 | 805 |
+| cli/runner/codex_tests.rs | 348 | 352 |
+| lanes/cleanup.rs | 236 | 277 |
+| lanes/mod.rs | 973 | 982 |
+| lanes/tests.rs | 1881 | 1883 |
+| transport/dispatch.rs | 889 | 889 |

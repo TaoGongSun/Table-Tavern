@@ -25,8 +25,6 @@ pub use agy_home::agy_envs;
 pub use catalog::cli_model_catalog;
 pub use codex_home::codex_envs;
 pub use detect::detect_clis;
-// 唯一 crate 內呼叫者 commands::cli_setup 的安裝路徑只在 Windows 編譯
-#[cfg(target_os = "windows")]
 pub(crate) use detect::find_binary;
 pub use prompt_file::PromptFile;
 pub use request::{

@@ -55,8 +55,9 @@ pub(super) fn revoke_grok_lane(
     written
 }
 
-/// 刪 agy／grok 對話用的家目錄：只由 `call.config_root` 推出。本輪就是這一家時，envs 裡的
-/// 家（agy 的 HOME、grok 的 GROK_HOME）必須與推出的路徑相同才放行；撤別家的舊線不看本輪 envs。
+/// 刪 agy／grok／codex 對話用的家目錄：只由 `call.config_root` 推出。本輪就是這一家時，envs 裡的
+/// 家（agy 的 HOME、grok 的 GROK_HOME、codex 的 CODEX_HOME）必須與推出的路徑相同才放行；
+/// 撤別家的舊線不看本輪 envs。
 pub(super) fn cleanup_home(call: &LaneCall, target: LaneProvider) -> Result<PathBuf, String> {
     let root = call
         .config_root
@@ -65,9 +66,8 @@ pub(super) fn cleanup_home(call: &LaneCall, target: LaneProvider) -> Result<Path
     let (home, key) = match target {
         LaneProvider::Agy => (cli::home_cleanup::agy_home_dir(root), "HOME"),
         LaneProvider::Grok => (cli::home_cleanup::grok_home_dir(root), "GROK_HOME"),
-        LaneProvider::Claude | LaneProvider::Codex => {
-            return Err(format!("{} 不走這條", target.as_str()))
-        }
+        LaneProvider::Codex => (cli::home_cleanup::codex_home_dir(root), "CODEX_HOME"),
+        LaneProvider::Claude => return Err("claude 不走這條".to_owned()),
     };
     if call.provider == target {
         let env = call
@@ -107,23 +107,64 @@ pub(super) fn retire_agy_conversation(
     Ok(())
 }
 
-/// 這次嘗試 agy 回報的對話 id 若不是 store 裡那條（開線失敗、中止、mismatch 另開的新對話），
+/// 這次嘗試 agy／codex 回報的 id 若不是 store 裡那條（開線失敗、中止、mismatch 另開的新對話），
 /// 它從沒寫進 store，當場刪。
-pub(super) fn discard_new_agy(
-    call: &LaneCall,
-    reported: &std::sync::Mutex<Option<String>>,
-    kept: &str,
-) {
-    if call.provider != LaneProvider::Agy {
-        return;
-    }
-    let id = reported
+pub(super) async fn discard_new(call: &LaneCall, slots: &provider_args::AttemptSlots, kept: &str) {
+    let slot = match call.provider {
+        LaneProvider::Agy => &slots.conversation_id,
+        LaneProvider::Codex => &slots.codex_thread,
+        LaneProvider::Claude | LaneProvider::Grok => return,
+    };
+    let id = slot
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .take();
-    if let Some(id) = id.filter(|id| id != kept) {
-        delete_agy(call, &id);
+    let Some(id) = id.filter(|id| id != kept) else {
+        return;
+    };
+    match call.provider {
+        LaneProvider::Agy => delete_agy(call, &id),
+        _ => delete_codex(call, &id).await,
     }
+}
+
+/// 刪一條 codex thread（官方 `codex delete`）；失敗只記 warn，不讓這一輪回錯。程式：本輪就是
+/// codex 用本輪的執行檔，撤別家的舊線時另找 codex。
+pub(super) async fn delete_codex(call: &LaneCall, id: &str) {
+    let home = match cleanup_home(call, LaneProvider::Codex) {
+        Ok(home) => home,
+        Err(error) => {
+            log::warn!("codex thread {id} 刪除略過：{error}");
+            return;
+        }
+    };
+    let program = match call.provider {
+        LaneProvider::Codex => Some(call.program.clone()),
+        _ => cli::find_binary("codex"),
+    };
+    let result = match program {
+        Some(program) => {
+            cli::home_cleanup::delete_codex_thread(&program, &home, &call.working_dir, id).await
+        }
+        None => Err("找不到 codex".to_owned()),
+    };
+    if let Err(error) = result {
+        log::warn!("codex thread {id} 刪除失敗：{error}");
+    }
+}
+
+/// 撤掉被取代的 codex 線：同 agy，落檔成功才刪。
+pub(super) async fn retire_codex_thread(
+    call: &LaneCall,
+    key: &str,
+    session_id: &str,
+    store: &mut LaneStore,
+    store_path: &Path,
+) -> Result<(), String> {
+    store.remove(key);
+    write_store(store_path, store)?;
+    delete_codex(call, session_id).await;
+    Ok(())
 }
 
 /// 抹寫失敗：session 內容不可信，刪掉檔。檔案本來就不在（NotFound）當已刪。
