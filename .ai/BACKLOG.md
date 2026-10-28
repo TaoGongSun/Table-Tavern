@@ -46,6 +46,8 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [grok-image-original-leftover](tasks/grok-image-original-leftover.md) — grok 生圖原始 JPEG 累積在 app 的 grok-home/sessions，app 不清 — 下一步：未排程
 - [character-send-failure-draft](tasks/character-send-failure-draft.md) — 對角色送出時對白已上桌後才出錯，仍彈帶原文的失敗視窗 — 下一步：等 multichar-next-speaker-silent 結案
 - [flat-field-glyph-dup](tasks/flat-field-glyph-dup.md) — 沒重構非增量桌，模型換字形寫鍵在平欄長出簡繁重複欄位 — 下一步：未排程；先寫紅燈測試重現
+- [narrator-prefix-echo](tasks/narrator-prefix-echo.md) — GM 照抄歷史裡 app 的「（旁白）」標籤進正文 — 下一步：未排程；先量發生率
+- [refactor-worldbook-statusbar-wording](tasks/refactor-worldbook-statusbar-wording.md) — 重構產出的世界書仍要求「每回合在狀態欄回報」，誘發 GM 自寫狀態段 — 下一步：未排程
 
 ## 階段 E：成本
 [api-shared-lane](handoffs/api-shared-lane.md) 四路成對測試先做；以下兩案依其數據決定做不做：
