@@ -6,6 +6,8 @@
 - `src-tauri/src/transport/response.rs` 1114 行。
 - `src-tauri/src/data/scene/transcript.rs` 1257 行。
 
+2026-10-28 補：chat.rs 已到 1679、`transport/turns.rs` 1145；兩檔後段都是測試模組（約 590／530 行），先照 `reply_cleanup.rs` 的 `#[path]` 做法搬出，chat.rs 本體仍約 1086 再依功能拆。
+
 另列同階段候選：`src/App.tsx` 1049、`src/features/play/useChatController.ts` 1017、`src/features/play/` 23 檔、`src-tauri/src/transport/` 25 檔。三個 Rust 檔可同案也可分包，開工時依耦合判斷。
 
 ## Next action
