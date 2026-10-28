@@ -4,11 +4,12 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use super::apply::{apply_updates_typed, signed_delta_mark};
+use super::block_paths::{self, Target};
 use super::derive::{recompute_derived, reroll};
 use super::note::build_notes;
 use super::parse::parse_block;
 use super::rules::rule_for_path;
-use super::tree::{format_num, insert_node, leaf_at, numeric_value, take_node};
+use super::tree::{format_num, insert_node, numeric_value, take_node};
 use super::triggers::evaluate_triggers;
 use super::types::{Outcome, Parsed, Patch, PatchOp, Record, RecordKind};
 use super::upstream_set::TypedView;
@@ -24,12 +25,14 @@ const JUMP_RATIO_THRESHOLD: f64 = 0.4;
 // 回合套用：平欄／樹欄照舊套用＋增量走本地權威＋骰值每回合重擲＋觸發表求值
 // ---------------------------------------------------------------------
 
-/// 全量桌跳動比對用：這個路徑目前的舊值（平欄查 table，樹查現有 leaf_at）。
-fn old_field_value(world: &data::WorldState, path: &[String]) -> Option<String> {
-    if path.len() == 1 {
-        world.state.table.get(&path[0]).cloned()
-    } else {
-        leaf_at(&world.state.tree, &path.join(".")).map(str::to_owned)
+/// 全量桌跳動比對用：這個欄位對齊後目標的舊值（平欄查 table，樹照實際路徑段查）。
+fn old_field_value(world: &data::WorldState, path: &[String], target: Target) -> Option<String> {
+    match target {
+        Target::Table => world.state.table.get(&path[0]).cloned(),
+        Target::TreeReplace | Target::Tree => match data::node_at(&world.state.tree, path) {
+            Some(data::StateNode::Leaf(value)) => Some(value.clone()),
+            _ => None,
+        },
     }
 }
 
@@ -256,32 +259,6 @@ fn replace_lists(
     (skipped, records)
 }
 
-/// 狀態圍欄的單段欄位該寫哪裡：增量桌裡 time／place／present 以外、樹上有同名頂層葉子（精確優先、
-/// 字形唯一）→ Some(樹上的鍵)，轉成一筆 replace 跟更新區塊走同一套規則（重構把平欄搬進樹後，圍欄才不會
-/// 把平欄那份寫回來變成兩份）；字形多候選→Err；其餘→None（照舊寫平欄）。
-fn fence_tree_target(world: &data::WorldState, key: &str) -> Result<Option<String>, Vec<String>> {
-    const FENCE_TABLE_KEYS: [&str; 3] = ["time", "place", "present"];
-    if !world.mechanism.incremental || FENCE_TABLE_KEYS.contains(&key) {
-        return Ok(None);
-    }
-    let tree = &world.state.tree;
-    if let Some(node) = tree.get(key) {
-        return Ok(matches!(node, data::StateNode::Leaf(_)).then(|| key.to_owned()));
-    }
-    let leaves: Vec<String> = tree
-        .iter()
-        .filter(|(name, node)| {
-            matches!(node, data::StateNode::Leaf(_)) && data::glyph_equal(name, key)
-        })
-        .map(|(name, _)| name.clone())
-        .collect();
-    match leaves.len() {
-        0 => Ok(None),
-        1 => Ok(leaves.into_iter().next()),
-        _ => Err(leaves),
-    }
-}
-
 /// 同 `apply_block`，`base` 是變數模式這一輪的 stat_data（投影就是進來時的樹）：沒重構的 MVU 卡的
 /// 上游 set 以它建這一批的帶型別視圖，做完的整份帶型別 stat_data 與當時的樹收在 `Outcome::typed`。
 pub fn apply_block_typed(
@@ -292,16 +269,21 @@ pub fn apply_block_typed(
     scope: BlockScope,
 ) -> Outcome {
     let (scoped, scope_record) = scoped_block(block, scope);
-    let block = &scoped;
+    // 換字形寫既有欄位時先對回原鍵：舊值、清單替換、寫入、跳動記號都用對齊後的路徑
+    let aligned = block_paths::align(world, &scoped);
+    let block = &aligned.block;
     let jump_check = !world.mechanism.incremental;
     // 清單整支替換：底下的舊值當作沒有，不拿來比跳動
-    let old_values: Vec<Option<String>> = if jump_check {
+    let mut old_values: Vec<Option<String>> = if jump_check {
         block
             .fields
             .iter()
-            .map(|(path, _)| {
+            .zip(&aligned.targets)
+            .map(|((path, _), target)| {
                 let in_list = block.lists.iter().any(|list| path.starts_with(list));
-                (!in_list).then(|| old_field_value(world, path)).flatten()
+                (!in_list)
+                    .then(|| old_field_value(world, path, *target))
+                    .flatten()
             })
             .collect()
     } else {
@@ -310,34 +292,32 @@ pub fn apply_block_typed(
 
     let entry = base.is_some().then(|| world.state.tree.clone());
     let (skipped, list_records) = replace_lists(world, block, base.is_some());
-    let mut parsed: Vec<Parsed> = Vec::new();
-    for (path, value) in &block.fields {
+    let mut parsed: Vec<Parsed> = aligned.rejected.into_iter().map(Parsed::Note).collect();
+    for (index, ((path, value), target)) in block.fields.iter().zip(&aligned.targets).enumerate() {
         if skipped.iter().any(|list| path.starts_with(list)) {
             continue;
         }
-        if path.len() == 1 {
-            match fence_tree_target(world, &path[0]) {
-                Ok(Some(key)) => parsed.push(Parsed::Patch(Patch {
+        let written = match target {
+            Target::TreeReplace => {
+                parsed.push(Parsed::Patch(Patch {
                     op: PatchOp::Replace,
-                    path: vec![key],
+                    path: path.clone(),
                     from: Vec::new(),
                     value: Some(serde_json::Value::String(value.clone())),
-                })),
-                Ok(None) => {
-                    world.state.table.insert(path[0].clone(), value.clone());
-                }
-                Err(keys) => parsed.push(Parsed::Note(Record::new(
-                    RecordKind::Rejected,
-                    path[0].clone(),
-                    format!(
-                        "{} 對到好幾個只差字形的欄位（{}），請照狀態裡的原字寫。",
-                        path[0],
-                        keys.join("、")
-                    ),
-                ))),
+                }));
+                true
             }
-        } else {
-            data::set_tree_value(&mut world.state.tree, path, value);
+            Target::Table => {
+                world.state.table.insert(path[0].clone(), value.clone());
+                true
+            }
+            Target::Tree => data::set_tree_value(&mut world.state.tree, path, value),
+        };
+        // 沒寫進去（撞到既有葉子等）的欄位不留跳動記號
+        if !written {
+            if let Some(old) = old_values.get_mut(index) {
+                *old = None;
+            }
         }
     }
     parsed.extend(block.updates.iter().flat_map(|update| parse_block(update)));

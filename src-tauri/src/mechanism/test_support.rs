@@ -10,6 +10,21 @@ pub(super) fn tree_from(pairs: &[(&str, &str)]) -> BTreeMap<String, StateNode> {
     tree
 }
 
+/// 狀態圍欄的單段欄位（每個鍵一段路徑）。
+pub(super) fn fence(fields: &[(&str, &str)]) -> crate::transport::StateBlock {
+    crate::transport::StateBlock {
+        fields: fields
+            .iter()
+            .map(|(key, value)| (vec![(*key).to_owned()], (*value).to_owned()))
+            .collect(),
+        updates: Vec::new(),
+        display: String::new(),
+        lists: Vec::new(),
+        maps: Vec::new(),
+        fenced: None,
+    }
+}
+
 pub(super) fn rule(kind: FieldKind, min: Option<f64>, max: Option<f64>) -> FieldRule {
     let mut rule = FieldRule::for_kind(kind);
     rule.min = min;

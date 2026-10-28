@@ -3,6 +3,7 @@
 //! 本地帳才是真相。容錯是紅線：格式壞的那一筆丟掉沿用舊值，絕不 panic、絕不中斷整批更新。
 
 mod apply;
+mod block_paths;
 mod collection;
 mod derive;
 pub mod engine_records;
@@ -24,6 +25,8 @@ mod block_scope_tests;
 mod collection_tests;
 #[cfg(test)]
 mod feedback_e2e_tests;
+#[cfg(test)]
+mod flat_glyph_tests;
 #[cfg(test)]
 mod glyph_path_tests;
 #[cfg(test)]

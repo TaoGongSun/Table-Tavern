@@ -3,10 +3,9 @@
 
 use super::apply::apply_updates;
 use super::ledger::apply_block;
-use super::test_support::{mechanism_with, rule, tree_from, world_with};
+use super::test_support::{fence, mechanism_with, rule, tree_from, world_with};
 use super::types::{Patch, PatchOp, RecordKind};
 use crate::data::{self, FieldKind, StateNode};
-use crate::transport::StateBlock;
 use std::collections::BTreeMap;
 
 fn patch(op: PatchOp, path: &[&str], from: &[&str], value: &str) -> Patch {
@@ -142,20 +141,6 @@ fn glyph_insert_joins_only_exactly_registered_leaves() {
     );
     assert_eq!(leaf(&tree, &["当前环境"]).as_deref(), Some("城门"));
     assert_eq!(leaf(&tree, &["當前環境"]).as_deref(), Some("北坡"));
-}
-
-fn fence(fields: &[(&str, &str)]) -> StateBlock {
-    StateBlock {
-        fields: fields
-            .iter()
-            .map(|(key, value)| (vec![(*key).to_owned()], (*value).to_owned()))
-            .collect(),
-        updates: Vec::new(),
-        display: String::new(),
-        lists: Vec::new(),
-        maps: Vec::new(),
-        fenced: None,
-    }
 }
 
 /// 圍欄：增量桌命中樹上頂層葉子就走 replace 的實際結果（字形唯一也算），多候選拒收、不寫平欄；
