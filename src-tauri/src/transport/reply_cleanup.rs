@@ -206,6 +206,25 @@ pub fn strip_state_echo(display: &str, tree: &BTreeMap<String, StateNode>) -> Op
     Some(display[..start].trim_end().to_owned())
 }
 
+/// GM 送模型的旁白標籤（新「GM：」與舊「（旁白）」，中英；英文帶不帶空白都認，後面的空白一起剝）。
+const NARRATOR_LABELS: [&str; 4] = ["（旁白）", "(Narration)", "GM：", "GM:"];
+
+/// GM 正文開頭照抄的旁白標籤（narrator-prefix-echo 的保險；主修是送模型改標「GM：」）。
+/// 只看顯示正文開頭（trim_start 後），連續幾個都剝；中段不碰。沒剝到回 None。
+/// 剝完可能是空字串：呼叫端照「沒有正文」處理（gm_narrate 回 AI_EMPTY_RESPONSE）。
+pub fn strip_narrator_label(display: &str) -> Option<String> {
+    let mut rest = display.trim_start();
+    let mut stripped = false;
+    while let Some(label) = NARRATOR_LABELS
+        .iter()
+        .find(|label| rest.starts_with(*label))
+    {
+        rest = rest[label.len()..].trim_start();
+        stripped = true;
+    }
+    stripped.then(|| rest.to_owned())
+}
+
 /// `at` 這個位置是否落在程式碼區塊裡（圍欄、縮排；沒閉合的圍欄照 CommonMark 延伸到文末）。
 fn in_code_block(text: &str, at: usize) -> bool {
     use pulldown_cmark::{Event, Parser, Tag};

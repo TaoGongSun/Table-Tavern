@@ -41,7 +41,6 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [story-html-style-class](tasks/story-html-style-class.md) — 支援 <style> 與 class，讓狀態欄卡外觀接近 ST（需 CSS 解析新依賴） — 下一步：等 story-html-whitelist 結案後評估
 - [desktop-csp](tasks/desktop-csp.md) — 桌面版 CSP 是 null，訊息渲染只靠 DOMPurify 一層 — 下一步：未排程；先盤點 app 需要的來源
 - [card-prompt-only-regex](tasks/card-prompt-only-regex.md) — 後端套卡片 promptOnly 正則（含 depth），對齊 ST 送模型前的歷史處理 — 下一步：未排程；先盤點測試卡用法並估工
-- [narrator-prefix-echo](tasks/narrator-prefix-echo.md) — GM 照抄歷史裡 app 的「（旁白）」標籤進正文 — 下一步：未排程；先量發生率
 - [refactor-worldbook-statusbar-wording](tasks/refactor-worldbook-statusbar-wording.md) — 重構產出的世界書仍要求「每回合在狀態欄回報」，誘發 GM 自寫狀態段 — 下一步：未排程
 
 ## 階段 E：成本

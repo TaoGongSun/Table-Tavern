@@ -71,7 +71,9 @@ async fn sent_prompt(table: Table) -> String {
 async fn gm_lane_sends_raw_opening_only_on_plain_tables() {
     let _serial = crate::inflight::lock_real_process_tests();
     let plain = sent_prompt(Table::Plain).await;
-    assert!(plain.contains(&format!("（旁白）{OPENING}")), "{plain}");
+    assert!(plain.contains(&format!("GM：{OPENING}")), "{plain}");
+    // GM 線旁白標「GM：」，不再出現會被照抄的「（旁白）」（narrator-prefix-echo）
+    assert!(!plain.contains("（旁白）"), "{plain}");
     assert!(plain.contains("<summary>状态栏</summary>"), "{plain}");
     for table in [Table::Takeover, Table::Retired] {
         let prompt = sent_prompt(table).await;

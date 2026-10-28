@@ -300,7 +300,9 @@ pub(super) fn expected_reply_for(echo: &ReplyEcho, reply: &str) -> ExpectedReply
             kind: TranscriptKind::Dialogue,
             text: transport::finish_character_reply(reply, prefix, false).text,
         },
-        // 前端落 transcript 的是剝掉狀態欄與「下一位」點名行的顯示文字（gm_narrate 的行為）
+        // 前端落 transcript 的是剝掉狀態欄與「下一位」點名行的顯示文字（gm_narrate 的行為）。
+        // 刻意不做顯示層剝除（strip_state_echo、strip_narrator_label）：剝過的回合對不上→下一輪
+        // ReplyDiverged 重開，把帶照抄段的 assistant 訊息清出 session
         ReplyEcho::Narration => ExpectedReply {
             speaker_id: String::new(),
             kind: TranscriptKind::Narration,

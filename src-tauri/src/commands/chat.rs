@@ -390,7 +390,7 @@ struct GmReplyParts {
     raw: Option<String>,
 }
 
-/// 剝狀態區塊→剝點名行→剝尾端照抄的狀態變動段（只動顯示；raw 與 `block` 都來自原文）。
+/// 剝狀態區塊→剝點名行→剝尾端照抄的狀態變動段→剝開頭照抄的旁白標籤（只動顯示；raw 與 `block` 都來自原文）。
 fn gm_reply_parts(
     reply: &str,
     tree: &std::collections::BTreeMap<String, data::StateNode>,
@@ -398,6 +398,7 @@ fn gm_reply_parts(
     let block = transport::extract_state_block(reply);
     let (next_raw, display) = transport::extract_next_speaker(&block.display);
     let display = transport::strip_state_echo(&display, tree).unwrap_or(display);
+    let display = transport::strip_narrator_label(&display).unwrap_or(display);
     let raw = (reply != display).then(|| reply.to_owned());
     GmReplyParts {
         block,
@@ -413,9 +414,10 @@ fn aborted_narration(reply: &str) -> GmNarration {
     let block = transport::extract_state_block(&transport::strip_self_closing_controls(reply));
     let (_next, display) = transport::extract_next_speaker(&block.display);
     GmNarration {
-        text: transport::cut_unclosed_tail(&display, true)
-            .trim_end()
-            .to_owned(),
+        text: {
+            let text = transport::cut_unclosed_tail(&display, true).trim_end();
+            transport::strip_narrator_label(text).unwrap_or_else(|| text.to_owned())
+        },
         raw: None,
         next: None,
         state_updates: Vec::new(),
@@ -1114,6 +1116,28 @@ mod tests {
         let kept = gm_reply_parts("托倫點頭。\n\n（系統）狀態更新\n好感度：5", &tree);
         assert_eq!(kept.display, "托倫點頭。\n\n（系統）狀態更新\n好感度：5");
         assert_eq!(kept.raw, None);
+    }
+
+    /// narrator-prefix-echo：開頭照抄的旁白標籤只從落檔正文剝，raw、機制輸入與點名照原文；剝完沒正文由 gm_narrate 擋
+    #[test]
+    fn gm_reply_parts_strip_narrator_label_from_text_only() {
+        let tree = std::collections::BTreeMap::new();
+        let reply = "（旁白）（旁白）夜更深了。\n\n```state\nplace: 酒館\n```\n\n下一位：狐狸";
+        let parts = gm_reply_parts(reply, &tree);
+        assert_eq!(parts.display, "夜更深了。");
+        assert_eq!(parts.raw.as_deref(), Some(reply));
+        assert_eq!(parts.next_raw.as_deref(), Some("狐狸"));
+        assert!(parts
+            .block
+            .fields
+            .iter()
+            .any(|(path, value)| path == &["place".to_owned()] && value == "酒館"));
+        let empty = gm_reply_parts("GM：\n```state\nplace: 酒館\n```", &tree);
+        assert!(empty.display.trim().is_empty());
+        let middle = gm_reply_parts("夜更深了。\n\n（旁白）風停了。", &tree);
+        assert_eq!(middle.display, "夜更深了。\n\n（旁白）風停了。");
+        assert_eq!(middle.raw, None);
+        assert_eq!(aborted_narration("（旁白）夜更深").text, "夜更深");
     }
 
     /// char-line-status-strip：完成回合剝完沒台詞回錯；中止沒台詞照舊交回（settle 撤回落地）

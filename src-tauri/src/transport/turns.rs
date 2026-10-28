@@ -57,7 +57,16 @@ pub fn lane_event_line(event: &TranscriptEvent, lang: &str, side: Side) -> Optio
                 speaker_prefix(&prompt_speaker(event, lang), lang)
             )
         }
-        TranscriptKind::Narration => narration_line(&text, lang),
+        // GM 側（含開場原文）標「GM：」，與單發攤平的 assistant_label 同一套，收尾句「不要加名字前綴」就涵蓋；
+        // 「（旁白）」不是名字，GM 會當成回覆格式照抄（narrator-prefix-echo）。修正前落檔的旁白開頭已帶標籤的，
+        // 送模型前一併剝掉，免得歷史裡的照抄繼續被模仿（只動送出字，事件與指紋不變）。角色側照舊
+        TranscriptKind::Narration => match side {
+            Side::Character => narration_line(&text, lang),
+            Side::Gm | Side::GmOpeningRaw => {
+                let text = super::reply_cleanup::strip_narrator_label(&text).unwrap_or(text);
+                format!("{}{text}", speaker_prefix("GM", lang))
+            }
+        },
         TranscriptKind::System => system_line(&text, lang),
     })
 }
@@ -982,7 +991,40 @@ mod tests {
                 Side::Gm
             )
             .as_deref(),
+            Some("GM：夜深了")
+        );
+        let night = event(TranscriptKind::Narration, "", "GM", "夜深了");
+        assert_eq!(
+            lane_event_line(&night, "zh-TW", Side::GmOpeningRaw).as_deref(),
+            Some("GM：夜深了")
+        );
+        assert_eq!(
+            lane_event_line(&night, "en", Side::Gm).as_deref(),
+            Some("GM: 夜深了")
+        );
+        // 修正前落檔、開頭帶照抄標籤的旁白：GM 側送出前剝掉
+        assert_eq!(
+            lane_event_line(
+                &event(
+                    TranscriptKind::Narration,
+                    "",
+                    "GM",
+                    "（旁白）（旁白）夜深了"
+                ),
+                "zh-TW",
+                Side::Gm
+            )
+            .as_deref(),
+            Some("GM：夜深了")
+        );
+        // 角色側照舊「（旁白）」
+        assert_eq!(
+            lane_event_line(&night, "zh-TW", Side::Character).as_deref(),
             Some("（旁白）夜深了")
+        );
+        assert_eq!(
+            lane_event_line(&night, "en", Side::Character).as_deref(),
+            Some("(Narration) 夜深了")
         );
         assert_eq!(
             lane_event_line(

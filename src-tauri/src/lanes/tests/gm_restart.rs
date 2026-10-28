@@ -396,3 +396,47 @@ fn macro_with_identical_expansion_keeps_the_gm_lane() {
     ));
     std::fs::remove_dir_all(&root).unwrap();
 }
+
+/// narrator-prefix-echo：GM 回覆開頭的照抄標籤只從落檔正文剝，預期回覆照原文算，
+/// 剝過的那輪下一輪必須 ReplyDiverged 重開（清掉帶標籤的 session）；重開後回覆沒被剝就照常續聊。
+#[test]
+fn stripped_gm_label_reopens_once_then_resumes() {
+    let before = [event(TranscriptKind::Player, "", "阿濤", "你好")];
+    let reply = "（旁白）夜更深了。\n```state\ntime: 午夜\n```";
+    let display = crate::transport::strip_narrator_label(
+        &expected_reply_for(&ReplyEcho::Narration, reply).text,
+    )
+    .expect("開頭標籤要剝");
+    assert_eq!(display, "夜更深了。");
+    let landed = [
+        before[0].clone(),
+        event(TranscriptKind::Narration, "", "GM", &display),
+    ];
+
+    let mut echoed = gm_state(&before, WORLD_A);
+    echoed.expected_reply = Some(expected_reply_for(&ReplyEcho::Narration, reply));
+    assert!(matches!(
+        plan_turn(
+            Some(&echoed),
+            &gm_turn(&landed, WORLD_A),
+            1_010,
+            LaneProvider::Claude
+        ),
+        TurnPlan::Reopen {
+            reason: ReopenReason::ReplyDiverged
+        }
+    ));
+
+    // 重開那輪的回覆沒帶標籤：落檔＝預期，下一輪續聊，不會一直重開
+    let mut clean = gm_state(&before, WORLD_A);
+    clean.expected_reply = Some(expected_reply_for(&ReplyEcho::Narration, "夜更深了。"));
+    match plan_turn(
+        Some(&clean),
+        &gm_turn(&landed, WORLD_A),
+        1_010,
+        LaneProvider::Claude,
+    ) {
+        TurnPlan::Resume { base, .. } => assert_eq!(base, 2),
+        TurnPlan::Reopen { .. } => panic!("回覆沒剝過必須續聊"),
+    }
+}

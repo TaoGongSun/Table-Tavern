@@ -244,3 +244,43 @@ fn strip_state_echo_keeps_anything_not_exactly_an_echo() {
         assert_eq!(strip_state_echo(display, &tree), None, "{display}");
     }
 }
+
+/// narrator-prefix-echo：只剝顯示正文開頭的旁白標籤（新舊、中英、帶不帶空白、連續多個）
+#[test]
+fn strip_narrator_label_only_at_start() {
+    for (input, want) in [
+        ("（旁白）夜深了。", "夜深了。"),
+        ("(Narration) The night deepens.", "The night deepens."),
+        ("(Narration)The night deepens.", "The night deepens."),
+        ("GM：夜深了。", "夜深了。"),
+        ("GM: The night deepens.", "The night deepens."),
+        ("GM:The night deepens.", "The night deepens."),
+        ("\n  （旁白） 夜深了。", "夜深了。"),
+        ("（旁白）（旁白）夜深了。", "夜深了。"),
+        (
+            "GM：（旁白）夜深了。\n\n（旁白）第二段",
+            "夜深了。\n\n（旁白）第二段",
+        ),
+        ("（旁白）", ""),
+        ("（旁白）  \n", ""),
+    ] {
+        assert_eq!(
+            strip_narrator_label(input).as_deref(),
+            Some(want),
+            "{input}"
+        );
+    }
+    for kept in [
+        "夜深了。\n\n（旁白）第二段",
+        "旁白：夜深了。",
+        "（旁白者）夜深了。",
+        "(旁白)夜深了。",
+        "【旁白】夜深了。",
+        "GMing is hard.",
+        "gm: lower case",
+        "Narration) 少了左括號",
+        "",
+    ] {
+        assert_eq!(strip_narrator_label(kept), None, "{kept}");
+    }
+}

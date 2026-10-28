@@ -55,7 +55,7 @@ pub(crate) use messages::{player_fallback_name, replace_st_macros, scaffold_en};
 pub use own_prefix::OwnPrefixStream;
 pub use reply_cleanup::{
     cut_unclosed_tail, empty_reply_error, final_reply_text, finish_character_reply,
-    strip_self_closing_controls, strip_state_echo,
+    strip_narrator_label, strip_self_closing_controls, strip_state_echo,
 };
 #[cfg(test)]
 pub use response::card_format_instruction;
