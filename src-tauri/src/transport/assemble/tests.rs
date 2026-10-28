@@ -486,13 +486,13 @@ fn player_card_enters_character_and_gm_context() {
 
     // 旁白指示併入點名（包 5）：要告知名單與玩家名字，GM 才知道喊誰；哨兵本身不變
     let instruction =
-        narrate_instruction("zh-TW", &["狐狸".to_owned()], Some("阿濤"), false).content;
+        narrate_instruction("zh-TW", &["狐狸".to_owned()], Some("阿濤"), false, false).content;
     assert!(instruction.contains("狐狸"));
     assert!(instruction.contains("阿濤"));
     assert!(instruction.contains(PLAYER_SENTINEL));
     assert!(instruction.contains("下一位"));
     // 名單空（純世界書開局等）＝退回純旁白，不要求點名行
-    let solo = narrate_instruction("zh-TW", &[], None, false).content;
+    let solo = narrate_instruction("zh-TW", &[], None, false, false).content;
     assert!(!solo.contains("下一位"));
 }
 

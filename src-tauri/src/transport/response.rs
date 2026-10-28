@@ -32,34 +32,35 @@ pub fn extract_scene_title(reply: &str) -> (Option<String>, String) {
 /// 導演指示：插入旁白（附加在 GM 上下文最後）；有名單時尾端固定要一行「下一位：」點名，
 /// 旁白與點名一次呼叫完成（包 5 拍板）。
 /// `updates`：這桌開了增量協定，圍欄之後另附 `<UpdateVariable>`（插在「下一位」之前，順序才不打架）。
+/// `statusbar_retired`：卡片狀態欄已退場的桌（`WorldState::statusbar_retired`），不再叫 GM 照設定附狀態欄，
+/// 改明說已淘汰——世界書照搬段落殘留的「每回合輸出狀態欄」才不會被這句放大。
 pub fn narrate_instruction(
     lang: &str,
     roster: &[String],
     player_name: Option<&str>,
     updates: bool,
+    statusbar_retired: bool,
 ) -> ChatMessage {
+    let extra = narration_extra_content(lang, statusbar_retired);
     let mut instruction = if scaffold_en(lang) {
-        "(Director instruction) Insert a narration: describe scene changes, the world's response, or plot progress. \
+        format!("(Director instruction) Insert a narration: describe scene changes, the world's response, or plot progress. \
          Use any length the story needs. You may portray supporting characters without character cards, but do not speak for listed characters or the player. \
-         If the worldbook or character settings require extra content in every reply (such as a status bar or suggested actions), add it after the narration in the format they specify. When all of that is written, start a new line and output one ```state fence. Inside it, write one `key: value` field per line. \
+         {extra} When all of that is written, start a new line and output one ```state fence. Inside it, write one `key: value` field per line. \
          Always output `time`, `place`, and `present`; write `time` and `place` in the player's language and repeat them if unchanged. \
          Output `present` in full every turn: based on this turn's story as it stands at the end of the narration, list only the people who are actually at `place` at that moment. \
          The character roster only identifies who people are; it is not a list of who is here, so do not list anyone just because they are on the roster, were mentioned, or are expected to come. \
          If nobody is there, leave `present:` empty. As an exception to the language rule, write each `present` name exactly as it appears in the cast or setting (same characters, no translation, transliteration, or script change), separated by `、`. \
-         Do not add any explanation beyond the content above."
-            .to_owned()
+         Do not add any explanation beyond the content above.")
     } else {
-        "（導演指示）請插入一段旁白：描述場景變化、世界反應或劇情推進，\
+        format!("（導演指示）請插入一段旁白：描述場景變化、世界反應或劇情推進，\
          篇幅不設限，依劇情需要自由發揮。沒有角色卡的配角由你扮演，可以出場與說話；\
-         不要替「登場角色」名單上的角色或玩家說話。世界書或角色設定若規定每回合回覆要附的內容（例如狀態欄、推薦行動），\
-         照它的格式附在旁白本文之後。全部寫完後另起一行，輸出一個 ```state 圍欄，\
+         不要替「登場角色」名單上的角色或玩家說話。{extra}全部寫完後另起一行，輸出一個 ```state 圍欄，\
          圍欄內一行一欄、格式為「鍵: 值」，固定輸出 time、place、present 三個鍵；\
          time、place 用玩家的語言寫，沒有變化就照抄目前值。\
          present 每一回合都要完整輸出：依本輪敘事、以旁白結束當下為準，只列此刻確實身在 place 的人物；\
          人物名冊只供辨識是誰，不是在場名單，不因列在名冊、被提到或約好要見就列；沒有人在場就寫「present:」後面留空。\
          present 的名字照登場角色名單或設定裡的原字逐字寫，不翻譯、不音譯、不換簡繁字形（這是語言規範的例外）；多人用頓號分隔。\
-         除了上述內容，不要有多餘說明。"
-            .to_owned()
+         除了上述內容，不要有多餘說明。")
     };
     if updates {
         instruction.push_str(narration_update_note(lang));
@@ -85,6 +86,16 @@ pub fn narrate_instruction(
         instruction.push_str(&call);
     }
     message("user", instruction)
+}
+
+/// 導演指示裡「設定規定每回合要附的內容」那句；卡片狀態欄已退場的桌改成明說不要印狀態欄。
+fn narration_extra_content(lang: &str, statusbar_retired: bool) -> &'static str {
+    match (scaffold_en(lang), statusbar_retired) {
+        (true, false) => "If the worldbook or character settings require extra content in every reply (such as a status bar or suggested actions), add it after the narration in the format they specify.",
+        (true, true) => "The card's original status bar has been retired and the app keeps the state, so do not output a status bar. If the worldbook or character settings require other extra content in every reply (such as suggested actions), add it after the narration in the format they specify.",
+        (false, false) => "世界書或角色設定若規定每回合回覆要附的內容（例如狀態欄、推薦行動），照它的格式附在旁白本文之後。",
+        (false, true) => "卡片原本的狀態欄已淘汰，狀態由 App 記錄，不要輸出狀態欄；世界書或角色設定若規定每回合回覆要附其他內容（例如推薦行動），照它的格式附在旁白本文之後。",
+    }
 }
 
 /// GM 回合尾該用哪一種導演指示。

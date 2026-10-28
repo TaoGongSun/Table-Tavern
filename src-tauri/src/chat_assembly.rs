@@ -380,8 +380,13 @@ pub(crate) fn gm_turn_instruction(
         transport::GmTurnFormat::Narration => {
             // 增量桌：圍欄只管三欄，其餘欄位的變動另附更新區塊
             let updates = materials.state.mechanism.incremental;
-            let instruction_message =
-                transport::narrate_instruction(lang, roster, player_name, updates);
+            let instruction_message = transport::narrate_instruction(
+                lang,
+                roster,
+                player_name,
+                updates,
+                materials.state.statusbar_retired,
+            );
             let closing = if updates {
                 transport::narration_closing_with_updates(!roster.is_empty(), lang)
             } else {

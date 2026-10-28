@@ -137,6 +137,16 @@ pub(super) const INTERFACE_UPDATE_RULES: &str = r#"骨架的每個佔位符，�
 - 劇情正文不要列進 RULES／GUIDE：那一格由 App 拿 GM 的訊息正文填，GM 不必也不該回報。
 - GUIDE 用卡原文的語言與詞彙寫。"#;
 
+/// 合組改寫（setting／mechanism 兩支）共用的重印狀態規定排除：原卡寫給原平台「每回合重印狀態欄」那類要求，
+/// 改寫進世界書會每輪送進 GM 提示詞、誘發 GM 自寫狀態段（refactor-worldbook-statusbar-wording）。
+/// 只排除重印狀態數值；推薦行動之類 App 不接管的每回合玩法輸出照留。
+pub(super) const REWRITE_TRANSPORT_EXCLUSION: &str = r#"排除原卡為了重印狀態而寫的輸出規定（這條優先於「資訊全數保留」）：狀態欄（回覆末尾列出、折疊區塊、顯示
+模板與範例）、每回合／每輪附上完整數值、欄位對照表——一律不要寫進產出，CONTENT 與 TRIGGERS 的
+text／preamble 都一樣。原平台不保管狀態才要模型每回合重印數值；這裡狀態由 App 保管，GM 怎麼回報變動由 App
+的協定交代。其他每回合要附的玩法內容（例如推薦行動）照原文保留；同一段裡混著的設定、玩法條件、數值怎麼變、
+事件內容也照樣保留，只拿掉重印狀態的要求本身。這裡說的「狀態欄位」指 App 狀態樹裡的變數，不是畫面上的
+狀態欄。"#;
+
 /// 欄位規則的 JSON 形狀說明：機制條目重寫、舊 mechanism 展開、介面接管的回報規矩共用。
 pub(super) const MECHANISM_FIELD_SCHEMA: &str = r#"欄位規則：每個規則掛在一個路徑（從狀態樹根起算的完整點分路徑，例如 亞瑟.HP、World.好感度；動態鍵
 可用 * 代表，例如 冒險者.*.HP）底下，形狀是：

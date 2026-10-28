@@ -133,7 +133,7 @@ fn english_scaffold_markers_parse_native_language_replies() {
         ("fr", "La pluie cesse.", "Vieux port", "Nuit à la taverne"),
         ("ru", "Дождь стих.", "Старый порт", "Ночь в таверне"),
     ] {
-        let instruction = narrate_instruction(lang, &roster, None, false).content;
+        let instruction = narrate_instruction(lang, &roster, None, false, false).content;
         assert!(instruction.contains("`Next: <name>`") && instruction.contains("```state"));
         let reply = format!(
             "{body}\n```state\ntime: 0:00\nplace: {place}\npresent: Renard\n```\nNext: {PLAYER_SENTINEL}"
@@ -394,13 +394,13 @@ fn extract_state_keeps_middle_code_fence_but_removes_trailing_plain_fence() {
 #[test]
 fn narration_with_updates_asks_for_the_block_before_the_next_speaker_line() {
     for lang in ["zh-TW", "en"] {
-        let text = narrate_instruction(lang, &["狐狸".to_owned()], None, true).content;
+        let text = narrate_instruction(lang, &["狐狸".to_owned()], None, true, false).content;
         let note = text.find("UpdateVariable").expect(lang);
         let next = text
             .find(if lang == "en" { "Next:" } else { "下一位" })
             .expect(lang);
         assert!(note < next, "{lang}");
-        assert!(!narrate_instruction(lang, &[], None, false)
+        assert!(!narrate_instruction(lang, &[], None, false, false)
             .content
             .contains("UpdateVariable"));
         assert!(
@@ -416,7 +416,7 @@ fn narration_with_updates_asks_for_the_block_before_the_next_speaker_line() {
 /// present 指示：每輪重判、名冊只供辨識、可留空；名字照原字（語言規範的例外，顯示字形由 app 轉）
 #[test]
 fn narration_present_rule_recomputes_each_turn_and_keeps_original_names() {
-    let zh = narrate_instruction("zh-CN", &[], None, false).content;
+    let zh = narrate_instruction("zh-CN", &[], None, false, false).content;
     assert!(zh.contains("time、place 用玩家的語言寫，沒有變化就照抄目前值"));
     assert!(zh.contains("以旁白結束當下為準") && zh.contains("人物名冊只供辨識是誰"));
     assert!(
@@ -424,7 +424,7 @@ fn narration_present_rule_recomputes_each_turn_and_keeps_original_names() {
     );
     assert!(!zh.contains("沒有變化的欄位也照抄目前值"));
     for lang in ["en", "ja", "ru"] {
-        let en = narrate_instruction(lang, &[], None, false).content;
+        let en = narrate_instruction(lang, &[], None, false, false).content;
         assert!(
             en.contains("repeat them if unchanged") && en.contains("at the end of the narration")
         );
@@ -490,4 +490,30 @@ fn worldbook_status_blocks_survive_state_extraction() {
     }
     assert!(!block.display.contains("```state"));
     assert!(!block.display.contains("present:"));
+}
+
+/// 卡片狀態欄退場的桌：導演指示不再舉「狀態欄」當設定要附的內容，改明說已淘汰不要印；其餘句子不變
+#[test]
+fn narration_on_retired_statusbar_table_says_not_to_print_status_bar() {
+    for (lang, retired_text, active_text) in [
+        (
+            "zh-TW",
+            "卡片原本的狀態欄已淘汰",
+            "（例如狀態欄、推薦行動）",
+        ),
+        (
+            "en",
+            "status bar has been retired",
+            "(such as a status bar or suggested actions)",
+        ),
+    ] {
+        let active = narrate_instruction(lang, &["狐狸".to_owned()], None, true, false).content;
+        let retired = narrate_instruction(lang, &["狐狸".to_owned()], None, true, true).content;
+        assert!(active.contains(active_text) && !active.contains(retired_text));
+        assert!(retired.contains(retired_text) && !retired.contains(active_text));
+        assert_eq!(
+            active.replace(narration_extra_content(lang, false), ""),
+            retired.replace(narration_extra_content(lang, true), "")
+        );
+    }
 }

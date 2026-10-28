@@ -1,6 +1,6 @@
 use super::prompt_common::{
     key_language_exception, known_fields_line, system_message, MECHANISM_FIELD_SCHEMA,
-    MECHANISM_TRIGGER_SCHEMA,
+    MECHANISM_TRIGGER_SCHEMA, REWRITE_TRANSPORT_EXCLUSION,
 };
 use super::types::GroupKind;
 use crate::transport::ChatMessage;
@@ -92,14 +92,17 @@ fn group_body(title: &str, kind: GroupKind, materials: &[(String, String)]) -> S
     let total_len: usize = materials.iter().map(|(_, text)| text.chars().count()).sum();
     let large_group_note = if total_len > GROUP_LARGE_MATERIAL_THRESHOLD {
         "\n\n這組材料原文加起來偏長：沒有真的糾纏在一起的段落可以直接寫 `{{span:uid#sN}}` 佔位照搬整段\
-        （例如 `{{span:9#s3}}`），只要真正動筆重寫需要跟別的段落合併調整的部分就好，不必逐字重打。"
+        （例如 `{{span:9#s3}}`），只要真正動筆重寫需要跟別的段落合併調整的部分就好，不必逐字重打。\
+        含上面那類重印狀態規定的段落不能整段照搬：動筆拆出其中有效的設定或規則，重印狀態的要求本身不寫。"
     } else {
         ""
     };
     match kind {
         GroupKind::Setting => format!(
             r#"這些段落是同一個主題被拆散在好幾條世界書條目裡的內容，請把屬於「{title}」的資訊拆出來，
-合併改寫成一條乾淨的世界書設定條目：資訊全數保留，去掉重複與格式殘渣，不發明材料沒有的設定。{large_group_note}
+合併改寫成一條乾淨的世界書設定條目：資訊全數保留，去掉重複與格式殘渣，不發明材料沒有的設定。
+
+{REWRITE_TRANSPORT_EXCLUSION}{large_group_note}
 
 嚴格照以下標記輸出，標記之外不要有任何文字：
 
@@ -111,7 +114,10 @@ fn group_body(title: &str, kind: GroupKind, materials: &[(String, String)]) -> S
 合併改寫成一條乾淨的機制條目。請做兩件事：
 
 一、CONTENT——重寫成一段玩家讀得懂的機制說明：這套規則管什麼、數值怎麼變動、有哪些階段或事件、什麼條件
-觸發什麼。資訊全數保留，去掉重複與格式殘渣，不發明材料沒有的規則。
+觸發什麼。資訊全數保留，去掉重複與格式殘渣，不發明材料沒有的規則。欄位寫在規則裡：講它追蹤什麼、怎麼變、
+門檻或條件到了觸發什麼，直接用欄位名，不另列欄位清單。
+
+{REWRITE_TRANSPORT_EXCLUSION}
 
 二、RULES／TRIGGERS——把其中可以由 App 本地執行的部分抽成結構化 JSON。
 
@@ -219,6 +225,30 @@ mod tests {
         );
         assert!(messages[1].content.contains("## RULES"));
         assert!(messages[1].content.contains("## TRIGGERS"));
+    }
+
+    // 合組兩支都排除原卡的重印狀態規定；「欄位寫在規則裡、不另列清單」只給機制，設定不能被刪成機制說明
+    #[test]
+    fn group_messages_exclude_transport_rules_in_both_kinds() {
+        let materials = vec![("12#s2".to_owned(), "段落甲".to_owned())];
+        for kind in [GroupKind::Setting, GroupKind::Mechanism] {
+            let messages = group_messages("ctx", "組", kind, &materials, &[], "", "zh-TW");
+            assert!(messages[1].content.contains(REWRITE_TRANSPORT_EXCLUSION));
+            let mechanism_only = messages[1].content.contains("不另列欄位清單");
+            assert_eq!(mechanism_only, kind == GroupKind::Mechanism);
+        }
+    }
+
+    // 大組照搬但書不能把含重印狀態規定的段落整段搬回來
+    #[test]
+    fn group_messages_large_group_note_forbids_copying_transport_spans() {
+        let large = vec![("1#s1".to_owned(), "字".repeat(4001))];
+        for kind in [GroupKind::Setting, GroupKind::Mechanism] {
+            let messages = group_messages("ctx", "大組", kind, &large, &[], "", "zh-TW");
+            assert!(messages[1]
+                .content
+                .contains("含上面那類重印狀態規定的段落不能整段照搬"));
+        }
     }
 
     // 大組保險：材料原文加總 >4000 字才出現指位照搬但書
