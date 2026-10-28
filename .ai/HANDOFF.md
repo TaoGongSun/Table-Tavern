@@ -7,7 +7,6 @@
 ## 進行中
 - [agy-home-cleanup](handoffs/agy-home-cleanup.md) — app 專用 agy 家目錄（與 codex-lane-resume 的 codex-home）對話清理機制＋agy 資料目錄變數上游追蹤：查證提方案中
 - [card-mvu-shim](handoffs/card-mvu-shim.md) — 卡片介面沙盒墊 MVU 讀寫變數：全部已合併 main，剩實測佇列梯 1 項目（含 iframe 內按鈕實際互動）
-- [windows-ci-red](handoffs/windows-ci-red.md) — Windows verify CI 自 10-03 一直紅（測試 cfg 缺漏＋測試程式啟動即 0xc0000139）：查證提方案中
 - [cli-version-gate](handoffs/cli-version-gate.md) — 四家 CLI 升版改輸出格式只在執行期才發現：盤點與提方案中
 - [statusbar-only-fields](handoffs/statusbar-only-fields.md) — characters 盤點把只為淘汰狀態欄存在的欄位收成 FIELDS／RULES、GM 每回合回報長文字：盤點測試卡、提方案中
 

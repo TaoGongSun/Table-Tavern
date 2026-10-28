@@ -562,13 +562,19 @@ fn scan_residue(dir: &Path, segment: &str) -> Result<(), RewriteError> {
             scan_residue(&path, segment)?;
             continue;
         }
-        let bytes = fs::read(&path)
-            .map_err(|error| failed(format!("無法讀取 {}：{error}", path.display())))?;
-        let text = String::from_utf8_lossy(&bytes);
         let name = path
             .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or_default();
+        // 空的一般檔（JSONL、文字）藏不了機密段，不開檔：grok 的 `.lock` 都是空檔，其中兩把
+        // 正握在自己手上，Windows 的檔案鎖是強制鎖，開來讀會失敗。空的 .json 照讀、照判解析失敗。
+        // 只代表取樣當下為空，不是一致性快照。
+        if meta.is_file() && meta.len() == 0 && !name.ends_with(".json") {
+            continue;
+        }
+        let bytes = fs::read(&path)
+            .map_err(|error| failed(format!("無法讀取 {}：{error}", path.display())))?;
+        let text = String::from_utf8_lossy(&bytes);
         let hit = if name.ends_with(".jsonl") {
             let mut hit = false;
             for line in text.lines().filter(|line| !line.trim().is_empty()) {

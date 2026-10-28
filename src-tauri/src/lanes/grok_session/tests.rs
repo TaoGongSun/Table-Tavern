@@ -431,22 +431,76 @@ fn residue_scan_decodes_json_before_matching() {
     let summary = serde_json::to_string(&json!({ "session_summary": SECRET })).unwrap();
     assert!(!summary.contains(SECRET));
     fs::write(fixture.dir.join("summary.json"), summary).unwrap();
-    expect_drop(
+    let error = expect_drop_error(
         &fixture,
         Some(SECRET),
         &reply_of(&turn),
         DropReason::RewriteFailed,
+    );
+    assert!(
+        error.detail.contains("summary.json") && error.detail.contains("仍含機密段"),
+        "{}",
+        error.detail
     );
 
     // 子目錄也掃；壞 JSON 算掃描失敗
     let fixture = self::fixture("residue-bad-json", &turn);
     fs::create_dir_all(fixture.dir.join("subagents")).unwrap();
     fs::write(fixture.dir.join("subagents").join("meta.json"), "{壞").unwrap();
-    expect_drop(
+    let error = expect_drop_error(
         &fixture,
         Some(SECRET),
         &reply_of(&turn),
         DropReason::RewriteFailed,
+    );
+    assert!(
+        error.detail.contains("meta.json") && error.detail.contains("不是 JSON"),
+        "{}",
+        error.detail
+    );
+}
+
+/// 空的一般檔不開來讀（鎖檔都是空的，Windows 上讀不了自己握著的鎖）；非空的檔照掃，
+/// 空的 .json 照判解析失敗。含機密的檔用沒人持鎖的 summary.json.lock，命中才是因為內容。
+#[test]
+fn residue_scan_skips_empty_files_but_not_filled_or_json_ones() {
+    let turn = turn(Some(SECRET));
+    let fixture = fixture("residue-lock", &turn);
+    fs::write(fixture.dir.join("summary.json.lock"), SECRET).unwrap();
+    let error = expect_drop_error(
+        &fixture,
+        Some(SECRET),
+        &reply_of(&turn),
+        DropReason::RewriteFailed,
+    );
+    assert!(
+        error.detail.contains("summary.json.lock") && error.detail.contains("仍含機密段"),
+        "{}",
+        error.detail
+    );
+
+    let fixture = self::fixture("residue-empty-lock", &turn);
+    for name in [
+        "chat_history.jsonl.lock",
+        "updates.jsonl.lock",
+        "summary.json.lock",
+    ] {
+        assert_eq!(fs::metadata(fixture.dir.join(name)).unwrap().len(), 0);
+    }
+    run(&fixture, Some(SECRET), &reply_of(&turn)).expect("空鎖檔不擋抹寫");
+
+    let fixture = self::fixture("residue-empty-json", &turn);
+    fs::write(fixture.dir.join("empty.json"), "").unwrap();
+    let error = expect_drop_error(
+        &fixture,
+        Some(SECRET),
+        &reply_of(&turn),
+        DropReason::RewriteFailed,
+    );
+    assert!(
+        error.detail.contains("empty.json") && error.detail.contains("不是 JSON"),
+        "{}",
+        error.detail
     );
 }
 

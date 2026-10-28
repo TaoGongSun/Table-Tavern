@@ -15,6 +15,7 @@ enum Table {
 }
 
 /// 建桌、貼開場、跑一輪 GM lane，回傳假 CLI 收到的 prompt。
+#[cfg(unix)]
 async fn sent_prompt(table: Table) -> String {
     let fake = fake_claude(&format!("opening-raw-{table:?}"));
     let world_id = data::create_world(&fake.root, "要塞").unwrap();

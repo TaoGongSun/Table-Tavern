@@ -1,0 +1,7 @@
+# 全庫文字檔一律 LF：Windows 取出時不轉 CRLF，比對檔與嵌入檔跨平台位元組一致。
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.webp binary
+*.ico binary
+*.icns binary

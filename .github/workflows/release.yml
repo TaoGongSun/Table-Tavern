@@ -75,6 +75,10 @@ jobs:
             > "$RUNNER_TEMP/updater.json"
           npx tauri build --ci --bundles nsis --config "$RUNNER_TEMP/updater.json"
 
+      - name: Check app manifest
+        shell: pwsh
+        run: ./scripts/release/check-windows-manifest.ps1 src-tauri/target/release/table-tavern.exe
+
       - name: Stage installer
         shell: bash
         run: |

@@ -52,6 +52,7 @@ impl<'a> Turn<'a> {
     }
 }
 
+#[cfg(unix)]
 impl Table {
     fn new(tag: &str) -> Self {
         Self {
@@ -824,6 +825,7 @@ async fn returning_to_an_old_model_lane_in_multi_mode_reopens() {
 }
 
 /// 用真的狀態資料組 tail 跑一輪單角色（騎士）。
+#[cfg(unix)]
 async fn run_knight(
     table: &mut Table,
     knight: &crate::data::CharacterCard,
@@ -1204,17 +1206,22 @@ fn reminder_matching_is_exact_and_scan_is_read_only() {
     let parsed = session_file::parse(&text).unwrap();
     assert!(session_file::has_total_tokens_reminder(&parsed));
 
-    let fake = fake_claude("owner-scan-bytes");
-    let path = session_file::session_file_path(&fake.claude_home, &fake.working_dir, "sid-scan");
-    std::fs::write(&path, &text).unwrap();
-    assert_eq!(scan_reminder_readonly(&fake.call, "sid-scan"), Ok(true));
-    assert_eq!(
-        std::fs::read_to_string(&path).unwrap(),
-        text,
-        "掃描不改位元組"
-    );
-    assert!(scan_reminder_readonly(&fake.call, "missing").is_err());
-    std::fs::remove_dir_all(&fake.dir).unwrap();
+    // 假 CLI 只有 unix 版；Windows 只跑上面的比對。
+    #[cfg(unix)]
+    {
+        let fake = fake_claude("owner-scan-bytes");
+        let path =
+            session_file::session_file_path(&fake.claude_home, &fake.working_dir, "sid-scan");
+        std::fs::write(&path, &text).unwrap();
+        assert_eq!(scan_reminder_readonly(&fake.call, "sid-scan"), Ok(true));
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            text,
+            "掃描不改位元組"
+        );
+        assert!(scan_reminder_readonly(&fake.call, "missing").is_err());
+        std::fs::remove_dir_all(&fake.dir).unwrap();
+    }
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
