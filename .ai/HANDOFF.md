@@ -5,6 +5,7 @@
 分類規則：仍需程式施工／規格落地才放「進行中」；施工已完成、只剩可執行環境／使用者實機／外部條件驗收則移到「等實機驗收」，並同步列入[實測佇列](reference/verification-queue.md)。
 
 ## 進行中
+- [flat-field-glyph-dup](handoffs/flat-field-glyph-dup.md) — 沒重構非增量桌，模型換字形寫鍵在平欄長出簡繁重複欄位：開案查證中
 - [agy-home-cleanup](handoffs/agy-home-cleanup.md) — app 專用 agy 家目錄（與 codex-lane-resume 的 codex-home）對話清理機制＋agy 資料目錄變數上游追蹤：查證提方案中
 - [card-mvu-shim](handoffs/card-mvu-shim.md) — 卡片介面沙盒墊 MVU 讀寫變數：全部已合併 main，剩實測佇列梯 1 項目（含 iframe 內按鈕實際互動）
 
