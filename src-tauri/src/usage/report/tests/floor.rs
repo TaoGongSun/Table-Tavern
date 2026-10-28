@@ -1,4 +1,4 @@
-//! 自帶底線套進報表（vendor-prefix-floor）：判定、省額、選桌一致。
+//! 自帶底線套進報表（vendor-prefix-floor、vendor-floor-b2）：判定、省額、選桌一致。
 
 use super::super::*;
 use serde_json::json;
@@ -81,9 +81,9 @@ fn verification_ledger_codex_rounds_are_vendor_only() {
     );
 }
 
-/// 成功量出現得比自帶量多：底線仍是自帶段，超過底線的輪次照舊算命中與省額
+/// 成功量出現得比自帶量多：底線仍是自帶段，超過底線的輪次照舊算命中，省額先扣掉自帶段
 #[test]
-fn frequent_success_stays_a_hit_with_unchanged_savings() {
+fn frequent_success_stays_a_hit_and_saves_only_our_part() {
     let v = Some("1.0");
     let mut lines: Vec<String> = (0..3).map(|i| codex("w1", v, 20_000 + i, 9_984)).collect();
     for i in 0..5 {
@@ -97,7 +97,7 @@ fn frequent_success_stays_a_hit_with_unchanged_savings() {
     assert_eq!(report.total.own_hit_rounds, 5);
     assert_eq!(report.total.vendor_cached_tokens, 9_984 * 8);
 
-    // 超過底線那輪的省額與單價和沒有底線時完全一樣（不先減底線）
+    // 超過底線那輪：省額比沒有底線時少「底線×(1−讀係數)」，單價照原實付反推
     let hit = codex("w1", v, 21_000, 19_200);
     let alone = summarize(&hit, Some("w1"), &[], &[]).total;
     let with_floor = summarize(
@@ -108,13 +108,93 @@ fn frequent_success_stays_a_hit_with_unchanged_savings() {
     )
     .total;
     let floor_only = summarize(&lines[..3].join("\n"), Some("w1"), &[], &[]).total;
-    assert_eq!(with_floor.saved_tokens, alone.saved_tokens);
-    assert!(
-        (with_floor.saved_usd.unwrap() - floor_only.saved_usd.unwrap() - alone.saved_usd.unwrap())
-            .abs()
-            < 1e-12
-    );
     assert_eq!(floor_only.saved_tokens, 0.0);
+    let ours = with_floor.saved_tokens - floor_only.saved_tokens;
+    assert!((ours - (alone.saved_tokens - 9_984.0 * 0.9)).abs() < 1e-6);
+    let usd = with_floor.saved_usd.unwrap() - floor_only.saved_usd.unwrap();
+    assert!((usd - alone.saved_usd.unwrap() * ours / alone.saved_tokens).abs() < 1e-12);
+}
+
+/// 斷崖消失：底線 11,008、讀係數 0.1、沒有寫入時，讀到 11,008／11,009／12,000 依序省 0／0.9／892.8
+#[test]
+fn savings_grow_smoothly_past_the_floor() {
+    let v = Some("0.164.0");
+    let floor: Vec<String> = (0..3).map(|i| codex("w1", v, 18_000 + i, 11_008)).collect();
+    let base = summarize(&floor.join("\n"), Some("w1"), &[], &[]).total;
+    assert_eq!(base.saved_tokens, 0.0);
+    for (cached, expected) in [(11_008, 0.0), (11_009, 0.9), (12_000, 892.8)] {
+        let line = codex("w1", v, 20_000, cached);
+        let total = summarize(&[floor.join("\n"), line].join("\n"), Some("w1"), &[], &[]).total;
+        let saved = total.saved_tokens - base.saved_tokens;
+        assert!((saved - expected).abs() < 1e-6, "讀到 {cached}：省 {saved}");
+        // 美元：該輪金額 0.01 ÷ 原實付等值 × 我方省額
+        let paid = (20_000 - cached) as f64 + 0.1 * cached as f64 + 5.0 * 150.0;
+        let usd = total.saved_usd.unwrap() - base.saved_usd.unwrap();
+        assert!((usd - 0.01 / paid * expected).abs() < 1e-12);
+    }
+}
+
+/// 算得出理論可中量、讀到量又低於底線的輪次：不標只中自帶，但我方讀到 0、省額 0
+#[test]
+fn hits_below_the_floor_save_nothing() {
+    let mut lines: Vec<String> = (0..3)
+        .map(|i| {
+            json!({"ts": "t", "transport": "grok", "world": "w1", "model": "grok-4.6", "mode": "resume",
+                   "cache": "hit", "prompt_tokens": 1_000 + i, "cache_reporting": "reported",
+                   "cached_tokens": 128, "output_tokens": 10, "lane": "chars:grok", "age_secs": 5,
+                   "reason": "first-turn", "cost_usd": 0.001})
+            .to_string()
+        })
+        .collect();
+    lines.push(
+        json!({"ts": "t", "transport": "grok", "world": "w1", "model": "grok-4.6", "mode": "resume",
+               "cache": "hit", "prompt_tokens": 1_500, "cache_reporting": "reported",
+               "cached_tokens": 100, "output_tokens": 10, "lane": "chars:grok", "age_secs": 5,
+               "expected_cached": 100, "cost_usd": 0.001})
+        .to_string(),
+    );
+    let report = report(&lines, Some("w1"));
+    assert_eq!(
+        chips(&report),
+        vec![("hit".to_owned(), 1), ("vendor-only".to_owned(), 3)]
+    );
+    assert_eq!(report.total.saved_tokens, 0.0);
+    assert_eq!(report.total.vendor_cached_tokens, 128 * 3 + 100);
+}
+
+/// 底線未辨識：省額照現行（整段讀到量都算）
+#[test]
+fn unknown_floor_keeps_full_savings() {
+    let v = Some("1.0");
+    let lines = [codex("w1", v, 20_000, 9_984), codex("w1", v, 21_000, 9_984)];
+    let total = report(&lines, Some("w1")).total;
+    assert_eq!(total.vendor_cached_tokens, 0);
+    assert!((total.saved_tokens - 2.0 * 9_984.0 * 0.9).abs() < 1e-6);
+}
+
+/// claude 通道不認底線：重複值再多也不標只中自帶、不拆自帶段、不扣省額，最近一輪燈號照 hit
+#[test]
+fn claude_rows_never_get_a_floor() {
+    let claude = |prompt: u64, cached: u64, created: u64| {
+        json!({"ts": "t", "transport": "claude", "world": "w1", "model": "claude-opus-4-8",
+               "mode": "single", "cache": "hit", "prompt_tokens": prompt, "cache_reporting": "reported",
+               "cached_tokens": cached, "created_tokens": created, "created_1h_tokens": 0,
+               "output_tokens": 0, "cost_usd": 0.01})
+        .to_string()
+    };
+    let lines: Vec<String> = (0..4).map(|i| claude(5_000 + i, 3_223, 0)).collect();
+    let report = report(&lines, Some("w1"));
+    assert_eq!(chips(&report), vec![("hit".to_owned(), 4)]);
+    assert_eq!(report.total.vendor_only_rounds, 0);
+    assert_eq!(report.total.vendor_cached_tokens, 0);
+    assert_eq!(report.total.own_hit_rounds, 4);
+    assert!((report.total.saved_tokens - 4.0 * 3_223.0 * 0.9).abs() < 1e-6);
+    assert_eq!(report.latest.unwrap().cache.as_deref(), Some("hit"));
+
+    // 重建輪寫入加價照算：讀到少、寫入多時省額為負，不歸 0
+    let rebuild = super::priced(&claude(5_000, 100, 4_000));
+    assert!((rebuild.saved_tokens - (100.0 * 0.9 - 4_000.0 * 0.25)).abs() < 1e-6);
+    assert!(rebuild.saved_tokens < 0.0);
 }
 
 /// 同一段輸入重送中同樣的量＝我方內容真的中了，不是底線；0（真 0）與舊 api 假 0 都不當底線
@@ -157,6 +237,8 @@ fn unknown_version_rows_form_their_own_group() {
         vec![("hit".to_owned(), 1), ("vendor-only".to_owned(), 6)]
     );
     assert_eq!(report.total.vendor_cached_tokens, 9_984 * 4 + 11_008 * 3);
+    // 未知組底線 9,984：那輪我方讀到 1,024
+    assert!((report.total.saved_tokens - 1_024.0 * 0.9).abs() < 1e-6);
 }
 
 /// 同一個模型打不同端點：底線各算各的，另一個端點樣本不足就不判
@@ -173,6 +255,10 @@ fn api_endpoints_are_separate_groups_with_their_own_label() {
     );
     assert_eq!(report.total.vendor_only_api_rounds, 3);
     assert_eq!(report.total.own_hit_rounds, 1);
+    // API 計價不明：省額照舊不估
+    assert_eq!(report.total.saved_tokens, 0.0);
+    assert_eq!(report.total.priced_tokens, 0);
+    assert!(report.total.saved_partial);
 }
 
 /// 底線用全檔算：別桌的樣本也算數，選一桌與看總計對同一輪的判定一致
@@ -191,11 +277,15 @@ fn verdict_is_the_same_with_or_without_table_scope() {
         chips(&one),
         vec![("hit".to_owned(), 1), ("vendor-only".to_owned(), 1)]
     );
+    // 別桌樣本認出的底線一樣扣：w1 只有 15,000 那輪省下超出底線的部分
+    let ours = 14_000.0 - 0.1 * 15_000.0 - 0.9 * 9_984.0;
+    assert!((one.total.saved_tokens - ours).abs() < 1e-6);
     let all = report(&lines, None);
     assert_eq!(
         chips(&all),
         vec![("hit".to_owned(), 1), ("vendor-only".to_owned(), 4)]
     );
+    assert_eq!(all.total.saved_tokens, one.total.saved_tokens);
 }
 
 /// 算得出理論可中量的續聊線不走這條；重開那輪（期望為 0）才走

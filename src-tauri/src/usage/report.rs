@@ -11,8 +11,9 @@
 //! 診斷標籤與原因代碼原樣送到前端配 i18n（字典見 usage/log.rs 模組頂註解）。
 //!
 //! 自帶底線（usage/floor.rs）在讀帳時套上：先掃全檔分組算底線，再逐輪判定，舊帳本自動回溯、
-//! 選哪一桌結果都一樣。只中到底線的輪次另成一格 `vendor-only`（API 為 `vendor-only-api`），
-//! 那幾輪不算進「已省」（作者裁決 2026-10-06），原始花費與明細數字照列。
+//! 選哪一桌結果都一樣。只中到底線的輪次另成一格 `vendor-only`（API 為 `vendor-only-api`）。
+//! 「已省」每輪先扣掉 min(讀到, 底線)，只算我方內容讀到的部分（作者裁決 2026-10-28，B2）；
+//! 原始用量、花費與明細數字照列。claude 通道不認底線（見 `floors`）。
 
 use super::floor::{Floor, FloorKey, FloorSamples, Floors};
 use serde::Serialize;
@@ -177,9 +178,16 @@ fn dialogue_sample(line: &Value) -> bool {
 }
 
 /// 全檔分組算底線：不受選桌影響，樣本才夠、選桌前後判定才一致。
+///
+/// claude 通道不收樣本＝一律未辨識：目前的統計分不出 claude 自帶段與我方固定前綴。2026-10-28 用 app
+/// 同參數實測，claude CLI 自帶的整段只有 2–3k（opus／sonnet-4 系讀不到快取），帳本判出的 3,223～11,494
+/// 是我方 system 穩定命中；照扣會把真命中抹掉。命中格、命中條、頭條與省額都因此一致不套底線。
 fn floors(lines: &[Value]) -> Floors {
     let mut samples = FloorSamples::default();
-    for line in lines.iter().filter(|line| dialogue_sample(line)) {
+    let candidates = lines
+        .iter()
+        .filter(|line| dialogue_sample(line) && text(line, "transport") != "claude");
+    for line in candidates {
         samples.add(
             floor_key(line),
             number(line, "cached_tokens"),
@@ -399,17 +407,22 @@ fn accumulate(row: &mut UsageRow, line: &Value, include_cache: bool, verdict: Fl
         "claude" => claude_write_cost(line, created),
         _ => (write_mult * created as f64, false),
     };
-    if !verdict.vendor_only && ((read_estimated && cached > 0) || write_estimated) {
+    // 自帶段：認得出底線的組每輪先扣 min(讀到, 底線)，已省只算我方內容讀到的那部分（作者裁決 2026-10-28）。
+    // 只中到底線的輪次因此自然扣到我方讀到 0，不另設特例；寫快取加價照算，省額可為負
+    let vendor = match verdict.floor {
+        Floor::Known(floor) => cached.min(floor),
+        Floor::Unknown => 0,
+    };
+    if (read_estimated && cached > vendor) || write_estimated {
         row.estimated_rounds += 1;
     }
-    // 只中到自帶底線的輪次：輸入量留在分母，省下量記 0——那段是 CLI／供應商白送的，不算我方省下
+    // 輸入量整段留在分母（含自帶段）
     row.priced_tokens += prompt;
     let fresh = prompt.saturating_sub(cached + created) as f64;
     let paid = fresh + read_mult * cached as f64 + write_cost;
-    let saved = match verdict.vendor_only {
-        true => 0.0,
-        false => prompt as f64 - paid,
-    };
+    // ＝原省額 − 自帶段×(1−讀係數)：自帶段當成照原價付，其餘照實付（這樣寫只中自帶的輪次精確得 0）
+    let saved =
+        prompt as f64 - (fresh + vendor as f64) - read_mult * (cached - vendor) as f64 - write_cost;
     row.saved_tokens += saved;
     let charged = paid + OUTPUT_MULTIPLE * output as f64;
     match cost {
