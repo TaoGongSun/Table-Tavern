@@ -1,0 +1,22 @@
+{
+  "cli": "grok",
+  "scenario": "image",
+  "inputs": {
+    "model": null,
+    "tools": true
+  },
+  "args": [
+    "-s",
+    "<SESSION_ID>",
+    "--output-format",
+    "streaming-json",
+    "--always-approve",
+    "--disable-web-search",
+    "--no-plan",
+    "--no-subagents",
+    "--prompt-file",
+    "<PROMPT_FILE>"
+  ],
+  "exit": 0,
+  "stderr_tail": ""
+}

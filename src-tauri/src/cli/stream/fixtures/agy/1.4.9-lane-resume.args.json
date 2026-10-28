@@ -1,0 +1,19 @@
+{
+  "cli": "agy",
+  "scenario": "lane-resume",
+  "inputs": {
+    "model": "gemini-3.8-flash-medium"
+  },
+  "args": [
+    "--model",
+    "gemini-3.8-flash-medium",
+    "--agent",
+    "table-tavern-text",
+    "--output-format",
+    "stream-json",
+    "--conversation",
+    "<SESSION_ID>"
+  ],
+  "exit": 0,
+  "stderr_tail": ""
+}

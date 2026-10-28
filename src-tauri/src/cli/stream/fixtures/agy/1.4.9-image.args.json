@@ -1,0 +1,17 @@
+{
+  "cli": "agy",
+  "scenario": "image",
+  "inputs": {
+    "model": "gemini-3.8-flash-medium",
+    "tools": true
+  },
+  "args": [
+    "--model",
+    "gemini-3.8-flash-medium",
+    "--dangerously-skip-permissions",
+    "--output-format",
+    "stream-json"
+  ],
+  "exit": 0,
+  "stderr_tail": ""
+}

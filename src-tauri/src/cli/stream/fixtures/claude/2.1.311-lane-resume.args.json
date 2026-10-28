@@ -1,0 +1,25 @@
+{
+  "cli": "claude",
+  "scenario": "lane-resume",
+  "inputs": {
+    "model": "haiku"
+  },
+  "args": [
+    "-p",
+    "--verbose",
+    "--safe-mode",
+    "--output-format",
+    "stream-json",
+    "--include-partial-messages",
+    "--tools",
+    "",
+    "--system-prompt-file",
+    "<SYSTEM_FILE>",
+    "--model",
+    "haiku",
+    "--resume",
+    "<SESSION_ID>"
+  ],
+  "exit": 0,
+  "stderr_tail": ""
+}

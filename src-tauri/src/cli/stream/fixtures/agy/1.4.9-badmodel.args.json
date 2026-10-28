@@ -1,0 +1,18 @@
+{
+  "cli": "agy",
+  "scenario": "badmodel",
+  "inputs": {
+    "model": "no-such-model-xyz",
+    "tools": false
+  },
+  "args": [
+    "--model",
+    "no-such-model-xyz",
+    "--agent",
+    "table-tavern-text",
+    "--output-format",
+    "stream-json"
+  ],
+  "exit": 1,
+  "stderr_tail": "  Claude Opus 5.5 (High)\n  Claude Sonnet 5.5 (Low)\n  Claude Sonnet 5.5 (Medium)\n  Claude Sonnet 5.5 (High)\n  GPT-OSS 120B (Medium)"
+}

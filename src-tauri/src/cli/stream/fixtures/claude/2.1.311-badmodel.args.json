@@ -1,0 +1,24 @@
+{
+  "cli": "claude",
+  "scenario": "badmodel",
+  "inputs": {
+    "model": "no-such-model-xyz"
+  },
+  "args": [
+    "-p",
+    "--verbose",
+    "--safe-mode",
+    "--no-session-persistence",
+    "--output-format",
+    "stream-json",
+    "--include-partial-messages",
+    "--tools",
+    "",
+    "--system-prompt-file",
+    "<SYSTEM_FILE>",
+    "--model",
+    "no-such-model-xyz"
+  ],
+  "exit": 1,
+  "stderr_tail": "Warning: Advisor disabled — base model 'no-such-model-xyz' has no advisor rank in the model catalog. Switch to a public model alias (opus, sonnet, fable) or set CLAUDE_CODE_ENABLE_EXPERIMENTAL_ADVISOR_TOOL=1.\n[claude-code:unrecognized_model] {\"model\":\"no-such-model-xyz\",\"query_source\":\"sdk\"}"
+}

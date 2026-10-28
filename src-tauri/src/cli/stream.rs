@@ -327,7 +327,7 @@ pub fn parse_codex_line(line: &str) -> CliLine {
             is_error: true,
         },
         // 頂層 error 不分致命與否（exec JSON 把 will_retry 丟了，重試中的 Reconnecting 也長這樣）：
-        // 不結束回合，收尾規則交給 CODEX_PROTOCOL.require_done 與退出碼
+        // 不結束回合，收尾規則交給 CODEX_PROTOCOL 的 require_done／sticky_failed_done 與退出碼
         Some("error") => CliLine::SoftError(
             value
                 .get("message")
@@ -409,20 +409,40 @@ pub(super) fn codex_usage_delta(
 }
 
 pub const CLAUDE_PROTOCOL: CliProtocol = CliProtocol {
+    id: "claude",
+    name: "Claude",
     parse: parse_claude_line,
-    require_done: false,
+    unrecognized: known::claude,
+    require_done: true,
+    sticky_failed_done: false,
+    codex_session_checks: false,
 };
 pub const CODEX_PROTOCOL: CliProtocol = CliProtocol {
+    id: "codex",
+    name: "Codex",
     parse: parse_codex_line,
+    unrecognized: known::codex,
     require_done: true,
+    sticky_failed_done: true,
+    codex_session_checks: true,
 };
 pub const AGY_PROTOCOL: CliProtocol = CliProtocol {
+    id: "agy",
+    name: "Gemini",
     parse: parse_agy_line,
-    require_done: false,
+    unrecognized: known::agy,
+    require_done: true,
+    sticky_failed_done: false,
+    codex_session_checks: false,
 };
 pub const GROK_PROTOCOL: CliProtocol = CliProtocol {
+    id: "grok",
+    name: "Grok",
     parse: parse_grok_line,
-    require_done: false,
+    unrecognized: known::grok,
+    require_done: true,
+    sticky_failed_done: false,
+    codex_session_checks: false,
 };
 
 /// 收尾事件報失敗卻沒附原因時的說明；cli 是顯示名。
@@ -556,5 +576,11 @@ fn incomplete(reason: &str) -> CliLine {
     }
 }
 
+mod known;
+
+#[cfg(test)]
+mod capture_tests;
+#[cfg(test)]
+mod contract_tests;
 #[cfg(test)]
 mod tests;

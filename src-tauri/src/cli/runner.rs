@@ -12,6 +12,8 @@ use tokio::process::{Child, Command};
 use tokio::sync::watch;
 
 mod lines;
+mod unrecognized;
+mod verdict;
 
 /// 餵 stdin 的上限：CLI 起來但不收 stdin（掛在啟動）時，寫入會永卡。測試縮短以免反例測試等一分鐘。
 #[cfg(not(test))]
@@ -254,24 +256,41 @@ pub async fn run_cli_cancellable(
 
 /// 帳本 `cli_version` 的背景查詢。落帳時沒查好就不寫（歸「版本未知」組），從不等它。
 /// 單元測試不查：假 CLI 會把 `--version` 也記成一次呼叫，擾亂呼叫次數的斷言（查詢本身在 detect.rs 另測）。
-struct VersionProbe(Option<tokio::task::JoinHandle<Option<String>>>);
+struct VersionProbe(
+    Option<tokio::task::JoinHandle<Option<String>>>,
+    /// 已取出的結果（`ready` 取過之後 handle 就沒了）
+    Option<String>,
+);
 
 impl VersionProbe {
     fn start(wanted: bool, program: &Path, working_dir: &Path, envs: &[(String, String)]) -> Self {
         if cfg!(test) || !wanted {
-            return Self(None);
+            return Self(None, None);
         }
-        Self(Some(tokio::spawn(super::detect::cli_version(
-            program.to_path_buf(),
-            working_dir.to_path_buf(),
-            envs.to_vec(),
-        ))))
+        Self(
+            Some(tokio::spawn(super::detect::cli_version(
+                program.to_path_buf(),
+                working_dir.to_path_buf(),
+                envs.to_vec(),
+            ))),
+            None,
+        )
     }
 
     /// 查好了才取（已完成的 handle await 立即返回），沒查好就放棄這一筆。
     async fn ready(&mut self) -> Option<String> {
         let handle = self.0.take_if(|handle| handle.is_finished())?;
-        handle.await.ok().flatten()
+        let version = handle.await.ok().flatten();
+        self.1 = version.clone();
+        version
+    }
+
+    /// 收尾時要版本（錯誤訊息、上次正常版本）：等它查完，查詢本身有 5 秒上限。
+    async fn finish(&mut self) -> Option<String> {
+        if let Some(handle) = self.0.take() {
+            self.1 = handle.await.ok().flatten();
+        }
+        self.1.clone()
     }
 }
 
@@ -318,6 +337,8 @@ async fn drive_child(
     let mut agy_conversation_id: Option<String> = None;
     // codex 頂層 error（非致命通知）的最後一則：回合最後失敗時當錯誤文字
     let mut soft_error: Option<String> = None;
+    // 認不得的 stdout 行（格式可能隨 CLI 升版改了）
+    let mut unrecognized = unrecognized::Unrecognized::default();
     // 子程序死法收網（2026-08-12，跨平台 tokio API）：
     // ①程序退出但管線不 EOF（孫程序繼承 fd）：退出後 800ms 沒新行＝強制收尾；
     // ②程序活著但斷流（網路死、CLI 內部卡死）：STALL_WINDOW 無任何 stdout/stderr 行＝殺程序回錯；
@@ -626,7 +647,10 @@ async fn drive_child(
                 }
             }
         }
-        if protocol.require_done && super::stream::codex_rollout_save_failed(&line) {
+        if let Some(label) = (protocol.unrecognized)(&line) {
+            unrecognized.note(label);
+        }
+        if protocol.codex_session_checks && super::stream::codex_rollout_save_failed(&line) {
             eprintln!("[cli] codex reported a rollout save failure");
             rollout_unsaved = true;
         }
@@ -669,7 +693,7 @@ async fn drive_child(
                 }
                 // codex：已經報過失敗的收尾不讓後到的事件蓋掉（失敗原因要留著）。
                 // 其他家照舊由後到的收尾為準（grok 的頂層 error 之後 end_turn＝成功，方案 §3）
-                if !(protocol.require_done && matches!(done, Some((_, true)))) {
+                if !(protocol.sticky_failed_done && matches!(done, Some((_, true)))) {
                     done = Some((text, is_error));
                 }
             }
@@ -700,35 +724,8 @@ async fn drive_child(
         return Err(UiMsg::CliReplyError { error: msg }.into_error());
     }
     let status = child.wait().await?;
-    if let Some((text, true)) = &done {
-        // 容量爆掉／生成撞到容量上限：掛穩定碼原樣上拋，前端認得出、換幕流程據此縮塊
-        if let Some(coded) = context_overflow::cli_failure(text) {
-            return Err(crate::data::invalid_data(coded));
-        }
-        if text.starts_with("AI_INCOMPLETE_RESPONSE:") {
-            return Err(crate::data::invalid_data(text.clone()));
-        }
-        return Err(UiMsg::CliReplyError {
-            error: text.clone(),
-        }
-        .into_error());
-    }
-    if protocol.require_done && done.is_none() && status.success() {
-        // codex 有「事件通道 EOF、沒送 turn.completed 仍回 0」的分支：半截正文不能當成完成
-        let error = soft_error.unwrap_or_else(|| {
-            UiMsg::CliTurnFailedStatus {
-                cli: "Codex".to_owned(),
-                status: status.to_string(),
-            }
-            .to_string()
-        });
-        if let Some(coded) = context_overflow::cli_failure(&error) {
-            return Err(crate::data::invalid_data(coded));
-        }
-        return Err(UiMsg::CliReplyError { error }.into_error());
-    }
-    if protocol.require_done
-        && done.is_some()
+    if protocol.codex_session_checks
+        && done.as_ref().is_some_and(|(_, failed)| !failed)
         && !status.success()
         && (!grace_killed || rollout_unsaved)
     {
@@ -744,51 +741,74 @@ async fn drive_child(
             flag.store(true, std::sync::atomic::Ordering::Relaxed);
         }
     }
-    if done.is_none() && !status.success() {
-        // 死法④：CLI crash／被系統殺（無收尾事件＋exit 非零）——殘缺正文不能往下走
-        let tail: String = stderr_text
-            .lines()
-            .rev()
-            .take(5)
-            .collect::<Vec<_>>()
-            .join("\n");
-        // codex 頂層 error 不走 stderr：有的話附在 stderr 尾段前面，玩家看得到 CLI 自己的原因
-        let tail = match &soft_error {
-            Some(error) => format!("{error}\n{tail}"),
-            None => tail,
-        };
-        let msg = UiMsg::CliCrashed {
-            status: status.to_string(),
-            tail,
+    let tail = unrecognized::stderr_tail(&stderr_text);
+    let verdict = verdict::decide(&verdict::Facts {
+        protocol,
+        done: done.as_ref(),
+        soft_error: soft_error.as_deref(),
+        exit_ok: status.success(),
+        text_empty: full_text.is_empty(),
+        unrecognized: unrecognized.seen(),
+    });
+    match verdict {
+        verdict::Verdict::DoneError(text) | verdict::Verdict::SoftError(text) => {
+            // 容量爆掉／生成撞到容量上限：掛穩定碼原樣上拋，前端認得出、換幕流程據此縮塊
+            if let Some(coded) = context_overflow::cli_failure(&text) {
+                return Err(crate::data::invalid_data(coded));
+            }
+            if text.starts_with("AI_INCOMPLETE_RESPONSE:") {
+                return Err(crate::data::invalid_data(text));
+            }
+            return Err(UiMsg::CliReplyError { error: text }.into_error());
         }
-        .to_string();
-        if thinking_to_delta {
-            on_delta(&format!("\n⚠ {msg}\n"));
+        verdict::Verdict::Crashed => {
+            // 死法④：CLI crash／被系統殺（無收尾事件＋exit 非零）——殘缺正文不能往下走
+            let msg = UiMsg::CliCrashed {
+                status: status.to_string(),
+                tail,
+            }
+            .to_string();
+            if thinking_to_delta {
+                on_delta(&format!("\n⚠ {msg}\n"));
+            }
+            return Err(UiMsg::CliReplyError { error: msg }.into_error());
         }
-        return Err(UiMsg::CliReplyError { error: msg }.into_error());
-    }
-    if full_text.is_empty() {
-        // 串流沒抓到增量時退回收尾文字（例如未來旗標行為變動）
-        if let Some((text, false)) = &done {
-            if !text.is_empty() {
+        verdict::Verdict::Unrecognized => {
+            return Err(unrecognized::failure(
+                protocol,
+                &unrecognized,
+                &mut version,
+                &usage_log,
+                tail,
+            )
+            .await);
+        }
+        verdict::Verdict::TurnFailed => {
+            return Err(UiMsg::CliReplyError {
+                error: UiMsg::CliTurnFailedStatus {
+                    cli: protocol.name.to_owned(),
+                    status: status.to_string(),
+                }
+                .to_string(),
+            }
+            .into_error());
+        }
+        verdict::Verdict::NoReply => {
+            return Err(UiMsg::CliNoReply {
+                status: status.to_string(),
+                tail,
+            }
+            .into_error());
+        }
+        verdict::Verdict::Completed { use_done_text } => {
+            // 串流沒抓到增量時退回收尾文字（例如未來旗標行為變動）
+            if let (true, Some((text, _))) = (use_done_text, &done) {
                 on_delta(text);
                 full_text = text.clone();
             }
         }
     }
-    if full_text.is_empty() {
-        let tail: String = stderr_text
-            .lines()
-            .rev()
-            .take(5)
-            .collect::<Vec<_>>()
-            .join("\n");
-        return Err(UiMsg::CliNoReply {
-            status: status.to_string(),
-            tail,
-        }
-        .into_error());
-    }
+    unrecognized::completed(protocol, &unrecognized, &mut version, &usage_log).await;
     Ok(CliFinish::Completed(full_text))
 }
 
@@ -803,3 +823,6 @@ mod finish_tests;
 
 #[cfg(test)]
 mod codex_tests;
+
+#[cfg(test)]
+mod gate_tests;

@@ -54,6 +54,7 @@
 | 24 | [undo-two-clicks-summary-line](../handoffs/archive/undo-two-clicks-summary-line.md) 收回一下收一樓 | 測試通道、低階模型：MVU 桌（zod 卡）與樹模式重構桌各跑一回合讓 GM 改文字欄（出變動摘要行），多角色桌另跑一回合帶出兩張卡登場（私設、登場交錯）。「收回上一句」按一下：登場塊、GM 旁白、摘要、點名一起消失，玩家句留著，狀態欄數值與平欄（時間、在場）回到玩家句那一刻；「復原剛收回的」按一下整樓照原序回來、數值回到回合後；連按收回／復原逐樓往返 |
 | 25 | [refactor-rule-conflict-same-field](../handoffs/archive/refactor-rule-conflict-same-field.md) 同欄多份規則 | 測試通道、低階模型：clean-orc（TestCards/clean-orc-cave.json）characters 模式真重構，按「全部套用」一次成功（不再回 `refactor rules conflict`）；狀態欄 驻守天数 照常顯示「第 1 天」、往後回合能遞增。產物不一定撞到同欄（非必然），重構結果框看兩條機制條目都寫 驻守天数 才算驗到 |
 | 26 | [gm-reprints-retired-statusbar](../handoffs/archive/gm-reprints-retired-statusbar.md) 重構桌不重印狀態欄 | 2026-10-28 測試通道過（Sonnet 4 回合、codex 2 回合 0 重印）。剩實機觀察：clean-orc（或 orc-cave-copy、NorthHall）characters 重構後實聊數回合，GM 不再附卡片 `<details>` 狀態欄、故事裡也沒有改寫成正文的狀態欄；可搭任一梯 2 實聊順手看 |
+| 27 | [cli-version-gate](../handoffs/cli-version-gate.md) grok 超過回合上限 | grok 送出 `max_turns_reached` 之後還會不會送 `end`：會送才落在既有收尾規則（`max_turn_requests`＝不完整）；不送就會被「缺收尾＝失敗」判成回合失敗。實跑一輪會撞 `--max-turns 1` 的情境（例如生圖以外讓模型想叫工具），看原始輸出 |
 
 ## 梯 3：等外部條件，不排時程
 

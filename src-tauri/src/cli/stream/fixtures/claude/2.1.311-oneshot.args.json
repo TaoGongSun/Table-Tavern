@@ -1,0 +1,24 @@
+{
+  "cli": "claude",
+  "scenario": "oneshot",
+  "inputs": {
+    "model": "haiku"
+  },
+  "args": [
+    "-p",
+    "--verbose",
+    "--safe-mode",
+    "--no-session-persistence",
+    "--output-format",
+    "stream-json",
+    "--include-partial-messages",
+    "--tools",
+    "",
+    "--system-prompt-file",
+    "<SYSTEM_FILE>",
+    "--model",
+    "haiku"
+  ],
+  "exit": 0,
+  "stderr_tail": ""
+}

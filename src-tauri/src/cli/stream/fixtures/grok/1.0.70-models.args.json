@@ -1,0 +1,9 @@
+{
+  "cli": "grok",
+  "scenario": "models",
+  "inputs": {},
+  "args": [
+    "models"
+  ],
+  "exit": 0
+}

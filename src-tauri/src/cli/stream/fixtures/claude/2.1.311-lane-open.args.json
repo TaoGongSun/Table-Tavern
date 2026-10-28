@@ -1,0 +1,25 @@
+{
+  "cli": "claude",
+  "scenario": "lane-open",
+  "inputs": {
+    "model": "haiku"
+  },
+  "args": [
+    "-p",
+    "--verbose",
+    "--safe-mode",
+    "--output-format",
+    "stream-json",
+    "--include-partial-messages",
+    "--tools",
+    "",
+    "--system-prompt-file",
+    "<SYSTEM_FILE>",
+    "--model",
+    "haiku",
+    "--session-id",
+    "<SESSION_ID>"
+  ],
+  "exit": 0,
+  "stderr_tail": ""
+}

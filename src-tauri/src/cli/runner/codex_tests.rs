@@ -1,4 +1,4 @@
-//! codex 的收尾規則（CODEX_PROTOCOL.require_done）與 SessionWatch：假 CLI 腳本吐指定的 JSON 行與退出碼。
+//! codex 的收尾規則（CODEX_PROTOCOL 的 require_done／sticky_failed_done／codex_session_checks）與 SessionWatch：假 CLI 腳本吐指定的 JSON 行與退出碼。
 #![cfg(unix)]
 #![allow(clippy::await_holding_lock)]
 
@@ -236,9 +236,10 @@ async fn grok_error_then_end_turn_succeeds() {
     );
 }
 
-/// 其他 CLI 的判定不變：沒有收尾事件、程序以 0 結束、有正文＝照舊當完成。
+/// 其他 CLI 也要收尾事件（cli-version-gate〔作者裁決 2026-10-28〕）：沒有收尾、以 0 結束、有正文＝失敗，
+/// 訊息用該家顯示名，不是寫死的 Codex。
 #[tokio::test]
-async fn other_protocols_keep_text_on_clean_exit() {
+async fn other_protocols_now_require_done() {
     let _serial = crate::inflight::lock_real_process_tests();
     let fx = fake(
         &[
@@ -246,10 +247,13 @@ async fn other_protocols_keep_text_on_clean_exit() {
         ],
         0,
     );
-    assert_eq!(
-        text(run(&fx, &CLAUDE_PROTOCOL, None, SessionWatch::default()).await),
-        "你好"
-    );
+    let error = run(&fx, &CLAUDE_PROTOCOL, None, SessionWatch::default())
+        .await
+        .err()
+        .expect("缺收尾要失敗")
+        .to_string();
+    assert!(error.contains("cli_turn_failed_status"), "{error}");
+    assert!(error.contains("Claude"), "{error}");
 }
 
 #[tokio::test]

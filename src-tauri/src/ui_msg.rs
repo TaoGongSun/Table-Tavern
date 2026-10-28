@@ -399,6 +399,31 @@ pub enum UiMsg {
         status: String,
         tail: String,
     },
+    /// 回覆格式認不得（收尾事件或正文事件可能隨 CLI 升版改了）；cli 是顯示名，version 是
+    /// `--version` 原文，last_ok 是上次完整跑完一輪的版本，tail 是 stderr 末幾行。
+    CliOutputUnrecognizedChanged {
+        cli: String,
+        version: String,
+        last_ok: String,
+        tail: String,
+    },
+    /// 同上，但這個版本曾正常跑完過。
+    CliOutputUnrecognizedSame {
+        cli: String,
+        version: String,
+        tail: String,
+    },
+    /// 同上，這支 CLI 在本機從沒正常跑完過。
+    CliOutputUnrecognizedNever {
+        cli: String,
+        version: String,
+        tail: String,
+    },
+    /// 同上，查不到版本。
+    CliOutputUnrecognizedUnknownVersion {
+        cli: String,
+        tail: String,
+    },
     /// CLI 收尾事件報失敗卻沒附原因；cli 是顯示名（Codex／Gemini／Grok）。
     CliTurnFailed {
         cli: String,

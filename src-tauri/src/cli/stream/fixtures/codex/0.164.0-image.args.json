@@ -1,0 +1,23 @@
+{
+  "cli": "codex",
+  "scenario": "image",
+  "inputs": {
+    "model": null,
+    "effort": "medium",
+    "tools": true
+  },
+  "args": [
+    "exec",
+    "--json",
+    "--ephemeral",
+    "--skip-git-repo-check",
+    "--ignore-user-config",
+    "-s",
+    "workspace-write",
+    "-c",
+    "model_reasoning_effort=\"medium\"",
+    "-"
+  ],
+  "exit": 0,
+  "stderr_tail": ""
+}

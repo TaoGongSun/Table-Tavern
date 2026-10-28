@@ -30,6 +30,14 @@ const COPY = {
     be_cli_stalled_after_output: "回應中斷：超過 120 秒沒有新內容，已中止",
     be_cli_crashed: "CLI 異常結束（{status}）：{tail}",
     be_cli_no_reply: "CLI 沒有產出回覆（{status}）：{tail}",
+    be_cli_output_unrecognized_changed:
+      "{cli} CLI 從 {last_ok} 換成 {version} 後，回覆格式無法辨識，需要等本 app 更新支援。{tail}",
+    be_cli_output_unrecognized_same:
+      "{cli} CLI {version} 這次的回覆格式無法辨識。{tail}",
+    be_cli_output_unrecognized_never:
+      "{cli} CLI {version} 的回覆格式無法辨識，需要等本 app 更新支援。{tail}",
+    be_cli_output_unrecognized_unknown_version:
+      "{cli} CLI 的回覆格式無法辨識，也查不到版本，需要等本 app 更新支援。{tail}",
     be_cli_turn_failed: "{cli} CLI 回合失敗",
     be_cli_turn_failed_status: "{cli} CLI 回合失敗（{status}）",
     be_cli_unexpected_abort: "內部錯誤：沒有取消訊號卻回報中止",
@@ -68,6 +76,14 @@ const COPY = {
     be_cli_stalled_after_output: "回应中断：超过 120 秒没有新内容，已中止",
     be_cli_crashed: "CLI 异常结束（{status}）：{tail}",
     be_cli_no_reply: "CLI 没有产出回复（{status}）：{tail}",
+    be_cli_output_unrecognized_changed:
+      "{cli} CLI 从 {last_ok} 换成 {version} 后，回复格式无法识别，需要等本 app 更新支持。{tail}",
+    be_cli_output_unrecognized_same:
+      "{cli} CLI {version} 这次的回复格式无法识别。{tail}",
+    be_cli_output_unrecognized_never:
+      "{cli} CLI {version} 的回复格式无法识别，需要等本 app 更新支持。{tail}",
+    be_cli_output_unrecognized_unknown_version:
+      "{cli} CLI 的回复格式无法识别，也查不到版本，需要等本 app 更新支持。{tail}",
     be_cli_turn_failed: "{cli} CLI 回合失败",
     be_cli_turn_failed_status: "{cli} CLI 回合失败（{status}）",
     be_cli_unexpected_abort: "内部错误：没有取消信号却回报中止",
@@ -110,6 +126,14 @@ const COPY = {
     be_cli_stalled_after_output: "The response stopped: no new output for 120 seconds, so it was stopped.",
     be_cli_crashed: "The CLI exited unexpectedly ({status}): {tail}",
     be_cli_no_reply: "The CLI produced no reply ({status}): {tail}",
+    be_cli_output_unrecognized_changed:
+      "{cli} CLI replies became unreadable after it changed from {last_ok} to {version}; this app needs an update to support it. {tail}",
+    be_cli_output_unrecognized_same:
+      "This {cli} CLI {version} reply was in a format this app can't read. {tail}",
+    be_cli_output_unrecognized_never:
+      "{cli} CLI {version} replies in a format this app can't read; this app needs an update to support it. {tail}",
+    be_cli_output_unrecognized_unknown_version:
+      "{cli} CLI replies in a format this app can't read, and its version couldn't be found; this app needs an update to support it. {tail}",
     be_cli_turn_failed: "{cli} CLI turn failed",
     be_cli_turn_failed_status: "{cli} CLI turn failed ({status})",
     be_cli_unexpected_abort: "Internal error: reported as stopped without a stop signal.",
@@ -155,6 +179,14 @@ const COPY = {
     be_cli_stalled_after_output: "応答が途切れました：120 秒間新しい出力がなかったため中止しました",
     be_cli_crashed: "CLI が異常終了しました（{status}）：{tail}",
     be_cli_no_reply: "CLI が返答を出しませんでした（{status}）：{tail}",
+    be_cli_output_unrecognized_changed:
+      "{cli} CLI が {last_ok} から {version} に変わった後、返答の形式を読み取れません。このアプリの更新を待つ必要があります。{tail}",
+    be_cli_output_unrecognized_same:
+      "{cli} CLI {version} の今回の返答は形式を読み取れませんでした。{tail}",
+    be_cli_output_unrecognized_never:
+      "{cli} CLI {version} の返答形式を読み取れません。このアプリの更新を待つ必要があります。{tail}",
+    be_cli_output_unrecognized_unknown_version:
+      "{cli} CLI の返答形式を読み取れず、バージョンも確認できません。このアプリの更新を待つ必要があります。{tail}",
     be_cli_turn_failed: "{cli} CLI のターンが失敗しました",
     be_cli_turn_failed_status: "{cli} CLI のターンが失敗しました（{status}）",
     be_cli_unexpected_abort: "内部エラー：中止の合図がないのに中止が報告されました",
@@ -200,6 +232,14 @@ const COPY = {
     be_cli_stalled_after_output: "응답이 끊겼습니다: 120초 동안 새 출력이 없어 중단했습니다",
     be_cli_crashed: "CLI가 비정상 종료되었습니다({status}): {tail}",
     be_cli_no_reply: "CLI가 답변을 내지 않았습니다({status}): {tail}",
+    be_cli_output_unrecognized_changed:
+      "{cli} CLI가 {last_ok}에서 {version}(으)로 바뀐 뒤 답변 형식을 읽을 수 없습니다. 이 앱의 업데이트를 기다려야 합니다. {tail}",
+    be_cli_output_unrecognized_same:
+      "{cli} CLI {version}의 이번 답변 형식을 읽을 수 없습니다. {tail}",
+    be_cli_output_unrecognized_never:
+      "{cli} CLI {version}의 답변 형식을 읽을 수 없습니다. 이 앱의 업데이트를 기다려야 합니다. {tail}",
+    be_cli_output_unrecognized_unknown_version:
+      "{cli} CLI의 답변 형식을 읽을 수 없고 버전도 확인할 수 없습니다. 이 앱의 업데이트를 기다려야 합니다. {tail}",
     be_cli_turn_failed: "{cli} CLI 턴이 실패했습니다",
     be_cli_turn_failed_status: "{cli} CLI 턴이 실패했습니다({status})",
     be_cli_unexpected_abort: "내부 오류: 중단 신호 없이 중단이 보고되었습니다",
@@ -246,6 +286,14 @@ const COPY = {
     be_cli_stalled_after_output: "La respuesta se interrumpió: 120 segundos sin salida nueva; se detuvo",
     be_cli_crashed: "La CLI terminó de forma inesperada ({status}): {tail}",
     be_cli_no_reply: "La CLI no produjo ninguna respuesta ({status}): {tail}",
+    be_cli_output_unrecognized_changed:
+      "Las respuestas de la CLI de {cli} ya no se pueden leer tras pasar de {last_ok} a {version}; hay que esperar una actualización de esta app. {tail}",
+    be_cli_output_unrecognized_same:
+      "Esta respuesta de la CLI de {cli} {version} tenía un formato que esta app no puede leer. {tail}",
+    be_cli_output_unrecognized_never:
+      "La CLI de {cli} {version} responde en un formato que esta app no puede leer; hay que esperar una actualización de esta app. {tail}",
+    be_cli_output_unrecognized_unknown_version:
+      "La CLI de {cli} responde en un formato que esta app no puede leer y no se pudo averiguar su versión; hay que esperar una actualización de esta app. {tail}",
     be_cli_turn_failed: "Falló el turno de la CLI de {cli}",
     be_cli_turn_failed_status: "Falló el turno de la CLI de {cli} ({status})",
     be_cli_unexpected_abort: "Error interno: se informó una detención sin señal de detener",
@@ -292,6 +340,14 @@ const COPY = {
     be_cli_stalled_after_output: "A resposta foi interrompida: 120 segundos sem saída nova; foi interrompida",
     be_cli_crashed: "A CLI terminou de forma inesperada ({status}): {tail}",
     be_cli_no_reply: "A CLI não produziu resposta ({status}): {tail}",
+    be_cli_output_unrecognized_changed:
+      "As respostas da CLI do {cli} ficaram ilegíveis depois que ela mudou de {last_ok} para {version}; é preciso esperar uma atualização deste app. {tail}",
+    be_cli_output_unrecognized_same:
+      "Esta resposta da CLI do {cli} {version} veio num formato que este app não consegue ler. {tail}",
+    be_cli_output_unrecognized_never:
+      "A CLI do {cli} {version} responde num formato que este app não consegue ler; é preciso esperar uma atualização deste app. {tail}",
+    be_cli_output_unrecognized_unknown_version:
+      "A CLI do {cli} responde num formato que este app não consegue ler e a versão não foi encontrada; é preciso esperar uma atualização deste app. {tail}",
     be_cli_turn_failed: "O turno da CLI do {cli} falhou",
     be_cli_turn_failed_status: "O turno da CLI do {cli} falhou ({status})",
     be_cli_unexpected_abort: "Erro interno: interrupção informada sem sinal de interromper",
@@ -338,6 +394,14 @@ const COPY = {
     be_cli_stalled_after_output: "Die Antwort brach ab: 120 Sekunden lang keine neue Ausgabe; abgebrochen",
     be_cli_crashed: "Die CLI wurde unerwartet beendet ({status}): {tail}",
     be_cli_no_reply: "Die CLI hat keine Antwort geliefert ({status}): {tail}",
+    be_cli_output_unrecognized_changed:
+      "Die Antworten der {cli}-CLI sind seit dem Wechsel von {last_ok} auf {version} nicht mehr lesbar; diese App braucht ein Update, um sie zu unterstützen. {tail}",
+    be_cli_output_unrecognized_same:
+      "Diese Antwort der {cli}-CLI {version} hatte ein Format, das diese App nicht lesen kann. {tail}",
+    be_cli_output_unrecognized_never:
+      "Die {cli}-CLI {version} antwortet in einem Format, das diese App nicht lesen kann; diese App braucht ein Update, um es zu unterstützen. {tail}",
+    be_cli_output_unrecognized_unknown_version:
+      "Die {cli}-CLI antwortet in einem Format, das diese App nicht lesen kann, und ihre Version war nicht zu ermitteln; diese App braucht ein Update, um es zu unterstützen. {tail}",
     be_cli_turn_failed: "Runde der {cli}-CLI fehlgeschlagen",
     be_cli_turn_failed_status: "Runde der {cli}-CLI fehlgeschlagen ({status})",
     be_cli_unexpected_abort: "Interner Fehler: Abbruch gemeldet, obwohl kein Abbruchsignal kam",
@@ -385,6 +449,14 @@ const COPY = {
     be_cli_stalled_after_output: "La réponse s'est interrompue\u00a0: aucune nouvelle sortie pendant 120 secondes\u00a0; arrêtée",
     be_cli_crashed: "La CLI s'est arrêtée de façon inattendue ({status})\u00a0: {tail}",
     be_cli_no_reply: "La CLI n'a produit aucune réponse ({status})\u00a0: {tail}",
+    be_cli_output_unrecognized_changed:
+      "Les réponses de la CLI {cli} sont illisibles depuis son passage de {last_ok} à {version}\u00a0; il faut attendre une mise à jour de cette app. {tail}",
+    be_cli_output_unrecognized_same:
+      "Cette réponse de la CLI {cli} {version} était dans un format que cette app ne sait pas lire. {tail}",
+    be_cli_output_unrecognized_never:
+      "La CLI {cli} {version} répond dans un format que cette app ne sait pas lire\u00a0; il faut attendre une mise à jour de cette app. {tail}",
+    be_cli_output_unrecognized_unknown_version:
+      "La CLI {cli} répond dans un format que cette app ne sait pas lire et sa version est introuvable\u00a0; il faut attendre une mise à jour de cette app. {tail}",
     be_cli_turn_failed: "Échec du tour de la CLI {cli}",
     be_cli_turn_failed_status: "Échec du tour de la CLI {cli} ({status})",
     be_cli_unexpected_abort: "Erreur interne\u00a0: arrêt signalé sans signal d'arrêt",
@@ -430,6 +502,14 @@ const COPY = {
     be_cli_stalled_after_output: "Ответ прервался: 120 секунд без нового вывода, выполнение остановлено",
     be_cli_crashed: "CLI неожиданно завершился ({status}): {tail}",
     be_cli_no_reply: "CLI не выдал ответа ({status}): {tail}",
+    be_cli_output_unrecognized_changed:
+      "Ответы CLI {cli} перестали читаться после перехода с {last_ok} на {version}; нужно дождаться обновления этого приложения. {tail}",
+    be_cli_output_unrecognized_same:
+      "Этот ответ CLI {cli} {version} пришёл в формате, который приложение не может прочитать. {tail}",
+    be_cli_output_unrecognized_never:
+      "CLI {cli} {version} отвечает в формате, который приложение не может прочитать; нужно дождаться обновления этого приложения. {tail}",
+    be_cli_output_unrecognized_unknown_version:
+      "CLI {cli} отвечает в формате, который приложение не может прочитать, и его версию не удалось определить; нужно дождаться обновления этого приложения. {tail}",
     be_cli_turn_failed: "Ход {cli} CLI завершился ошибкой",
     be_cli_turn_failed_status: "Ход {cli} CLI завершился ошибкой ({status})",
     be_cli_unexpected_abort: "Внутренняя ошибка: сообщено об остановке без сигнала остановки",

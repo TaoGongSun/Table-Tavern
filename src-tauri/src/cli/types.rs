@@ -60,12 +60,22 @@ pub struct SessionWatch<'a> {
     pub unclean_exit_out: Option<&'a std::sync::atomic::AtomicBool>,
 }
 
-/// 一家 CLI 的輸出協定：逐行解析器＋收尾規則。
+/// 一家 CLI 的輸出協定：逐行解析器、認得的事件形狀與收尾規則。
 pub struct CliProtocol {
+    /// CLI id（claude／codex／agy／grok）：上次正常版本與去重記錄的鍵
+    pub id: &'static str,
+    /// 錯誤訊息裡的顯示名
+    pub name: &'static str,
     pub parse: fn(&str) -> CliLine,
-    /// true：沒收到完成事件（`CliLine::Done`）就結束一律算失敗，即使程序以 0 結束。
-    /// codex 有「事件通道 EOF、沒送 turn.completed 仍回 0」的分支，只看正文會把半截當成功。
+    /// 認不得的行回 Some(種類標籤)，認得回 None（`stream::known`）
+    pub unrecognized: fn(&str) -> Option<String>,
+    /// 沒收到完成事件（`CliLine::Done`）就結束一律算失敗，即使程序以 0 結束：
+    /// 收尾事件改名或半途斷掉時，半截正文不能當成功（四家都是 true）。
     pub require_done: bool,
+    /// 已報失敗的收尾不讓後到的事件蓋掉。只給 codex：grok 的頂層 error 之後 end_turn＝成功。
+    pub sticky_failed_done: bool,
+    /// codex 專屬的 session 落檔檢查：rollout 存檔失敗偵測、完成但非 0 退出就丟線。
+    pub codex_session_checks: bool,
 }
 
 /// claude lane 續聊（prompt-cache-optimization 包 2）的 session 指定方式。

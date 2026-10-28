@@ -1,0 +1,11 @@
+{"type":"available_commands","tools":[],"commands":["compact","always-approve","context","session-info","feedback","goal","build-with-ai","code-review","create-skill","create-workflow","design","execute-plan","game-assets","bundled:imagine","implement","learn","long-running-background-tasks","pr-babysit","resume-claude","resume-codex","resume-cursor","review","skill-design-principles","statusline","threejs-frame-conventions"]}
+{"type":"available_commands","tools":[],"commands":["compact","always-approve","context","session-info","feedback","goal","build-with-ai","code-review","create-skill","create-workflow","design","execute-plan","game-assets","bundled:imagine","implement","learn","long-running-background-tasks","pr-babysit","resume-claude","resume-codex","resume-cursor","review","skill-design-principles","statusline","threejs-frame-conventions"]}
+{"type":"thought","data":"The user asked to remember"}
+{"type":"thought","data":" the word \"lantern\"."}
+{"type":"thought","data":"\n\nI will reply with "}
+{"type":"thought","data":"exactly \"OK\". I am checking"}
+{"type":"thought","data":" the safety rules for any restrictions on exact phrase requests."}
+{"type":"text","data":"OK"}
+{"type":"available_commands","tools":[],"commands":["compact","always-approve","context","session-info","feedback","goal","build-with-ai","code-review","create-skill","create-workflow","design","execute-plan","game-assets","bundled:imagine","implement","learn","long-running-background-tasks","pr-babysit","resume-claude","resume-codex","resume-cursor","review","skill-design-principles","statusline","threejs-frame-conventions"]}
+{"type":"usage","usage":{"input_tokens":3782,"output_tokens":281,"cache_read_input_tokens":1152,"cache_creation_input_tokens":0,"reasoning_tokens":280},"signature":"<redacted>"}
+{"type":"end","stopReason":"end_turn","sessionId":"00000000-0000-4000-8000-000000000011","requestId":"00000000-0000-4000-8000-000000000012","cwd":"<ROOT>/root/ws-grok","usage":{"input_tokens":3782,"cache_read_input_tokens":1152,"cache_creation_input_tokens":0,"output_tokens":281,"reasoning_tokens":280,"total_tokens":5215},"num_turns":1,"total_cost_usd":0.00334084,"total_cost_usd_ticks":33408400,"modelUsage":{"grok-4.7-build":{"inputTokens":3782,"outputTokens":281,"cacheReadInputTokens":1152,"cacheCreationInputTokens":0,"modelCalls":1,"costUSD":0.00334084}}}

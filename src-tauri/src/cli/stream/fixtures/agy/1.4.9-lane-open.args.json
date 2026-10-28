@@ -1,0 +1,17 @@
+{
+  "cli": "agy",
+  "scenario": "lane-open",
+  "inputs": {
+    "model": "gemini-3.8-flash-medium"
+  },
+  "args": [
+    "--model",
+    "gemini-3.8-flash-medium",
+    "--agent",
+    "table-tavern-text",
+    "--output-format",
+    "stream-json"
+  ],
+  "exit": 0,
+  "stderr_tail": ""
+}
