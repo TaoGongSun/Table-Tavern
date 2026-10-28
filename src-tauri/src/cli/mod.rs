@@ -4,6 +4,7 @@
 //! 旗標依當場原始碼／--help 查證：claude 2.1.210、codex-cli 0.145.0、agy 1.1.17、grok 1.0.5；
 //! 提示詞改走檔案／stdin 的旗標於 claude 2.1.287、agy 1.2.16、grok 1.0.46 實測（long-prompt-scene-hint）。
 
+pub(crate) mod agy_home;
 mod catalog;
 mod detect;
 #[allow(dead_code)]
@@ -15,6 +16,7 @@ mod runner;
 mod stream;
 mod types;
 
+pub use agy_home::agy_envs;
 pub use catalog::cli_model_catalog;
 pub use detect::detect_clis;
 // 唯一 crate 內呼叫者 commands::cli_setup 的安裝路徑只在 Windows 編譯

@@ -5,6 +5,9 @@ const COPY = {
   "zh-TW": {
     be_cli_workspace_failed: "無法準備 CLI 工作目錄：{error}",
     be_grok_profile_failed: "無法準備 grok 設定目錄：{error}",
+    be_agy_profile_failed: "無法準備 agy 設定目錄：{error}",
+    be_agy_keychain_slot_occupied:
+      "agy 設定目錄裡的登入位置被其他資料佔住：{path}。請把它移到別處保留後再試一次。",
     be_cli_risk_not_accepted: "尚未確認 CLI 訂閱模式的風險告知，請到設定完成確認",
     be_cli_not_found: "找不到 {cli} CLI，請確認已安裝並登入",
     be_agy_too_old: "Gemini CLI {version} 太舊，本 app 需要 1.1.8 以上。請執行 `agy update` 後重新驗證。",
@@ -33,6 +36,9 @@ const COPY = {
   "zh-CN": {
     be_cli_workspace_failed: "无法准备 CLI 工作目录：{error}",
     be_grok_profile_failed: "无法准备 grok 设定目录：{error}",
+    be_agy_profile_failed: "无法准备 agy 设定目录：{error}",
+    be_agy_keychain_slot_occupied:
+      "agy 设定目录里的登录位置被其他数据占用：{path}。请把它移到别处保留后再试一次。",
     be_cli_risk_not_accepted: "尚未确认 CLI 订阅模式的风险告知，请到设定完成确认",
     be_cli_not_found: "找不到 {cli} CLI，请确认已安装并登录",
     be_agy_too_old: "Gemini CLI {version} 太旧，本 app 需要 1.1.8 以上。请执行 `agy update` 后重新验证。",
@@ -61,6 +67,9 @@ const COPY = {
   en: {
     be_cli_workspace_failed: "Couldn't prepare the CLI working folder: {error}",
     be_grok_profile_failed: "Couldn't prepare the grok settings folder: {error}",
+    be_agy_profile_failed: "Couldn't prepare the agy settings folder: {error}",
+    be_agy_keychain_slot_occupied:
+      "The sign-in slot in the agy settings folder is taken by other data: {path}. Move it somewhere else to keep it, then try again.",
     be_cli_risk_not_accepted:
       "The risk notice for CLI subscription mode hasn't been confirmed yet. Confirm it in Settings.",
     be_cli_not_found: "Couldn't find the {cli} CLI. Make sure it's installed and signed in.",
@@ -97,6 +106,9 @@ const COPY = {
   ja: {
     be_cli_workspace_failed: "CLI の作業フォルダを準備できませんでした：{error}",
     be_grok_profile_failed: "grok の設定フォルダを準備できませんでした：{error}",
+    be_agy_profile_failed: "agy の設定フォルダを準備できませんでした：{error}",
+    be_agy_keychain_slot_occupied:
+      "agy の設定フォルダ内のログイン用の場所が別のデータで使われています：{path}。別の場所へ移して保管してから、もう一度お試しください。",
     be_cli_risk_not_accepted:
       "CLIサブスクリプションモードのリスク確認がまだです。設定で確認を済ませてください。",
     be_cli_not_found: "{cli} CLI が見つかりません。インストールとログインを確認してください。",
@@ -133,6 +145,9 @@ const COPY = {
   ko: {
     be_cli_workspace_failed: "CLI 작업 폴더를 준비하지 못했습니다: {error}",
     be_grok_profile_failed: "grok 설정 폴더를 준비하지 못했습니다: {error}",
+    be_agy_profile_failed: "agy 설정 폴더를 준비하지 못했습니다: {error}",
+    be_agy_keychain_slot_occupied:
+      "agy 설정 폴더의 로그인 위치를 다른 데이터가 차지하고 있습니다: {path}. 다른 곳으로 옮겨 보관한 뒤 다시 시도하세요.",
     be_cli_risk_not_accepted:
       "CLI 구독 모드의 리스크 고지를 아직 확인하지 않았습니다. 설정에서 확인을 마쳐 주세요.",
     be_cli_not_found: "{cli} CLI를 찾을 수 없습니다. 설치와 로그인 상태를 확인해 주세요.",
@@ -168,6 +183,9 @@ const COPY = {
   es: {
     be_cli_workspace_failed: "No se pudo preparar la carpeta de trabajo de la CLI: {error}",
     be_grok_profile_failed: "No se pudo preparar la carpeta de ajustes de grok: {error}",
+    be_agy_profile_failed: "No se pudo preparar la carpeta de ajustes de agy: {error}",
+    be_agy_keychain_slot_occupied:
+      "El espacio de inicio de sesión de la carpeta de ajustes de agy está ocupado por otros datos: {path}. Muévelos a otro lugar para conservarlos y vuelve a intentarlo.",
     be_cli_risk_not_accepted:
       "Aún no has confirmado el aviso de riesgos del modo de suscripción por CLI. Confírmalo en los ajustes.",
     be_cli_not_found: "No se encontró la CLI de {cli}. Comprueba que esté instalada y con la sesión iniciada.",
@@ -204,6 +222,9 @@ const COPY = {
   "pt-BR": {
     be_cli_workspace_failed: "Não foi possível preparar a pasta de trabalho da CLI: {error}",
     be_grok_profile_failed: "Não foi possível preparar a pasta de configurações do grok: {error}",
+    be_agy_profile_failed: "Não foi possível preparar a pasta de configurações do agy: {error}",
+    be_agy_keychain_slot_occupied:
+      "O espaço de login da pasta de configurações do agy está ocupado por outros dados: {path}. Mova-os para outro lugar para guardá-los e tente de novo.",
     be_cli_risk_not_accepted:
       "O aviso de risco do modo de assinatura da CLI ainda não foi confirmado. Confirme nas configurações.",
     be_cli_not_found: "A CLI do {cli} não foi encontrada. Confira se ela está instalada e logada.",
@@ -240,6 +261,9 @@ const COPY = {
   de: {
     be_cli_workspace_failed: "Der CLI-Arbeitsordner konnte nicht vorbereitet werden: {error}",
     be_grok_profile_failed: "Der grok-Einstellungsordner konnte nicht vorbereitet werden: {error}",
+    be_agy_profile_failed: "Der agy-Einstellungsordner konnte nicht vorbereitet werden: {error}",
+    be_agy_keychain_slot_occupied:
+      "Der Anmeldeplatz im agy-Einstellungsordner ist durch andere Daten belegt: {path}. Verschiebe sie an einen anderen Ort, um sie zu behalten, und versuche es erneut.",
     be_cli_risk_not_accepted:
       "Der Risikohinweis für den CLI-Abonnementmodus ist noch nicht bestätigt. Bestätige ihn in den Einstellungen.",
     be_cli_not_found: "Die {cli}-CLI wurde nicht gefunden. Prüfe, ob sie installiert und angemeldet ist.",
@@ -278,6 +302,9 @@ const COPY = {
   fr: {
     be_cli_workspace_failed: "Impossible de préparer le dossier de travail de la CLI\u00a0: {error}",
     be_grok_profile_failed: "Impossible de préparer le dossier de réglages de grok\u00a0: {error}",
+    be_agy_profile_failed: "Impossible de préparer le dossier de réglages d’agy\u00a0: {error}",
+    be_agy_keychain_slot_occupied:
+      "L’emplacement de connexion du dossier de réglages d’agy est occupé par d’autres données\u00a0: {path}. Déplacez-les ailleurs pour les conserver, puis réessayez.",
     be_cli_risk_not_accepted:
       "L'avertissement sur les risques du mode abonnement CLI n'est pas encore confirmé. Confirme-le dans les réglages.",
     be_cli_not_found: "CLI {cli} introuvable. Vérifie qu'elle est installée et connectée.",
@@ -314,6 +341,9 @@ const COPY = {
   ru: {
     be_cli_workspace_failed: "Не удалось подготовить рабочую папку CLI: {error}",
     be_grok_profile_failed: "Не удалось подготовить папку настроек grok: {error}",
+    be_agy_profile_failed: "Не удалось подготовить папку настроек agy: {error}",
+    be_agy_keychain_slot_occupied:
+      "Место для входа в папке настроек agy занято другими данными: {path}. Переместите их в другое место, чтобы сохранить, и попробуйте снова.",
     be_cli_risk_not_accepted:
       "Согласие с рисками режима подписки CLI ещё не подтверждено. Подтверди его в настройках.",
     be_cli_not_found: "CLI {cli} не найден. Проверь, что он установлен и в нём выполнен вход.",

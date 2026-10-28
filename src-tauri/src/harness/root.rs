@@ -103,13 +103,13 @@ pub(super) fn prepare(
     layout: &Layout,
     config_from: Option<&Path>,
 ) -> Result<(), String> {
-    reject_symlinks(root)?;
+    reject_symlinks(root, &layout.home)?;
     let data = root.join("data");
     let config = root.join("config");
     for dir in [root, data.as_path(), config.as_path()] {
         fs::create_dir_all(dir).map_err(|e| format!("建立 {} 失敗：{e}", dir.display()))?;
     }
-    reject_symlinks(root)?;
+    reject_symlinks(root, &layout.home)?;
     for dir in [&data, &config] {
         let actual = check_destination(dir, layout)?;
         if !actual.starts_with(root) {
@@ -164,25 +164,86 @@ pub(super) fn check_destination(path: &Path, layout: &Layout) -> Result<PathBuf,
 
 /// 重用的 root 裡若有 symlink（不論深淺），寫入就可能被導到 root 外：一律拒絕。不跟隨 symlink。
 /// 只有尚不存在的頂層 root 可略過；既有目錄掃不完（權限不足等）就拒絕，不當成「沒有 symlink」。
-pub(super) fn reject_symlinks(root: &Path) -> Result<(), String> {
+/// 例外只在 agy 假 HOME `config/agy-home`（cli::agy_home）裡，放行兩種連結：
+/// (a) `Library/Keychains` 指向 `<家目錄>/Library/Keychains`（共用登入，精確比對位置與目標）；
+/// (b) 目標 canonical 後仍在 agy-home 內的連結（agy 自建的 `.gemini/antigravity-cli/cli.log` → `log/…`）。
+/// agy-home 本身與其下 `Library` 是 symlink 照拒；其餘指向 agy-home 外的一律拒——root 內不留指向外部的連結。
+pub(super) fn reject_symlinks(root: &Path, home: &Path) -> Result<(), String> {
     match fs::symlink_metadata(root) {
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(format!("無法檢查 {}：{error}", root.display())),
-        Ok(_) => scan_for_symlinks(root),
+        Ok(_) => scan_for_symlinks(root, &AllowedLink::agy_keychain(root, home)),
     }
 }
 
-fn scan_for_symlinks(dir: &Path) -> Result<(), String> {
+struct AllowedLink {
+    agy_home: PathBuf,
+    at: PathBuf,
+    to: PathBuf,
+}
+
+impl AllowedLink {
+    fn agy_keychain(root: &Path, home: &Path) -> Self {
+        let tail = crate::cli::agy_home::KEYCHAIN_LINK;
+        let agy_home = root.join("config").join("agy-home");
+        Self {
+            at: tail.iter().fold(agy_home.clone(), |p, s| p.join(s)),
+            agy_home,
+            to: tail.iter().fold(home.to_path_buf(), |p, s| p.join(s)),
+        }
+    }
+
+    /// 相對連結以所在目錄解析，兩邊都 canonical_lenient 後比對。
+    fn permits(&self, path: &Path) -> bool {
+        if path != self.at {
+            return false;
+        }
+        let Ok(value) = fs::read_link(path) else {
+            return false;
+        };
+        let resolved = match path.parent() {
+            Some(parent) => parent.join(value),
+            None => return false,
+        };
+        match (canonical_lenient(&resolved), canonical_lenient(&self.to)) {
+            (Ok(a), Ok(b)) => a == b,
+            _ => false,
+        }
+    }
+
+    /// (b)：agy-home 裡（不含它本身與 Library）、目標解析後仍在 agy-home 內的連結。
+    fn stays_inside_agy_home(&self, path: &Path) -> bool {
+        let library = self.agy_home.join(crate::cli::agy_home::KEYCHAIN_LINK[0]);
+        if path == self.agy_home || path == library || !path.starts_with(&self.agy_home) {
+            return false;
+        }
+        let (Ok(value), Some(parent)) = (fs::read_link(path), path.parent()) else {
+            return false;
+        };
+        match (
+            canonical_lenient(&parent.join(value)),
+            canonical_lenient(&self.agy_home),
+        ) {
+            (Ok(target), Ok(home)) => target.starts_with(&home) && target != home,
+            _ => false,
+        }
+    }
+}
+
+fn scan_for_symlinks(dir: &Path, allowed: &AllowedLink) -> Result<(), String> {
     let unreadable = |error: io::Error| format!("無法掃描 {}：{error}", dir.display());
     for entry in fs::read_dir(dir).map_err(unreadable)? {
         let path = entry.map_err(unreadable)?.path();
         let meta =
             fs::symlink_metadata(&path).map_err(|e| format!("無法檢查 {}：{e}", path.display()))?;
         if meta.file_type().is_symlink() {
+            if allowed.permits(&path) || allowed.stays_inside_agy_home(&path) {
+                continue;
+            }
             return Err(format!("root 內不得有 symlink：{}", path.display()));
         }
         if meta.is_dir() {
-            scan_for_symlinks(&path)?;
+            scan_for_symlinks(&path, allowed)?;
         }
     }
     Ok(())
@@ -404,6 +465,135 @@ mod tests {
         assert!(prepare(&root, &l, None).is_err());
     }
 
+    /// 回 (layout, root, 假家目錄的 Library/Keychains, root 內 agy-home 的 Library)。
+    #[cfg(unix)]
+    fn agy_fixture(tag: &str) -> (Layout, PathBuf, PathBuf, PathBuf) {
+        let (l, _, _, root) = reuse_fixture(tag);
+        let keychains = l.home.join("Library/Keychains");
+        fs::create_dir_all(&keychains).unwrap();
+        let library = root.join("config/agy-home/Library");
+        fs::create_dir_all(&library).unwrap();
+        (l, root, keychains, library)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn agy_keychain_link_is_the_only_symlink_allowed() {
+        let (l, root, keychains, library) = agy_fixture("agy-ok");
+        std::os::unix::fs::symlink(&keychains, library.join("Keychains")).unwrap();
+        prepare(&root, &l, None).unwrap();
+        // 相對寫法指到同一處也放行
+        fs::remove_file(library.join("Keychains")).unwrap();
+        let relative = PathBuf::from("../../../../../Library/Keychains");
+        assert_eq!(
+            fs::canonicalize(library.join(&relative)).unwrap(),
+            fs::canonicalize(&keychains).unwrap()
+        );
+        std::os::unix::fs::symlink(&relative, library.join("Keychains")).unwrap();
+        prepare(&root, &l, None).unwrap();
+        // agy 自己在 .gemini 建、指向 agy-home 內的 symlink（cli.log → log/…）放行
+        let gemini = root.join("config/agy-home/.gemini/antigravity-cli");
+        fs::create_dir_all(gemini.join("log")).unwrap();
+        std::os::unix::fs::symlink("log/cli-1.log", gemini.join("cli.log")).unwrap();
+        prepare(&root, &l, None).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn agy_home_links_leaving_it_are_rejected() {
+        let (l, root, _, _) = agy_fixture("agy-out");
+        let gemini = root.join("config/agy-home/.gemini");
+        fs::create_dir_all(&gemini).unwrap();
+        let outside = l.home.join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("f.txt"), "x").unwrap();
+        // 目錄連結到 root 外
+        std::os::unix::fs::symlink(&outside, gemini.join("out-dir")).unwrap();
+        assert!(prepare(&root, &l, None).is_err());
+        fs::remove_file(gemini.join("out-dir")).unwrap();
+        // 檔案連結到 root 外
+        std::os::unix::fs::symlink(outside.join("f.txt"), gemini.join("out-file")).unwrap();
+        assert!(prepare(&root, &l, None).is_err());
+        fs::remove_file(gemini.join("out-file")).unwrap();
+        // 相對寫法爬出 agy-home、落在 root 內別處也拒
+        std::os::unix::fs::symlink("../../data", gemini.join("up")).unwrap();
+        assert!(prepare(&root, &l, None).is_err());
+        fs::remove_file(gemini.join("up")).unwrap();
+        prepare(&root, &l, None).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn agy_library_link_into_agy_home_is_rejected() {
+        let (l, root, _, library) = agy_fixture("agy-lib-inside");
+        let inner = root.join("config/agy-home/.gemini");
+        fs::create_dir_all(&inner).unwrap();
+        fs::remove_dir(&library).unwrap();
+        std::os::unix::fs::symlink(&inner, &library).unwrap();
+        assert!(prepare(&root, &l, None).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_agy_home_is_rejected() {
+        let (l, root, _, _) = agy_fixture("agy-home-link");
+        let agy_home = root.join("config/agy-home");
+        fs::remove_dir_all(&agy_home).unwrap();
+        std::os::unix::fs::symlink(l.home.join("Documents"), &agy_home).unwrap();
+        assert!(prepare(&root, &l, None).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn wipe_does_not_follow_links_inside_agy_home() {
+        let (l, root, keychains, library) = agy_fixture("agy-wipe");
+        let sentinel_dir = l.home.join("outside");
+        fs::create_dir_all(&sentinel_dir).unwrap();
+        fs::write(sentinel_dir.join("keep.txt"), "x").unwrap();
+        fs::write(keychains.join("login.keychain-db"), "k").unwrap();
+        std::os::unix::fs::symlink(&keychains, library.join("Keychains")).unwrap();
+        let gemini = root.join("config/agy-home/.gemini");
+        fs::create_dir_all(&gemini).unwrap();
+        std::os::unix::fs::symlink(&sentinel_dir, gemini.join("out-dir")).unwrap();
+        std::os::unix::fs::symlink(sentinel_dir.join("keep.txt"), gemini.join("out-file")).unwrap();
+        wipe(&root, &[]).unwrap();
+        assert_eq!(fs::read_dir(&root).unwrap().count(), 0);
+        assert_eq!(
+            fs::read_to_string(sentinel_dir.join("keep.txt")).unwrap(),
+            "x"
+        );
+        assert_eq!(
+            fs::read_to_string(keychains.join("login.keychain-db")).unwrap(),
+            "k"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn agy_keychain_link_elsewhere_is_rejected() {
+        let (l, root, _, library) = agy_fixture("agy-elsewhere");
+        let other = l.home.join("Documents");
+        std::os::unix::fs::symlink(&other, library.join("Keychains")).unwrap();
+        assert!(prepare(&root, &l, None).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn same_target_at_other_position_is_rejected() {
+        let (l, root, keychains, library) = agy_fixture("agy-other-pos");
+        std::os::unix::fs::symlink(&keychains, library.join("Keychains2")).unwrap();
+        assert!(prepare(&root, &l, None).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_agy_library_ancestor_is_rejected() {
+        let (l, root, _, library) = agy_fixture("agy-ancestor");
+        fs::remove_dir(&library).unwrap();
+        std::os::unix::fs::symlink(l.home.join("Library"), &library).unwrap();
+        assert!(prepare(&root, &l, None).is_err());
+    }
+
     #[cfg(unix)]
     #[test]
     fn unlistable_directory_in_reused_root_is_rejected() {
@@ -423,7 +613,7 @@ mod tests {
     #[test]
     fn missing_root_is_skipped_by_symlink_scan() {
         let base = scratch("scan-missing");
-        assert!(reject_symlinks(&base.join("not-yet")).is_ok());
+        assert!(reject_symlinks(&base.join("not-yet"), &base).is_ok());
     }
 
     #[cfg(unix)]

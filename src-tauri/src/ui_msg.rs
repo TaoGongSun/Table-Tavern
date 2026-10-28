@@ -337,6 +337,13 @@ pub enum UiMsg {
     GrokProfileFailed {
         error: String,
     },
+    AgyProfileFailed {
+        error: String,
+    },
+    /// 假 HOME 裡共用登入的位置被實體檔／目錄佔住；path 是完整路徑。
+    AgyKeychainSlotOccupied {
+        path: String,
+    },
     CliRiskNotAccepted,
     /// cli 是 claude／codex／agy／grok 的 id 原文。
     CliNotFound {

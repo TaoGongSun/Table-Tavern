@@ -141,6 +141,7 @@ pub async fn run_cli_cancellable(
     mut on_delta: impl FnMut(&str),
     cancel: Option<watch::Receiver<bool>>,
 ) -> DataResult<CliFinish> {
+    super::agy_home::check_spawn_envs(program, envs).map_err(crate::data::invalid_data)?;
     #[cfg(feature = "test-harness")]
     let harness_dispatch = crate::harness::ai_dispatch(
         &format!(

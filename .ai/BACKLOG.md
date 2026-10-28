@@ -32,7 +32,6 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 
 - [interface-table-state-report](tasks/interface-table-state-report.md) — 未重構的真介面桌走中性版指示，不保證回報 time／place／present — 下一步：未排程；先量測缺欄頻率，動中性版需作者裁決
 - [multichar-next-speaker-silent](tasks/multichar-next-speaker-silent.md) — 多角色（非介面）桌 GM 每輪寫「下一位：X」但角色不接話 — 下一步：未排程；先重現
-- [agy-conversation-isolation](tasks/agy-conversation-isolation.md) — agy 對話寫進使用者 ~/.gemini、含私設的角色線出現在使用者 /resume 清單 — 下一步：未排程；先查能否指定資料目錄
 - [refactor-preview-ellipsis](tasks/refactor-preview-ellipsis.md) — 重構進行中預覽文字夾雜「⋯」，純外觀、低優先 — 下一步：未排程
 - [branch-glyph-match](tasks/branch-glyph-match.md) — 分支綁定 auto_match_branch 只認精確同名，卡名與分支鍵字形不同要手動指認 — 下一步：未排程；先確認實際會不會遇到
 - [story-html-style-attr](tasks/story-html-style-attr.md) — 訊息 HTML 放行 style 屬性（字色底色），需 CSS 消毒與網頁 CSP 取捨 — 下一步：等 story-html-whitelist 結案後評估

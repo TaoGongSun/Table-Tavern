@@ -276,6 +276,8 @@ export const BACKEND_MSG_PARAMS: Record<string, Record<string, BackendParamType>
   versions_sync_failed: { error: "string" },
   cli_workspace_failed: { error: "string" },
   grok_profile_failed: { error: "string" },
+  agy_profile_failed: { error: "string" },
+  agy_keychain_slot_occupied: { path: "string" },
   cli_risk_not_accepted: {},
   cli_not_found: { cli: "string" },
   agy_too_old: { version: "string" },

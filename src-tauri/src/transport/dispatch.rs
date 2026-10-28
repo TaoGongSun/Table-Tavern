@@ -53,16 +53,31 @@ pub(crate) fn grok_home_dir(config_root: &std::path::Path) -> PathBuf {
     config_root.join("grok-home")
 }
 
-/// 四處呼叫 grok 的地方共用這組環境；其餘 CLI 不需要隔離，回空陣列。
+/// agy 專用假 HOME（cli::agy_home）：對話與標題庫不再寫進使用者的 `~/.gemini`；
+/// macOS 另放一條 keychain symlink 共用登入〔作者裁決 2026-10-28〕。任何一步失敗都回錯，
+/// 不退回裸跑——退回就又寫進使用者自己的 agy。
+fn agy_profile(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let home = config_root(app)?.join("agy-home");
+    cli::agy_home::prepare_home(&home)?;
+    #[cfg(target_os = "macos")]
+    cli::agy_home::ensure_keychain_link(&home, &cli::agy_home::real_home()?)?;
+    Ok(home)
+}
+
+/// grok 與 agy 的每個呼叫點共用這組環境（少一處就會出現「UI 顯示已登入、實跑未登入」或
+/// 對話漏寫回使用者目錄）；其餘 CLI 不需要隔離，回空陣列。
 pub(crate) fn cli_envs(
     app: &tauri::AppHandle,
     provider: &str,
 ) -> Result<Vec<(String, String)>, String> {
-    if provider != "grok" {
-        return Ok(Vec::new());
+    match provider {
+        "grok" => {
+            let (home, grok_home) = grok_profile(app)?;
+            Ok(cli::grok_envs(&home, &grok_home))
+        }
+        "agy" => Ok(cli::agy_envs(&agy_profile(app)?)),
+        _ => Ok(Vec::new()),
     }
-    let (home, grok_home) = grok_profile(app)?;
-    Ok(cli::grok_envs(&home, &grok_home))
 }
 
 /// 使用者選定的聊天傳輸層（preferences.transport，預設 api）。
@@ -178,7 +193,7 @@ pub(crate) async fn prepare_lane_call(
         prompt_dir: cli_prompt_dir(app)?,
         envs: match provider {
             lanes::LaneProvider::Claude => claude_cli_envs(config),
-            lanes::LaneProvider::Agy => Vec::new(),
+            lanes::LaneProvider::Agy => cli_envs(app, "agy")?,
             lanes::LaneProvider::Grok => cli_envs(app, "grok")?,
         },
         model,
@@ -557,12 +572,13 @@ pub(crate) async fn stream_turn_reporting_truncation(
             // 正文走 stdin（不帶 -p 就是單發模式），不佔命令列長度
             let combined = cli::agy_body(&system, &prompt);
             let args = cli::agy_args(model, allow_cli_tools);
+            let envs = cli_envs(app, "agy")?;
             cli::run_cli(
                 &program,
                 &cli_working_dir,
                 &args,
                 &combined,
-                &[],
+                &envs,
                 cli::parse_agy_line,
                 false,
                 policy,

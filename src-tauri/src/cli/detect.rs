@@ -73,6 +73,11 @@ pub(super) async fn hidden_output(
     arg: &str,
     envs: &[(String, String)],
 ) -> Option<std::process::Output> {
+    // agy 沒帶 app 的假 HOME 就不跑：models 也會在 HOME 底下寫設定與 log
+    if let Err(error) = super::agy_home::check_spawn_envs(&program, envs) {
+        log::warn!("hidden_output {arg}: {error}");
+        return None;
+    }
     let mut command = Command::new(program);
     command.arg(arg).kill_on_drop(true).envs(
         envs.iter()
