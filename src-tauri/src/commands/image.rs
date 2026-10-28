@@ -1,5 +1,5 @@
 use crate::generated_image::{self, GeneratedImage};
-use crate::transport::dispatch::{cli_workspace, stream_turn_via_transport};
+use crate::transport::dispatch::{cli_workspace, grok_home_dir, stream_image_via_transport};
 use crate::ui_msg::UiMsg;
 use crate::{config_root, data, data_root, import, transport};
 use std::path::PathBuf;
@@ -357,24 +357,49 @@ pub(crate) async fn generate_character_image(
         role: "user".to_owned(),
         content: prompt,
     }];
-    let reply = stream_turn_via_transport(
+    // grok 會把原圖連同整份 session 存在 grok-home，生圖 session 不會續用：自己給 id，圖進圖庫後刪掉
+    let grok_session = (transport_kind == "grok").then(crate::lanes::new_session_id);
+    let reply = stream_image_via_transport(
         &app,
         &config,
         Some(&transport_kind),
-        true,
         transport::gm_tier(&config),
         Some(&world_id),
-        None,
-        "",
-        "",
         &messages,
-        crate::usage::log::PromptShape::Image,
-        false,
-        |_| {},
+        grok_session.as_deref(),
     )
     .await?;
     let workspace = cli_workspace(&app)?;
-    store_cli_reply_image(&root, &world_id, &character_id, &reply, &workspace).await
+    let grok_home = grok_home_dir(&config_root(&app)?);
+    let grok = grok_session.as_deref().map(|id| (grok_home.as_path(), id));
+    store_cli_image_then_discard(&root, &world_id, &character_id, &reply, &workspace, grok).await
+}
+
+/// CLI 的圖進圖庫；成功才刪掉 grok 那份生圖 session。失敗不刪：原圖可能還沒複製走，
+/// 留給 grok-home 的定期清理〔作者裁決 2026-10-28〕。
+async fn store_cli_image_then_discard(
+    root: &std::path::Path,
+    world_id: &str,
+    character_id: &str,
+    reply: &str,
+    workspace: &std::path::Path,
+    grok: Option<(&std::path::Path, &str)>,
+) -> Result<String, String> {
+    let stored = store_cli_reply_image(root, world_id, character_id, reply, workspace).await;
+    if let (Ok(_), Some((grok_home, session_id))) = (&stored, grok) {
+        discard_grok_image_session(grok_home, session_id);
+    }
+    stored
+}
+
+/// 圖已經進圖庫：刪掉這次生圖的整份 grok session（含 images/ 裡的原始檔）。
+/// 刪不掉或找不到只記一行，不影響生圖結果；找不到多半是 grok 改了存放位置，記下來才看得出來。
+fn discard_grok_image_session(grok_home: &std::path::Path, session_id: &str) {
+    match crate::lanes::grok_session::remove_session(grok_home, session_id) {
+        Ok(0) => log::warn!("找不到 grok 生圖 session {session_id}，沒有可清的目錄"),
+        Ok(_) => {}
+        Err(error) => log::warn!("刪不掉 grok 生圖 session {session_id}：{error}"),
+    }
 }
 
 /// CLI 回話裡的圖：找出來讀進記憶體 → 清掉工作目錄的中轉檔 → 轉 PNG 進圖庫。
@@ -461,8 +486,8 @@ pub(crate) fn delete_gallery_image(
 mod tests {
     use super::{
         clear_cli_workspace_images, encode_base64, extract_image_refs, image_file_data_url,
-        list_gallery_image_files, store_cli_reply_image, store_generated_image,
-        validate_gallery_component, ImageRef,
+        list_gallery_image_files, store_cli_image_then_discard, store_cli_reply_image,
+        store_generated_image, validate_gallery_component, ImageRef,
     };
     use crate::commands::NEXT_TEMP_ID;
     use crate::data;
@@ -722,5 +747,74 @@ mod tests {
         assert_eq!(image_file_data_url(&stored).unwrap(), returned);
         std::fs::remove_dir_all(root).unwrap();
         let _ = std::fs::remove_dir_all(workspace);
+    }
+
+    /// grok 生圖：模型直接回報 session 裡的原圖路徑也讀得到；圖進圖庫後整份 session 刪掉，群組留著
+    #[tokio::test]
+    async fn grok_image_session_is_removed_after_gallery_write() {
+        const JPEG: &[u8] = include_bytes!("../generated_image/fixtures/opaque.jpg");
+        let root = temp_root("gallery-grok");
+        let workspace = temp_root("grok-workspace");
+        let grok_home = temp_root("grok-home");
+        let session_id = crate::lanes::new_session_id();
+        let group = grok_home.join("sessions").join("%2Ftmp%2Fcli-workspace");
+        let session = group.join(&session_id);
+        std::fs::create_dir_all(session.join("images")).unwrap();
+        std::fs::write(session.join("images/1.jpg"), JPEG).unwrap();
+        std::fs::write(session.join("chat_history.jsonl"), b"{}\n").unwrap();
+        std::fs::write(group.join("prompt_history.jsonl"), b"{}\n").unwrap();
+        std::fs::create_dir_all(&workspace).unwrap();
+        let world_id = data::create_world(&root, "生圖").unwrap();
+        let character_id = data::new_id();
+        let reply = format!("Saved: {}", session.join("images/1.jpg").display());
+        store_cli_image_then_discard(
+            &root,
+            &world_id,
+            &character_id,
+            &reply,
+            &workspace,
+            Some((&grok_home, &session_id)),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            list_gallery_image_files(&root, &world_id, &character_id)
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(!session.exists(), "生圖 session 整份刪掉");
+        assert!(group.join("prompt_history.jsonl").exists(), "群組層不動");
+        for dir in [root, workspace, grok_home] {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+    }
+
+    /// grok 生圖失敗（沒拿到圖）：session 不刪，留給定期清理
+    #[tokio::test]
+    async fn grok_image_session_is_kept_when_generation_fails() {
+        let root = temp_root("gallery-grok-fail");
+        let workspace = temp_root("grok-workspace-fail");
+        let grok_home = temp_root("grok-home-fail");
+        let session_id = crate::lanes::new_session_id();
+        let session = grok_home.join("sessions").join("group").join(&session_id);
+        std::fs::create_dir_all(session.join("images")).unwrap();
+        std::fs::create_dir_all(&workspace).unwrap();
+        let (world_id, character_id) = (data::new_id(), data::new_id());
+        let error = store_cli_image_then_discard(
+            &root,
+            &world_id,
+            &character_id,
+            "REFUSED",
+            &workspace,
+            Some((&grok_home, &session_id)),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error, "REFUSED");
+        assert!(session.exists());
+        for dir in [root, workspace, grok_home] {
+            let _ = std::fs::remove_dir_all(dir);
+        }
     }
 }

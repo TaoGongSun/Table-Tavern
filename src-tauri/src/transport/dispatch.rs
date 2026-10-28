@@ -381,6 +381,73 @@ pub(crate) async fn stream_turn_reporting_truncation(
     thinking_to_delta: bool,
     emit: impl FnMut(&str),
 ) -> Result<(String, bool), String> {
+    stream_turn_inner(
+        app,
+        config,
+        transport_override,
+        allow_cli_tools,
+        tier,
+        world,
+        turn_id,
+        assistant_label,
+        cli_closing,
+        messages,
+        shape,
+        thinking_to_delta,
+        None,
+        emit,
+    )
+    .await
+}
+
+/// 生圖呼叫：開 CLI 工具、帳本記 Image 形狀。`grok_session` 是呼叫端指定的 grok session id
+/// （帶 `-s`），圖進圖庫後由呼叫端憑它刪掉 grok-home 裡那份 session（含原始圖檔）；其他 CLI 忽略。
+pub(crate) async fn stream_image_via_transport(
+    app: &tauri::AppHandle,
+    config: &data::AppConfig,
+    transport_override: Option<&str>,
+    tier: data::Tier,
+    world: Option<&str>,
+    messages: &[transport::ChatMessage],
+    grok_session: Option<&str>,
+) -> Result<String, String> {
+    stream_turn_inner(
+        app,
+        config,
+        transport_override,
+        true,
+        tier,
+        world,
+        None,
+        "",
+        "",
+        messages,
+        usage_log::PromptShape::Image,
+        false,
+        grok_session,
+        |_| {},
+    )
+    .await
+    .map(|(text, _)| text)
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn stream_turn_inner(
+    app: &tauri::AppHandle,
+    config: &data::AppConfig,
+    transport_override: Option<&str>,
+    allow_cli_tools: bool,
+    tier: data::Tier,
+    world: Option<&str>,
+    turn_id: Option<&str>,
+    assistant_label: &str,
+    cli_closing: &str,
+    messages: &[transport::ChatMessage],
+    shape: usage_log::PromptShape,
+    thinking_to_delta: bool,
+    grok_session: Option<&str>,
+    emit: impl FnMut(&str),
+) -> Result<(String, bool), String> {
     // transport_override：生圖等功能可指定與聊天不同的連線（None＝跟隨 preferences.transport）。
     // allow_cli_tools：只有生圖呼叫為 true——CLI 生圖工具要寫檔／跑指令，聊天一律鎖死工具。
     let transport_kind = transport_override
@@ -611,12 +678,16 @@ pub(crate) async fn stream_turn_reporting_truncation(
                 .map(|profile| cli::PromptFile::create(&prompt_dir, "grok-system.md", &profile))
                 .transpose()?;
             let body = cli::PromptFile::create(&prompt_dir, "prompt.txt", &body)?;
-            let args = cli::grok_args(
+            let mut args = cli::grok_args(
                 model,
                 profile.as_ref().map(cli::PromptFile::path),
                 body.path(),
                 allow_cli_tools,
             );
+            // 呼叫端指定 session id（目前只有生圖）：之後憑它刪掉這份 session
+            if let Some(id) = grok_session {
+                args.splice(0..0, ["-s".to_owned(), id.to_owned()]);
+            }
             let envs = cli_envs(app, "grok")?;
             cli::run_cli(
                 &program,

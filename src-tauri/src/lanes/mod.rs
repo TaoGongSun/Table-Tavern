@@ -22,7 +22,7 @@
 //! 固定容量 15% 就以 `tail-worldbook` 整線重開壓平（`TailStale`，plans/tail-worldbook-erase.md）。
 
 mod cleanup;
-mod grok_session;
+pub(crate) mod grok_session;
 mod plan;
 mod prompt;
 mod rewrite;

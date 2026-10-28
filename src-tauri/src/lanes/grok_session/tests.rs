@@ -496,10 +496,10 @@ fn remove_session_only_deletes_a_unique_match() {
     assert!(fixture.dir.exists() && twin.exists(), "多個目錄一個都不刪");
 
     fs::remove_dir_all(&twin).unwrap();
-    remove_session(&fixture.home, SID).unwrap();
+    assert_eq!(remove_session(&fixture.home, SID).unwrap(), 1);
     assert!(!fixture.dir.exists());
     assert!(fixture.dir.parent().unwrap().exists(), "不刪上一層");
-    remove_session(&fixture.home, SID).unwrap(); // 0 個＝已刪
+    assert_eq!(remove_session(&fixture.home, SID).unwrap(), 0); // 0 個＝已刪
     assert!(remove_session(&fixture.home, "../x").is_err());
 }
 
@@ -644,4 +644,69 @@ fn reminder_with_prompt_index_key_is_taken_as_the_turn_user_and_drops() {
         "{}",
         error.detail
     );
+}
+
+/// 找 session 時略過沒有這個 id 的群組與散檔，繼續找到真正那份
+#[test]
+fn search_skips_groups_without_the_id() {
+    let turn = turn(None);
+    let fixture = fixture("search-skip", &turn);
+    let sessions = fixture.home.join("sessions");
+    fs::create_dir_all(sessions.join("aaa-other-group")).unwrap();
+    fs::write(sessions.join("session_search.sqlite"), b"").unwrap();
+    assert_eq!(
+        find_session_dirs(&fixture.home, SID).unwrap(),
+        vec![fixture.dir.clone()]
+    );
+}
+
+/// 符號連結一律不跟隨（sessions、群組、`<id>` 三層）：找不到、刪不到、抹寫丟線，連結指向的目錄原封不動
+#[cfg(unix)]
+#[test]
+fn symlinks_are_never_followed() {
+    use std::os::unix::fs::symlink;
+    let turn = turn(Some(SECRET));
+    let fixture = fixture("symlink", &turn);
+    let outside = fixture.home.with_extension("outside");
+    let _ = fs::remove_dir_all(&outside);
+    fs::create_dir_all(&outside).unwrap();
+    let target = outside.join(SID);
+    fs::rename(&fixture.dir, &target).unwrap();
+    let chat_before = fs::read(target.join("chat_history.jsonl")).unwrap();
+
+    // <id> 是連結
+    symlink(&target, &fixture.dir).unwrap();
+    assert!(find_session_dirs(&fixture.home, SID).unwrap().is_empty());
+    assert_eq!(remove_session(&fixture.home, SID).unwrap(), 0);
+    expect_drop(
+        &fixture,
+        Some(SECRET),
+        &reply_of(&turn),
+        DropReason::RewriteFailed,
+    );
+    fs::remove_file(&fixture.dir).unwrap();
+
+    // 群組是連結
+    symlink(&outside, fixture.home.join("sessions").join("linked-group")).unwrap();
+    assert!(find_session_dirs(&fixture.home, SID).unwrap().is_empty());
+    assert_eq!(remove_session(&fixture.home, SID).unwrap(), 0);
+
+    // sessions 本身是連結
+    let sessions = fixture.home.join("sessions");
+    fs::remove_dir_all(&sessions).unwrap();
+    let fake_sessions = fixture.home.with_extension("sessions");
+    let _ = fs::remove_dir_all(&fake_sessions);
+    let real_behind_link = fake_sessions.join("group").join(SID);
+    fs::create_dir_all(&real_behind_link).unwrap();
+    symlink(&fake_sessions, &sessions).unwrap();
+    assert!(find_session_dirs(&fixture.home, SID).unwrap().is_empty());
+    assert_eq!(remove_session(&fixture.home, SID).unwrap(), 0);
+    assert!(real_behind_link.exists());
+
+    assert_eq!(
+        fs::read(target.join("chat_history.jsonl")).unwrap(),
+        chat_before
+    );
+    fs::remove_dir_all(&outside).unwrap();
+    fs::remove_dir_all(&fake_sessions).unwrap();
 }

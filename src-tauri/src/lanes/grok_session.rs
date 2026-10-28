@@ -54,39 +54,54 @@ const TMP_DIR: &str = "tt-rewrite-tmp";
 
 /// `$GROK_HOME/sessions/*/<id>` 的所有目錄。群組名可能是 URL 編碼的 cwd，也可能是
 /// 過長時的 slug＋hash，所以不自己重算，只往下一層找。sessions 不存在＝沒有。
+/// sessions、群組、`<id>` 三層都只認真的目錄、不跟隨符號連結：找到的路徑會被整個刪掉或改寫，
+/// 連結會把動作帶到 grok-home 外面。群組裡沒有這個 id（NotFound）就跳過，不中斷整個搜尋。
 pub(crate) fn find_session_dirs(
     grok_home: &Path,
     session_id: &str,
 ) -> Result<Vec<PathBuf>, String> {
     let sessions = grok_home.join("sessions");
-    let entries = match fs::read_dir(&sessions) {
-        Ok(entries) => entries,
+    match fs::symlink_metadata(&sessions) {
+        Ok(meta) if meta.is_dir() => {}
+        Ok(_) => return Ok(Vec::new()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(error) => return Err(format!("無法列出 {}：{error}", sessions.display())),
-    };
+        Err(error) => return Err(format!("無法讀取 {}：{error}", sessions.display())),
+    }
+    let entries = fs::read_dir(&sessions)
+        .map_err(|error| format!("無法列出 {}：{error}", sessions.display()))?;
     let mut found = Vec::new();
     for entry in entries {
         let entry = entry.map_err(|error| format!("無法列出 {}：{error}", sessions.display()))?;
+        let is_group = entry
+            .file_type()
+            .map_err(|error| format!("無法讀取 {}：{error}", entry.path().display()))?
+            .is_dir();
+        if !is_group {
+            continue;
+        }
         let candidate = entry.path().join(session_id);
-        if candidate.is_dir() {
-            found.push(candidate);
+        match fs::symlink_metadata(&candidate) {
+            Ok(meta) if meta.is_dir() => found.push(candidate),
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(format!("無法讀取 {}：{error}", candidate.display())),
         }
     }
     Ok(found)
 }
 
-/// 刪掉這個 id 的 session 目錄。0 個＝已刪；多個一個都不刪（不知道哪個才是），回錯。
+/// 刪掉這個 id 的 session 目錄，回刪掉的個數（0＝本來就沒有，當已刪）；多個一個都不刪（不知道哪個才是），回錯。
 /// 只刪 `<群組>/<id>` 這一層，不碰上一層。
-pub(crate) fn remove_session(grok_home: &Path, session_id: &str) -> Result<(), String> {
+pub(crate) fn remove_session(grok_home: &Path, session_id: &str) -> Result<usize, String> {
     if session_id.is_empty() || session_id.contains(['/', '\\']) || session_id.starts_with('.') {
         return Err(format!("session id 不合法：{session_id:?}"));
     }
     let dirs = find_session_dirs(grok_home, session_id)?;
     match dirs.as_slice() {
-        [] => Ok(()),
-        [dir] => {
-            fs::remove_dir_all(dir).map_err(|error| format!("無法刪除 {}：{error}", dir.display()))
-        }
+        [] => Ok(0),
+        [dir] => fs::remove_dir_all(dir)
+            .map(|()| 1)
+            .map_err(|error| format!("無法刪除 {}：{error}", dir.display())),
         _ => Err(format!(
             "session {session_id} 有 {} 個目錄，一個都不刪",
             dirs.len()
