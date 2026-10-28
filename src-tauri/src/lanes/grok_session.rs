@@ -3,6 +3,7 @@
 //! 續聊用 `updates.jsonl` 重建／比對，所以兩檔都要改：抹機密段、拿掉 reasoning
 //! （摘要會明文寫出私設，encrypted_content 續聊時回送 API）、回覆補名字前綴。
 //! 形狀只要有一處不在預期內就回錯，由呼叫端丟線重開——寧可少一次快取也不留私設。
+//! grok 1.0.70 另見回合尾提醒（`is_trailing_reminder`，grok-first-session-preamble-drop）。
 
 use serde_json::Value;
 use std::fs::{self, File, OpenOptions};
@@ -299,6 +300,24 @@ fn update_kind(value: &Value) -> Option<&str> {
         .and_then(Value::as_str)
 }
 
+/// grok 在回合尾補的提醒：無 prompt_index、synthetic_reason 是 system_reminder、內容只有
+/// 文字分段且以 `<system-reminder>` 開頭。原樣保留；夾帶機密段由 `scan_residue` 擋。
+fn is_trailing_reminder(value: &Value) -> bool {
+    let Some(parts) = value.get("content").and_then(Value::as_array) else {
+        return false;
+    };
+    value.get("prompt_index").is_none()
+        && value.get("synthetic_reason").and_then(Value::as_str) == Some("system_reminder")
+        && !parts.is_empty()
+        && parts.iter().all(|part| {
+            part.get("type").and_then(Value::as_str) == Some("text")
+                && part.get("text").is_some_and(Value::is_string)
+        })
+        && parts[0]["text"]
+            .as_str()
+            .is_some_and(|text| text.starts_with("<system-reminder>"))
+}
+
 /// 抹機密段：只在這輪送了才找，必須恰好一次。
 fn erase_once(text: &str, confidential: Option<&str>) -> Result<String, RewriteError> {
     match confidential {
@@ -331,8 +350,10 @@ fn check_prefixed(text: &str, prefix: &str, reply: &str) -> Result<(), RewriteEr
 }
 
 /// chat_history：最後一則真 user（帶 prompt_index）之後只能有 reasoning 與恰好一則
-/// 字串內容、無工具呼叫的 assistant。回傳抹好的 user 本文（有 `<user_query>` 包裝就剝掉，
-/// `--verbatim` 時沒有包裝照原文）供跨檔比對。
+/// 字串內容、無工具呼叫的 assistant；assistant 之後最多再一則 grok 補的提醒且必須在檔尾
+/// （新 grok-home 第一通推論中途才裝好 bundled skills，技能清單補在回合尾，原位保留）。
+/// 回傳抹好的 user 本文（有 `<user_query>` 包裝就剝掉，`--verbatim` 時沒有包裝照原文）
+/// 供跨檔比對。
 fn rewrite_chat_history(
     lines: &mut Lines,
     confidential: Option<&str>,
@@ -353,7 +374,11 @@ fn rewrite_chat_history(
         })
         .ok_or_else(|| failed("chat_history 找不到本輪 user"))?;
     let mut assistant_index = None;
+    let mut reminder_seen = false;
     for (index, row) in lines.rows.iter().enumerate().skip(user_index + 1) {
+        if reminder_seen {
+            return Err(failed("chat_history 回合尾提醒之後還有項目"));
+        }
         match row_type(&row.value) {
             Some("reasoning") => {}
             Some("assistant") if assistant_index.is_none() => {
@@ -365,6 +390,9 @@ fn rewrite_chat_history(
                     return Err(failed("assistant 帶工具呼叫或內容不是字串"));
                 }
                 assistant_index = Some(index);
+            }
+            Some("user") if assistant_index.is_some() && is_trailing_reminder(&row.value) => {
+                reminder_seen = true;
             }
             other => return Err(failed(format!("chat_history 本輪有預期外的項目 {other:?}"))),
         }

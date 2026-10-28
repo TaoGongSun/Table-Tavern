@@ -1,4 +1,5 @@
 //! fixture 照 grok 1.0.46 實際落檔的形狀手寫（2026-10-06 實驗擷取），不含憑證。
+//! grok 1.0.70 另見回合尾提醒（2026-10-28 新 grok-home 第一通實測形狀）。
 
 use super::*;
 use serde_json::json;
@@ -136,8 +137,18 @@ fn run(fixture: &Fixture, confidential: Option<&str>, reply: &str) -> Result<(),
 }
 
 fn expect_drop(fixture: &Fixture, confidential: Option<&str>, reply: &str, reason: DropReason) {
+    expect_drop_error(fixture, confidential, reply, reason);
+}
+
+fn expect_drop_error(
+    fixture: &Fixture,
+    confidential: Option<&str>,
+    reply: &str,
+    reason: DropReason,
+) -> RewriteError {
     let error = run(fixture, confidential, reply).expect_err("形狀不符必須丟線");
     assert_eq!(error.reason, reason, "{}", error.detail);
+    error
 }
 
 /// 回覆帶控制區塊：兩檔的本輪回覆整段換成「前綴＋收尾台詞」，updates 只留第一個回覆 chunk。
@@ -490,4 +501,147 @@ fn remove_session_only_deletes_a_unique_match() {
     assert!(fixture.dir.parent().unwrap().exists(), "不刪上一層");
     remove_session(&fixture.home, SID).unwrap(); // 0 個＝已刪
     assert!(remove_session(&fixture.home, "../x").is_err());
+}
+
+/// 新 grok-home 第一通（2026-10-28 grok 1.0.70 實測形狀）：技能清單補在回合尾的 assistant 之後。
+fn trailing_reminder(text: &str) -> Value {
+    json!({ "type": "user", "content": [{ "type": "text", "text": text }],
+            "synthetic_reason": "system_reminder" })
+}
+
+const SKILLS_REMINDER: &str =
+    "<system-reminder>\nThe following skills are available for use:\n\n- pdf: PDF\n</system-reminder>";
+
+/// 在 chat_history 檔尾追加幾列，回傳追加後的原始行。
+fn append_chat(fixture: &Fixture, rows: &[Value]) -> Vec<String> {
+    let path = fixture.dir.join("chat_history.jsonl");
+    let mut all = read_rows(&path);
+    all.extend(rows.iter().cloned());
+    write_jsonl(&path, &all);
+    rows.iter()
+        .map(|row| serde_json::to_string(row).unwrap())
+        .collect()
+}
+
+fn chat_lines(fixture: &Fixture) -> Vec<String> {
+    fs::read_to_string(fixture.dir.join("chat_history.jsonl"))
+        .unwrap()
+        .lines()
+        .map(str::to_owned)
+        .collect()
+}
+
+#[test]
+fn trailing_skills_reminder_is_kept_in_place_and_next_turn_still_rewrites() {
+    let turn = turn(Some(SECRET));
+    let fixture = fixture("trailing-reminder", &turn);
+    let reminder = append_chat(&fixture, &[trailing_reminder(SKILLS_REMINDER)]).remove(0);
+    run(&fixture, Some(SECRET), &reply_of(&turn)).expect("回合尾提醒要放行");
+    let lines = chat_lines(&fixture);
+    assert_eq!(lines.last(), Some(&reminder), "提醒逐 byte 留在檔尾");
+    let rows = read_rows(&fixture.dir.join("chat_history.jsonl"));
+    assert_eq!(rows[rows.len() - 2]["type"], "assistant");
+
+    // 下一輪：真 user 接在提醒後面，抹寫照常，提醒仍原樣
+    let next_reply = "狐狸：「還不到說的時候。」";
+    append_chat(
+        &fixture,
+        &[
+            json!({ "type": "user", "content": [{ "type": "text", "text": "現在你是「狐狸」。" }], "prompt_index": 1 }),
+            json!({ "type": "reasoning", "id": "rs_2", "summary": [], "encrypted_content": "x", "status": "completed" }),
+            json!({ "type": "assistant", "content": "「還不到說的時候。」" }),
+        ],
+    );
+    let updates_path = fixture.dir.join("updates.jsonl");
+    let mut updates = read_rows(&updates_path);
+    updates.push(text_update("user_message_chunk", "現在你是「狐狸」。"));
+    updates.push(text_update("agent_message_chunk", "「還不到說的時候。」"));
+    updates.push(update(
+        "turn_completed",
+        json!({ "stop_reason": "end_turn" }),
+    ));
+    write_jsonl(&updates_path, &updates);
+    run(&fixture, None, next_reply).expect("下一輪照常抹寫");
+    assert!(chat_lines(&fixture).contains(&reminder));
+    let rows = read_rows(&fixture.dir.join("chat_history.jsonl"));
+    assert!(rows.iter().all(|row| row["type"] != "reasoning"));
+    assert_eq!(rows.last().unwrap()["content"], next_reply);
+}
+
+#[test]
+fn reminder_shapes_outside_the_allowance_drop_the_lane() {
+    let plain_user =
+        json!({ "type": "user", "content": [{ "type": "text", "text": SKILLS_REMINDER }] });
+    let interjection = json!({ "type": "user", "content": [{ "type": "text", "text": SKILLS_REMINDER }],
+                               "synthetic_reason": "interjection" });
+    let untagged = trailing_reminder("The following skills are available for use");
+    let reasoning =
+        json!({ "type": "reasoning", "id": "rs_9", "summary": [], "status": "completed" });
+    let reminder = trailing_reminder(SKILLS_REMINDER);
+    let cases: Vec<(&str, Vec<Value>)> = vec![
+        ("plain-user", vec![plain_user]),
+        ("interjection", vec![interjection]),
+        ("no-tag", vec![untagged]),
+        ("then-reasoning", vec![reminder.clone(), reasoning]),
+        ("two-reminders", vec![reminder.clone(), reminder.clone()]),
+    ];
+    for (tag, tail) in cases {
+        let turn = turn(Some(SECRET));
+        let fixture = fixture(&format!("reminder-{tag}"), &turn);
+        append_chat(&fixture, &tail);
+        expect_drop(
+            &fixture,
+            Some(SECRET),
+            &reply_of(&turn),
+            DropReason::RewriteFailed,
+        );
+    }
+
+    // 提醒夾在 assistant 之前
+    let mut turn = turn(Some(SECRET));
+    turn.chat_extra = vec![reminder];
+    let fixture = fixture("reminder-before-assistant", &turn);
+    expect_drop(
+        &fixture,
+        Some(SECRET),
+        &reply_of(&turn),
+        DropReason::RewriteFailed,
+    );
+}
+
+#[test]
+fn trailing_reminder_carrying_the_secret_drops_the_lane() {
+    let turn = turn(Some(SECRET));
+    let fixture = fixture("reminder-secret", &turn);
+    let text = format!("<system-reminder>\n{SECRET}</system-reminder>");
+    let line = append_chat(&fixture, &[trailing_reminder(&text)]).remove(0);
+    assert!(!line.contains(SECRET), "JSON 跳脫後位元組層看不到全文");
+    let error = expect_drop_error(
+        &fixture,
+        Some(SECRET),
+        &reply_of(&turn),
+        DropReason::RewriteFailed,
+    );
+    assert!(error.detail.contains("仍含機密段"), "{}", error.detail);
+}
+
+/// 帶 prompt_index 鍵（即使是 null）的提醒會被當成本輪 user，後面沒有 assistant 而丟線。
+#[test]
+fn reminder_with_prompt_index_key_is_taken_as_the_turn_user_and_drops() {
+    let turn = turn(Some(SECRET));
+    let fixture = fixture("reminder-prompt-index-key", &turn);
+    let mut indexed = trailing_reminder(SKILLS_REMINDER);
+    indexed["prompt_index"] = Value::Null;
+    append_chat(&fixture, &[indexed]);
+    let error = expect_drop_error(
+        &fixture,
+        Some(SECRET),
+        &reply_of(&turn),
+        DropReason::RewriteFailed,
+    );
+    assert!(
+        error.detail.contains("本輪沒有 assistant"),
+        "{}",
+        error.detail
+    );
 }
