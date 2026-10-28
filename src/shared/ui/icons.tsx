@@ -169,6 +169,15 @@ export function IconArchive(props: IconProps) {
   );
 }
 
+/** 城堡：舞台卡（提供場景設定、不發言） */
+export function IconStage(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M2.5 13.5V6h2V4h2v2h3V4h2v2h2v7.5zM6.5 13.5V10.5a1.5 1.5 0 0 1 3 0v3" />
+    </Icon>
+  );
+}
+
 /** 書本：角色卡轉成世界書條目 */
 export function IconBook(props: IconProps) {
   return (

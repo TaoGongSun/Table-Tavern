@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { EntryChanges, WorldChange } from "../features/worldbook/worldbook-model";
+import { effectiveSpeaker } from "../features/characters/character-visibility";
 
 // 發言對象是 GM 時 speaker 存這個代號（純前端狀態，不會寫進紀錄）；GM 以旁白回應
 export const GM_TARGET = "__GM__";
@@ -27,6 +28,8 @@ function showsCard(view: MainViewState, id: string) {
 
 interface NavigationCharacters {
   player: { id: string } | null;
+  /** 判斷選的對象是不是舞台卡（有效發言對象用） */
+  metaOf: (id: string) => { stage?: boolean } | undefined;
   refresh: () => Promise<unknown>;
   reloadPlayer: (playerCardId: string | null) => Promise<void>;
   noteRemoved: (removedId: string, speaker: string) => Promise<string | null>;
@@ -54,8 +57,9 @@ export function useWorkspaceNavigationController({
   // 主欄畫面重建，走 ref 才問得到當下這個畫面（比照 currentConfigRef）
   const canLeaveRef = useRef<() => Promise<boolean>>(async () => true);
   const [chosenSpeaker, setSpeaker] = useState("");
-  // 只走 GM 的桌：對外的發言對象一律是 GM，選角色、匯入或新卡指過去都不生效〔作者裁決 2026-10-27〕
-  const speaker = gmOnly === true ? GM_TARGET : chosenSpeaker;
+  // 只走 GM 的桌：對外的發言對象一律是 GM，選角色、匯入或新卡指過去都不生效〔作者裁決 2026-10-27〕；
+  // 選的對象後來變成舞台卡就當沒有對象（畫面與送出共用這一份，見 effectiveSpeaker）
+  const speaker = gmOnly === true ? GM_TARGET : effectiveSpeaker(chosenSpeaker, characters.metaOf);
   // 主欄下半部（messages＋composer）三選一整面取代：單幕閱讀／角色卡編輯／GM 世界設定編輯
   // （使用者拍板改版：需求 4 不用 modal，與需求 3 單幕閱讀同一套「整面取代」模式）
   const [mainView, setMainView] = useState<MainViewState>(null);
@@ -166,6 +170,17 @@ export function useWorkspaceNavigationController({
   }
 
   const finishArchiveToggled = (id: string) => settleRemoval(id, false);
+
+  // 舞台開關切換後：名單重載；發言對象正好是這張卡（剛變成舞台）就改人。編輯器留著
+  async function finishStageToggled(id: string) {
+    if (!stillHere()) return;
+    try {
+      const nextSpeaker = await characters.noteRemoved(id, speaker);
+      if (stillHere() && nextSpeaker !== null) setSpeaker(nextSpeaker);
+    } catch (reason) {
+      if (stillHere()) onError(String(reason));
+    }
+  }
   const finishConverted = (id: string) => settleRemoval(id, true);
 
   /** 世界設定取走通知：同桌同世代才清累積，取走後又來的新通知不受影響 */
@@ -213,9 +228,9 @@ export function useWorkspaceNavigationController({
   // 點卡＝選發言對象，編輯是另一顆鈕。遊玩畫面再點一次已選中的卡＝取消對象，
   // 讓玩家能描述動作或對全場說話；人在編輯頁或前幕閱讀時，點卡＝先過未儲存守門、
   // 回到遊玩畫面再選為對象（不是取消，也不是轉去編輯）
-  // 只走 GM 的桌：點卡照樣過守門、回遊玩畫面，只跳過選對象
-  async function selectSpeaker(target: string) {
-    const targetable = gmOnly !== true;
+  // 只走 GM 的桌與舞台卡：點卡照樣過守門、回遊玩畫面，只跳過選對象
+  async function selectSpeaker(target: string, cardTargetable = true) {
+    const targetable = gmOnly !== true && cardTargetable;
     if (mainView) {
       if (!(await canLeaveEditor())) return;
       setMainView(null);
@@ -225,7 +240,8 @@ export function useWorkspaceNavigationController({
     if (targetable) setSpeaker((current) => (current === target ? "" : target));
   }
 
-  const selectCard = (id: string) => selectSpeaker(id);
+  /** `targetable` false＝舞台卡：點了只回遊玩畫面，不當發言對象 */
+  const selectCard = (id: string, targetable = true) => selectSpeaker(id, targetable);
   const selectGm = () => selectSpeaker(GM_TARGET);
 
   /** 回傳世界設定是否開著（玩家在未存確認選了留下就是 false） */
@@ -292,6 +308,7 @@ export function useWorkspaceNavigationController({
     finishCardSaved,
     finishPlayerCardSaved,
     finishArchiveToggled,
+    finishStageToggled,
     finishConverted,
     finishUndoImport,
     noteImported,

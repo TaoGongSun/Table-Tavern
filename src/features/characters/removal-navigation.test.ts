@@ -27,6 +27,7 @@ describe("removal navigation", () => {
 
   const characters = {
     player: null,
+    metaOf: () => undefined,
     refresh: async () => [],
     reloadPlayer: async () => {},
     noteRemoved: (id: string, speaker: string) => noteRemoved(id, speaker),

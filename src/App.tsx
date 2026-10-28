@@ -16,7 +16,7 @@ import {
   type RepairNotice,
   type TableGate,
 } from "./features/world-format/open-world";
-import { isCharacterHidden } from "./features/characters/character-visibility";
+import { firstSpeakerCandidate } from "./features/characters/character-visibility";
 import { prefetchModelCatalogs } from "./features/ai-connection/model-catalog-store";
 import {
   AppConfig,
@@ -268,7 +268,7 @@ function App() {
     gmTargeted,
     metaOf: characters.metaOf,
     playerName: characters.player?.name,
-    castCount: characters.active.length,
+    castCount: characters.speaking.length,
     onArrived: characters.onArrived,
     refreshState: tableState.refresh,
     refreshWorlds,
@@ -542,12 +542,12 @@ function App() {
     characters.hydrate(cast, appearanceIds, state.player_card_id);
     imports.hydrate(receipts);
     setChattedSinceImport(localStorage.getItem(chattedKey(id)) === "true");
-    // GM 有世界設定或世界書就由它起頭；GM 全空才退回第一張可見角色卡（隱藏區與本幕未出場的
-    // auto_hidden 不算，跟側欄主區顯示一致），連角色都沒有時仍指 GM，免得輸入框鎖著沒人接
+    // GM 有世界設定或世界書就由它起頭；GM 全空才退回第一張可見角色卡（隱藏區、本幕未出場的
+    // auto_hidden 與舞台卡不算），連角色都沒有時仍指 GM，免得輸入框鎖著沒人接
     setSpeaker(
       gmHasContent
         ? GM_TARGET
-        : (cast.find((character) => !isCharacterHidden(character, appearanceIds))?.id ?? GM_TARGET),
+        : (firstSpeakerCandidate(cast, appearanceIds)?.id ?? GM_TARGET),
     );
     setEditingName(null);
     tableState.clearEdit();

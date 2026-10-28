@@ -13,6 +13,9 @@ export interface CharacterMeta {
   archived: boolean;
   // 換幕結算的自動隱藏（劇情帶出場就解除）；archived 是玩家手動封存，兩者正交
   auto_hidden: boolean;
+  // 舞台卡：提供場景／世界設定、不參與角色發言（不可選為發言對象、不會被收進隱藏區）。
+  // 後端一律帶；缺省（測試假資料）當 false
+  stage?: boolean;
 }
 
 export interface CharacterCard extends CharacterMeta {

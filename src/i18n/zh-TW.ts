@@ -455,6 +455,10 @@ export const zh = {
   // 隱藏區裡跟手動封存卡並列的小標籤，區分「劇情自動隱藏」與「玩家手動封存」
   autoHiddenBadge: "自動隱藏",
   archiveCharacter: "隱藏角色",
+  setStageCard: "設為舞台卡",
+  unsetStageCard: "改回角色",
+  stageCardHint: "舞台卡：提供設定，不參與角色發言",
+  stageBadge: "舞台",
   restoreCharacter: "還原",
   deleteCharacter: "刪除",
   deleteCharacterTitle: "永久刪除角色",

@@ -51,9 +51,9 @@ pub struct CharacterCard {
     pub gen_prompt: String,
     pub public_md: String,
     pub private_md: String,
-    /// 舞台卡旗標的唯讀投影：讀卡時從 frontmatter 帶出，給提示詞組裝分段用；不進前端卡片 JSON，
-    /// 寫卡時一律延續磁碟上的值（改寫只走 `set_character_stage`）。
-    #[serde(skip)]
+    /// 舞台卡旗標的唯讀投影：讀卡時從 frontmatter 帶出（提示詞組裝分段、前端編輯器顯示開關狀態）；
+    /// 前端送回的值一律不收，寫卡時延續磁碟上的值（改寫只走 `set_character_stage`）。
+    #[serde(skip_deserializing)]
     pub stage: bool,
 }
 

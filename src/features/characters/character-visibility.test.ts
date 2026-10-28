@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isCharacterHidden } from "./character-visibility";
+import { effectiveSpeaker, firstSpeakerCandidate, isCharacterHidden } from "./character-visibility";
 
 describe("isCharacterHidden", () => {
   const base = { id: "c1", archived: false, auto_hidden: false };
@@ -22,5 +22,32 @@ describe("isCharacterHidden", () => {
 
   it("自動隱藏＋已封存＝隱藏（封存優先，不因為出場而跑進主區）", () => {
     expect(isCharacterHidden({ ...base, archived: true, auto_hidden: true }, new Set(["c1"]))).toBe(true);
+  });
+});
+
+describe("舞台卡", () => {
+  const base = { id: "c1", archived: false, auto_hidden: false };
+
+  it("舞台卡留著 auto_hidden（舊桌）也在主區；封存仍優先", () => {
+    expect(isCharacterHidden({ ...base, stage: true, auto_hidden: true }, new Set())).toBe(false);
+    expect(isCharacterHidden({ ...base, stage: true, archived: true }, new Set())).toBe(true);
+  });
+
+  it("預設發言對象跳過舞台卡與隱藏區的卡", () => {
+    const cast = [
+      { ...base, id: "stage", stage: true },
+      { ...base, id: "hidden", auto_hidden: true },
+      { ...base, id: "fox" },
+    ];
+    expect(firstSpeakerCandidate(cast, new Set())?.id).toBe("fox");
+    expect(firstSpeakerCandidate([cast[0]], new Set())).toBeUndefined();
+  });
+
+  it("對話流程的發言對象指著舞台卡時當沒有對象；一般角色與 GM 原樣", () => {
+    const metas: Record<string, { stage?: boolean }> = { stage: { stage: true }, fox: {} };
+    const metaOf = (id: string) => metas[id];
+    expect(effectiveSpeaker("stage", metaOf)).toBe("");
+    expect(effectiveSpeaker("fox", metaOf)).toBe("fox");
+    expect(effectiveSpeaker("__gm__", metaOf)).toBe("__gm__");
   });
 });

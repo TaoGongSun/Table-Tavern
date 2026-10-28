@@ -202,6 +202,7 @@ export function WideCastCard({
             {character.tier !== "balanced" && (
               <span className="tcard-gem">{tierLabel(character.tier)}</span>
             )}
+            {character.stage && <span className="tcard-gem">{t("stageBadge")}</span>}
           </span>
         </span>
       </button>
@@ -323,7 +324,13 @@ export function NarrowCastTile({
         className="rail-tile-main"
         aria-label={name}
         aria-pressed={targetable ? selected : undefined}
-        title={targetable ? t(selected ? "castHintClear" : "castHint", { name }) : name}
+        title={
+          targetable
+            ? t(selected ? "castHintClear" : "castHint", { name })
+            : character.stage
+              ? `${name}｜${t("stageBadge")}`
+              : name
+        }
         disabled={locked}
         onClick={onSelect}
       >

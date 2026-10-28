@@ -63,6 +63,7 @@ describe("CardEditor", () => {
   const onDeleted = vi.fn(async () => {});
   const onConverted = vi.fn(async () => {});
   const onArchived = vi.fn(async () => {});
+  const onStageToggled = vi.fn(async () => {});
   let busy = false;
   const leaveGuard: { current: (() => Promise<boolean>) | null } = { current: null };
 
@@ -73,6 +74,7 @@ describe("CardEditor", () => {
     onDeleted.mockClear();
     onConverted.mockClear();
     onArchived.mockClear();
+    onStageToggled.mockClear();
     vi.mocked(confirm).mockReset();
     vi.mocked(confirm).mockResolvedValue(true);
     vi.mocked(showMessage).mockClear();
@@ -107,6 +109,7 @@ describe("CardEditor", () => {
         onImagesChanged={async () => {}}
         onSaved={() => {}}
         onArchived={onArchived}
+        onStageToggled={onStageToggled}
         onDeleted={onDeleted}
         onBack={onBack}
         leaveGuard={leaveGuard}
@@ -139,19 +142,20 @@ describe("CardEditor", () => {
     return menuItems();
   }
 
-  it("lists export, convert, archive and danger delete for an existing character", async () => {
+  it("lists export, convert, stage, archive and danger delete for an existing character", async () => {
     backend.handlers.read_character = () => card("c1", "Alice");
     await mount();
     const items = openMore();
     expect(items.map((item) => item.textContent)).toEqual([
       t("exportCard"),
       t("convertCardToEntry"),
+      t("setStageCard"),
       t("archiveCharacter"),
       t("deleteCharacter"),
     ]);
-    expect(items[3].classList.contains("menu-item-danger")).toBe(true);
+    expect(items[4].classList.contains("menu-item-danger")).toBe(true);
     // 刪除直接交給 controller（確認框在那裡），這裡不再包一層
-    act(() => items[3].click());
+    act(() => items[4].click());
     expect(onDeleted).toHaveBeenCalledTimes(1);
   });
 
@@ -365,6 +369,65 @@ describe("CardEditor", () => {
     expect(backend.calls.some((call) => call.command === "set_character_archived")).toBe(false);
     expect(onArchived).not.toHaveBeenCalled();
     expect(nameInput()!.value).toBe("Alicia");
+  });
+
+  it("toggles the stage flag without asking, keeping the draft and the editor open", async () => {
+    backend.handlers.read_character = () => card("c1", "Alice");
+    backend.handlers.set_character_stage = () => null;
+    await mount();
+    await typeName("Alicia");
+    const make = openMore().find((item) => item.textContent === t("setStageCard"))!;
+    await act(async () => make.click());
+    expect(confirm).not.toHaveBeenCalled();
+    const calls = backend.calls.filter((call) => call.command === "set_character_stage");
+    expect(calls.map((call) => call.args.stage)).toEqual([true]);
+    expect(onStageToggled).toHaveBeenCalledTimes(1);
+    expect(onArchived).not.toHaveBeenCalled();
+    expect(nameInput()!.value).toBe("Alicia");
+    const undo = openMore().find((item) => item.textContent === t("unsetStageCard"))!;
+    await act(async () => undo.click());
+    expect(
+      backend.calls.filter((call) => call.command === "set_character_stage").map((call) => call.args.stage),
+    ).toEqual([true, false]);
+  });
+
+  it("ignores a late stage response after switching cards (A→B and A→B→A), success or failure", async () => {
+    backend.handlers.read_character = (args) =>
+      args.characterId === "c2" ? card("c2", "Bob") : card("c1", "Alice");
+    const pendingStage: { resolve: () => void; reject: (reason: unknown) => void }[] = [];
+    backend.handlers.set_character_stage = () =>
+      new Promise<void>((resolve, reject) => pendingStage.push({ resolve, reject }));
+    // 打開⋯讀舞台那一項的字，再關上（不留著開的選單給下一步）
+    const stageLabel = () => {
+      const label = openMore()
+        .map((item) => item.textContent)
+        .find((text) => text === t("setStageCard") || text === t("unsetStageCard"));
+      act(() => moreButton()!.click());
+      return label;
+    };
+    const clickMakeStage = async () => {
+      const item = openMore().find((entry) => entry.textContent === t("setStageCard"))!;
+      await act(async () => item.click());
+    };
+    const rerender = (characterId: string) =>
+      act(async () => root?.render(element({ characterId })));
+
+    // A→B：A 的成功晚到，B 的開關不變、不報錯
+    await mount();
+    await clickMakeStage();
+    await rerender("c2");
+    await act(async () => pendingStage[0].resolve());
+    expect(stageLabel()).toBe(t("setStageCard"));
+    expect(onStageToggled).toHaveBeenCalledTimes(1);
+
+    // A→B→A：A 的失敗晚到，重新載入的 A 不顯示舊錯誤
+    await rerender("c1");
+    await clickMakeStage();
+    await rerender("c2");
+    await rerender("c1");
+    await act(async () => pendingStage[1].reject("寫入失敗"));
+    expect(host!.querySelector('[role="alert"]')).toBeNull();
+    expect(stageLabel()).toBe(t("setStageCard"));
   });
 
   it("hides without asking when nothing is unsaved", async () => {

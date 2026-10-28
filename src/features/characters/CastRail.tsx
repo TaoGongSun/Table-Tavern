@@ -197,7 +197,7 @@ export function CastRail(props: CastRailProps) {
                   key={character.id}
                   character={character}
                   selected={speaker === character.id}
-                  targetable={cardsTargetable}
+                  targetable={cardsTargetable && !character.stage}
                   image={images[character.id]}
                   avatar={avatars[character.id]}
                   locked={locked}
@@ -228,7 +228,7 @@ export function CastRail(props: CastRailProps) {
                   key={character.id}
                   character={character}
                   selected={speaker === character.id}
-                  targetable={cardsTargetable}
+                  targetable={cardsTargetable && !character.stage}
                   dragging={castDrag.draggingKey === character.id}
                   image={images[character.id]}
                   avatar={avatars[character.id]}

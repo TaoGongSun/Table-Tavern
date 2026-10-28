@@ -33,6 +33,8 @@ interface MainViewProps {
   onPlayerCardSaved: (id: string) => Promise<void>;
   /** 隱藏／還原後的善後：名單重載、發言對象改人、關掉這張卡的編輯面板 */
   onArchiveToggled: (id: string) => Promise<void>;
+  /** 舞台開關切換後的善後：名單重載、發言對象若是這張卡就改人 */
+  onStageToggled: (id: string) => Promise<void>;
   /** 轉成條目（卡確定已刪）後的善後：同上，另通知開著的世界設定 */
   onConverted: (id: string) => Promise<void>;
   onDeleteCharacter: (id: string) => Promise<void>;
@@ -76,6 +78,7 @@ export function MainView({
   onCardSaved,
   onPlayerCardSaved,
   onArchiveToggled,
+  onStageToggled,
   onConverted,
   onDeleteCharacter,
   onDeletePlayerCard,
@@ -131,6 +134,7 @@ export function MainView({
           onArchived={
             cardKind === "character" ? () => onArchiveToggled(cardId) : async () => onClose()
           }
+          onStageToggled={() => onStageToggled(cardId)}
           onDeleted={
             cardKind === "character"
               ? () => onDeleteCharacter(cardId)

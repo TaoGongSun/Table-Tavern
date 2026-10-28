@@ -140,6 +140,7 @@ export function AppWorkspace({
     finishCardSaved,
     finishPlayerCardSaved,
     finishArchiveToggled,
+    finishStageToggled,
     finishConverted,
     worldChange,
     takeWorldChange,
@@ -248,7 +249,7 @@ export function AppWorkspace({
         onSelectGm={() => void selectGm()}
         onOpenWorldEditor={() => void openWorldEditor()}
         onOpenPlayerCard={() => void openPlayerCard()}
-        onSelectCard={(id) => void selectCard(id)}
+        onSelectCard={(id) => void selectCard(id, characters.metaOf(id)?.stage !== true)}
         onEditCard={(id) => void editCard(id)}
         onRestore={(id) => void characters.restore(id)}
         onRestoreAutoHidden={(id) => void characters.restoreAutoHidden(id)}
@@ -352,6 +353,7 @@ export function AppWorkspace({
               onCardSaved={finishCardSaved}
               onPlayerCardSaved={finishPlayerCardSaved}
               onArchiveToggled={finishArchiveToggled}
+              onStageToggled={finishStageToggled}
               onConverted={finishConverted}
               onDeleteCharacter={deleteCharacter}
               onDeletePlayerCard={deletePlayerCard}
@@ -401,7 +403,7 @@ export function AppWorkspace({
                   onClearTarget={() => setSpeaker("")}
                   input={chat.input}
                   onInputChange={chat.setInput}
-                  castEmpty={characters.active.length === 0}
+                  castEmpty={characters.speaking.length === 0}
                   onSubmit={chat.send}
                   canStop={chat.canStop}
                   onStop={chat.stopResponse}
@@ -413,7 +415,7 @@ export function AppWorkspace({
                   relayable={relayable}
                   onSendRelay={() => void chat.sendRelay()}
                   nominated={chat.nominated}
-                  castIds={characters.active.map((character) => character.id)}
+                  castIds={characters.speaking.map((character) => character.id)}
                   onCallNominated={() => void chat.callNominated()}
                   errorNote={errorInComposer ? errorNote : null}
                   sceneBudget={sceneBudget}
@@ -454,7 +456,7 @@ export function AppWorkspace({
             // 覆蓋層只在 gate === "play" 掛上，唯讀鎖一定沒開
             locked: false,
             speaker,
-            castEmpty: characters.active.length === 0,
+            castEmpty: characters.speaking.length === 0,
             busy: chat.busy || tableOpBusy,
             sceneSummary: sceneBudget?.summary,
             targetName,

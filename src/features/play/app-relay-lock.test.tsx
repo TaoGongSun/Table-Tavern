@@ -190,6 +190,7 @@ describe("B／C 入口在 App 層", () => {
     onInputChange: (value: string) => void;
     onSendRelay: () => void;
     onCallNominated: () => void;
+    castIds: string[];
     onSubmit: (event: { preventDefault(): void }) => void;
   };
 
@@ -269,6 +270,25 @@ describe("B／C 入口在 App 層", () => {
     await settle();
     expect(called("gm_table_mode").length).toBeGreaterThan(before);
     expect(props().relayable).toBe(false);
+  });
+
+  it("點名後那張卡被切成舞台卡：「讓 X 接話」不出現，硬呼叫也不寫點名列、不接話", async () => {
+    await start();
+    await type("我推門");
+    await act(async () => props().onSubmit({ preventDefault() {} }));
+    await settle();
+    expect(props().nominated).not.toBeNull();
+    expect(document.querySelector(".next-call")).not.toBeNull();
+    // 名單重讀後 c1 已是舞台卡（隱藏區拉回 c2 會觸發名單重讀）
+    backend.handlers.list_characters = () => [{ ...actor("c1", "狐狸"), stage: true }, actor("c2", "怪盜", true)];
+    await act(async () => (rail.props!.onRestoreAutoHidden as (id: string) => void)("c2"));
+    await settle();
+    expect(props().castIds).not.toContain("c1");
+    expect(document.querySelector(".next-call")).toBeNull();
+    backend.calls = [];
+    await run(() => props().onCallNominated());
+    expect(gmCalls()).toHaveLength(0);
+    expect(called("chat_with_character")).toHaveLength(0);
   });
 
   it("重讀失敗保留這桌上次的結果", async () => {

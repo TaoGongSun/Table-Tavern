@@ -578,6 +578,8 @@ export function useChatController({
   // → 寫檔期間按了停止就不接 → 角色接話。點到玩家只寫列。after＝那則旁白的 id：該旁白之後已有同名點名列就不再疊
   const callAndReply = useCallback(
     async (next: string, started: number, after?: string) => {
+      // 點名後才被切成舞台卡（舊點名、重構套用）：不寫點名列、不接話，後端也會拒收
+      if (next !== PLAYER_SENTINEL && metaOf(next)?.stage === true) return;
       // 玩家沒名字就存空字串，顯示與送 AI 時再照當下語系補稱呼
       const name = next === PLAYER_SENTINEL ? (playerName ?? "") : (metaOf(next)?.name ?? next);
       if (!(after && calledSince(eventsLive.current, after, name))) {

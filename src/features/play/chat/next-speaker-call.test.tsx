@@ -41,12 +41,15 @@ const gmCalls = (events: TranscriptEvent[]) =>
 
 describe("next speaker call", () => {
   let root: Root | null = null;
+  // 狐狸是不是舞台卡（點名後才切成舞台的情境）
+  let foxStage = false;
   let host: HTMLDivElement | null = null;
 
   afterEach(() => {
     act(() => root?.unmount());
     host?.remove();
     root = null;
+    foxStage = false;
     invokeMock.mockReset();
   });
 
@@ -91,7 +94,7 @@ describe("next speaker call", () => {
         config,
         speaker: "gm",
         gmTargeted: true,
-        metaOf: (cid) => (cid === "fox" ? ({ name: "狐狸" } as never) : undefined),
+        metaOf: (cid) => (cid === "fox" ? ({ name: "狐狸", stage: foxStage } as never) : undefined),
         playerName: undefined,
         castCount: 1,
         onArrived: () => {},
@@ -163,6 +166,20 @@ describe("next speaker call", () => {
     await act(async () => h.chat().callNominated());
     expect(gmCalls(h.chat().events)).toHaveLength(1);
     expect(h.callable()).toBe(1);
+  });
+
+  it("點名後才切成舞台卡：鈕不出現（發言名單不含它），硬按也不寫點名列、不接話", async () => {
+    const h = mount();
+    await h.send("我推門");
+    expect(h.callable()).toBe(1);
+    foxStage = true;
+    // 畫面上的候選名單是發言角色（AppWorkspace 傳 characters.speaking），舞台卡不在裡面
+    expect(h.callable([])).toBeNull();
+    const writes = h.count("append_transcript");
+    await act(async () => h.chat().callNominated());
+    expect(gmCalls(h.chat().events)).toHaveLength(0);
+    expect(h.count("append_transcript")).toBe(writes);
+    expect(h.count("chat_with_character")).toBe(0);
   });
 
   it("B：旁白＋點名列＋角色一句就停", async () => {

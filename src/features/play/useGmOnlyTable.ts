@@ -19,14 +19,16 @@ function isMode(value: unknown): value is GmTableMode {
 /** 判定看得到的卡片：主區名單＋全部卡的封存／auto_hidden 旗標 */
 interface CastFlags {
   active: { id: string }[];
-  list: { id: string; archived: boolean; auto_hidden: boolean }[];
+  list: { id: string; archived: boolean; auto_hidden: boolean; stage?: boolean }[];
 }
 
 /** 名單鍵：主區 id、或任一張卡的封存／auto_hidden 旗標變了就不同 */
 export function castKey(cast: CastFlags): string {
   return [
     cast.active.map((card) => card.id).join(","),
-    cast.list.map((card) => `${card.id}:${card.archived ? 1 : 0}${card.auto_hidden ? 1 : 0}`).join(","),
+    cast.list
+      .map((card) => `${card.id}:${card.archived ? 1 : 0}${card.auto_hidden ? 1 : 0}${card.stage ? 1 : 0}`)
+      .join(","),
   ].join("|");
 }
 

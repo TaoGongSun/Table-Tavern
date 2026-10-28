@@ -28,8 +28,11 @@ import { t } from "../../i18n";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+// 哪些卡是舞台卡（有效發言對象的判斷）
+const stageIds = new Set<string>();
 const characters = {
   player: null,
+  metaOf: (id: string) => (stageIds.has(id) ? { stage: true } : undefined),
   refresh: async () => [],
   reloadPlayer: async () => {},
   noteRemoved: async () => null,
@@ -122,6 +125,37 @@ describe("gm-only table", () => {
     expect(reads()).toBe(before + 1);
     await answer("w1", false, false);
     expect(gate!.nominates).toBe(false);
+  });
+
+  it("某張卡切成舞台卡（主區 id 不變）也重讀會不會點名", async () => {
+    const reads = () => vi.mocked(invoke).mock.calls.filter(([command]) => command === "gm_table_mode").length;
+    await render();
+    await answer("w1", false);
+    const before = reads();
+    cast = { ...cast, list: [{ ...cast.list[0], stage: true } as (typeof cast.list)[number], cast.list[1]] };
+    await render();
+    expect(reads()).toBe(before + 1);
+  });
+
+  it("舞台卡點了不當發言對象（一般桌）", async () => {
+    await render();
+    await answer("w1", false);
+    await act(async () => nav!.selectCard("c1", false));
+    expect(nav!.speaker).toBe("");
+    await act(async () => nav!.selectCard("c1"));
+    expect(nav!.speaker).toBe("c1");
+  });
+
+  it("選中的對象後來變成舞台卡：對外的發言對象（畫面與送出共用）變成沒有對象", async () => {
+    await render();
+    await answer("w1", false);
+    await act(async () => nav!.selectCard("c1"));
+    expect(nav!.speaker).toBe("c1");
+    stageIds.add("c1");
+    await render();
+    expect(nav!.speaker).toBe("");
+    expect(nav!.gmTargeted).toBe(false);
+    stageIds.clear();
   });
 
   it("只走 GM 的桌：發言對象鎖 GM，點卡不選對象；一般桌照常選", async () => {

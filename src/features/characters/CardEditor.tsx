@@ -7,7 +7,7 @@ import { AppConfig } from "../../shared/contracts/backend-contracts";
 import { CharacterCard, CharacterDeleteOutcome, DraftImage, Tier } from "./card-model";
 import { cardFileGone } from "./useCharacterController";
 import { tierLabel } from "../ai-connection/model-catalog";
-import { IconArchive, IconBook, IconDelete, IconExport, IconSparkle } from "../../shared/ui/icons";
+import { IconArchive, IconBook, IconDelete, IconExport, IconSparkle, IconStage } from "../../shared/ui/icons";
 import type { MoreMenuItem } from "../../shared/ui/MoreMenu";
 import { ModalShell } from "../../shared/ui/Dialog";
 import { AiImageDialog, CropDialog } from "./CardImageDialogs";
@@ -39,6 +39,7 @@ export function CardEditor({
   onImagesChanged,
   onSaved,
   onArchived,
+  onStageToggled,
   onDeleted,
   onBack,
   leaveGuard,
@@ -65,6 +66,8 @@ export function CardEditor({
   onBack: () => void;
   onSaved: (id: string) => void;
   onArchived: () => Promise<void>;
+  /** 舞台開關切換後的善後：名單重載、發言對象若是這張卡就改人（編輯器留著） */
+  onStageToggled: () => Promise<void>;
   onDeleted: () => Promise<void>;
   config: AppConfig;
   onPreference: (key: string, value: unknown) => Promise<void>;
@@ -115,6 +118,7 @@ export function CardEditor({
         show_image: true,
         archived: false,
         auto_hidden: false,
+        stage: false,
         public_md: "",
         private_md: "",
         gen_prompt: "",
@@ -284,6 +288,35 @@ export function CardEditor({
     }
   }
 
+  // 舞台卡開關：只改旗標、不碰表單，所以不過離開詢問、編輯器留著；畫面上的開關與「已存」基準
+  // 一起換成新值，未儲存計數不受影響。回應晚到時已換過編輯對象（含 A→B→A）就不碰畫面——
+  // 同一個編輯器沿用到別張卡，晚到的結果會改到別張卡的開關與基準；名單善後照做（旗標確實寫了）
+  async function toggleStage() {
+    if (!card) return;
+    const editing = editTarget.current;
+    const current = () => editTarget.current === editing;
+    setMessage("");
+    const stage = card.stage !== true;
+    try {
+      await invoke("set_character_stage", { worldId: world, characterId, stage });
+    } catch (reason) {
+      if (current()) setMessage(String(reason));
+      return;
+    }
+    if (current()) {
+      setCard((shown) => (shown ? { ...shown, stage } : shown));
+      setSavedCardJson((saved) => {
+        if (!saved) return saved;
+        return JSON.stringify({ ...(JSON.parse(saved) as CharacterCard), stage });
+      });
+    }
+    try {
+      await onStageToggled();
+    } catch (reason) {
+      if (current()) setMessage(String(reason));
+    }
+  }
+
   // 匯出成 SillyTavern 角色卡：內容取自已存檔的那份，所以草稿沒存完先擋下
   async function exportCard() {
     setMessage("");
@@ -384,7 +417,7 @@ export function CardEditor({
     if (accepted) setDraftAvatar(null);
   }
 
-  // ⋯ 依卡種：既有角色卡四項、玩家卡兩項；新卡存檔前沒有可匯出／刪除的東西，整顆不出現
+  // ⋯ 依卡種：既有角色卡五項、玩家卡兩項；新卡存檔前沒有可匯出／刪除的東西，整顆不出現
   const moreItems: MoreMenuItem[] = isNew
     ? []
     : [
@@ -403,6 +436,14 @@ export function CardEditor({
                 label: t("convertCardToEntry"),
                 icon: <IconBook />,
                 onSelect: () => void convertCardToWorldbookEntry(),
+              },
+              // 舞台卡：與「隱藏角色」並列〔作者裁決 2026-10-28〕，同一項雙向換字
+              {
+                key: "stage",
+                label: card.stage === true ? t("unsetStageCard") : t("setStageCard"),
+                hint: t("stageCardHint"),
+                icon: <IconStage />,
+                onSelect: () => void toggleStage(),
               },
               // 同一項雙向換字：隱藏區進來的卡按它就是還原
               {

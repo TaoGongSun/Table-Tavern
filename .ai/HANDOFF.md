@@ -5,7 +5,7 @@
 分類規則：仍需程式施工／規格落地才放「進行中」；施工已完成、只剩可執行環境／使用者實機／外部條件驗收則移到「等實機驗收」，並同步列入[實測佇列](reference/verification-queue.md)。
 
 ## 進行中
-- [stage-card-in-speaker-list](handoffs/stage-card-in-speaker-list.md) — 舞台卡出現在 GM 下一位點名名單＋收尾句中英不一致：包 1 待驗收，下一步包 2
+- [stage-card-in-speaker-list](handoffs/stage-card-in-speaker-list.md) — 舞台卡出現在 GM 下一位點名名單＋收尾句中英不一致：包 2 待驗收，下一步包 3
 - [card-mvu-shim](handoffs/card-mvu-shim.md) — 卡片介面沙盒墊 MVU 讀寫變數：全部已合併 main，剩實測佇列梯 1 項目（含 iframe 內按鈕實際互動）
 
 ## 等實機驗收（順序見[實測佇列](reference/verification-queue.md)）

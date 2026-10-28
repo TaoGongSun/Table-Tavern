@@ -96,6 +96,7 @@ function element(characterId: string) {
       onImagesChanged={() => callbacks.images()}
       onSaved={callbacks.saved}
       onArchived={async () => {}}
+      onStageToggled={async () => {}}
       onDeleted={async () => {}}
       onBack={() => {}}
       leaveGuard={leaveGuard}

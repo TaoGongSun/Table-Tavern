@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { t } from "../../i18n";
-import { isCharacterHidden } from "./character-visibility";
+import { firstSpeakerCandidate, isCharacterHidden } from "./character-visibility";
 import { type CharacterCard, type CharacterDeleteOutcome, type CharacterMeta } from "./card-model";
 
 export interface CharacterController {
@@ -14,6 +14,8 @@ export interface CharacterController {
   active: CharacterMeta[];
   /** 側欄隱藏區 */
   archived: CharacterMeta[];
+  /** 主區裡能發言的角色（不含舞台卡）：點名、接力、「沒有角色」判斷都看這份 */
+  speaking: CharacterMeta[];
   /** 角色 id → 原圖 data URL（來源是匯入時存下的 PNG） */
   images: Record<string, string>;
   /** 角色 id → 頭像 data URL */
@@ -163,6 +165,7 @@ export function useCharacterController(input: {
     () => characters.filter((character) => isCharacterHidden(character, sceneAppearances)),
     [characters, sceneAppearances],
   );
+  const speaking = useMemo(() => active.filter((character) => !character.stage), [active]);
   const metaOf = useCallback((id: string) => characters.find((c) => c.id === id), [characters]);
 
   // 圖只跟「有哪些角色」有關（存成 Record，不看順序）：排序後當 key，側欄拖曳排序就不會重讀圖
@@ -302,7 +305,7 @@ export function useCharacterController(input: {
     async (removedId: string, speaker: string) => {
       const cast = await refresh();
       if (speaker !== removedId) return null;
-      return cast.find((character) => !isCharacterHidden(character, sceneAppearances))?.id ?? "";
+      return firstSpeakerCandidate(cast, sceneAppearances)?.id ?? "";
     },
     [refresh, sceneAppearances],
   );
@@ -385,6 +388,7 @@ export function useCharacterController(input: {
       list: characters,
       active,
       archived,
+      speaking,
       images: characterImages,
       avatars: characterAvatars,
       player: playerCard,
@@ -409,6 +413,7 @@ export function useCharacterController(input: {
       characters,
       active,
       archived,
+      speaking,
       characterImages,
       characterAvatars,
       playerCard,

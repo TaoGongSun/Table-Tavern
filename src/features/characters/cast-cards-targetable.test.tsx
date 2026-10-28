@@ -81,4 +81,40 @@ describe("cast cards targetable", () => {
     expect(host.querySelector(".tcard-gm.tcard-selected")).not.toBeNull();
     expect(host.querySelector(".rail-tile-gm.rail-tile-selected")).not.toBeNull();
   });
+  it("舞台卡：寬卡帶「舞台」標籤，窄磚提示寫明舞台，都不帶選對象提示", () => {
+    const stage = { ...fox, stage: true };
+    act(() =>
+      root.render(
+        <>
+          <WideCastCard
+            character={stage}
+            selected={false}
+            targetable={false}
+            dragging={false}
+            image={undefined}
+            avatar={undefined}
+            locked={false}
+            dragProps={null}
+            justDragged={() => false}
+            onSelect={noop}
+            onEdit={noop}
+          />
+          <NarrowCastTile
+            character={stage}
+            selected={false}
+            targetable={false}
+            image={undefined}
+            avatar={undefined}
+            locked={false}
+            onSelect={noop}
+            onEdit={noop}
+          />
+        </>,
+      ),
+    );
+    expect(host.querySelector(".tcard-gem")?.textContent).toBe(t("stageBadge"));
+    const narrow = host.querySelector<HTMLButtonElement>(".rail-tile-main")!;
+    expect(narrow.title).toBe(`${fox.name}｜${t("stageBadge")}`);
+    expect(narrow.getAttribute("aria-pressed")).toBeNull();
+  });
 });
