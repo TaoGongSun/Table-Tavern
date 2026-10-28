@@ -469,6 +469,59 @@ pub fn set_character_stage(
     write_flags(root, world_id, &card, flags)
 }
 
+/// 舞台旗標與自動隱藏旗標的一組值：重構套用寫舞台卡時記前後值，撤銷照它比對與還原。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StageFlags {
+    pub stage: bool,
+    pub auto_hidden: bool,
+}
+
+/// 一張既有卡被重構套用標成舞台卡的紀錄：收據撤銷照它比對與還原。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StageChange {
+    pub character_id: String,
+    pub before: StageFlags,
+    pub after: StageFlags,
+}
+
+/// 讀卡檔目前的舞台／自動隱藏旗標；讀不到或解不開回 Err（撤銷比對不能把讀失敗當成預設值）。
+pub fn character_stage_flags(
+    root: &Path,
+    world_id: &str,
+    character_id: &str,
+) -> DataResult<StageFlags> {
+    let path = character_path(root, world_id, character_id)?;
+    let (meta, _, _) = parse_frontmatter(&fs::read_to_string(path)?)?;
+    Ok(StageFlags {
+        stage: meta.stage,
+        auto_hidden: meta.auto_hidden,
+    })
+}
+
+/// 撤銷重構套用的舞台旗標：兩個旗標都還等於收據記的套用後值才一起寫回套用前的值，回 true；
+/// 玩家之後改過任一個、或卡已不在，就不動、回 false。
+pub fn restore_stage_flags(
+    root: &Path,
+    world_id: &str,
+    character_id: &str,
+    after: StageFlags,
+    before: StageFlags,
+) -> DataResult<bool> {
+    if character_card_gone(root, world_id, character_id)? {
+        return Ok(false);
+    }
+    if character_stage_flags(root, world_id, character_id)? != after {
+        return Ok(false);
+    }
+    let card = read_character(root, world_id, character_id)?;
+    let flags = SystemFlags {
+        auto_hidden: before.auto_hidden,
+        stage: before.stage,
+    };
+    write_flags(root, world_id, &card, flags)?;
+    Ok(true)
+}
+
 fn write_flags(
     root: &Path,
     world_id: &str,

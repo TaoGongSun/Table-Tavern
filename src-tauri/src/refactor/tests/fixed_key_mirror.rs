@@ -93,6 +93,7 @@ fn orc_outcome_with(
             .iter()
             .map(|(name, key)| ((*name).to_owned(), (*key).to_owned()))
             .collect(),
+        stage_cards: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -100,6 +101,7 @@ fn orc_outcome_with(
         mechanism_indices: Vec::new(),
         entry_indices: vec![0],
         player_index: None,
+        stage_indices: Vec::new(),
     };
     (outcome, selection)
 }

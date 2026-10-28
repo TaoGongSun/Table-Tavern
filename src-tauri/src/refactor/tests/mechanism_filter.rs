@@ -93,6 +93,7 @@ fn mechanism_outcome(
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
+        stage_cards: Vec::new(),
     }
 }
 
@@ -103,6 +104,7 @@ fn mechanism_selection(apply_interface: bool) -> RefactorSelection {
         mechanism_indices: vec![0],
         entry_indices: Vec::new(),
         player_index: None,
+        stage_indices: Vec::new(),
     }
 }
 

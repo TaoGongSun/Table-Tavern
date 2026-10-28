@@ -268,6 +268,7 @@ fn second_image_failure_does_not_stop_the_rest() {
         result.rewritten_entries,
         result.deleted_entries,
         result.deleted_entries_raw,
+        result.stage_changes,
         before,
         &data::test_exclusive(&world_id),
     );

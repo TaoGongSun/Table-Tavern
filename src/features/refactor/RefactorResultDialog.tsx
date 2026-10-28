@@ -31,6 +31,9 @@ const REFACTOR_AUDIT_KIND_KEYS: Record<string, MsgKey> = {
   excused: "refactorAuditKindExcused",
 };
 
+// 摘要行最多直接列幾個舞台卡名
+const STAGE_NAMES_IN_SUMMARY = 3;
+
 interface RefactorResultDialogProps {
   refactor: RefactorWorkflowController;
   entries: WorldbookEntry[];
@@ -61,6 +64,11 @@ export function RefactorResultDialog({ refactor, entries }: RefactorResultDialog
   const counts = refactorSummaryCounts(outcome);
   const summaryParts = [
     counts.characters > 0 && t("refactorSummaryCharacters", { n: counts.characters }),
+    // 舞台卡列出卡名：一鍵套用的人至少看得到是哪張被標（主角誤標代價高），名字多了才改報張數
+    counts.stageCards.length > 0 &&
+      (counts.stageCards.length <= STAGE_NAMES_IN_SUMMARY
+        ? t("refactorSummaryStageNames", { names: counts.stageCards.join(t("listSeparator")) })
+        : t("refactorSummaryStageCount", { n: counts.stageCards.length })),
     counts.hasInterface && t("refactorSummaryInterface"),
     counts.entries > 0 && t("refactorSummaryEntries", { n: counts.entries }),
     counts.mechanisms > 0 && t("refactorSummaryMechanisms", { n: counts.mechanisms }),
@@ -235,6 +243,32 @@ export function RefactorResultDialog({ refactor, entries }: RefactorResultDialog
                       </label>
                     )}
                   </div>
+                ))}
+              </div>
+            </section>
+          )}
+          {counts.stageCards.length > 0 && (
+            <section>
+              <h3>{t("setStageCard")}</h3>
+              <div className="mechanism-ledger-list">
+                {counts.stageCards.map((name, index) => (
+                  <label className="inline" key={index}>
+                    <input
+                      type="checkbox"
+                      checked={selection.stage_indices.includes(index)}
+                      onChange={(event) => {
+                        const checked = event.currentTarget.checked;
+                        setSelection(
+                          (current) =>
+                            current && {
+                              ...current,
+                              stage_indices: toggleIndex(current.stage_indices, index, checked),
+                            },
+                        );
+                      }}
+                    />
+                    {name} <span className="worldbook-badge">{t("stageBadge")}</span>
+                  </label>
                 ))}
               </div>
             </section>

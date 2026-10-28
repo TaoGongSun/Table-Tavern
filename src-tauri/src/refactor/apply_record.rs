@@ -35,6 +35,7 @@ pub fn apply_and_record(
                     result.rewritten_entries,
                     result.deleted_entries,
                     result.deleted_entries_raw,
+                    result.stage_changes,
                     before,
                     held,
                 );
@@ -51,6 +52,7 @@ pub fn apply_and_record(
                 progress.rewritten_entries,
                 progress.deleted_entries,
                 progress.deleted_entries_raw,
+                progress.stage_changes,
                 before,
                 held,
             );

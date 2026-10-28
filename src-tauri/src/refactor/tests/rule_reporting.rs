@@ -64,6 +64,7 @@ pub(super) fn characters_outcome(
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
+        stage_cards: Vec::new(),
     }
 }
 
@@ -74,6 +75,7 @@ pub(super) fn select_entries(n: usize) -> RefactorSelection {
         mechanism_indices: Vec::new(),
         entry_indices: (0..n).collect(),
         player_index: None,
+        stage_indices: Vec::new(),
     }
 }
 

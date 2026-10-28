@@ -51,6 +51,7 @@ fn apply_disables_whole_entry_drops_and_undo_restores() {
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
+        stage_cards: Vec::new(),
     };
     let selection = no_player_selection(Vec::new());
 
@@ -127,6 +128,7 @@ fn apply_selected_rewritten_entries_creates_locked_mechanism_merges_rules_logs_a
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
+        stage_cards: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -134,6 +136,7 @@ fn apply_selected_rewritten_entries_creates_locked_mechanism_merges_rules_logs_a
         mechanism_indices: Vec::new(),
         entry_indices: vec![0, 1],
         player_index: None,
+        stage_indices: Vec::new(),
     };
 
     let result = apply(root.path(), &world_id, &outcome, &selection).unwrap();
@@ -189,6 +192,7 @@ fn apply_partially_selected_rewritten_entries_keeps_shared_source() {
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
+        stage_cards: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -196,6 +200,7 @@ fn apply_partially_selected_rewritten_entries_keeps_shared_source() {
         mechanism_indices: Vec::new(),
         entry_indices: vec![0],
         player_index: None,
+        stage_indices: Vec::new(),
     };
 
     let result = apply(root.path(), &world_id, &outcome, &selection).unwrap();
@@ -247,6 +252,7 @@ fn apply_writes_refactor_outcome_file_readable_and_round_trips() {
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
+        stage_cards: Vec::new(),
     };
     let selection = no_player_selection(vec![0]);
 
@@ -280,6 +286,7 @@ fn apply_then_undo_keeps_refactor_outcome_file() {
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
+        stage_cards: Vec::new(),
     };
     let selection = no_player_selection(vec![0]);
 
@@ -341,6 +348,7 @@ fn undo_removes_new_entries_including_locked() {
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
+        stage_cards: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -348,6 +356,7 @@ fn undo_removes_new_entries_including_locked() {
         mechanism_indices: Vec::new(),
         entry_indices: vec![0, 1],
         player_index: None,
+        stage_indices: Vec::new(),
     };
 
     apply_recorded(root.path(), &world_id, &outcome, &selection);
@@ -439,6 +448,7 @@ fn apply_entry_with_meta_preserves_fields_without_meta_uses_defaults() {
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
+        stage_cards: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -446,6 +456,7 @@ fn apply_entry_with_meta_preserves_fields_without_meta_uses_defaults() {
         mechanism_indices: Vec::new(),
         entry_indices: vec![0, 1],
         player_index: None,
+        stage_indices: Vec::new(),
     };
 
     apply(root.path(), &world_id, &outcome, &selection).unwrap();
@@ -510,6 +521,7 @@ fn apply_reports_changed_existing_entries() {
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
+        stage_cards: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -517,6 +529,7 @@ fn apply_reports_changed_existing_entries() {
         mechanism_indices: Vec::new(),
         entry_indices: vec![0],
         player_index: None,
+        stage_indices: Vec::new(),
     };
 
     let result = apply(root.path(), &world_id, &outcome, &selection).unwrap();

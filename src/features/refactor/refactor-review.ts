@@ -116,6 +116,8 @@ export interface RefactorOutcome {
   source_fingerprints?: Record<string, string>;
   /** 盤點標的鏡像欄（欄位名 → place｜present）：套用時對上樹上同名葉子才由 App 從固定鍵抄。 */
   mirrors?: Record<string, string>;
+  /** 盤點判為舞台卡的既有角色卡名（只有 characters 玩法）；存名字，跨桌套用時在那一桌重新對。 */
+  stage_cards?: string[];
 }
 
 export interface RefactorSelection {
@@ -125,6 +127,8 @@ export interface RefactorSelection {
   entry_indices: number[];
   /** characters 裡要設成玩家卡的那一位；null＝不指定。 */
   player_index: number | null;
+  /** 勾選要設成舞台卡的 stage_cards 索引。 */
+  stage_indices: number[];
 }
 
 // 盤點階段的型別，對照後端 src-tauri/src/refactor_ai.rs 的 RefactorSurveyOutcome（小抄合約 v1）。
@@ -192,6 +196,8 @@ export interface RefactorSurveyOutcome {
   source_fingerprints?: Record<string, string>;
   /** MIRRORS：與固定鍵嚴格同義的欄位（欄位名 → place｜present），照抄進產物。 */
   mirrors?: Record<string, string>;
+  /** STAGE：AI 判為舞台卡、本桌對得到的既有角色卡名，照抄進產物。 */
+  stage_cards?: string[];
 }
 
 /** 本地零呼叫組裝的完整產物，對照後端 src-tauri/src/refactor_assemble.rs 的 RefactorLocalAssembly。 */
@@ -228,6 +234,8 @@ export interface RefactorApplySummary {
   interface_applied: boolean;
   mechanisms_applied: number;
   player_assigned: boolean;
+  /** 這次標成舞台卡的既有角色卡張數 */
+  stage_cards: number;
   /** 套用都成立了，但桌內重構卡存檔沒寫成 */
   card_save_failed: boolean;
   /** 重構卡附的角色圖寫進新卡的張數 */
@@ -480,6 +488,7 @@ export function assembleRefactorOutcome(parts: {
   preserveSourceUids?: string[];
   sourceFingerprints?: Record<string, string>;
   mirrors?: Record<string, string>;
+  stageCards?: string[];
 }): RefactorOutcome {
   return {
     characters: parts.characters,
@@ -498,6 +507,7 @@ export function assembleRefactorOutcome(parts: {
       ? { source_fingerprints: parts.sourceFingerprints }
       : {}),
     ...(parts.mirrors && Object.keys(parts.mirrors).length > 0 ? { mirrors: parts.mirrors } : {}),
+    ...(parts.stageCards && parts.stageCards.length > 0 ? { stage_cards: parts.stageCards } : {}),
   };
 }
 
@@ -696,12 +706,16 @@ export function parseRefactorOutcomeValue(raw: unknown): RefactorOutcome {
     }
     if (Object.keys(mirrors).length > 0) outcome.mirrors = mirrors as Record<string, string>;
   }
+  // 舞台卡名：缺席＝舊產物；有值但不是字串陣列＝壞檔拒收
+  const stageCards = readStringArray(raw, "stage_cards");
+  if (stageCards.length > 0) outcome.stage_cards = stageCards;
   // 全區皆空＝這檔案沒有任何內容，多半根本不是重構產物；dropped／unabsorbed／audit 有其一
   // 仍算合法產物——純介面卡選 characters 的 dropped-only 匯出要能讀回重玩（套用落 mode）。
   const empty =
     outcome.characters.length === 0 && !outcome.interface && outcome.entries.length === 0 &&
     outcome.mechanisms.length === 0 && outcome.dropped.length === 0 &&
-    outcome.unabsorbed.length === 0 && outcome.audit.length === 0;
+    outcome.unabsorbed.length === 0 && outcome.audit.length === 0 &&
+    (outcome.stage_cards?.length ?? 0) === 0;
   if (empty) throw invalid();
   return outcome;
 }
@@ -731,6 +745,8 @@ export function defaultRefactorSelection(
     mechanism_indices: outcome.mechanisms.map((_, index) => index),
     entry_indices: outcome.entries.map((_, index) => index),
     player_index: playerIndex === -1 ? null : playerIndex,
+    // AI 只在有把握時才列舞台卡，列了就預勾
+    stage_indices: (outcome.stage_cards ?? []).map((_, index) => index),
   };
 }
 
@@ -741,7 +757,8 @@ export function selectionIsEmpty(selection: RefactorSelection): boolean {
     selection.character_indices.length === 0 &&
     !selection.apply_interface &&
     selection.mechanism_indices.length === 0 &&
-    selection.entry_indices.length === 0
+    selection.entry_indices.length === 0 &&
+    selection.stage_indices.length === 0
   );
 }
 
@@ -755,6 +772,8 @@ export interface RefactorSummaryCounts {
   hasInterface: boolean;
   mechanisms: number;
   entries: number;
+  /** 要設成舞台卡的卡名（預設勾選＝AI 列的全部） */
+  stageCards: string[];
 }
 
 /** 結果卡摘要行只列有產物的區：三個欄位對應「拆出 N 個角色」「介面」「收編 N 條規則」。 */
@@ -764,6 +783,8 @@ export function refactorSummaryCounts(outcome: RefactorOutcome): RefactorSummary
     hasInterface: outcomeAppliesInterface(outcome),
     mechanisms: outcome.mechanisms.length,
     entries: outcome.entries.length,
+    // 與後端同語意：只有明確的 characters 玩法才套舞台卡
+    stageCards: outcome.mode?.trim() === "characters" ? (outcome.stage_cards ?? []) : [],
   };
 }
 

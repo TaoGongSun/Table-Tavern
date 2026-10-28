@@ -243,3 +243,18 @@ fn parse_survey_reads_mirrors_without_touching_fields() {
     );
     assert!(parse_survey("## FIELDS\n- 好感度\n").mirrors.is_empty());
 }
+
+/// STAGE：接在 MIRRORS 後面也自成一區（不被吞進鏡像欄），容錯 `name:` 前綴；interface 玩法清掉。
+#[test]
+fn parse_survey_reads_stage_block_after_mirrors() {
+    let raw = "## MODE: characters\n\n## FIELDS\n- 当前环境\n\n## MIRRORS\n- 当前环境 = place\n\n## STAGE\n- 灰岩要塞\n- name: 旁白\n\n";
+    let mut outcome = parse_survey(raw);
+    assert_eq!(outcome.stage_cards, vec!["灰岩要塞", "旁白"]);
+    assert_eq!(outcome.mirrors.len(), 1);
+    normalize_survey_for_mode(&mut outcome);
+    assert_eq!(outcome.stage_cards.len(), 2);
+
+    let mut interface = parse_survey("## MODE: interface\n\n## STAGE\n- 灰岩要塞\n");
+    normalize_survey_for_mode(&mut interface);
+    assert!(interface.stage_cards.is_empty());
+}

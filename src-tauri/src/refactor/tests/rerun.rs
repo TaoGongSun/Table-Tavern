@@ -81,6 +81,7 @@ fn interface_outcome(source_uid: u64) -> RefactorOutcome {
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
+        stage_cards: Vec::new(),
     }
 }
 
@@ -362,6 +363,13 @@ fn reset_replays_character_route_imports() {
     )
     .unwrap();
     refactor(&root, &world_id);
+    // 重構把原卡標成舞台卡（AI 套用不留收據，靠重新重構清回）
+    let original = data::list_characters(root.path(), &world_id)
+        .unwrap()
+        .into_iter()
+        .find(|meta| meta.name == "周掌櫃")
+        .unwrap();
+    data::set_character_stage(root.path(), &world_id, &original.id, true).unwrap();
     assert_eq!(
         data::list_characters(root.path(), &world_id).unwrap().len(),
         2
@@ -371,6 +379,8 @@ fn reset_replays_character_route_imports() {
     assert_eq!(characters.len(), 1);
     assert_eq!(characters[0].name, "周掌櫃");
     assert_eq!(characters[0].color, "#abc");
+    // 清回後舞台旗標跟著清掉
+    assert!(!characters[0].stage);
 }
 
 /// PNG 角色卡換過圖再清回：照匯入原檔重匯，原卡 `.card.png` 與剝掉卡文字的顯示圖 `.png` 都回到剛匯入的樣子。

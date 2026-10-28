@@ -375,6 +375,36 @@ describe("套用重構卡產物的桌況閘門（與 AI 重構同一套）", () 
     expect(dialogs.confirm).not.toHaveBeenCalled();
   });
 
+  // 重構卡可能來自別桌：舞台卡名在清回原卡之後照這一桌過濾，對不到的不列、不預勾
+  it("舞台卡名在清回之後照這一桌過濾", async () => {
+    await mount();
+    backend.handlers.refactor_rerun_status = () => "ready";
+    backend.handlers.refactor_reset_to_source = () => ({});
+    backend.handlers.refactor_stage_cards = ({ names }) =>
+      (names as string[]).filter((name) => name === "灰岩要塞");
+    const card = JSON.stringify({
+      mode: "characters",
+      characters: [{ name: "阿福", source_uids: ["1"] }],
+      stage_cards: ["別桌的卡", "灰岩要塞"],
+    });
+    await act(async () => controller!.pickRefactorOutcome(new File([card], "card.json")));
+    expect(commands()).toEqual([
+      "refactor_rerun_status",
+      "refactor_card_open",
+      "refactor_reset_to_source",
+      "refactor_stage_cards",
+    ]);
+    expect(controller!.outcome?.stage_cards).toEqual(["灰岩要塞"]);
+    expect(controller!.selection?.stage_indices).toEqual([0]);
+
+    // 這一桌一張都對不到：產物不帶舞台卡、摘要不列、也不預勾
+    backend.calls = [];
+    backend.handlers.refactor_stage_cards = () => [];
+    await act(async () => controller!.pickRefactorOutcome(new File([card], "card.json")));
+    expect(controller!.outcome?.stage_cards).toBeUndefined();
+    expect(controller!.selection?.stage_indices).toEqual([]);
+  });
+
   it("後端判已遊玩拒套：顯示開新桌提醒", async () => {
     await mount();
     backend.handlers.refactor_rerun_status = () => "fresh";
@@ -406,6 +436,7 @@ describe("套用重構排在進行中的回合後面", () => {
       mechanism_indices: [],
       entry_indices: [],
       player_index: null,
+      stage_indices: [],
     };
     await act(async () => controller!.applyRefactor(empty));
     expect(commands()).not.toContain("refactor_apply");

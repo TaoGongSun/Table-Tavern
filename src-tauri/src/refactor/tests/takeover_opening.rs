@@ -54,6 +54,7 @@ fn outcome_with(
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
+        stage_cards: Vec::new(),
     }
 }
 

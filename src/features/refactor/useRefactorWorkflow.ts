@@ -105,6 +105,7 @@ function refactorApplyMessage(summary: RefactorApplySummary) {
   return [
     summary.new_characters > 0 && t("refactorApplyDoneCharacters", { n: summary.new_characters }),
     summary.player_assigned && t("refactorApplyDonePlayer"),
+    summary.stage_cards > 0 && t("refactorApplyDoneStage", { n: summary.stage_cards }),
     summary.new_entries > 0 && t("refactorApplyDoneEntries", { n: summary.new_entries }),
     summary.deleted_entries > 0 && t("refactorApplyDoneDeleted", { n: summary.deleted_entries }),
     summary.interface_applied && t("refactorApplyDoneInterface"),
@@ -670,6 +671,7 @@ export function useRefactorWorkflow({
           mode,
           sourceFingerprints: survey.source_fingerprints,
           mirrors: survey.mirrors,
+          stageCards: survey.stage_cards,
           preserveSourceUids: unfinishedSourceUids(
             pool.map((task) => ({ uids: refactorTaskUids(task), succeeded: succeeded.has(task) })),
             conflictUids,
@@ -740,11 +742,24 @@ export function useRefactorWorkflow({
         releaseToken(token);
         return;
       }
+      // 舞台卡名照這一桌（清回原卡之後）過濾：重構卡可能來自別桌，對不到的不列、不預勾
+      const stageCards = card.outcome.stage_cards?.length
+        ? await invoke<string[]>("refactor_stage_cards", {
+            worldId: openedFor,
+            names: card.outcome.stage_cards,
+          })
+        : [];
+      if (stale()) {
+        releaseToken(token);
+        return;
+      }
+      const outcome: RefactorOutcome = { ...card.outcome, stage_cards: stageCards };
+      if (stageCards.length === 0) delete outcome.stage_cards;
       if (heldToken.current?.token !== token?.token) releaseHeldAssets();
       heldToken.current = token;
       setAssetCount(opened?.assets.length ?? 0);
-      setOutcome(card.outcome);
-      setSelection(defaultRefactorSelection(card.outcome, card.applied));
+      setOutcome(outcome);
+      setSelection(defaultRefactorSelection(outcome, card.applied));
       setApplied(card.applied);
       setOrigin("import");
       setDetail(false);

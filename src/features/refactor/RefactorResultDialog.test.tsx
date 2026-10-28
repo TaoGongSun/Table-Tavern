@@ -19,10 +19,14 @@ const outcome: RefactorOutcome = {
   audit: [],
 };
 
-function controller(detail: boolean, cancelled: boolean): RefactorWorkflowController {
+function controller(
+  detail: boolean,
+  cancelled: boolean,
+  current: RefactorOutcome = outcome,
+): RefactorWorkflowController {
   return {
-    outcome,
-    selection: defaultRefactorSelection(outcome),
+    outcome: current,
+    selection: defaultRefactorSelection(current),
     detail,
     cancelled,
     failures: [{ name: "Alice", reason: "timeout" }],
@@ -89,5 +93,49 @@ describe("refactor result dialog", () => {
     expect(apply?.disabled).toBe(true);
     act(() => apply?.click());
     expect(refactor.applyRefactor).not.toHaveBeenCalled();
+  });
+
+  // 舞台卡：摘要列出卡名、只勾舞台卡也能一鍵套用；展開後逐張可取消
+  const staged: RefactorOutcome = { ...outcome, mode: "characters", stage_cards: ["灰岩要塞"] };
+
+  it("names stage cards in the summary and applies a stage-only selection", () => {
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    const refactor = controller(false, false, staged);
+    act(() => root!.render(<RefactorResultDialog refactor={refactor} entries={[]} />));
+
+    expect(host.textContent).toContain(t("refactorSummaryStageNames", { names: "灰岩要塞" }));
+    const apply = [...document.querySelectorAll("button")].find((button) =>
+      button.textContent?.includes(t("refactorApplyAll")),
+    );
+    expect(apply?.disabled).toBe(false);
+    act(() => apply?.click());
+    expect(refactor.applyRefactor).toHaveBeenCalledWith(expect.objectContaining({ stage_indices: [0] }));
+  });
+
+  it("lists stage cards as checkboxes in detail view", () => {
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    const refactor = controller(true, false, staged);
+    act(() => root!.render(<RefactorResultDialog refactor={refactor} entries={[]} />));
+
+    const box = [...document.querySelectorAll("label")]
+      .find((label) => label.textContent?.includes("灰岩要塞"))
+      ?.querySelector("input");
+    expect(box?.checked).toBe(true);
+    act(() => box?.click());
+    expect(refactor.setSelection).toHaveBeenCalled();
+  });
+
+  // 非 characters 玩法（舊產物、手改檔）帶了舞台卡名也不列：後端同樣不套
+  it("hides stage cards outside characters mode", () => {
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    const refactor = controller(false, false, { ...staged, mode: "interface" });
+    act(() => root!.render(<RefactorResultDialog refactor={refactor} entries={[]} />));
+    expect(host.textContent).not.toContain("灰岩要塞");
   });
 });

@@ -69,6 +69,7 @@ pub fn apply_with_assets(
             rewritten_entries: progress.rewritten_entries,
             deleted_entries: progress.deleted_entries,
             deleted_entries_raw: progress.deleted_entries_raw,
+            stage_changes: progress.stage_changes,
         }),
         Err(error) => Err(ApplyFailure { error, progress }),
     }
@@ -105,6 +106,14 @@ fn apply_into(
         .map(str::trim)
         .filter(|mode| matches!(*mode, "interface" | "characters"));
     let apply_interface = selection.apply_interface && mode != Some("characters");
+    // 舞台卡目標在任何寫入之前、用寫入前的名單快照對：這次新建的同名人物卡對不到
+    let stage_ids = super::stage::stage_targets(
+        &existing_characters,
+        super::stage::player_card_name(root, world_id).as_deref(),
+        outcome,
+        selection,
+        mode,
+    );
 
     // 介面產物 preflight：路徑正規化（雙套鏡像折疊）在任何寫入之前跑，衝突拒套時零落檔
     // ——interface 段在函式中段才跑的話，Err 當下角色卡已落檔，變成沒有收據的半套用。
@@ -528,6 +537,9 @@ fn apply_into(
         }
     };
 
+    // 舞台旗標在存重構卡之前寫：寫失敗回 Err，呼叫端照已寫進 progress 的部分（含已標的舞台卡）整包回滾
+    super::stage::write_stage_flags(root, world_id, &stage_ids, &mut progress.stage_changes)?;
+
     // 套用成功後存一份完整產物（封套＋套用映射），供玩家之後直接匯出重玩、不必重燒 AI 額度
     // 重新展開同一張卡，含角色圖匯出也靠映射配回改過名的角色；undo 與收據不動這個檔，
     // 二次套用整份覆寫。
@@ -587,6 +599,7 @@ fn apply_into(
         interface_applied,
         mechanisms_applied,
         player_assigned,
+        stage_cards: progress.stage_changes.len(),
         card_save_failed,
         images_applied,
         images_failed,

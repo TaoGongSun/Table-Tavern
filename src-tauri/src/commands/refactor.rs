@@ -221,6 +221,14 @@ pub(crate) async fn refactor_survey(
     refactor_ai::normalize_survey_for_mode(&mut outcome);
     outcome.frame_candidates = frame_candidates(&entries, &outcome.interface_uids);
     outcome.source_fingerprints = source_fingerprints;
+    // 舞台卡只留本桌對得到的名字（缺名、重名、玩家卡、隱藏或已是舞台的都不列給玩家勾）
+    let existing = data::list_characters(&root, &world_id).map_err(|error| error.to_string())?;
+    let player_name = crate::refactor::player_card_name(&root, &world_id);
+    outcome.stage_cards = crate::refactor::keep_stage_cards(
+        &existing,
+        player_name.as_deref(),
+        std::mem::take(&mut outcome.stage_cards),
+    );
     Ok(outcome)
 }
 
@@ -710,6 +718,24 @@ pub(crate) fn refactor_card_open(
         .ok_or_else(|| "missing tt-world-id header".to_owned())?;
     data::validate_id(world_id).map_err(|error| error.to_string())?;
     refactor::open_and_stage(world_id, bytes).map_err(|error| error.to_string())
+}
+
+/// 重構卡的舞台卡名照這一桌過濾（跟盤點收結果同一套）：重構卡可能來自別桌，名字對不到、
+/// 對到玩家卡或隱藏卡就不列給玩家勾，免得摘要說要標、套用卻什麼都沒做。
+#[tauri::command]
+pub(crate) fn refactor_stage_cards(
+    app: tauri::AppHandle,
+    world_id: String,
+    names: Vec<String>,
+) -> Result<Vec<String>, String> {
+    let root = data_root(&app)?;
+    let existing = data::list_characters(&root, &world_id).map_err(|error| error.to_string())?;
+    let player_name = crate::refactor::player_card_name(&root, &world_id);
+    Ok(crate::refactor::keep_stage_cards(
+        &existing,
+        player_name.as_deref(),
+        names,
+    ))
 }
 
 /// 結果卡關閉：world＋token 都相符才清暫存槽（舊卡關閉清不到新卡）。

@@ -71,6 +71,7 @@ pub(super) fn no_player_selection(character_indices: Vec<usize>) -> RefactorSele
         mechanism_indices: Vec::new(),
         entry_indices: Vec::new(),
         player_index: None,
+        stage_indices: Vec::new(),
     }
 }
 
@@ -91,6 +92,7 @@ pub(super) fn apply_recorded(
         result.rewritten_entries.clone(),
         result.deleted_entries.clone(),
         result.deleted_entries_raw.clone(),
+        result.stage_changes.clone(),
         before,
         &crate::data::test_exclusive(world_id),
     );

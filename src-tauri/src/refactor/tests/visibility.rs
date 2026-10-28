@@ -29,6 +29,7 @@ fn outcome(
         preserve_source_uids: Vec::new(),
         source_fingerprints: fingerprints,
         mirrors: Default::default(),
+        stage_cards: Vec::new(),
     }
 }
 

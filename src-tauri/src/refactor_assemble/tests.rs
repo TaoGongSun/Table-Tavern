@@ -60,6 +60,7 @@ fn empty_survey() -> RefactorSurveyOutcome {
         raw: String::new(),
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
+        stage_cards: Vec::new(),
     }
 }
 
@@ -197,6 +198,7 @@ fn assemble_local_group_route_without_span_in_declaration_falls_to_leftover() {
         raw: String::new(),
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
+        stage_cards: Vec::new(),
     };
 
     let assembly = assemble_local(&root.0, &world_id, &survey, "zh-TW").unwrap();
@@ -745,6 +747,7 @@ fn applied_leftover_keeps_english_title_in_worldbook_and_survey_context() {
         mechanism_indices: Vec::new(),
         entry_indices: vec![index],
         player_index: None,
+        stage_indices: Vec::new(),
     };
     crate::refactor::apply(&root.0, &world_id, &outcome, &selection).unwrap();
 

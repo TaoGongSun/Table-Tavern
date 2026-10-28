@@ -89,6 +89,10 @@ pub struct RefactorOutcome {
     /// 才收進 `mechanism.mirrors`，對不上就丟掉該行。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub mirrors: BTreeMap<String, String>,
+    /// 盤點判為舞台卡的既有角色卡名（stage-card-in-speaker-list，只有 characters 玩法才有）：存名字
+    /// 不存 id，重構卡跨桌套用時照名字在那一桌重新對；缺席（舊產物）＝空。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stage_cards: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,15 +109,19 @@ pub struct RefactorSelection {
     /// None（沒同時勾選成卡就不可能是玩家卡）。
     #[serde(default)]
     pub player_index: Option<usize>,
+    /// 勾選要設成舞台卡的 `outcome.stage_cards` 索引。
+    #[serde(default)]
+    pub stage_indices: Vec<usize>,
 }
 
 impl RefactorSelection {
-    /// 四區（人物、介面、機制、條目）一項都沒勾；玩家卡指定不算一項。
+    /// 五區（人物、介面、機制、條目、舞台卡）一項都沒勾；玩家卡指定不算一項。
     pub fn is_empty(&self) -> bool {
         self.character_indices.is_empty()
             && !self.apply_interface
             && self.mechanism_indices.is_empty()
             && self.entry_indices.is_empty()
+            && self.stage_indices.is_empty()
     }
 }
 
@@ -128,6 +136,8 @@ pub struct RefactorApplySummary {
     pub interface_applied: bool,
     pub mechanisms_applied: usize,
     pub player_assigned: bool,
+    /// 這次標成舞台卡的既有角色卡張數。
+    pub stage_cards: usize,
     /// 套用都成立了，但桌內重構卡存檔（refactor-outcome.json）沒寫成：之後從這桌匯出的會是舊存檔。
     pub card_save_failed: bool,
     /// 重構卡附的角色圖寫進新卡的張數。
@@ -147,6 +157,8 @@ pub struct ApplyProgress {
     pub deleted_entries: Vec<WorldbookEntry>,
     /// deleted_entries 各條的原始 JSON（同序），撤銷照原始值插回。
     pub deleted_entries_raw: Vec<serde_json::Value>,
+    /// 已寫入的舞台旗標（前後值），中途失敗回滾也靠它退回。
+    pub stage_changes: Vec<crate::data::StageChange>,
 }
 
 #[derive(Debug)]
@@ -164,6 +176,7 @@ pub struct RefactorApplyResult {
     /// 整條刪除的來源條目原文快照；undo 時不論 uid 現在還在不在，一律無條件插回。
     pub deleted_entries: Vec<WorldbookEntry>,
     pub deleted_entries_raw: Vec<serde_json::Value>,
+    pub stage_changes: Vec<crate::data::StageChange>,
 }
 
 /// 讀取端玩法標記正規化：舊版可能已落地 "Characters"／帶空白的值——合法值就地修正大小寫

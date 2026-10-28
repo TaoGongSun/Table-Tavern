@@ -314,6 +314,16 @@ fn parse_mirror_line(line: &str) -> Option<(String, String)> {
     (!name.is_empty() && (key == "place" || key == "present")).then(|| (name.to_owned(), key))
 }
 
+/// STAGE 區塊行：`- 灰岩要塞`（容錯 `- name: 灰岩要塞`），一行一張既有角色卡名；空行略過。
+fn parse_stage_line(line: &str) -> Option<String> {
+    let trimmed = line.trim().trim_start_matches('-').trim();
+    let name = match trimmed.split_once(':') {
+        Some((key, value)) if key.trim().eq_ignore_ascii_case("name") => value.trim(),
+        _ => trimmed,
+    };
+    (!name.is_empty()).then(|| name.to_owned())
+}
+
 /// FIELDS 區塊行：`- 好感度`，去掉開頭 `-` 與空白就是欄位名；空行略過。
 fn parse_field_line(line: &str) -> Option<String> {
     let trimmed = line.trim().trim_start_matches('-').trim();
@@ -336,6 +346,7 @@ pub fn parse_survey(raw: &str) -> RefactorSurveyOutcome {
             "GROUPS",
             "FIELDS",
             "MIRRORS",
+            "STAGE",
         ],
     );
     let mut persons = Vec::new();
@@ -347,6 +358,7 @@ pub fn parse_survey(raw: &str) -> RefactorSurveyOutcome {
     let mut fields = Vec::new();
     let mut mirrors = std::collections::BTreeMap::new();
     let mut mode = String::new();
+    let mut stage_cards = Vec::new();
     for block in &blocks {
         match block.marker {
             // MODE 回聲：值在標記同行冒號後（`## MODE: interface`——值不可單獨成行，
@@ -399,6 +411,9 @@ pub fn parse_survey(raw: &str) -> RefactorSurveyOutcome {
                     .iter()
                     .filter_map(|line| parse_mirror_line(line)),
             ),
+            "STAGE" => {
+                stage_cards.extend(block.lines.iter().filter_map(|line| parse_stage_line(line)))
+            }
             _ => {}
         }
     }
@@ -413,6 +428,7 @@ pub fn parse_survey(raw: &str) -> RefactorSurveyOutcome {
         fields,
         mirrors,
         mode,
+        stage_cards,
         raw: raw.to_owned(),
         source_fingerprints: Default::default(),
     }
@@ -426,5 +442,9 @@ pub fn parse_survey(raw: &str) -> RefactorSurveyOutcome {
 pub fn normalize_survey_for_mode(outcome: &mut RefactorSurveyOutcome) {
     if outcome.mode == "interface" {
         outcome.persons.clear();
+    }
+    // 舞台卡只在 characters 玩法判定（接管桌本來就不點名）
+    if outcome.mode != "characters" {
+        outcome.stage_cards.clear();
     }
 }

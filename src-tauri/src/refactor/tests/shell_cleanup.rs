@@ -33,6 +33,7 @@ fn outcome(mode: Option<&str>, interface: Option<RefactorInterface>) -> Refactor
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
+        stage_cards: Vec::new(),
     }
 }
 

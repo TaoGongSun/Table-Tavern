@@ -27,6 +27,9 @@ fn survey_messages_carry_mode_specific_user_instructions() {
     let characters = &survey_messages("ctx", &[], "zh-TW", "characters", "")[1].content;
     assert!(characters.contains("## MODE: characters"));
     assert!(characters.contains("人物照常認"));
+    // 舞台卡判定只出現在 characters 版
+    assert!(characters.contains("## STAGE"));
+    assert!(!interface.contains("## STAGE"));
 }
 
 #[test]

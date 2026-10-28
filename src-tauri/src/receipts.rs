@@ -239,6 +239,9 @@ struct ImportReceipt {
     /// 匯入時被去重合併改寫可見度／來源卡的既有條目：撤銷只還原這兩個欄位。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     visibility_restores: Vec<data::VisibilityRestore>,
+    /// AI 卡重構把既有角色卡標成舞台卡：撤銷時兩個旗標都還等於 after 才一起退回 before，玩家改過就不動。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    stage_restores: Vec<data::StageChange>,
     /// 這次操作往「機制帳本」（mechanism-log.jsonl）追加的原文；undo 時整段挖掉，其餘
     /// （含期間新產生的遊玩紀錄）不動。目前只有 AI 卡重構套用機制那條路會寫非空值。
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -617,6 +620,7 @@ pub fn record_character_import(
             deleted_entries: Vec::new(),
             deleted_entries_raw: Vec::new(),
             visibility_restores,
+            stage_restores: Vec::new(),
             added_ledger_lines: String::new(),
             interface_shell_created: false,
             interface_shell_restore: None,
@@ -678,6 +682,7 @@ pub fn record_worldbook_import(
             deleted_entries: Vec::new(),
             deleted_entries_raw: Vec::new(),
             visibility_restores,
+            stage_restores: Vec::new(),
             added_ledger_lines: String::new(),
             interface_shell_created: false,
             interface_shell_restore: None,
@@ -711,6 +716,7 @@ pub fn record_refactor_apply(
     rewritten_entries: Vec<WorldbookEntry>,
     deleted_entries: Vec<WorldbookEntry>,
     deleted_entries_raw: Vec<serde_json::Value>,
+    stage_restores: Vec<data::StageChange>,
     before: Snapshot,
     _held: &data::WorldExclusive,
 ) -> RefactorRecord {
@@ -736,6 +742,7 @@ pub fn record_refactor_apply(
         && !interface_shell_created
         && interface_shell_restore.is_none()
         && refactor_mode.is_none()
+        && stage_restores.is_empty()
     {
         return RefactorRecord::Nothing;
     }
@@ -758,6 +765,7 @@ pub fn record_refactor_apply(
             deleted_entries,
             deleted_entries_raw,
             visibility_restores: Vec::new(),
+            stage_restores,
             added_ledger_lines,
             interface_shell_created,
             interface_shell_restore,
@@ -966,6 +974,20 @@ fn undo_last(
         )? {
             report.kept_entries += 1;
         }
+    }
+
+    // 1b. 被標成舞台卡的既有角色卡：兩個旗標都還是套用後的值才退回，玩家改過就保留。
+    for change in &receipt.stage_restores {
+        kept(
+            strict,
+            data::restore_stage_flags(
+                root,
+                world_id,
+                &change.character_id,
+                change.after,
+                change.before,
+            ),
+        )?;
     }
 
     // 2. 世界書條目：uid 還在且指紋沒變才刪；指紋變了＝玩家改過，保留並計數。

@@ -50,6 +50,7 @@ fn apply_mechanism_deletes_source_after_recording_absorption() {
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
+        stage_cards: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -57,6 +58,7 @@ fn apply_mechanism_deletes_source_after_recording_absorption() {
         mechanism_indices: vec![0],
         entry_indices: Vec::new(),
         player_index: None,
+        stage_indices: Vec::new(),
     };
 
     apply(root.path(), &world_id, &outcome, &selection).unwrap();
@@ -93,6 +95,7 @@ fn apply_mechanism_deletes_source_with_no_prior_ledger_record() {
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
+        stage_cards: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -100,6 +103,7 @@ fn apply_mechanism_deletes_source_with_no_prior_ledger_record() {
         mechanism_indices: vec![0],
         entry_indices: Vec::new(),
         player_index: None,
+        stage_indices: Vec::new(),
     };
 
     assert!(mechanism::read_ledger(root.path(), &world_id)
@@ -157,6 +161,7 @@ fn apply_mechanism_then_undo_restores_ledger_to_previous_state() {
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
+        stage_cards: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -164,6 +169,7 @@ fn apply_mechanism_then_undo_restores_ledger_to_previous_state() {
         mechanism_indices: vec![0],
         entry_indices: Vec::new(),
         player_index: None,
+        stage_indices: Vec::new(),
     };
 
     apply_recorded(root.path(), &world_id, &outcome, &selection);

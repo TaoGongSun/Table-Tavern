@@ -402,6 +402,7 @@ fn refactor_receipt_append_failure_keeps_earlier_receipts_intact() {
             Vec::new(),
             Vec::new(),
             Vec::new(),
+            Vec::new(),
             before,
             &held,
         )

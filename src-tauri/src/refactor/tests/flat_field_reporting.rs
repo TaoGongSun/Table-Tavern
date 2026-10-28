@@ -48,6 +48,7 @@ fn orc_outcome(source_uid: u64) -> (RefactorOutcome, RefactorSelection) {
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
+        stage_cards: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -55,6 +56,7 @@ fn orc_outcome(source_uid: u64) -> (RefactorOutcome, RefactorSelection) {
         mechanism_indices: Vec::new(),
         entry_indices: vec![0],
         player_index: None,
+        stage_indices: Vec::new(),
     };
     (outcome, selection)
 }

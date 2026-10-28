@@ -10,6 +10,7 @@ mod rerun;
 mod rule_merge;
 mod rule_reporting;
 mod shell_cleanup;
+mod stage;
 mod statusbar_flow;
 mod statusbar_retired;
 mod takeover_collections;

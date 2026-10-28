@@ -15,6 +15,7 @@ mod interface;
 mod reset;
 mod rule_merge;
 mod sources;
+mod stage;
 mod types;
 
 #[cfg(test)]
@@ -26,6 +27,7 @@ pub use card_import::{
 };
 pub(crate) use reset::refactored;
 pub use reset::{apply_to_table, rerun_status, reset_to_import_source, RerunStatus, ResetOutcome};
+pub(crate) use stage::{keep_resolvable as keep_stage_cards, player_card_name};
 pub use types::{
     normalize_stored_mode, RefactorApplySummary, RefactorCharacter, RefactorInterface,
     RefactorOutcome, RefactorSelection,

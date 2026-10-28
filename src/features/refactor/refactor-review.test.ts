@@ -8,6 +8,7 @@ import {
   mergeRefactorInterfaces,
   outcomeAppliesInterface,
   parseRefactorOutcome,
+  parseRefactorOutcomeValue,
   refactorTaskUids,
   unfinishedSourceUids,
   refactorSummaryCounts,
@@ -452,6 +453,7 @@ describe("defaultRefactorSelection", () => {
       mechanism_indices: [0, 1],
       entry_indices: [0],
       player_index: null,
+      stage_indices: [],
     });
   });
 
@@ -484,11 +486,11 @@ describe("refactorSummaryCounts", () => {
       interface: { state_fields: {}, source_uids: [], raw: "" },
       mechanisms: [makeMechanism("19")],
     });
-    expect(refactorSummaryCounts(outcome)).toEqual({ characters: 1, hasInterface: true, mechanisms: 1, entries: 0 });
+    expect(refactorSummaryCounts(outcome)).toEqual({ characters: 1, hasInterface: true, mechanisms: 1, entries: 0, stageCards: [] });
   });
 
   it("空產物三區皆零／false", () => {
-    expect(refactorSummaryCounts(makeOutcome())).toEqual({ characters: 0, hasInterface: false, mechanisms: 0, entries: 0 });
+    expect(refactorSummaryCounts(makeOutcome())).toEqual({ characters: 0, hasInterface: false, mechanisms: 0, entries: 0, stageCards: [] });
   });
 });
 
@@ -537,7 +539,7 @@ describe("toggleIndex", () => {
 });
 
 describe("setPlayerIndex", () => {
-  const base = { character_indices: [0], apply_interface: false, mechanism_indices: [], entry_indices: [], player_index: null };
+  const base = { character_indices: [0], apply_interface: false, mechanism_indices: [], entry_indices: [], player_index: null, stage_indices: [] };
 
   it("指定已勾選的角色為玩家：character_indices 不變", () => {
     expect(setPlayerIndex(base, 0)).toEqual({ ...base, player_index: 0 });
@@ -554,12 +556,12 @@ describe("setPlayerIndex", () => {
 
 describe("unselectCharacter", () => {
   it("取消勾選的角色不是目前指定的玩家：player_index 不受影響", () => {
-    const selection = { character_indices: [0, 1], apply_interface: false, mechanism_indices: [], entry_indices: [], player_index: 0 };
+    const selection = { character_indices: [0, 1], apply_interface: false, mechanism_indices: [], entry_indices: [], player_index: 0, stage_indices: [] };
     expect(unselectCharacter(selection, 1)).toEqual({ ...selection, character_indices: [0], player_index: 0 });
   });
 
   it("取消勾選的角色正是目前指定的玩家：一併清掉玩家指定", () => {
-    const selection = { character_indices: [0, 1], apply_interface: false, mechanism_indices: [], entry_indices: [], player_index: 1 };
+    const selection = { character_indices: [0, 1], apply_interface: false, mechanism_indices: [], entry_indices: [], player_index: 1, stage_indices: [] };
     expect(unselectCharacter(selection, 1)).toEqual({ ...selection, character_indices: [0], player_index: null });
   });
 });
@@ -571,6 +573,7 @@ describe("restoreDropped", () => {
     mechanism_indices: [],
     entry_indices: [0],
     player_index: null,
+    stage_indices: [],
   };
 
   it("整條放回（span 空字串）：標題原樣，轉成 setting 條目附加到 entries 尾端並勾選", () => {
@@ -618,6 +621,7 @@ describe("selectionIsEmpty", () => {
       mechanism_indices: [],
       entry_indices: [],
       player_index: null,
+      stage_indices: [],
     };
     expect(selectionIsEmpty(empty)).toBe(true);
     expect(selectionIsEmpty({ ...empty, player_index: 0 })).toBe(true);
@@ -625,5 +629,28 @@ describe("selectionIsEmpty", () => {
     expect(selectionIsEmpty({ ...empty, apply_interface: true })).toBe(false);
     expect(selectionIsEmpty({ ...empty, mechanism_indices: [1] })).toBe(false);
     expect(selectionIsEmpty({ ...empty, entry_indices: [2] })).toBe(false);
+    // 只勾舞台卡也算有勾：套用鈕不反灰
+    expect(selectionIsEmpty({ ...empty, stage_indices: [0] })).toBe(false);
+  });
+});
+
+describe("stage cards", () => {
+  const base = parseRefactorOutcomeValue({ characters: [], mode: "characters", stage_cards: ["灰岩要塞"] });
+
+  it("parses stage card names and preselects them", () => {
+    expect(base.stage_cards).toEqual(["灰岩要塞"]);
+    expect(defaultRefactorSelection(base).stage_indices).toEqual([0]);
+    expect(refactorSummaryCounts(base).stageCards).toEqual(["灰岩要塞"]);
+  });
+
+  it("keeps legacy outcomes without stage cards readable and rejects bad shapes", () => {
+    const legacy = parseRefactorOutcomeValue({ characters: [], mode: "characters", audit: [{ kind: "coverage" }] });
+    expect(legacy.stage_cards).toBeUndefined();
+    expect(defaultRefactorSelection(legacy).stage_indices).toEqual([]);
+    expect(() => parseRefactorOutcomeValue({ stage_cards: "灰岩要塞" })).toThrow();
+  });
+
+  it("only counts stage cards in characters mode", () => {
+    expect(refactorSummaryCounts({ ...base, mode: "interface" }).stageCards).toEqual([]);
   });
 });

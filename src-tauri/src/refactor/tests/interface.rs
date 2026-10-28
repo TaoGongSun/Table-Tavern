@@ -27,6 +27,7 @@ fn apply_persists_refactor_mode_and_characters_removes_stale_shell() {
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
+        stage_cards: Vec::new(),
     };
     apply(
         root.path(),
@@ -95,6 +96,7 @@ fn apply_ignores_invalid_mode_values() {
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
+        stage_cards: Vec::new(),
     };
     apply(
         root.path(),
@@ -189,6 +191,7 @@ fn apply_interface_rebuilds_dirty_state_and_undo_restores_every_key() {
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
+        stage_cards: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -196,6 +199,7 @@ fn apply_interface_rebuilds_dirty_state_and_undo_restores_every_key() {
         mechanism_indices: Vec::new(),
         entry_indices: Vec::new(),
         player_index: None,
+        stage_indices: Vec::new(),
     };
 
     let result = apply_recorded(root.path(), &world_id, &outcome, &selection);
@@ -287,6 +291,7 @@ fn apply_characters_mode_skips_interface_and_keeps_sources() {
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
+        stage_cards: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -294,6 +299,7 @@ fn apply_characters_mode_skips_interface_and_keeps_sources() {
         mechanism_indices: Vec::new(),
         entry_indices: Vec::new(),
         player_index: None,
+        stage_indices: Vec::new(),
     };
 
     let result = apply(root.path(), &world_id, &outcome, &selection).unwrap();
@@ -455,6 +461,7 @@ fn apply_rejects_conflicting_interface_before_any_write() {
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
+        stage_cards: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: vec![0],
@@ -462,6 +469,7 @@ fn apply_rejects_conflicting_interface_before_any_write() {
         mechanism_indices: Vec::new(),
         entry_indices: Vec::new(),
         player_index: None,
+        stage_indices: Vec::new(),
     };
 
     assert!(apply(root.path(), &world_id, &outcome, &selection).is_err());
@@ -541,6 +549,7 @@ fn apply_interface_syncs_new_tree_into_scene_snapshots() {
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
+        stage_cards: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -548,6 +557,7 @@ fn apply_interface_syncs_new_tree_into_scene_snapshots() {
         mechanism_indices: Vec::new(),
         entry_indices: Vec::new(),
         player_index: None,
+        stage_indices: Vec::new(),
     };
     apply_recorded(root.path(), &world_id, &outcome, &selection);
 
@@ -595,6 +605,7 @@ fn apply_interface_with_non_object_state_fields_leaves_tree_unchanged() {
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
+        stage_cards: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -602,6 +613,7 @@ fn apply_interface_with_non_object_state_fields_leaves_tree_unchanged() {
         mechanism_indices: Vec::new(),
         entry_indices: Vec::new(),
         player_index: None,
+        stage_indices: Vec::new(),
     };
 
     apply(root.path(), &world_id, &outcome, &selection).unwrap();
@@ -665,6 +677,7 @@ fn apply_interface_with_shell_writes_file_readable_via_data_layer() {
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
+        stage_cards: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -672,6 +685,7 @@ fn apply_interface_with_shell_writes_file_readable_via_data_layer() {
         mechanism_indices: Vec::new(),
         entry_indices: Vec::new(),
         player_index: None,
+        stage_indices: Vec::new(),
     };
 
     apply(root.path(), &world_id, &outcome, &selection).unwrap();
@@ -719,6 +733,7 @@ fn apply_interface_without_shell_creates_no_shell_file() {
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
+        stage_cards: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -726,6 +741,7 @@ fn apply_interface_without_shell_creates_no_shell_file() {
         mechanism_indices: Vec::new(),
         entry_indices: Vec::new(),
         player_index: None,
+        stage_indices: Vec::new(),
     };
 
     apply(root.path(), &world_id, &outcome, &selection).unwrap();
@@ -767,6 +783,7 @@ fn apply_interface_shell_then_undo_deletes_shell_file() {
         preserve_source_uids: Vec::new(),
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
+        stage_cards: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -774,6 +791,7 @@ fn apply_interface_shell_then_undo_deletes_shell_file() {
         mechanism_indices: Vec::new(),
         entry_indices: Vec::new(),
         player_index: None,
+        stage_indices: Vec::new(),
     };
 
     apply_recorded(root.path(), &world_id, &outcome, &selection);
