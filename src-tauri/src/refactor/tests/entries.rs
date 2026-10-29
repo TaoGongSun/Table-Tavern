@@ -52,6 +52,8 @@ fn apply_disables_whole_entry_drops_and_undo_restores() {
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
         stage_cards: Vec::new(),
+        fields: Vec::new(),
+        untracked: Vec::new(),
     };
     let selection = no_player_selection(Vec::new());
 
@@ -129,6 +131,8 @@ fn apply_selected_rewritten_entries_creates_locked_mechanism_merges_rules_logs_a
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
         stage_cards: Vec::new(),
+        fields: Vec::new(),
+        untracked: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -193,6 +197,8 @@ fn apply_partially_selected_rewritten_entries_keeps_shared_source() {
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
         stage_cards: Vec::new(),
+        fields: Vec::new(),
+        untracked: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -253,6 +259,8 @@ fn apply_writes_refactor_outcome_file_readable_and_round_trips() {
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
         stage_cards: Vec::new(),
+        fields: Vec::new(),
+        untracked: Vec::new(),
     };
     let selection = no_player_selection(vec![0]);
 
@@ -287,6 +295,8 @@ fn apply_then_undo_keeps_refactor_outcome_file() {
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
         stage_cards: Vec::new(),
+        fields: Vec::new(),
+        untracked: Vec::new(),
     };
     let selection = no_player_selection(vec![0]);
 
@@ -349,6 +359,8 @@ fn undo_removes_new_entries_including_locked() {
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
         stage_cards: Vec::new(),
+        fields: Vec::new(),
+        untracked: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -449,6 +461,8 @@ fn apply_entry_with_meta_preserves_fields_without_meta_uses_defaults() {
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
         stage_cards: Vec::new(),
+        fields: Vec::new(),
+        untracked: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),
@@ -522,6 +536,8 @@ fn apply_reports_changed_existing_entries() {
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
         stage_cards: Vec::new(),
+        fields: Vec::new(),
+        untracked: Vec::new(),
     };
     let selection = RefactorSelection {
         character_indices: Vec::new(),

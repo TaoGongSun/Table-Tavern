@@ -18,6 +18,7 @@ mod reset;
 mod rule_merge;
 mod sources;
 mod stage;
+mod survey_fields;
 mod types;
 
 #[cfg(test)]

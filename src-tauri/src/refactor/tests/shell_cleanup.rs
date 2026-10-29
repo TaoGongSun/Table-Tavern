@@ -34,6 +34,8 @@ fn outcome(mode: Option<&str>, interface: Option<RefactorInterface>) -> Refactor
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
         stage_cards: Vec::new(),
+        fields: Vec::new(),
+        untracked: Vec::new(),
     }
 }
 

@@ -61,6 +61,7 @@ fn empty_survey() -> RefactorSurveyOutcome {
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
         stage_cards: Vec::new(),
+        untracked: Vec::new(),
     }
 }
 
@@ -199,6 +200,7 @@ fn assemble_local_group_route_without_span_in_declaration_falls_to_leftover() {
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
         stage_cards: Vec::new(),
+        untracked: Vec::new(),
     };
 
     let assembly = assemble_local(&root.0, &world_id, &survey, "zh-TW").unwrap();

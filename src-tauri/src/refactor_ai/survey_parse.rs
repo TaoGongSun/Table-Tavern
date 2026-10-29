@@ -347,6 +347,7 @@ pub fn parse_survey(raw: &str) -> RefactorSurveyOutcome {
             "FIELDS",
             "MIRRORS",
             "STAGE",
+            "UNTRACKED",
         ],
     );
     let mut persons = Vec::new();
@@ -359,6 +360,7 @@ pub fn parse_survey(raw: &str) -> RefactorSurveyOutcome {
     let mut mirrors = std::collections::BTreeMap::new();
     let mut mode = String::new();
     let mut stage_cards = Vec::new();
+    let mut untracked = Vec::new();
     for block in &blocks {
         match block.marker {
             // MODE 回聲：值在標記同行冒號後（`## MODE: interface`——值不可單獨成行，
@@ -414,6 +416,9 @@ pub fn parse_survey(raw: &str) -> RefactorSurveyOutcome {
             "STAGE" => {
                 stage_cards.extend(block.lines.iter().filter_map(|line| parse_stage_line(line)))
             }
+            "UNTRACKED" => {
+                untracked.extend(block.lines.iter().filter_map(|line| parse_field_line(line)))
+            }
             _ => {}
         }
     }
@@ -429,6 +434,7 @@ pub fn parse_survey(raw: &str) -> RefactorSurveyOutcome {
         mirrors,
         mode,
         stage_cards,
+        untracked,
         raw: raw.to_owned(),
         source_fingerprints: Default::default(),
     }
@@ -446,5 +452,6 @@ pub fn normalize_survey_for_mode(outcome: &mut RefactorSurveyOutcome) {
     // 舞台卡只在 characters 玩法判定（接管桌本來就不點名）
     if outcome.mode != "characters" {
         outcome.stage_cards.clear();
+        outcome.untracked.clear();
     }
 }

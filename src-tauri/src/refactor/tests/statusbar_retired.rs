@@ -21,6 +21,8 @@ fn outcome(mode: &str, dropped: Vec<RefactorDroppedEntry>) -> RefactorOutcome {
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
         stage_cards: Vec::new(),
+        fields: Vec::new(),
+        untracked: Vec::new(),
     }
 }
 

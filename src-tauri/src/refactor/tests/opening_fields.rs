@@ -103,6 +103,8 @@ pub(super) fn outcome(
             .map(|(name, key)| ((*name).to_owned(), (*key).to_owned()))
             .collect(),
         stage_cards: Vec::new(),
+        fields: Vec::new(),
+        untracked: Vec::new(),
     }
 }
 

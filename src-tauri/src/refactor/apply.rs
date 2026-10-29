@@ -9,6 +9,7 @@ use super::flat_migration;
 use super::interface::{normalize_interface_paths, rebuild_state_fields};
 use super::opening_fields::{self, OpeningContext};
 use super::sources::{new_entry_shape, Sources};
+use super::survey_fields;
 use super::types::{
     ApplyFailure, ApplyProgress, RefactorApplyResult, RefactorApplySummary, RefactorOutcome,
     RefactorSelection,
@@ -457,6 +458,19 @@ fn apply_into(
     // 卡片狀態欄退場的非 MVU 桌（statusbar-only-fields）：開場格子照酒館追蹤，沒有規則或觸發也開協定
     let retired_opening =
         mode == Some("characters") && state.statusbar_retired && mvu_before == Some(false);
+    if retired_opening {
+        moved_table_keys.extend(survey_fields::drop_untracked(
+            &mut state,
+            &outcome.untracked,
+            &mut aligned_mirrors,
+        ));
+        survey_fields::seed_fields(
+            &mut state,
+            &outcome.fields,
+            &outcome.untracked,
+            &aligned_mirrors,
+        );
+    }
     let opening = retired_opening && opening_fields::has_opening_cells(&state);
     if needs_rule_reporting(&state, &merged_rules, &merged_triggers, opening) {
         moved_table_keys.extend(open_rule_reporting(

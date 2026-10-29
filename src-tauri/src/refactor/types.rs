@@ -93,6 +93,12 @@ pub struct RefactorOutcome {
     /// 不存 id，重構卡跨桌套用時照名字在那一桌重新對；缺席（舊產物）＝空。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub stage_cards: Vec<String>,
+    /// 盤點 FIELDS（refactor-outcome-fields）：退場桌套用時，樹上沒有的欄位放空值葉子、補每回合規則。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fields: Vec<String>,
+    /// 盤點 UNTRACKED：地圖或導航清單、記憶或摘要，退場桌套用時移除、改由正文描述。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub untracked: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

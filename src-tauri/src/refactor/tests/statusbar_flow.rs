@@ -64,6 +64,8 @@ fn statusbar_outcome_round_trips_through_export_apply_and_undo() {
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
         stage_cards: Vec::new(),
+        fields: Vec::new(),
+        untracked: Vec::new(),
     };
     // 匯出成檔再匯入：產物格式不分 kind，殼／規則／指引都在
     let exported = serde_json::to_string_pretty(&outcome).unwrap();
@@ -154,6 +156,8 @@ fn undo_restores_previous_guide_not_empty() {
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
         stage_cards: Vec::new(),
+        fields: Vec::new(),
+        untracked: Vec::new(),
     };
     let selection = RefactorSelection {
         apply_interface: true,
@@ -211,6 +215,8 @@ fn preserved_source_survives_when_another_part_of_it_failed() {
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
         stage_cards: Vec::new(),
+        fields: Vec::new(),
+        untracked: Vec::new(),
     };
     let selection = RefactorSelection {
         entry_indices: vec![0],
@@ -276,6 +282,8 @@ fn apply_records_original_value_types_for_the_skeleton() {
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
         stage_cards: Vec::new(),
+        fields: Vec::new(),
+        untracked: Vec::new(),
     };
     let selection = RefactorSelection {
         apply_interface: true,
@@ -321,6 +329,8 @@ fn typed_outcome(grain: serde_json::Value) -> RefactorOutcome {
         source_fingerprints: Default::default(),
         mirrors: Default::default(),
         stage_cards: Vec::new(),
+        fields: Vec::new(),
+        untracked: Vec::new(),
     }
 }
 

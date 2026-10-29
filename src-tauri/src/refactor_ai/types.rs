@@ -191,6 +191,9 @@ pub struct RefactorSurveyOutcome {
     /// characters 玩法才有；盤點指令收結果時已濾掉本桌對不到的名字。
     #[serde(default)]
     pub stage_cards: Vec<String>,
+    /// UNTRACKED 區塊：不收的格子（地圖或導航清單、記憶或摘要），只有 characters 玩法才有。
+    #[serde(default)]
+    pub untracked: Vec<String>,
     #[serde(default)]
     pub raw: String,
     /// 盤點當下整桌條目的身分指紋（uid → 指紋）：前端照抄進 RefactorOutcome，套用時核對來源。

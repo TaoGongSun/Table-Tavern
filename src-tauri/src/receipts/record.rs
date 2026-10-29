@@ -86,8 +86,17 @@ fn diff_mechanism(
     let before = before?;
     let after = data::read_state(root, world_id).ok()?;
 
-    let (added_rule_keys, restored_rules) =
+    let (added_rule_keys, mut restored_rules) =
         diff_added_and_overwritten(&before.mechanism.rules, &after.mechanism.rules);
+    // 套用刪掉的規則（重構的不收格子）也記原值，undo 插回
+    restored_rules.extend(
+        before
+            .mechanism
+            .rules
+            .iter()
+            .filter(|(key, _)| !after.mechanism.rules.contains_key(*key))
+            .map(|(key, rule)| (key.clone(), rule.clone())),
+    );
 
     let as_map = |triggers: &[Trigger]| -> BTreeMap<String, Trigger> {
         triggers

@@ -15,6 +15,7 @@ mod shell_cleanup;
 mod stage;
 mod statusbar_flow;
 mod statusbar_retired;
+mod survey_fields;
 mod takeover_collections;
 mod takeover_fence_scene_keys;
 mod takeover_flat_keys;
