@@ -41,7 +41,7 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [codex-floor-sandbox-group](tasks/codex-floor-sandbox-group.md) — codex 自帶底線 12,288 vs 11,008，疑因沙盒模式不同而帳本分組沒算進去 — 下一步：只記已知限制〔模型判斷·未裁決〕；階段 E 要用這個數字做決策時再驗
 
 ## 階段 F：生圖
-[sponsor-features](handoffs/sponsor-features.md) 的 AI 生圖（梯 2 第 8）、[image-model-picker](handoffs/image-model-picker.md)（第 21）、[image-model-free-tier-hide](handoffs/image-model-free-tier-hide.md)（第 22）先實測；之後 vn-mode 前置實測 a／b／c（已有[實測報告](plans/vn-mode-image-spike.md)，待作者三項決定）。
+[sponsor-features](handoffs/sponsor-features.md) 的 AI 生圖（梯 2 第 8）、[image-model-picker](handoffs/image-model-picker.md)（第 21）、[image-model-free-tier-hide](handoffs/image-model-free-tier-hide.md)（第 22）先實測（付費 key／付費生圖模型那半列缺數據〔作者裁決 2026-10-29〕）。vn-mode 前置實測 a／b／c 已完成、管線已定案（[實測報告](plans/vn-mode-image-spike.md)），報告「定案前還缺」各項留給 vn-mode 施工時做。
 
 ## 階段 G：整理與立案
 - [ai-workspace-tidy](tasks/ai-workspace-tidy.md) — .ai/tasks/ 累積到 62 檔，逐檔判斷該留該刪該封存 — 下一步：未排程；開工首步＝比對 tasks/ 與 BACKLOG.md 列出三類清單，狀態不明的逐條問使用者。
