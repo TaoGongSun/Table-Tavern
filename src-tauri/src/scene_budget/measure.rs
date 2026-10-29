@@ -201,7 +201,8 @@ fn gm_request(
             let joined = format!("{}\n{closing}", instruction.content);
             let (system, turn) = chat_assembly::gm_lane_parts(m, &scan, &scope, &joined, lang);
             let side = lanes::lane_side(Lane::Gm, m.opening.raw_history);
-            let prompt = lanes::build_prompt_as(&m.events, 0, &turn.tail, true, side, lang);
+            let prompt =
+                lanes::build_prompt_as(&m.events, 0, &turn.tail, true, side, lang, &m.prompt_regex);
             Request::Cli { system, prompt }
         }
         None => stateless_request(
@@ -261,7 +262,15 @@ fn character_request(
                 shape.hoist_private,
             );
             // 機密段（沒提進 system 的私設、限定條目、狀態）本來就在 tail 裡，不另外再接
-            let prompt = lanes::build_prompt(&m.events, 0, &turn.tail, true, Lane::Chars, lang);
+            let prompt = lanes::build_prompt_as(
+                &m.events,
+                0,
+                &turn.tail,
+                true,
+                lanes::lane_side(Lane::Chars, false),
+                lang,
+                &m.prompt_regex,
+            );
             Request::Cli { system, prompt }
         }
         // 共線組裝已自足：label 與 closing 傳空字串（同 chat_with_character）
@@ -276,6 +285,7 @@ fn character_request(
                 &m.state.mechanism,
                 branch.as_deref(),
                 lang,
+                &m.prompt_regex,
             ),
             "",
             "",

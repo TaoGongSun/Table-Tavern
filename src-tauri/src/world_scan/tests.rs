@@ -686,6 +686,7 @@ fn scan_names_and_exclusions_follow_the_plan() {
         opening: None,
         mvu: false,
         zod: None,
+        prompt_scripts: Vec::new(),
     };
     let world = TableBook::from_parts(
         vec![raw(
@@ -715,6 +716,7 @@ fn mvu_settings_follow_the_viewer() {
         opening: None,
         mvu: true,
         zod: None,
+        prompt_scripts: Vec::new(),
     };
     let entries = || {
         vec![raw(
@@ -895,6 +897,7 @@ fn world_card_name_skips_unreadable_world_card() {
         opening: None,
         mvu: false,
         zod: None,
+        prompt_scripts: Vec::new(),
     };
     let book = TableBook::from_parts(
         Vec::new(),

@@ -134,6 +134,7 @@ fn character_sent(root: &Path, world_id: &str, character_id: &str, said: &str) -
         &state.mechanism,
         None,
         LANG,
+        &Default::default(),
     )
     .iter()
     .map(|message| message.content.clone())
@@ -166,6 +167,7 @@ fn gm_sent(root: &Path, world_id: &str, said: &str) -> String {
         &crate::transport::StateScope::default(),
         LANG,
         false,
+        &Default::default(),
         &Default::default(),
     )
     .iter()

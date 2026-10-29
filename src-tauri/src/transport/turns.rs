@@ -49,8 +49,12 @@ pub enum Hoist {
 /// （誰說的靠「X：」前綴分辨，不靠 role），與 session 內既有歷史逐字銜接。
 /// 可見性與標頭照 `prompt_text`：chars 線傳 `Side::Character`，GM 線傳 `Side::Gm`。
 pub fn lane_event_line(event: &TranscriptEvent, lang: &str, side: Side) -> Option<String> {
-    let text = prompt_text(event, lang, side)?;
-    Some(match event.kind {
+    prompt_text(event, lang, side).map(|text| lane_line(event, text, lang, side))
+}
+
+/// `lane_event_line` 的組行：`text` 是 `prompt_text` 的本文（呼叫端可先套 promptOnly 正則再給）。
+pub fn lane_line(event: &TranscriptEvent, text: String, lang: &str, side: Side) -> String {
+    match event.kind {
         TranscriptKind::Dialogue | TranscriptKind::Player => {
             format!(
                 "{}{text}",
@@ -68,7 +72,7 @@ pub fn lane_event_line(event: &TranscriptEvent, lang: &str, side: Side) -> Optio
             }
         },
         TranscriptKind::System => system_line(&text, lang),
-    })
+    }
 }
 
 /// chars 線「你知道的世界情報」段標（凍結 system 與回合尾共用），結尾帶換行。

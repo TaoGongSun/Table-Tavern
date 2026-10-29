@@ -26,8 +26,10 @@ pub(crate) struct GmMaterials {
     pub takeover: bool,
     /// 送進提示詞的卡剝掉開場白段（`greeting::policy`；回歸事件的卡也用它）
     pub strip_greetings: bool,
-    /// GM 送出層的開場白政策（`greeting::policy`）
+    /// GM 送出層的開場白政策（`greeting::policy`；換幕範例已套 promptOnly 正則）
     pub opening: transport::GmOpening,
+    /// 卡片 promptOnly 正則（送模型的歷史副本套用；`prompt_regex`）
+    pub prompt_regex: transport::PromptRegex,
 }
 
 /// 這一桌送進提示詞的卡（發言角色＋舞台卡；不含封存、自動隱藏），照 `prompt_card` 整理成送進提示詞的樣子。
@@ -149,7 +151,12 @@ pub(crate) fn gm_materials(root: &std::path::Path, world_id: &str) -> Result<GmM
     let events = data::read_transcript(root, world_id, state.current_scene)
         .map_err(|error| error.to_string())?;
     let takeover = data::is_interface_takeover(root, world_id, state.refactor_mode.as_deref());
-    let greeting = greeting::policy(root, world_id, &state, &events, takeover);
+    let mut greeting = greeting::policy(root, world_id, &state, &events, takeover);
+    let regex = prompt_regex(root, world_id);
+    greeting.gm.example = greeting
+        .gm
+        .example
+        .map(|example| regex.apply_oldest_ai(example));
     Ok(GmMaterials {
         world_md: data::read_world_md(root, world_id).map_err(|error| error.to_string())?,
         book: TableBook::load(root, world_id)?,
@@ -158,10 +165,22 @@ pub(crate) fn gm_materials(root: &std::path::Path, world_id: &str) -> Result<GmM
         cards: active_cards_with(root, world_id, greeting.strip_cards)?,
         strip_greetings: greeting.strip_cards,
         opening: greeting.gm,
+        prompt_regex: regex,
         metas: data::list_characters(root, world_id).map_err(|error| error.to_string())?,
         player: data::read_player_card(root, world_id).map_err(|error| error.to_string())?,
         takeover,
     })
+}
+
+/// 這桌在場卡（可用、D24 允許 regex）的 promptOnly 正則；讀不到卡當沒有。
+pub(crate) fn prompt_regex(root: &std::path::Path, world_id: &str) -> transport::PromptRegex {
+    let interfaces = crate::import::read_card_interfaces(root, world_id).unwrap_or_default();
+    transport::PromptRegex::from_scripts(
+        interfaces
+            .iter()
+            .filter(|interface| interface.unsupported.is_none())
+            .flat_map(|interface| &interface.prompt_scripts),
+    )
 }
 
 /// 介面接管桌只走 GM 一條敘事線（作者裁決 2026-10-27）：角色回合一律拒收。只讀不寫，
@@ -459,6 +478,7 @@ pub(crate) fn gm_messages(
         lang,
         materials.takeover,
         &materials.opening,
+        &materials.prompt_regex,
     );
     messages.push(instruction_message);
     messages

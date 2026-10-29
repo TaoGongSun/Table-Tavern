@@ -12,6 +12,7 @@ mod gm_opening;
 mod list_protocol;
 mod messages;
 mod own_prefix;
+mod prompt_regex;
 mod reply_cleanup;
 mod response;
 pub(crate) mod responses;
@@ -54,6 +55,7 @@ pub(crate) use messages::language_rule;
 pub use messages::{history_header, speaker_prefix, ChatMessage};
 pub(crate) use messages::{player_fallback_name, replace_st_macros, scaffold_en};
 pub use own_prefix::OwnPrefixStream;
+pub use prompt_regex::{depths as prompt_depths, PromptRegex};
 pub use reply_cleanup::{
     cut_unclosed_tail, empty_reply_error, final_reply_text, finish_character_reply,
     strip_narrator_label, strip_self_closing_controls, strip_state_echo,
@@ -72,6 +74,6 @@ pub(crate) use stall::STALLED_CODE;
 pub use state_view::{resolve_branch, snapshot_updates, state_scope, StateScope};
 pub use turns::{
     chars_lane_system, chars_lane_turn, gm_lane_system_with, gm_lane_turn, lane_event_line,
-    merge_summary_messages, segment_summary_messages, shorten_summary_messages, summary_lines,
-    summary_messages, system_worldbook, Hoist, LaneTurn, SEGMENT_SUMMARY_CHARS,
+    lane_line, merge_summary_messages, segment_summary_messages, shorten_summary_messages,
+    summary_lines, summary_messages, system_worldbook, Hoist, LaneTurn, SEGMENT_SUMMARY_CHARS,
 };

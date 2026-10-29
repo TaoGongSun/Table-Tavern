@@ -83,6 +83,7 @@ impl Table {
             tail_tracked: !turn.single,
             opening_raw: false,
             capacity: None,
+            prompt_regex: Default::default(),
         }
     }
 

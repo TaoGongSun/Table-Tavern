@@ -78,6 +78,24 @@ pub fn parse_regex_from_string(input: &str) -> Option<Regex> {
         .ok()
 }
 
+/// 仿 ST 正則擴充 `regexFromString` 的常見寫法（與世界書鍵的 `parseRegexFromString` 不同）：`/樣式/旗標` 拆開，
+/// 其餘整串當樣式、不帶旗標。回 (正則, 有沒有 g)；旗標不合法（重複、JS 不認）或樣式轉譯不了回 `None`、整條略過——
+/// ST 遇到不合法旗標會退成整串裸樣式，這裡不跟。
+pub fn regex_from_string(input: &str) -> Option<(Regex, bool)> {
+    let literal = input.strip_prefix('/').and_then(|body| {
+        let at = body.rfind('/')?;
+        let flags = &body[at + 1..];
+        (at > 0 && flags.chars().all(|ch| ch.is_ascii_alphabetic())).then(|| (&body[..at], flags))
+    });
+    let (pattern, flag_text) = literal.unwrap_or((input, ""));
+    let translated = translate(pattern, parse_flags(flag_text)?).ok()?;
+    let regex = RegexBuilder::new(&translated)
+        .backtrack_limit(BACKTRACK_LIMIT)
+        .build()
+        .ok()?;
+    Some((regex, flag_text.contains('g')))
+}
+
 /// `regex.test(haystack)` 的結果；回溯超限另外回報（呼叫端記住、同一次掃描不再試）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegexOutcome {

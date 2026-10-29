@@ -293,6 +293,7 @@ fn turn_input<'a>(events: &'a [TranscriptEvent], scene: u64) -> TurnInput<'a> {
         tail_tracked: true,
         opening_raw: false,
         capacity: None,
+        prompt_regex: Default::default(),
     }
 }
 

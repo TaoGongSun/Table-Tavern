@@ -7,6 +7,7 @@ use std::borrow::Cow;
 use std::collections::BTreeSet;
 
 use super::messages::player_fallback_name;
+use super::prompt_regex::PromptRegex;
 
 /// 登場事件的中性代換（桌面版特有機制，不在 ST 生成流程裡：回合提交時求值一次寫死、不執行副作用）。
 /// `card` 是那段文字所屬的角色卡（世界書人物條目是 `None`）；`gm_only`＝事件只給 GM 看（才讀得到私設與 GM outlet），
@@ -207,18 +208,20 @@ pub fn prompt_speaker<'a>(event: &'a TranscriptEvent, lang: &str) -> Cow<'a, str
 
 /// 送 AI 用的渲染副本：`text` 換成 `prompt_text` 的結果、`speaker_name` 補上玩家退路、
 /// `marker` 清空、略過的那則拿掉。下游只吃這份文字——不得再遮罩、不得再組標頭，
-/// 也不得拿它做 lane 水位、指紋或回覆對點（那些一律用原事件序列）。
+/// 也不得拿它做 lane 水位、指紋或回覆對點（那些一律用原事件序列）。本文已套卡片 promptOnly 正則。
 pub fn render_for_prompt(
     events: &[TranscriptEvent],
     lang: &str,
     side: Side,
+    regex: &PromptRegex,
 ) -> Vec<TranscriptEvent> {
     events
         .iter()
-        .filter_map(|event| {
+        .zip(super::prompt_regex::depths(events))
+        .filter_map(|(event, depth)| {
             prompt_text(event, lang, side).map(|text| TranscriptEvent {
                 speaker_name: prompt_speaker(event, lang).into_owned(),
-                text,
+                text: regex.apply(&event.kind, text, depth),
                 marker: None,
                 ..event.clone()
             })
@@ -687,6 +690,7 @@ mod tests {
             &[private, public, person, plain, unknown, line],
             "zh-TW",
             side,
+            &PromptRegex::default(),
         );
         assert_eq!(view.len(), 5);
         assert!(view.iter().all(|event| event.marker.is_none()));
@@ -769,7 +773,7 @@ mod tests {
         );
         assert_eq!(prompt_speaker(&player, "ja"), "プレイヤー");
         assert_eq!(prompt_speaker(&player, "en"), "Player");
-        let rendered = render_for_prompt(&[player], "de", Side::Gm);
+        let rendered = render_for_prompt(&[player], "de", Side::Gm, &Default::default());
         assert_eq!(rendered[0].speaker_name, "Spieler");
     }
 

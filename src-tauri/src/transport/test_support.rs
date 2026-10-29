@@ -349,6 +349,7 @@ pub(crate) mod legacy {
             lang,
             false,
             &Default::default(),
+            &Default::default(),
         )
     }
 
@@ -373,7 +374,16 @@ pub(crate) mod legacy {
             lang,
         );
         transport::assemble_shared_messages(
-            card, cards, player, events, &scan, state, mechanism, branch, lang,
+            card,
+            cards,
+            player,
+            events,
+            &scan,
+            state,
+            mechanism,
+            branch,
+            lang,
+            &Default::default(),
         )
     }
 }

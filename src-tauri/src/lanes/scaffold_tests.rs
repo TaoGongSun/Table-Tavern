@@ -862,6 +862,7 @@ fn lane_input<'a>(events: &'a [TranscriptEvent], system: &str) -> TurnInput<'a> 
         tail_tracked: true,
         opening_raw: false,
         capacity: None,
+        prompt_regex: Default::default(),
     }
 }
 

@@ -37,6 +37,9 @@ pub struct CardInterface {
     /// zod 版 MVU 卡的變數 schema 腳本與 `[initvar]` 原文（card_schema.rs）；只給後端引擎用，不送前端
     #[serde(skip)]
     pub zod: Option<super::card_schema::ZodSchema>,
+    /// 卡內 promptOnly 正則腳本原樣（送模型前套，`transport::PromptRegex`）；只給後端，不送前端
+    #[serde(skip)]
+    pub prompt_scripts: Vec<Value>,
 }
 
 /// 掃描每張已匯入卡的原卡檔（`<id>.card.png`／`.import.json`，世界層 `source-card.*`），抽出可渲染的顯示腳本。
@@ -49,6 +52,7 @@ pub fn read_card_interfaces(root: &Path, world_id: &str) -> DataResult<Vec<CardI
     if !data::read_state(root, world_id).map_or(true, |state| state.regex_allowed) {
         for card in &mut result {
             card.scripts.clear();
+            card.prompt_scripts.clear();
         }
     }
     Ok(result)
@@ -101,6 +105,7 @@ fn unreadable(character_id: &str, character_name: &str, path: &Path, error: &str
         opening: None,
         mvu: false,
         zod: None,
+        prompt_scripts: Vec::new(),
     }
 }
 
@@ -234,6 +239,7 @@ pub(super) fn card_interface(
             opening,
             mvu: false,
             zod: None,
+            prompt_scripts: Vec::new(),
         };
     }
 
@@ -278,6 +284,15 @@ pub(super) fn card_interface(
         opening,
         mvu: loads_mvu(card_data),
         zod: super::card_schema::zod_schema(card_data),
+        prompt_scripts: card_data
+            .get("extensions")
+            .and_then(|extensions| extensions.get("regex_scripts"))
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter(|script| script.get("promptOnly").and_then(Value::as_bool) == Some(true))
+            .cloned()
+            .collect(),
     }
 }
 

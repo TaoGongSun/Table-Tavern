@@ -111,6 +111,7 @@ fn shared_text(root: &Path, world_id: &str, character_id: &str) -> (String, Stri
         &state.mechanism,
         None,
         LANG,
+        &Default::default(),
     );
     let all = messages
         .iter()
@@ -135,6 +136,7 @@ fn gm_texts(root: &Path, world_id: &str) -> [String; 2] {
         &scope,
         LANG,
         materials.takeover,
+        &Default::default(),
         &Default::default(),
     )
     .iter()

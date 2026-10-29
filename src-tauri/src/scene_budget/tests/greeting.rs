@@ -32,7 +32,15 @@ fn assert_measure_matches(root: &std::path::Path, world: &str) {
     let (system, turn) =
         crate::chat_assembly::gm_lane_parts(&materials, &scan, &scope, &joined, lang);
     let side = lanes::lane_side(Lane::Gm, materials.opening.raw_history);
-    let prompt = lanes::build_prompt_as(&materials.events, 0, &turn.tail, true, side, lang);
+    let prompt = lanes::build_prompt_as(
+        &materials.events,
+        0,
+        &turn.tail,
+        true,
+        side,
+        lang,
+        &Default::default(),
+    );
     match gm_path(root, world, "claude") {
         measure::Request::Cli {
             system: measured_system,

@@ -40,7 +40,9 @@ use plan::{
     events_fingerprint, expected_reply_for, next_cache_ttl, plan_turn, worldbook_fingerprint,
     ReopenReason, TurnPlan,
 };
-pub(crate) use prompt::{build_prompt, build_prompt_as, lane_side};
+#[cfg(test)]
+pub(crate) use prompt::build_prompt;
+pub(crate) use prompt::{build_prompt_as, lane_side};
 use rewrite::{
     apply_rewrite, grok_home, note_reminder, record_rewrite_failure, rewrite_grok,
     scan_reminder_readonly,
@@ -205,6 +207,8 @@ pub(crate) struct TurnInput<'a> {
     pub opening_raw: bool,
     /// 該路徑的固定容量（`scene_budget::path_limits` 的 total − reserve），比例門檻的分母；None＝上限未知，只看份數
     pub capacity: Option<crate::world_scan::Budget>,
+    /// 卡片 promptOnly 正則（`chat_assembly::prompt_regex`）：本輪新送的事件本文先套
+    pub prompt_regex: transport::PromptRegex,
 }
 
 /// 歷史裡累積的舊尾段世界書（tail-worldbook-erase）：舊尾段先留著吃歷史快取，累積到門檻才整線重開壓平。
@@ -596,7 +600,15 @@ pub(crate) async fn run_turn(
             .map(|patch| format!("{patch}\n\n{}", input.tail))
             .unwrap_or_else(|| input.tail.clone());
         let side = lane_side(input.lane, input.opening_raw);
-        let prompt = build_prompt_as(input.events, base, &tail, opening, side, input.lang);
+        let prompt = build_prompt_as(
+            input.events,
+            base,
+            &tail,
+            opening,
+            side,
+            input.lang,
+            &input.prompt_regex,
+        );
         // 換幕容量的估計校正（計畫 §3.5）：只有重開全量那次「送出的就是整段」，估計與實報才配得上；
         // agy 量的是 bytes，不需要 token 校正；codex 開線的實報含它自帶約 11k 的指示與工具定義，配不上
         let calibration_estimate = (opening

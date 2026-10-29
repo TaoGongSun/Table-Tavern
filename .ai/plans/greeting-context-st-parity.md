@@ -8,7 +8,7 @@
 - 接管桌（只認 is_interface_takeover）與 statusbar_retired 桌：只剝 system，開場送 text，一律不恢復範例。〔作者裁決 2026-10-28〕
 - D（後端套 promptOnly 正則，含 depth、整份歷史；引擎方向 regress）另立案，本案不做；GM 後續歷史投影（API／重建送 text、lane 送 raw）併 D 決定。
 ## 已知限制（寫進交接）
-- promptOnly 剝除卡（NorthHall、MVU）會多送 ST 不送的區塊。
+- promptOnly 剝除卡（NorthHall、MVU）會多送 ST 不送的區塊。（card-prompt-only-regex 已處理（2026-10-29））
 - card 桌 system 變動 → lane 一次性重開，重開後舊 GM 回覆示範被壓成 text。
 - 世界書桌 system 不變不重開，舊 session 第 0 則停在 text。
 - Haiku 在無格式條目時三方案皆 0/5，C 對其效果未證實；A/C 的 4fields 也非滿分。

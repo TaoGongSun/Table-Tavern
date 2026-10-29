@@ -159,6 +159,7 @@ fn api_shared_messages_treat_one_character_plus_stage_as_solo() {
             &state.mechanism,
             None,
             "zh-TW",
+            &Default::default(),
         )[0]
         .content
         .clone()

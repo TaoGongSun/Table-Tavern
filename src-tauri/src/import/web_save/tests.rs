@@ -197,6 +197,7 @@ fn next_character_turn_carries_constant_and_triggered_entries() {
         &world.mechanism,
         None,
         LANG,
+        &Default::default(),
     );
     // 整份送出的 messages 串起來計數：constant 條目與最近訊息提到「旅店」觸發的條目恰好一次；
     // 單卡桌的 constant 條目跟私設一起在 system
@@ -895,9 +896,8 @@ fn duplicate_entries_map_to_the_kept_uid() {
     assert_eq!(sent.matches("灰燼旅店在王都南門外").count(), 1, "{sent}");
 }
 
-/// D24：regex_allowed=false 的存檔 → 桌旗標 false、卡片介面不套顯示腳本；true 照套。
-/// 桌面版本來就沒有送模前的 regex，兩種旗標下角色線送出的歷史都是原文。佔位標記匯入時就剝掉了，
-/// 所以把卡的 promptOnly 腳本改成會動到正文的字面（「銅板」）來驗。
+/// D24：regex_allowed=false 的存檔 → 桌旗標 false、卡片介面不套顯示腳本、送模前也不套 promptOnly；true 照套。
+/// 佔位標記匯入時就剝掉了，所以把卡的 promptOnly 腳本改成會動到正文的字面（「銅板」）來驗。
 #[test]
 fn regex_refusal_becomes_a_table_flag_that_drops_display_scripts() {
     let root = TestRoot::new("web-save-d24");
@@ -937,7 +937,7 @@ fn regex_refusal_becomes_a_table_flag_that_drops_display_scripts() {
         "一般桌不寫這欄（預設 true）"
     );
 
-    for imported in [&allowed, &refused] {
+    for (imported, stripped) in [(&allowed, true), (&refused, false)] {
         let sent = character_turn(
             &root,
             &imported.world_id,
@@ -947,7 +947,11 @@ fn regex_refusal_becomes_a_table_flag_that_drops_display_scripts() {
             .iter()
             .map(|m| m.content.clone())
             .collect();
-        assert!(history.contains("銅板"), "送模前不跑 promptOnly 腳本");
+        assert_eq!(
+            !history.contains("銅板"),
+            stripped,
+            "允許才套 promptOnly 腳本"
+        );
     }
 }
 
@@ -979,6 +983,7 @@ pub(super) fn character_turn(
         &world.mechanism,
         None,
         LANG,
+        &crate::chat_assembly::prompt_regex(root.path(), w),
     )
 }
 
@@ -1002,6 +1007,7 @@ fn worldbook_route_next_gm_turn_carries_constant_and_triggered_entries() {
         &scope,
         LANG,
         materials.takeover,
+        &Default::default(),
         &Default::default(),
     );
     let sent: String = messages

@@ -116,7 +116,8 @@ fn gm_turn(root: &std::path::Path, world_id: &str) -> (String, String, String, S
     let api = gm_messages(&materials, &scan, &scope, instruction, LANG);
     let (lane_system, turn) = gm_lane_parts(&materials, &scan, &scope, &joined, LANG);
     let side = lanes::lane_side(Lane::Gm, materials.opening.raw_history);
-    let prompt = lanes::build_prompt_as(&materials.events, 0, &turn.tail, true, side, LANG);
+    let regex = &materials.prompt_regex;
+    let prompt = lanes::build_prompt_as(&materials.events, 0, &turn.tail, true, side, LANG, regex);
     let all = api
         .iter()
         .map(|message| message.content.as_str())
@@ -142,7 +143,7 @@ fn gm_sees_raw_opening_and_cards_lose_greetings() {
     // 角色線照 text：狀態欄不回來
     let side = lanes::lane_side(Lane::Chars, false);
     let events = data::read_transcript(&root.0, &world_id, 0).unwrap();
-    let chars = lanes::build_prompt_as(&events, 0, "尾段", true, side, LANG);
+    let chars = lanes::build_prompt_as(&events, 0, "尾段", true, side, LANG, &Default::default());
     assert!(chars.contains("風雪拍打著城門") && !chars.contains("<details>"));
     // 對照：關鍵字真的出現在對話裡就觸發，證明上面不是條目壞了
     data::append_transcript(&root.0, &world_id, 0, &player(&format!("我問起{SECRET}。"))).unwrap();
@@ -176,6 +177,40 @@ fn next_scene_gets_branch_opening_as_example_outside_scan() {
     assert_eq!(all.matches("風雪拍打著城門").count(), 1);
     assert!(!prompt.contains("風雪拍打著城門"));
     assert!(!all.contains(ENTRY_BODY));
+}
+
+/// NorthHall 的 promptOnly 腳本（原樣）：開場原文與換幕範例裡的 `<Status_block>` 不送 GM，API 與 lane 一致。
+/// 卡另帶一條顯示腳本（同 NorthHall）：顯示腳本桌不結算自動隱藏，換幕後卡還在場。
+#[test]
+fn prompt_only_regex_strips_status_block_from_raw_opening_and_example() {
+    let (root, world_id) = table("prompt-only");
+    let script = serde_json::json!({"data": {"name": "灰岩要塞", "extensions": {"regex_scripts": [{
+        "scriptName": "美化状态栏隐藏",
+        "findRegex": r".*?<Status_block>([\s\S]*?)<\/Status_block>",
+        "replaceString": "", "trimStrings": [], "placement": [2], "disabled": false,
+        "markdownOnly": true, "promptOnly": true, "runOnEdit": true, "substituteRegex": 0,
+        "minDepth": null, "maxDepth": null
+    }, {
+        "scriptName": "美化状态栏", "findRegex": "/<Status_block>/g", "replaceString": "<div>",
+        "placement": [2], "markdownOnly": true
+    }]}}});
+    let card_path = data::character_path(&root.0, &world_id, &card().id).unwrap();
+    std::fs::write(card_path.with_extension("import.json"), script.to_string()).unwrap();
+    post_opening(
+        &root.0,
+        &world_id,
+        0,
+        "雪落。\n<Status_block>\n天數：1\n</Status_block>",
+    );
+    let (all, _, _, prompt) = gm_turn(&root.0, &world_id);
+    assert!(all.contains("雪落。") && prompt.contains("雪落。"));
+    assert!(!all.contains("Status_block") && !prompt.contains("Status_block"));
+
+    data::begin_next_scene(&root.0, &world_id, "第一幕摘要", None).unwrap();
+    let (_, api_system, lane_system, _) = gm_turn(&root.0, &world_id);
+    assert_eq!(api_system, lane_system);
+    assert!(api_system.contains("僅供格式範例") && api_system.contains("雪落。"));
+    assert!(!api_system.contains("Status_block"));
 }
 
 #[test]

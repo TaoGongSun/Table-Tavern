@@ -126,6 +126,7 @@ pub(crate) async fn chat_with_character(
     let player = data::read_player_card(&root, &world_id).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
     let cards = chat_assembly::active_cards_with(&root, &world_id, strip)?;
+    let prompt_regex = chat_assembly::prompt_regex(&root, &world_id);
     // 世界書（方案三之 2）：交接之後先結算上一次落地，再以這個角色的視角掃一次；結果供組裝與落地共用
     let perspective = data::world_info_store::Perspective::Character(card.id.clone());
     let timed = world_scan::landing::before_scan(&root, &world_id, scene, &turn_id, &perspective)?;
@@ -229,6 +230,7 @@ pub(crate) async fn chat_with_character(
                 tail_tracked: !shape.hoist_private,
                 opening_raw: false,
                 capacity: path.budget,
+                prompt_regex,
             },
             Some(&mut cancel),
             emit,
@@ -254,6 +256,7 @@ pub(crate) async fn chat_with_character(
         &state.mechanism,
         branch.as_deref(),
         &lang,
+        &prompt_regex,
     );
     // roster 記的是套用策略前的有效角色數，不是實際帶進組裝器的張數——沒有這個數字，
     // 日後零命中退回（no-cache-model-optout）產生的 solo 就跟天然單角色桌長得一樣
@@ -373,6 +376,7 @@ async fn gm_lane_reply(
             tail_tracked: true,
             opening_raw: materials.opening.raw_history,
             capacity,
+            prompt_regex: materials.prompt_regex.clone(),
         },
         cancel,
         emit,

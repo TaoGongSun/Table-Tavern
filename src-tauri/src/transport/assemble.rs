@@ -8,6 +8,7 @@ use super::messages::{
 
 use super::context::{gm_system_prompt, gm_worldbook};
 use super::gm_opening::GmOpening;
+use super::prompt_regex::PromptRegex;
 use super::worldbook::section_body;
 
 use super::state_view::{gm_dynamic_block, StateScope};
@@ -41,6 +42,7 @@ pub fn assemble_shared_messages(
     mechanism: &Mechanism,
     branch: Option<&[String]>,
     lang: &str,
+    regex: &PromptRegex,
 ) -> Vec<ChatMessage> {
     let mut system = chars_lane_system(cards, player, scan, lang);
     // 單人＝發言角色只有一位（舞台卡不算，與 lane 的 sole_present、用量的 solo 同一判定）
@@ -59,7 +61,7 @@ pub fn assemble_shared_messages(
 
     let mut messages = vec![message("system", system)];
     // 角色側渲染：角色私設略過、gm_only 遮罩、標頭照提示詞語系組好
-    for event in render_for_prompt(events, lang, Side::Character) {
+    for event in render_for_prompt(events, lang, Side::Character, regex) {
         let text = &event.text;
         // 台詞一律 assistant＋名字前綴：對白對誰都是同一則，前綴才穩得住
         let (role, line) = match event.kind {
@@ -101,11 +103,12 @@ pub fn assemble_gm_messages_with(
     lang: &str,
     takeover: bool,
     opening: &GmOpening,
+    regex: &PromptRegex,
 ) -> Vec<ChatMessage> {
     let user_name = player
         .map(|player| player.name.as_str())
         .unwrap_or_else(|| player_fallback_name(lang));
-    let rendered = render_for_prompt(events, lang, opening.side());
+    let rendered = render_for_prompt(events, lang, opening.side(), regex);
     let split = gm_worldbook(scan);
     let system = gm_system_prompt(
         &scan.texts,
