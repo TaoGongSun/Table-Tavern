@@ -1,4 +1,4 @@
-//! refactor-trigger-overlap：once 觸發求值時先讀旗標——旗標已真（或路徑寫不進樹）整條跳過，
+//! refactor-trigger-overlap：once 觸發求值時先讀旗標——旗標已真整條跳過（路徑寫不進樹改釘 `_once.<id>`），
 //! 不靠 `when` 裡有沒有 `Flag{expect:false}`（重構 AI 產的 once 多半沒帶）。
 
 use super::test_support::{else_case, mechanism_with, once_mechanism, rule, tree_from, world_with};
@@ -138,35 +138,45 @@ fn once_flag_truthiness_matches_the_flag_condition() {
         .contains_key("登場"));
 }
 
-/// 旗標路徑指到分支、或父層是葉子：釘不進去，當作已演跳過——不蓋掉分支、不改葉子、不記已觸發，
-/// 也不會每回合重演。
+/// 旗標路徑指到分支、父層是葉子或有空段：改釘 app 自管的 `_once.<id>`，照演一次、之後不重演；
+/// 原本的分支與葉子不動，`_once` 不列給 GM（playdata-loss-fixes D3）。
 #[test]
-fn once_flag_path_that_cannot_be_pinned_is_skipped_without_touching_the_tree() {
-    for (extra, flag, guarded) in [
-        (("事件.子項", "保留"), "事件", "事件.子項"),
-        (("事件", "一段文字"), "事件.登場", "事件"),
+fn once_flag_path_that_cannot_be_pinned_falls_back_to_the_app_branch() {
+    for (extra, flag) in [
+        (Some(("事件.子項", "保留")), "事件"),
+        (Some(("事件", "一段文字")), "事件.登場"),
+        (None, "事件..登場"),
+        (None, "事件."),
+        (None, ""),
     ] {
-        let mut world = fortress("6", &[extra], vec![once_at(7.0, "登場", flag)]);
-        let before = leaf(&world, guarded);
-        for _ in 0..3 {
-            assert_eq!(turn(&mut world, 1), (vec![], vec![]), "{flag}");
-        }
-        assert_eq!(leaf(&world, guarded), before, "{flag}");
-    }
-}
-
-/// 旗標路徑有空段（`事件..登場`、結尾點）：同樣釘不進去，跳過且不在樹上留空鍵。
-#[test]
-fn once_flag_path_with_an_empty_segment_is_skipped() {
-    for flag in ["事件..登場", "事件.", ""] {
-        let mut world = fortress("6", &[], vec![once_at(7.0, "登場", flag)]);
-        let before = world.state.tree.clone();
+        let extra: Vec<(&str, &str)> = extra.into_iter().collect();
+        let mut world = fortress("6", &extra, vec![once_at(7.0, "第1.登場", flag)]);
+        let guarded = extra.first().map(|(path, _)| leaf(&world, path));
+        assert_eq!(
+            turn(&mut world, 1),
+            (
+                vec!["第1.登場".to_owned()],
+                vec!["_once.第1_登場".to_owned()]
+            ),
+            "{flag:?}"
+        );
         for _ in 0..2 {
             assert_eq!(turn(&mut world, 1), (vec![], vec![]), "{flag:?}");
         }
-        let mut expected = before;
-        expected.insert(DAYS.to_owned(), StateNode::Leaf("8".to_owned()));
-        assert_eq!(world.state.tree, expected, "{flag:?}");
+        assert_eq!(
+            leaf(&world, "_once.第1_登場"),
+            Some(StateNode::Leaf("true".to_owned()))
+        );
+        if let (Some(before), Some((path, _))) = (guarded, extra.first()) {
+            assert_eq!(leaf(&world, path), before, "{flag:?}");
+        }
+        let path = vec!["_once".to_owned(), "第1_登場".to_owned()];
+        assert!(!super::rules::leaf_shown(
+            &world.mechanism,
+            &path,
+            "true",
+            true
+        ));
     }
 }
 
@@ -226,4 +236,21 @@ fn ejs_once_with_flag_condition_still_fires_once() {
     assert!(world.state.triggers.contains_key("國變"));
     apply_block(&mut world, &block, "玩家");
     assert!(world.state.triggers.is_empty());
+}
+
+/// 變數模式桌的樹每輪從表投影：`_once` 分支合回 stat_data 再投影回樹仍在，Blocked 的一次性觸發不會變成每回合重演。
+#[test]
+fn once_branch_survives_the_variable_table_round_trip() {
+    use crate::data::message_vars::{merge_post_process, table_tree, Json};
+    let mut after = tree_from(&[(DAYS, "8")]);
+    let before = after.clone();
+    data::set_tree_value(&mut after, &["_once".to_owned(), "登場".to_owned()], "true");
+    let mut table = Json::empty_object();
+    table.insert("stat_data", Json::empty_object());
+    let merged = merge_post_process(&table, &before, &after, &Default::default());
+    let projected = table_tree(&merged);
+    assert_eq!(
+        data::node_at(&projected, &["_once".to_owned(), "登場".to_owned()]),
+        Some(&StateNode::Leaf("true".to_owned()))
+    );
 }

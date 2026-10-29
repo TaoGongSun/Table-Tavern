@@ -3,7 +3,8 @@
 //! - 平欄其餘鍵搬進樹；沒有規則的開場格子一律補每回合注入的規則（明確數字給數字欄，其餘文字欄）。
 //! - 開場值開頭的「表情符號＋空白」剝進 `mechanism.display_prefixes`。
 //! - 物件組成的序列（YAML `- 人物: {名字: …}`）轉成以名字為鍵的具名集合；純量序列登記成序列集合。
-//!   選不出唯一的名字欄、名字不能當鍵、重名、或既有引用保全不了：這個序列不轉、不收。
+//!   選不出唯一的名字欄、名字不能當鍵、重名、或既有引用保全不了：這個序列不轉成集合，但每一格（含巢狀）補萬用
+//!   文字規則照常追蹤（playdata-loss-fixes D2）。
 
 use super::apply_mechanism::{explicit_number, turn_rule, BASE_TABLE_KEYS};
 use super::collections;
@@ -70,6 +71,10 @@ pub(super) fn adopt(
     for path in index_branches(&state.state.tree, &state.mechanism.collections) {
         convert_sequence(state, &path, context, mirrors);
     }
+    // 轉成集合的已登記；剩下的是轉不了的序列
+    for path in index_branches(&state.state.tree, &state.mechanism.collections) {
+        track_unconverted(state, &path);
+    }
     let leaves = adopt_leaves(state);
     state.mechanism.opening.tracked = true;
     state.mechanism.opening.time_cells = super::opening_notes::time_cells(&leaves);
@@ -78,6 +83,40 @@ pub(super) fn adopt(
     let paths: BTreeSet<String> = state.mechanism.collections.keys().cloned().collect();
     collections::inject_every_turn(&mut state.mechanism.rules, &paths);
     moved
+}
+
+/// 轉不了的序列：每一項底下的葉子（含巢狀）相對路徑，序列索引段換成 `*`，補每回合文字規則；已有規則的不補。
+/// 樹形不動，GM 逐格 replace、增減項目走 insert／remove。
+fn track_unconverted(state: &mut WorldState, base: &str) {
+    fn walk(node: &StateNode, path: &mut Vec<String>, out: &mut BTreeSet<Vec<String>>) {
+        match node {
+            StateNode::Leaf(_) => {
+                out.insert(path.clone());
+            }
+            StateNode::Branch(children) => {
+                let index = data::is_index_branch(children);
+                for (key, child) in children {
+                    path.push(if index { "*".to_owned() } else { key.clone() });
+                    walk(child, path, out);
+                    path.pop();
+                }
+            }
+        }
+    }
+    let mut path = segments(base);
+    let Some(node) = data::node_at(&state.state.tree, &path).cloned() else {
+        return;
+    };
+    let mut paths = BTreeSet::new();
+    walk(&node, &mut path, &mut paths);
+    for path in paths {
+        if !mechanism::has_rule(&state.mechanism, &path) {
+            state
+                .mechanism
+                .rules
+                .insert(path.join("."), turn_rule(FieldKind::Text));
+        }
+    }
 }
 
 /// 平欄其餘鍵搬進樹（樹上已有同名的以樹為準，平欄那份刪掉）。

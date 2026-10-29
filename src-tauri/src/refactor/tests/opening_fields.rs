@@ -491,7 +491,7 @@ fn references_into_the_sequence_are_remapped() {
         .contains("{{state:状态栏.人物列表.贺铮.行动}}"));
 }
 
-/// 保全不了的引用（指到名字欄、條目內文的 `{{state:}}`）：整個序列不轉、不收，原有機制保留。
+/// 保全不了的引用（指到名字欄、條目內文的 `{{state:}}`）：整個序列不轉成集合，原有機制保留，其餘格子補萬用規則。
 #[test]
 fn unmappable_references_keep_the_sequence_untouched() {
     let root = TestRoot::new("opening-remap-refused");
@@ -515,7 +515,7 @@ fn unmappable_references_keep_the_sequence_untouched() {
         .mechanism
         .rules
         .contains_key("状态栏.人物列表.0.人物.名字"));
-    assert!(!crate::mechanism::has_rule(
+    assert!(crate::mechanism::has_rule(
         &state.mechanism,
         &path("状态栏.人物列表.0.人物.行动")
     ));
@@ -550,9 +550,10 @@ fn unmappable_references_keep_the_sequence_untouched() {
     assert!(!state.mechanism.collections.contains_key(PEOPLE));
 }
 
-/// 名字欄有歧義（兩個常見名字鍵）或字形折疊後重名：不轉、不收。
+/// 名字欄有歧義（兩個常見名字鍵）、字形折疊後重名或項目帶巢狀欄位：不轉成集合，但每格（含巢狀）補萬用文字
+/// 規則，GM 看得到也寫得進去（playdata-loss-fixes D2）。
 #[test]
-fn ambiguous_or_duplicate_names_leave_the_sequence_alone() {
+fn unconverted_sequences_are_still_tracked_cell_by_cell() {
     for (label, people) in [
         (
             "ambiguous",
@@ -561,6 +562,10 @@ fn ambiguous_or_duplicate_names_leave_the_sequence_alone() {
         (
             "duplicate",
             "    - 名字: \"林远\"\n      心情: \"a\"\n    - 名字: \"林遠\"\n      心情: \"b\"",
+        ),
+        (
+            "nested",
+            "    - 名字: \"林远\"\n      心情: \"a\"\n      數值:\n        體力: 50\n    - 名字: \"贺铮\"\n      心情: \"b\"\n      數值:\n        體力: 70",
         ),
     ] {
         let root = TestRoot::new(&format!("opening-names-{label}"));
@@ -579,16 +584,31 @@ fn ambiguous_or_duplicate_names_leave_the_sequence_alone() {
             &selection(false),
         )
         .unwrap();
-        let state = data::read_state(root.path(), &world_id).unwrap();
+        let mut state = data::read_state(root.path(), &world_id).unwrap();
         assert!(state.mechanism.collections.is_empty(), "{label}");
         assert!(
             data::node_at(&state.state.tree, &path("状态栏.人物.0")).is_some(),
             "{label}"
         );
+        let cell = match label {
+            "nested" => "數值.體力",
+            "ambiguous" => "姓名",
+            _ => "心情",
+        };
+        let cell_path = path(&format!("状态栏.人物.1.{cell}"));
+        let value = leaf(&state, &cell_path.join("."))
+            .unwrap_or_else(|| panic!("{label}: {:?}", state.state.tree))
+            .to_owned();
         assert!(
-            !crate::mechanism::has_rule(&state.mechanism, &path("状态栏.人物.0.心情")),
-            "{label}"
+            crate::mechanism::leaf_shown(&state.mechanism, &cell_path, &value, false),
+            "{label}: 格子送 GM"
         );
+        let pointer: String = cell_path.iter().map(|segment| format!("/{segment}")).collect();
+        gm_update(
+            &mut state,
+            &format!(r#"[{{"op":"replace","path":"{pointer}","value":"已改"}}]"#),
+        );
+        assert_eq!(leaf(&state, &cell_path.join(".")), Some("已改"), "{label}");
     }
 }
 

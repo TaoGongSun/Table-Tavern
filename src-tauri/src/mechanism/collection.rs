@@ -230,7 +230,9 @@ impl Collection<'_> {
                 let value = patch.value.as_ref().unwrap_or(&serde_json::Value::Null);
                 // 任何一項致命（名字不合法、形狀不對、同一份裡只差字形的兩個名字）就整份不套用，樹不動
                 let items = match (self.spec.keyed, value) {
-                    (true, serde_json::Value::Object(map)) => self.keyed_items(map, records),
+                    (true, serde_json::Value::Object(map)) => {
+                        self.keyed_items(map, &self.items(tree), records)
+                    }
                     (false, serde_json::Value::Array(list)) => self.sequence_items(list, records),
                     _ => {
                         let (whole, part) = if self.spec.keyed {
@@ -282,6 +284,7 @@ impl Collection<'_> {
     fn keyed_items(
         &self,
         map: &serde_json::Map<String, serde_json::Value>,
+        old: &BTreeMap<String, StateNode>,
         records: &mut Vec<Record>,
     ) -> Option<BTreeMap<String, StateNode>> {
         let mut items = BTreeMap::new();
@@ -315,7 +318,11 @@ impl Collection<'_> {
                 fatal = true;
                 continue;
             }
-            match self.item_node(value, &path, Some(index), records) {
+            let previous = match item_key(old, key) {
+                Ok(Some(existing)) => old.get(&existing),
+                _ => None,
+            };
+            match self.item_node(value, &path, Some(index), previous, records) {
                 Some(node) => {
                     items.insert(key.clone(), node);
                 }
@@ -333,7 +340,7 @@ impl Collection<'_> {
         let mut nodes = Vec::new();
         for (index, value) in list.iter().enumerate() {
             let path = self.path_of(&index.to_string());
-            nodes.push(self.item_node(value, &path, None, records));
+            nodes.push(self.item_node(value, &path, None, None, records));
         }
         nodes.into_iter().collect::<Option<Vec<_>>>().map(renumber)
     }
@@ -345,6 +352,7 @@ impl Collection<'_> {
         value: &serde_json::Value,
         path: &[String],
         order: Option<usize>,
+        previous: Option<&StateNode>,
         records: &mut Vec<Record>,
     ) -> Option<StateNode> {
         let shown = shown_pointer(path);
@@ -370,6 +378,14 @@ impl Collection<'_> {
                     fields.insert(name, json_to_node(field_value));
                 }
                 _ => unknown.push(key.clone()),
+            }
+        }
+        // 既有項目整項寫入：沒帶的欄位沿用舊值，不跟著整項換掉（playdata-loss-fixes #10）
+        if let Some(StateNode::Branch(previous)) = previous {
+            for (name, node) in previous {
+                if !name.starts_with('_') && !fields.contains_key(name) {
+                    fields.insert(name.clone(), node.clone());
+                }
             }
         }
         let missing: Vec<&String> = self
@@ -531,7 +547,7 @@ impl Collection<'_> {
         });
         let path = self.path_of(&key);
         let value = patch.value.as_ref().unwrap_or(&serde_json::Value::Null);
-        let Some(node) = self.item_node(value, &path, Some(order), records) else {
+        let Some(node) = self.item_node(value, &path, Some(order), items.get(&key), records) else {
             return;
         };
         items.insert(key, node);
@@ -581,7 +597,7 @@ impl Collection<'_> {
             }
             _ => {
                 let value = patch.value.as_ref().unwrap_or(&serde_json::Value::Null);
-                let Some(node) = self.item_node(value, &path, None, records) else {
+                let Some(node) = self.item_node(value, &path, None, None, records) else {
                     return;
                 };
                 if patch.op == PatchOp::Insert {

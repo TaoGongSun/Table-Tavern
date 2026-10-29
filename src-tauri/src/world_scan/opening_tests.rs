@@ -363,3 +363,18 @@ fn failed_append_without_rollback_leaves_the_log_to_the_transcript() {
         assert!(store::read_notices(root.path(), &world).unwrap().is_empty());
     }
 }
+
+/// 翻譯後貼出：譯文的 `<initvar>` 換回原文那份（鍵不被翻），譯文漏掉就補在尾端；原文沒有就照譯文（U4）。
+#[test]
+fn translated_openings_keep_the_original_initvar() {
+    let original = "歡迎。<initvar>\n金币: 10\n</initvar>尾聲<InitVar>名: 甲</InitVar>";
+    assert_eq!(
+        opening::with_original_initvar("Welcome.<initvar>\n金幣: 10\n</initvar>End", original),
+        "Welcome.<initvar>\n金币: 10\n</initvar>\n<InitVar>名: 甲</InitVar>End"
+    );
+    assert_eq!(
+        opening::with_original_initvar("Welcome. End", original),
+        "Welcome. End\n<initvar>\n金币: 10\n</initvar>\n<InitVar>名: 甲</InitVar>"
+    );
+    assert_eq!(opening::with_original_initvar("譯文", "原文"), "譯文");
+}

@@ -194,12 +194,16 @@ fn strip_state_echo_removes_trailing_ledger_paragraph() {
         let fenced =
             format!("```\n代碼\n```\n~~~\n更多\n~~~\n托倫看著地圖。\n\n{heading}\n驻守天数：3");
         assert_eq!(
-            strip_state_echo(&fenced, &tree).as_deref(),
+            strip_state_echo(&fenced, &tree)
+                .map(|echo| echo.text)
+                .as_deref(),
             Some("```\n代碼\n```\n~~~\n更多\n~~~\n托倫看著地圖。"),
             "{heading}"
         );
         assert_eq!(
-            strip_state_echo(&display, &tree).as_deref(),
+            strip_state_echo(&display, &tree)
+                .map(|echo| echo.text)
+                .as_deref(),
             Some("托倫看著地圖。"),
             "{heading}"
         );

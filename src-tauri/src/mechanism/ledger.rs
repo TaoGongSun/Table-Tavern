@@ -1,4 +1,4 @@
-use crate::data::{self, FieldKind};
+use crate::data::{self, FieldKind, StateNode};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -9,7 +9,7 @@ use super::derive::{recompute_derived, reroll};
 use super::note::build_notes;
 use super::parse::parse_block;
 use super::rules::rule_for_path;
-use super::tree::{format_num, insert_node, numeric_value, take_node};
+use super::tree::{canonical_path, format_num, insert_node, numeric_value, take_node};
 use super::triggers::evaluate_triggers;
 use super::types::{Outcome, Parsed, Patch, PatchOp, Record, RecordKind};
 use super::upstream_set::TypedView;
@@ -100,8 +100,9 @@ pub enum BlockScope {
     TakeoverOpening,
     /// 接管桌的 GM 回覆：狀態區塊不收並回饋，`<UpdateVariable>` 照收
     TakeoverReply,
-    /// 卡片狀態欄退場桌（`WorldState::statusbar_retired`）的 GM 回覆：卡片自帶的狀態區塊（`<details>` 狀態欄、
-    /// `<status…>`）不收並回饋，```state 圍欄與 `<UpdateVariable>` 照收
+    /// 卡片狀態欄退場桌（`WorldState::statusbar_retired`）的 GM 回覆：```state 圍欄與 `<UpdateVariable>` 照收；
+    /// 卡片自帶的狀態區塊（`<details>` 狀態欄、`<status…>`）只收對得上樹上既有葉子、不在卡片清單底下的格子，並回饋
+    /// 之後別再印（沒收進去的值由呼叫端用 `leftovers::unapplied` 留進狀態更新事件，playdata-loss-fixes D1）
     RetiredCardBlocks,
 }
 
@@ -110,6 +111,7 @@ pub(super) const REJECTED_BLOCK_PATH: &str = "狀態區塊";
 
 /// 照 `scope` 篩掉不收的部分，回傳要套用的區塊與這次篩掉的記帳。
 fn scoped_block(
+    world: &data::WorldState,
     block: &crate::transport::StateBlock,
     scope: BlockScope,
 ) -> (crate::transport::StateBlock, Option<Record>) {
@@ -133,13 +135,42 @@ fn scoped_block(
             })
         }
         BlockScope::RetiredCardBlocks => block.fenced.as_ref().map(|fenced| {
+            // 卡片清單（圍欄沒有的）會被整支重寫打掉已轉成集合的分支，底下的格子不收；其餘只收樹上既有的葉子，
+            // 合成一段更新區塊接在 GM 自己的更新後面（數字寫 delta、同一格 GM 本回合有報就以 GM 為準）
+            let card_lists: Vec<&Vec<String>> = block
+                .lists
+                .iter()
+                .filter(|list| !fenced.lists.contains(list))
+                .collect();
+            let tree = &world.state.tree;
+            let cells: Vec<super::Cell> = super::card_block_cells(block)
+                .into_iter()
+                .filter(|(path, _)| {
+                    // 單段鍵只有增量桌才進樹（否則寫回平欄，長出第二份）
+                    !card_lists.iter().any(|list| path.starts_with(list))
+                        && (path.len() > 1 || world.mechanism.incremental)
+                })
+                .filter_map(|(path, value)| {
+                    let target = canonical_path(tree, &path, true).ok()?;
+                    matches!(data::node_at(tree, &target), Some(StateNode::Leaf(_)))
+                        .then_some((target, value))
+                })
+                .collect();
+            let probe = crate::transport::StateBlock {
+                fields: fenced.fields.clone(),
+                updates: block.updates.clone(),
+                ..Default::default()
+            };
             kept.fields = fenced.fields.clone();
+            if let (_, Some(patch)) = super::echo_patch(&cells, &probe, tree) {
+                kept.updates.push(patch);
+            }
             kept.lists = fenced.lists.clone();
             kept.maps = fenced.maps.clone();
             Record::new(
                 RecordKind::Rejected,
                 REJECTED_BLOCK_PATH.to_owned(),
-                "卡片原本的狀態欄格式已淘汰，回覆裡的狀態欄未套用，之後不要再印；欄位變動請改用 ```state 圍欄與 UpdateVariable 更新區塊回報。"
+                "卡片原本的狀態欄格式已淘汰，之後不要再印；這次對得上的格子已收下，其餘記進狀態更新。欄位變動請改用 ```state 圍欄與 UpdateVariable 更新區塊回報。"
                     .to_owned(),
             )
         }),
@@ -268,7 +299,7 @@ pub fn apply_block_typed(
     base: Option<&crate::data::message_vars::Json>,
     scope: BlockScope,
 ) -> Outcome {
-    let (scoped, scope_record) = scoped_block(block, scope);
+    let (scoped, scope_record) = scoped_block(world, block, scope);
     // 換字形寫既有欄位時先對回原鍵：舊值、清單替換、寫入、跳動記號都用對齊後的路徑
     let aligned = block_paths::align(world, &scoped);
     let block = &aligned.block;

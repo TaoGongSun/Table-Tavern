@@ -193,3 +193,25 @@ impl OpeningEffects for OpeningLanding<'_> {
         }
     }
 }
+
+/// 「翻譯後貼出」的正文：譯文裡的 `<initvar>` 區塊換回原文那份（譯文漏掉就補在尾端）。開場白的 `<initvar>` 是
+/// 整份初始值，鍵被翻（金币→金幣）卡片腳本就讀不到；zod 與非 zod 兩條建種子路徑都從這份正文抽，換一處兩條都對
+/// （playdata-loss-fixes U4）。原文沒有就照譯文。
+pub fn with_original_initvar(translated: &str, original: &str) -> String {
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = RE.get_or_init(|| {
+        regex::Regex::new(r"(?is)<initvar>.*?</initvar>").expect("initvar block regex")
+    });
+    let blocks: Vec<&str> = re.find_iter(original).map(|found| found.as_str()).collect();
+    if blocks.is_empty() {
+        return translated.to_owned();
+    }
+    let joined = blocks.join("\n");
+    match re.find(translated) {
+        Some(first) => {
+            let rest = re.replace_all(&translated[first.end()..], "");
+            format!("{}{joined}{rest}", &translated[..first.start()])
+        }
+        None => format!("{}\n{joined}", translated.trim_end()),
+    }
+}

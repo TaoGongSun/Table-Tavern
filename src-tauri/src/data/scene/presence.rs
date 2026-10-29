@@ -143,14 +143,18 @@ fn match_unique(
 /// 否則原卡主角色會被當成「沒出現」收進隱藏區，GM 上下文就少了那張卡。有被要求的桌照原行為結算。
 /// 已知限制：主角色已被藏的顯示腳本桌，`read_card_interfaces` 略過隱藏卡 → 判定掉回一般旁白、照樣結算，
 /// 只能玩家手動拉回〔作者裁決 2026-10-27：舊桌不拉回〕。
+///
+/// 沒重構的桌（`refactored` 為 false）照酒館不結算，卡不離開上下文；非舞台、非封存的人物卡只有一張以下的桌也不結算，
+/// 唯一的角色不會因為 GM 漏報 present 就從上下文消失（playdata-loss-fixes D4）。
 pub(super) fn settle_card_visibility(
     root: &Path,
     world_id: &str,
     ended_scene: u64,
     present: Option<&str>,
     requires_present_report: bool,
+    refactored: bool,
 ) {
-    if present.is_none() && !requires_present_report {
+    if !refactored || (present.is_none() && !requires_present_report) {
         return;
     }
     let Ok(characters) = list_characters(root, world_id) else {
@@ -158,6 +162,9 @@ pub(super) fn settle_card_visibility(
     };
     // 舞台卡不參與結算、也不進比對名字池（它不是人物）；比對結果的索引對應過濾後的這份清單
     let characters: Vec<_> = characters.into_iter().filter(|meta| !meta.stage).collect();
+    if characters.iter().filter(|meta| !meta.archived).count() <= 1 {
+        return;
+    }
     let events = read_transcript(root, world_id, ended_scene).unwrap_or_default();
     let arrived = super::marker::appeared_card_names(&events);
     let present_names = present.map(split_present_names).unwrap_or_default();
@@ -248,6 +255,7 @@ mod tests {
             .state
             .table
             .insert("present".to_owned(), "熊".to_owned());
+        state.refactor_mode = Some("characters".to_owned());
         write_state(root.path(), &world_id, &state).unwrap();
 
         begin_next_scene(root.path(), &world_id, "摘要", None).unwrap();
@@ -283,6 +291,7 @@ mod tests {
             .state
             .table
             .insert("present".to_owned(), "熊".to_owned());
+        state.refactor_mode = Some("characters".to_owned());
         write_state(root.path(), &world_id, &state).unwrap();
 
         begin_next_scene(root.path(), &world_id, "摘要", None).unwrap();
@@ -298,6 +307,44 @@ mod tests {
         assert!(meta_of(&badger.id).auto_hidden, "缺席的人物照常隱藏");
     }
 
+    /// D4：重構過但只剩一張人物卡（另有舞台卡、封存卡）的桌，與沒重構的多卡桌，present 空著換幕都不結算。
+    #[test]
+    fn settlement_skips_single_person_and_unrefactored_tables() {
+        for (label, refactored, cards) in [
+            ("single-person", true, ["伊芙", "灰岩要塞", "亡靈"]),
+            ("unrefactored", false, ["伊芙", "熊", "獾"]),
+        ] {
+            let root = TestRoot::new(&format!("card-settlement-skip-{label}"));
+            let world_id = create_world(root.path(), "桌").unwrap();
+            let metas: Vec<_> = cards
+                .iter()
+                .map(|name| character_card(&new_id(), name))
+                .collect();
+            for card in &metas {
+                write_character(root.path(), &world_id, card).unwrap();
+            }
+            if refactored {
+                set_character_stage(root.path(), &world_id, &metas[1].id, true).unwrap();
+                set_character_archived(root.path(), &world_id, &metas[2].id, true).unwrap();
+            }
+            let mut state = read_state(root.path(), &world_id).unwrap();
+            state
+                .state
+                .table
+                .insert("present".to_owned(), String::new());
+            state.refactor_mode = refactored.then(|| "characters".to_owned());
+            write_state(root.path(), &world_id, &state).unwrap();
+
+            begin_next_scene(root.path(), &world_id, "摘要", None).unwrap();
+
+            let listed = list_characters(root.path(), &world_id).unwrap();
+            assert!(
+                listed.iter().all(|meta| !meta.auto_hidden),
+                "{label}: 不結算、沒有卡被收進隱藏區"
+            );
+        }
+    }
+
     /// present 缺席時只有「沒被要求報 present」的桌（介面接管、沒重構的顯示腳本桌）不結算，旗標原樣保留
     /// （配角照樣藏著，不會被順手拉回）；一般桌、characters 桌與不套卡內腳本的桌照原行為，沒回歸事件的卡
     /// 結算成隱藏。顯示腳本桌 present 有值（含空字串）照常結算。
@@ -309,12 +356,13 @@ mod tests {
             ("takeover", true, Some("interface"), false, true, None, false, true),
             ("takeover-no-mode", true, None, false, true, None, false, true),
             ("characters", true, Some("characters"), false, true, None, true, true),
-            ("plain", false, None, false, true, None, true, true),
+            ("plain", false, None, false, true, None, false, true),
             ("interface-no-shell", false, Some("interface"), false, true, None, true, true),
             ("card-format", false, None, true, true, None, false, true),
-            ("card-format-regex-off", false, None, true, false, None, true, true),
-            ("card-format-empty-present", false, None, true, true, Some(""), true, true),
-            ("card-format-present-hit", false, None, true, true, Some("周掌櫃"), true, false),
+            ("card-format-regex-off", false, None, true, false, None, false, true),
+            ("card-format-empty-present", false, None, true, true, Some(""), false, true),
+            ("card-format-present-hit", false, None, true, true, Some("周掌櫃"), false, true),
+            ("characters-present-hit", false, Some("characters"), false, true, Some("周掌櫃"), true, false),
         ];
         for (label, shell, mode, scripts, regex_allowed, present, host_after, other_after) in cases
         {
@@ -448,6 +496,7 @@ mod tests {
             .state
             .table
             .insert("present".to_owned(), "林遠、賀錚、鐵三、瀋鬱".to_owned());
+        state.refactor_mode = Some("characters".to_owned());
         write_state(root.path(), &world_id, &state).unwrap();
 
         begin_next_scene(root.path(), &world_id, "摘要", None).unwrap();
@@ -468,6 +517,8 @@ mod tests {
             let world_id = create_world(root.path(), "桌").unwrap();
             let card = character_card(&new_id(), "沈鬱");
             write_character(root.path(), &world_id, &card).unwrap();
+            // 第二張卡：單卡桌不結算（D4）
+            write_character(root.path(), &world_id, &character_card(&new_id(), "林遠")).unwrap();
             set_character_auto_hidden(root.path(), &world_id, &card.id, false).unwrap();
             upsert_worldbook_entry(
                 root.path(),
@@ -484,12 +535,14 @@ mod tests {
                 .state
                 .table
                 .insert("present".to_owned(), present.to_owned());
+            state.refactor_mode = Some("characters".to_owned());
             write_state(root.path(), &world_id, &state).unwrap();
 
             begin_next_scene(root.path(), &world_id, "摘要", None).unwrap();
 
             let metas = list_characters(root.path(), &world_id).unwrap();
-            assert_eq!(metas[0].auto_hidden, card_hidden_after, "present={present}");
+            let shen = metas.iter().find(|meta| meta.id == card.id).unwrap();
+            assert_eq!(shen.auto_hidden, card_hidden_after, "present={present}");
         }
     }
 }

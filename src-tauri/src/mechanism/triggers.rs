@@ -21,7 +21,8 @@ pub struct TriggerOutcome {
 /// 當 else 兜底）；沒有任何 case 命中＝這個 trigger 這輪沒有文本。命中文本＝
 /// `preamble`（非空時）＋空行＋case 文本，換完 `{{state:路徑}}` 佔位再過一次
 /// `{{user}}` 代換。`Once` 命中則把它的 flag 路徑收進輸出，由呼叫端釘進樹；
-/// 旗標已真（或路徑寫不進去）的 `Once` 整條跳過——重構 AI 產的 once 多半不在 `when` 帶旗標條件。
+/// 旗標已真的 `Once` 整條跳過——重構 AI 產的 once 多半不在 `when` 帶旗標條件。旗標路徑寫不進樹時改釘
+/// app 自管的 `_once.<id>`（`flag_path`），照常演一次。
 pub fn evaluate_triggers(
     tree: &BTreeMap<String, StateNode>,
     mechanism: &Mechanism,
@@ -29,16 +30,21 @@ pub fn evaluate_triggers(
 ) -> TriggerOutcome {
     let mut outcome = TriggerOutcome::default();
     for trigger in &mechanism.triggers {
-        if trigger.mode == TriggerMode::Once {
-            if let Some(flag) = &trigger.flag {
-                match once_flag(tree, flag) {
-                    OnceFlag::Unplayed => {}
-                    OnceFlag::Played => continue,
-                    OnceFlag::Blocked => {
-                        // 釘不進樹就會每回合重演：當作已演跳過（罕見，輕防）
-                        log::warn!("一次性觸發 {} 的旗標路徑 {flag} 寫不進狀態樹（指到分支或父層是葉子），當作已演跳過", trigger.id);
-                        continue;
-                    }
+        let flag = match (&trigger.mode, &trigger.flag) {
+            (TriggerMode::Once, Some(flag)) => Some(flag_path(tree, flag, &trigger.id)),
+            _ => None,
+        };
+        if let Some(flag) = &flag {
+            match once_flag(tree, flag) {
+                OnceFlag::Unplayed => {}
+                OnceFlag::Played => continue,
+                OnceFlag::Blocked => {
+                    // 連 app 自管路徑也被擋（`_once` 是葉子）：釘不進樹就會每回合重演，當作已演跳過
+                    log::warn!(
+                        "一次性觸發 {} 的旗標路徑 {flag} 寫不進狀態樹，當作已演跳過",
+                        trigger.id
+                    );
+                    continue;
                 }
             }
         }
@@ -56,13 +62,22 @@ pub fn evaluate_triggers(
         let text = resolve_state_placeholders(&text, tree);
         let text = crate::transport::replace_st_macros(&text, user_name, None);
         outcome.hits.insert(trigger.id.clone(), text);
-        if trigger.mode == TriggerMode::Once {
-            if let Some(flag) = &trigger.flag {
-                outcome.flags.push(flag.clone());
-            }
+        if let Some(flag) = flag {
+            outcome.flags.push(flag);
         }
     }
     outcome
+}
+
+/// app 自管的一次性旗標分支：卡片給的旗標路徑寫不進樹時改釘在這底下。GM 寫不了 `_` 開頭的路徑，也不列給 GM 看。
+pub const ONCE_BRANCH: &str = "_once";
+
+/// 一次性觸發實際用的旗標路徑：卡片給的寫得進樹就照用，否則 `_once.<id>`（id 裡的 `.` 換成 `_`）。
+fn flag_path(tree: &BTreeMap<String, StateNode>, flag: &str, id: &str) -> String {
+    match once_flag(tree, flag) {
+        OnceFlag::Blocked => format!("{ONCE_BRANCH}.{}", id.replace('.', "_")),
+        _ => flag.to_owned(),
+    }
 }
 
 enum OnceFlag {

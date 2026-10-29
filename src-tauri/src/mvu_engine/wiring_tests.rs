@@ -539,6 +539,21 @@ fn a_seed_that_cannot_be_built_fails_the_whole_update_without_materializing_the_
     assert!(with_commit(root.path(), &world_id, message_vars::needs_seed).unwrap());
 }
 
+/// 開場白落檔時沒建成種子（這裡用「貼開場白時還不是 zod 桌」模擬引擎失敗）：之後第一回合補建種子時帶這一幕
+/// 開場白原文，它的 `<initvar>` 照樣整份取代（playdata-loss-fixes 11b）。
+#[test]
+fn a_later_seed_still_applies_the_scene_opening_initvar() {
+    let _serial = SERIAL.lock().unwrap_or_else(|poison| poison.into_inner());
+    let root = TestRoot::new("zod-late-seed");
+    let world_id = data::create_world(root.path(), "zod桌").unwrap();
+    opening(root.path(), &world_id, "<initvar>\n金: 9\n</initvar>開場");
+    import_card(root.path(), &world_id, "冒險隊", SMALL, Some("金: 3"));
+    assert!(with_commit(root.path(), &world_id, message_vars::needs_seed).unwrap());
+    let (committed, landed) = gm_turn(root.path(), &world_id, "t1", "戰鬥。");
+    assert_eq!(committed.expect("提交").error, None);
+    assert_eq!(stat(&landed).get("金").unwrap().to_text(), "9");
+}
+
 #[test]
 fn without_initvar_the_tree_seed_still_goes_through_the_schema_and_the_opening_override() {
     let _serial = SERIAL.lock().unwrap_or_else(|poison| poison.into_inner());
@@ -571,6 +586,74 @@ fn without_initvar_the_tree_seed_still_goes_through_the_schema_and_the_opening_o
     let seeded = stat(&landed);
     assert_eq!(seeded.get("金").unwrap().to_text(), "9");
     assert_eq!(seeded.get("名"), Some(&Json::String("無名".into())));
+}
+
+/// 卡內有 `[initvar]`、另外匯入的世界書也帶一條：種子兩邊的鍵都有，卡內那條（也進了桌世界書）不重複
+/// （playdata-loss-fixes D6）。
+#[test]
+fn worldbook_initvar_joins_the_card_initvar_seed() {
+    let _serial = SERIAL.lock().unwrap_or_else(|poison| poison.into_inner());
+    let root = TestRoot::new("zod-worldbook-initvar");
+    let world_id = data::create_world(root.path(), "zod桌").unwrap();
+    import_card(root.path(), &world_id, "冒險隊", SMALL, Some("金: 3"));
+    data::upsert_worldbook_entry(
+        root.path(),
+        &world_id,
+        data::WorldbookEntry {
+            uid: 900,
+            title: "[InitVar] 世界書".to_owned(),
+            keys: Vec::new(),
+            content: "@@dont_activate\n名: 阿甲".to_owned(),
+            constant: false,
+            order: 100,
+            disabled: true,
+            visibility: data::Visibility::Gm,
+            is_person: false,
+            locked: false,
+        },
+    )
+    .unwrap();
+    assert_eq!(zod_table(root.path(), &world_id).unwrap().initvars.len(), 2);
+    let (landed, _) = opening(root.path(), &world_id, "開場");
+    let seeded = stat(&landed);
+    assert_eq!(seeded.get("金").unwrap().to_text(), "3");
+    assert_eq!(seeded.get("名"), Some(&Json::String("阿甲".into())));
+}
+
+/// playdata-loss-fixes 11a：zod 桌照抄段的新值合成更新區塊接在送引擎的回覆後面，由引擎照 schema 收進表；
+/// schema 驗不過的值引擎不收，列給狀態更新事件。
+#[test]
+fn echoed_new_values_go_through_the_engine_on_zod_tables() {
+    let _serial = SERIAL.lock().unwrap_or_else(|poison| poison.into_inner());
+    let root = TestRoot::new("zod-echo");
+    let world_id = data::create_world(root.path(), "zod桌").unwrap();
+    import_card(root.path(), &world_id, "冒險隊", SMALL, Some("金: 3"));
+    opening(root.path(), &world_id, "開場");
+    let tree = data::read_state(root.path(), &world_id).unwrap().state.tree;
+    let lines = vec![
+        (vec!["名".to_owned()], "阿乙".to_owned()),
+        (vec!["金".to_owned()], "很多".to_owned()),
+    ];
+    let block = crate::transport::extract_state_block("戰鬥。");
+    let (pending, patch) = crate::mechanism::echo_patch(&lines, &block, &tree);
+    let reply = format!(
+        "戰鬥。\n<UpdateVariable>{}</UpdateVariable>",
+        patch.unwrap()
+    );
+    let (committed, landed) = gm_turn(root.path(), &world_id, "t1", &reply);
+    let commit = committed.expect("提交");
+    assert_eq!(commit.error, None);
+    let stat = stat(&landed);
+    assert_eq!(stat.get("名"), Some(&Json::String("阿乙".into())));
+    assert_ne!(
+        stat.get("金").unwrap().to_text(),
+        "很多",
+        "schema 不收非數字"
+    );
+    assert_eq!(
+        crate::mechanism::unapplied(&commit.state, &pending),
+        vec![("金".to_owned(), "很多".to_owned())]
+    );
 }
 
 #[test]

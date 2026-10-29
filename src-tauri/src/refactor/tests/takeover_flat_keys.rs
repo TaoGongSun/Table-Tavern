@@ -436,9 +436,9 @@ fn authoritative_tree_only_drops_the_flat_copy() {
     assert_eq!(at(&state, "驻守天数"), Some(leaf("第 1 天")), "未收編照搬");
 }
 
-/// 對到分支＝衝突：刪平欄、不寫值（已知的資料損失：鑰匙、繩索會消失）。
+/// 對到分支＝衝突：值搬到「背包（開場）」，分支不動（playdata-loss-fixes D5）。
 #[test]
-fn a_flat_key_landing_on_a_branch_is_dropped_without_writing() {
+fn a_flat_key_landing_on_a_branch_is_parked_beside_it() {
     let (state, moved) = migrated(
         serde_json::json!({ "背包": { "金幣": "3" } }),
         &[("背包", "鑰匙、繩索")],
@@ -454,6 +454,8 @@ fn a_flat_key_landing_on_a_branch_is_dropped_without_writing() {
             leaf("3")
         )])))
     );
+    assert_eq!(at(&state, "背包（開場）"), Some(leaf("鑰匙、繩索")));
+    assert!(state.mechanism.rules.contains_key("背包（開場）"));
 }
 
 #[test]
@@ -474,14 +476,13 @@ fn glyph_matches_take_the_unique_variant_and_drop_ambiguous_ones() {
         false,
     );
     assert_eq!(moved, vec!["瀋鬱"]);
-    assert_eq!(
-        state.state.tree.len(),
-        2,
-        "歧義不搬進樹：{:?}",
-        state.state.tree
-    );
     assert_eq!(at(&state, "沈郁"), Some(leaf("甲")));
     assert_eq!(at(&state, "沈鬱"), Some(leaf("乙")));
+    assert_eq!(
+        at(&state, "瀋鬱（開場）"),
+        Some(leaf("丙")),
+        "歧義不蓋任何一邊，值搬到旁鍵"
+    );
 }
 
 /// 「/」前段兩個方向都算；對到分支走衝突。
@@ -507,13 +508,13 @@ fn slash_heads_match_in_both_directions() {
         &[],
         false,
     );
-    assert_eq!(state.state.tree.len(), 1);
     assert!(state.state.table.is_empty());
+    assert_eq!(at(&state, "剧情阶段/要塞事件"), Some(leaf("初始")));
 }
 
-/// 末段唯一只算已取代、不採值；多個同名末段＝衝突，都不寫。
+/// 末段命中與多個同名末段：值跟對到的葉子相同只刪平欄，不同就搬成頂層葉子（playdata-loss-fixes D5）。
 #[test]
-fn leaf_tail_matches_only_drop() {
+fn leaf_tail_matches_keep_values_that_differ() {
     let (state, moved) = migrated(
         serde_json::json!({ "状态栏": { "体力": "50" } }),
         &[("体力", "60")],
@@ -522,7 +523,15 @@ fn leaf_tail_matches_only_drop() {
     );
     assert_eq!(moved, vec!["体力"]);
     assert_eq!(at(&state, "状态栏.体力"), Some(leaf("50")));
-    assert_eq!(state.state.tree.len(), 1);
+    assert_eq!(at(&state, "体力"), Some(leaf("60")));
+
+    let (state, _) = migrated(
+        serde_json::json!({ "状态栏": { "体力": "50" } }),
+        &[("体力", "50")],
+        &[],
+        false,
+    );
+    assert_eq!(state.state.tree.len(), 1, "同值只刪平欄");
 
     let (state, _) = migrated(
         serde_json::json!({ "甲": { "金币": "10" }, "乙": { "金币": "20" } }),
@@ -531,12 +540,12 @@ fn leaf_tail_matches_only_drop() {
         false,
     );
     assert!(state.state.table.is_empty());
-    assert_eq!(state.state.tree.len(), 2);
     assert_eq!(at(&state, "甲.金币"), Some(leaf("10")));
     assert_eq!(at(&state, "乙.金币"), Some(leaf("20")));
+    assert_eq!(at(&state, "金币"), Some(leaf("30")));
 }
 
-/// 多個平欄鍵收到同一片葉子：整組衝突，都刪、都不寫。
+/// 多個平欄鍵收到同一片葉子：整組衝突，葉子不動；值不同的平欄鍵搬到旁鍵（體力已在頂層，用「（開場）」）。
 #[test]
 fn several_flat_keys_on_one_leaf_all_become_conflicts() {
     let (state, moved) = migrated(
@@ -548,10 +557,11 @@ fn several_flat_keys_on_one_leaf_all_become_conflicts() {
     assert_eq!(moved.len(), 2);
     assert!(state.state.table.is_empty());
     assert_eq!(at(&state, "體力"), Some(leaf("50")));
+    assert_eq!(at(&state, "体力（開場）"), Some(leaf("60")));
 }
 
 /// 沒有接管殼的增量桌（圍欄還在用）：圍欄單段鍵只轉寫到同名或只差字形的頂層葉子。只遷移那兩層與未收編，
-/// 下一輪圍欄寫進樹、不回平欄；末段與「/」前段照舊留平欄。對照：全部遷移時，末段那鍵會被圍欄寫回平欄。
+/// 下一輪圍欄寫進樹、不回平欄；末段與「/」前段照舊留平欄。對照：全部遷移時，末段那鍵搬成頂層葉子、圍欄寫進樹。
 #[test]
 fn fence_tables_only_migrate_what_the_fence_can_reach() {
     let tree =
@@ -589,11 +599,11 @@ fn fence_tables_only_migrate_what_the_fence_can_reach() {
     let (mut all, _) = migrated_with(tree, &table, &[], true, false);
     assert!(all.state.table.is_empty());
     crate::mechanism::apply_block(&mut all, &fence, "玩家");
-    assert_eq!(
-        table_keys(&all),
-        vec!["体力"],
-        "全部遷移時圍欄把末段那鍵寫回平欄"
+    assert!(
+        table_keys(&all).is_empty(),
+        "全部遷移時末段那鍵已搬成頂層葉子，圍欄寫進樹"
     );
+    assert_eq!(at(&all, "体力"), Some(leaf("55")));
 }
 
 /// 圍欄還在用的桌：多個平欄鍵收到同一片葉子＝衝突，兩鍵都留平欄、不列進搬走的鍵，樹不動。

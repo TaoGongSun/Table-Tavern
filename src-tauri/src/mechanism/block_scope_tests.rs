@@ -237,3 +237,71 @@ fn retired_card_blocks_after_fence_do_not_override_or_grow_branches() {
         1
     );
 }
+
+/// playdata-loss-fixes D1：退場桌照舊印的卡片狀態欄，對得上樹上既有葉子的格子照收；對不上的（含超過回饋句
+/// 240 字上限的長值、卡片清單底下的）整值列進 `unapplied`，由呼叫端寫進狀態更新事件。回饋句下一輪就覆寫，保不住值。
+#[test]
+fn retired_card_cells_on_existing_leaves_are_kept_and_the_rest_are_listed_whole() {
+    let mut mechanism = mechanism_with(&[
+        ("天气", rule(FieldKind::Text, None, None)),
+        ("体力", rule(FieldKind::Number, Some(0.0), Some(100.0))),
+    ]);
+    mechanism.incremental = true;
+    let mut world = world_with(
+        &[("天气", "晴"), ("体力", "5"), ("人物.林遠.心情", "平靜")],
+        mechanism,
+    );
+    world.refactor_mode = Some("characters".to_owned());
+    world.statusbar_retired = true;
+    let long = "军需".repeat(150);
+    let reply = format!(
+        "雪越下越大。\n<details><summary>状态栏</summary>\n天气: 大雪\n体力: 15\n人物:\n  林遠:\n    心情: 愉快\n军需: {long}\n名單:\n  - 乙\n</details>"
+    );
+    let block = crate::transport::extract_state_block(&reply);
+    let cells = super::card_block_cells(&block);
+    let outcome = apply_block_typed(
+        &mut world,
+        &block,
+        "阿濤",
+        None,
+        BlockScope::RetiredCardBlocks,
+    );
+    assert_eq!(
+        world.state.tree.get("天气"),
+        Some(&StateNode::Leaf("大雪".to_owned()))
+    );
+    assert_eq!(
+        data::node_at(
+            &world.state.tree,
+            &["人物".to_owned(), "林遠".to_owned(), "心情".to_owned()]
+        ),
+        Some(&StateNode::Leaf("愉快".to_owned()))
+    );
+    assert_eq!(
+        world.state.tree.get("体力"),
+        Some(&StateNode::Leaf("15".to_owned())),
+        "數字格走 delta 收進樹"
+    );
+    assert!(world.state.tree.get("军需").is_none(), "對不上的不長新格");
+    assert!(world.state.tree.get("名單").is_none(), "卡片清單不長枝");
+    let left = super::unapplied(&world, &cells);
+    let paths: Vec<&str> = left.iter().map(|(path, _)| path.as_str()).collect();
+    assert!(paths.contains(&"军需"), "{left:?}");
+    assert!(
+        paths.iter().any(|path| path.starts_with("名單")),
+        "{left:?}"
+    );
+    let kept = left.iter().find(|(path, _)| path == "军需").unwrap();
+    assert_eq!(kept.1, long, "長值整段留存");
+    assert!(outcome.notes.iter().all(|note| !note.contains(&long)));
+    // 下一輪 GM 沒補報：回饋句被覆寫，值只剩狀態更新事件那份
+    let next = crate::transport::extract_state_block("夜深了。");
+    apply_block_typed(
+        &mut world,
+        &next,
+        "阿濤",
+        None,
+        BlockScope::RetiredCardBlocks,
+    );
+    assert!(world.state.notes.iter().all(|note| !note.contains("军需")));
+}

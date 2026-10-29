@@ -210,6 +210,7 @@ fn begin_next_scene_tx(
         old_scene,
         state.state.table.get("present").map(String::as_str),
         requires_present_report,
+        crate::refactor::refactored(root, world_id, &state).unwrap_or(false),
     );
     Ok(next_scene)
 }

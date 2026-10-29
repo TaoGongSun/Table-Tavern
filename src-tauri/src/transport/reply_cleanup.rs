@@ -171,7 +171,8 @@ const SYSTEM_PREFIXES: [&str; 4] = ["（系統）", "（系统）", "(System) ",
 /// 傳入的是剝完狀態圍欄、更新區塊與下一位行的顯示文字；全部成立才剝，回剝完的文字：
 /// 有一行（行首不縮排）完全等於「系統前綴＋狀態變動標頭」（字典十語系或送模型標頭）、不在 CommonMark 程式碼區塊裡（圍欄或縮排），
 /// 且它之後到結尾每個非空行都是「本桌狀態樹葉子路徑：值」。任何一行對不上就回 None、整段保留。
-pub fn strip_state_echo(display: &str, tree: &BTreeMap<String, StateNode>) -> Option<String> {
+/// 剝了就連同照抄的每一行（路徑分段、值）一起回：值裡有本回合沒收到的新值時，呼叫端補收（`mechanism::echo_patch`）。
+pub fn strip_state_echo(display: &str, tree: &BTreeMap<String, StateNode>) -> Option<StateEcho> {
     let headings: BTreeSet<String> = state_update_headings()
         .into_iter()
         .flat_map(|heading| SYSTEM_PREFIXES.map(|prefix| format!("{prefix}{heading}")))
@@ -189,21 +190,33 @@ pub fn strip_state_echo(display: &str, tree: &BTreeMap<String, StateNode>) -> Op
     if in_code_block(display, start) {
         return None;
     }
-    let mut paths = BTreeSet::new();
+    let mut paths = BTreeMap::new();
     collect_leaf_paths(tree, &mut Vec::new(), &mut paths);
-    let mut body = display[start..]
+    let mut lines = Vec::new();
+    for line in display[start..]
         .lines()
         .skip(1)
-        .filter(|line| !line.trim().is_empty());
-    let is_path_line = |line: &str| {
-        line.find(['：', ':'])
-            .is_some_and(|at| paths.contains(line[..at].trim()))
-    };
-    let first = body.next()?;
-    if !is_path_line(first) || !body.all(is_path_line) {
+        .filter(|line| !line.trim().is_empty())
+    {
+        let at = line.find(['：', ':'])?;
+        let path = paths.get(line[..at].trim())?;
+        let colon = line[at..].chars().next().map_or(1, char::len_utf8);
+        lines.push((path.clone(), line[at + colon..].trim().to_owned()));
+    }
+    if lines.is_empty() {
         return None;
     }
-    Some(display[..start].trim_end().to_owned())
+    Some(StateEcho {
+        text: display[..start].trim_end().to_owned(),
+        lines,
+    })
+}
+
+/// `strip_state_echo` 的結果：剝完的正文與照抄的每一行（路徑分段、值）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StateEcho {
+    pub text: String,
+    pub lines: Vec<(Vec<String>, String)>,
 }
 
 /// GM 送模型的旁白標籤（新「GM：」與舊「（旁白）」，中英；英文帶不帶空白都認，後面的空白一起剝）。
@@ -236,13 +249,13 @@ fn in_code_block(text: &str, at: usize) -> bool {
 fn collect_leaf_paths(
     tree: &BTreeMap<String, StateNode>,
     path: &mut Vec<String>,
-    paths: &mut BTreeSet<String>,
+    paths: &mut BTreeMap<String, Vec<String>>,
 ) {
     for (key, node) in tree {
         path.push(key.clone());
         match node {
             StateNode::Leaf(_) => {
-                paths.insert(path.join("."));
+                paths.insert(path.join("."), path.clone());
             }
             StateNode::Branch(children) => collect_leaf_paths(children, path, paths),
         }

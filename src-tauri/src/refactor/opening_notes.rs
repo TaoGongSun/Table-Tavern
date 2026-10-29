@@ -197,8 +197,66 @@ pub(super) fn field_notes(state: &WorldState, texts: &[String]) -> BTreeMap<Stri
                 None => log::debug!("狀態欄模板格子 {} 對不上狀態，不記註記", segments.join(".")),
             }
         }
+        rule_notes(text, &known, &mut notes);
     }
     notes
+}
+
+/// 規則句併進註記最多幾個字。
+const RULE_LIMIT: usize = 80;
+
+/// 模板外、行首就是欄位名的條列規則句（「- 行动选项生成4个，…每个选项30字以内」）併進那一欄的註記
+/// （playdata-loss-fixes U7）。行首取最長的欄位名，要能唯一對到狀態裡的一段路徑（取到那一段為止）；帶「格式」的是重印格式的要求，
+/// 不收；整份狀態都在它底下的外層不算。只收條列，不帶整段模板，免得模型照模板重印。
+fn rule_notes(text: &str, known: &BTreeMap<String, String>, notes: &mut BTreeMap<String, String>) {
+    let template = template_body(text);
+    let outside = text.replacen(template, "", 1);
+    for line in outside.lines() {
+        let Some(rule) = line.trim().strip_prefix('-').map(str::trim) else {
+            continue;
+        };
+        if rule.contains("格式") {
+            continue;
+        }
+        // 行首對得上的欄位名取最長的（「行动选项」不算成「行动」）
+        let folded_rule = data::fold_glyphs(rule);
+        let mut longest = 0;
+        let mut targets = BTreeSet::new();
+        for path in known.values() {
+            let segments: Vec<&str> = path.split('.').collect();
+            for (index, segment) in segments.iter().enumerate() {
+                let name = data::fold_glyphs(segment);
+                let length = name.chars().count();
+                if length < 2 || length < longest || !folded_rule.starts_with(name.as_ref()) {
+                    continue;
+                }
+                if length > longest {
+                    longest = length;
+                    targets.clear();
+                }
+                targets.insert(segments[..=index].join("."));
+            }
+        }
+        // 整份狀態都在它底下的外層（「状态栏数据用于…」）不算欄位
+        let wraps_all = |target: &str| {
+            known.len() > 1
+                && known
+                    .values()
+                    .all(|path| path == target || path.starts_with(&format!("{target}.")))
+        };
+        let mut targets = targets.into_iter().filter(|target| !wraps_all(target));
+        let (Some(target), None) = (targets.next(), targets.next()) else {
+            continue;
+        };
+        let rule: String = rule.chars().take(RULE_LIMIT).collect();
+        notes
+            .entry(target)
+            .and_modify(|note| {
+                note.push('；');
+                note.push_str(&rule);
+            })
+            .or_insert(rule);
+    }
 }
 
 #[cfg(test)]

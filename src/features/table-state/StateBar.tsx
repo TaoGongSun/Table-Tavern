@@ -23,10 +23,13 @@ function isCollection(node: Record<string, StateNode>): boolean {
   return Object.values(node).some((child) => typeof child === "object" && child !== null && ORDER_KEY in child);
 }
 
-/** 分支底下照顯示順序的子節點：集合項目照 `_序`，順序葉子本身不顯示 */
+/** app 自管的一次性旗標分支（後端 `mechanism/triggers.rs` 的 `ONCE_BRANCH`）：不顯示 */
+const ONCE_BRANCH = "_once";
+
+/** 分支底下照顯示順序的子節點：集合項目照 `_序`，順序葉子與一次性旗標分支本身不顯示 */
 function branchEntries(node: Record<string, StateNode>): [string, StateNode][] {
   if (isCollection(node)) return orderedItemKeys(node).map((key) => [key, node[key]]);
-  return Object.entries(node).filter(([key]) => key !== ORDER_KEY);
+  return Object.entries(node).filter(([key]) => key !== ORDER_KEY && key !== ONCE_BRANCH);
 }
 
 // 值裡的字面 {{user}} 只在顯示時換成玩家名（模型上下文與存檔仍是原文，後端注入前才代換）；

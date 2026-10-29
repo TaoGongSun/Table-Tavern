@@ -159,6 +159,43 @@ fn inserting_a_glyph_variant_of_an_existing_name_replaces_it_and_keeps_its_place
     assert_eq!(node(&tree, "在場人物.林远.身份"), Some(json!("驿丞")));
 }
 
+/// 既有項目整項寫入（insert 與整份換）只帶部分欄位：沒帶的沿用舊值、不記缺欄位（playdata-loss-fixes #10）。
+#[test]
+fn rewriting_an_existing_item_keeps_the_fields_it_left_out() {
+    let mut tree = start();
+    let outcome = apply_updates(
+        &mut tree,
+        &mechanism(),
+        &[
+            patch(
+                PatchOp::Insert,
+                "在場人物/林遠",
+                Some(json!({ "行动": "看账" })),
+            ),
+            patch(
+                PatchOp::Replace,
+                "在場人物",
+                Some(json!({ "贺铮": { "体力": 60 }, "林远": { "身份": "驿丞" } })),
+            ),
+        ],
+    );
+    assert_eq!(
+        node(&tree, "在場人物.林远"),
+        Some(json!({ "_序": "1", "身份": "驿丞", "行动": "看账", "体力": "55" }))
+    );
+    assert_eq!(
+        node(&tree, "在場人物.贺铮"),
+        Some(json!({ "_序": "0", "身份": "老驿长", "行动": "抽烟斗", "体力": "60" }))
+    );
+    assert!(
+        !rejected(&outcome)
+            .iter()
+            .any(|note| note.contains("缺欄位")),
+        "{:?}",
+        outcome.records
+    );
+}
+
 #[test]
 fn whole_replace_renumbers_in_json_order_and_strings_are_refused() {
     let mut tree = start();

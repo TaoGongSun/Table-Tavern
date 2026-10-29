@@ -392,22 +392,41 @@ struct GmReplyParts {
     display: String,
     /// 正文與原文不同時存原文（卡片介面重畫、回溯用）
     raw: Option<String>,
+    /// 正文剝掉、提交後要核對有沒有收進狀態的格子（照抄段的新值；退場桌另加本回合沒正式回報的卡片狀態欄格子）
+    pending: Vec<mechanism::Cell>,
+    /// 照抄段新值合成的更新區塊（已併進 `block.updates`）；zod 桌接在送引擎的回覆後面
+    echo_patch: Option<String>,
 }
 
 /// 剝狀態區塊→剝點名行→剝尾端照抄的狀態變動段→剝開頭照抄的旁白標籤（只動顯示；raw 與 `block` 都來自原文）。
 fn gm_reply_parts(
     reply: &str,
     tree: &std::collections::BTreeMap<String, data::StateNode>,
+    retired: bool,
 ) -> GmReplyParts {
-    let block = transport::extract_state_block(reply);
+    let mut block = transport::extract_state_block(reply);
     let (next_raw, display) = transport::extract_next_speaker(&block.display);
-    let display = transport::strip_state_echo(&display, tree).unwrap_or(display);
+    let (display, echo_lines) = match transport::strip_state_echo(&display, tree) {
+        Some(echo) => (echo.text, echo.lines),
+        None => (display, Vec::new()),
+    };
+    // 照抄段裡本回合沒報的新值走各桌的提交路徑補收（playdata-loss-fixes 11a）
+    let (mut pending, echo_patch) = mechanism::echo_patch(&echo_lines, &block, tree);
+    if let Some(patch) = &echo_patch {
+        block.updates.push(patch.clone());
+    }
+    // 退場桌照舊印的卡片狀態欄：正文剝掉，提交後沒收進樹的格子留進狀態更新事件（playdata-loss-fixes D1）
+    if retired {
+        pending.extend(mechanism::retired_card_pending(&block, tree));
+    }
     let display = transport::strip_narrator_label(&display).unwrap_or(display);
     let raw = (reply != display).then(|| reply.to_owned());
     GmReplyParts {
         block,
         next_raw,
         display,
+        pending,
+        echo_patch,
         raw,
     }
 }
@@ -639,7 +658,13 @@ pub(crate) async fn gm_narrate(
         next_raw,
         display,
         raw,
-    } = gm_reply_parts(&reply, &materials.state.state.tree);
+        pending,
+        echo_patch,
+    } = gm_reply_parts(
+        &reply,
+        &materials.state.state.tree,
+        materials.state.statusbar_retired && !materials.takeover,
+    );
     // 剝掉 state／next 控制欄後沒有正文＝這一輪沒東西寫進故事。必須擋在下面的
     // apply_block 之前：狀態套用只要 incremental 為真就必跑，失敗回合會白白重擲一輪骰
     // （stream-failure-visible）。CLI 那條路沒有 stream_chat 的收工判定，這裡是唯一防線。
@@ -662,16 +687,17 @@ pub(crate) async fn gm_narrate(
         if outcome.is_none() {
             return Vec::new();
         }
-        state_updates = transport::snapshot_updates(&state.state, &state.mechanism, user_name)
-            .into_iter()
-            .map(|(path, value)| StateUpdate { path, value })
-            .collect();
+        state_updates = state_update_lines(state, user_name, &pending);
         state_update_side(&state_updates).into_iter().collect()
     };
     // zod 卡（mvu-zod-semantics）：卡片 schema 與共用 MVU 核心在隔離引擎裡跑，三段提交見 mvu_engine::wiring
     let committed = match crate::mvu_engine::wiring::zod_table(&root, &world_id) {
         Some(zod) => {
-            turn.commit_engine(zod, main, &reply, &block, user_name, sides)
+            let engine_reply = match &echo_patch {
+                Some(patch) => format!("{reply}\n<UpdateVariable>{patch}</UpdateVariable>"),
+                None => reply.clone(),
+            };
+            turn.commit_engine(zod, main, &engine_reply, &block, user_name, sides)
                 .await
         }
         None => turn.commit(
@@ -796,6 +822,19 @@ struct TurnGuard {
 }
 
 /// 變動紀錄（與前端落的那則同一個寫法）；沒有變動就沒有這一部分。
+/// 這回合要記進狀態更新事件的行：長文字欄的新值，加上正文剝掉、提交後仍沒收進狀態的格子（整值）。
+fn state_update_lines(
+    state: &data::WorldState,
+    user_name: &str,
+    pending: &[mechanism::Cell],
+) -> Vec<StateUpdate> {
+    transport::snapshot_updates(&state.state, &state.mechanism, user_name)
+        .into_iter()
+        .chain(mechanism::unapplied(state, pending))
+        .map(|(path, value)| StateUpdate { path, value })
+        .collect()
+}
+
 fn state_update_side(updates: &[StateUpdate]) -> Option<data::message_vars::TurnSide> {
     if updates.is_empty() {
         return None;
@@ -1106,7 +1145,7 @@ mod tests {
             data::StateNode::Leaf("2".to_owned()),
         )]);
         let reply = "托倫點頭。\n\n（系統）狀態更新\n驻守天数：3\n\n```state\nplace: 作戰室\n```\n\n<UpdateVariable>\n<JSONPatch>\n[{\"op\":\"delta\",\"path\":\"/驻守天数\",\"value\":1}]\n</JSONPatch>\n</UpdateVariable>\n\n下一位：托伦";
-        let parts = gm_reply_parts(reply, &tree);
+        let parts = gm_reply_parts(reply, &tree, false);
         assert_eq!(parts.display, "托倫點頭。");
         assert_eq!(parts.raw.as_deref(), Some(reply));
         assert_eq!(parts.next_raw.as_deref(), Some("托伦"));
@@ -1117,9 +1156,126 @@ mod tests {
             .iter()
             .any(|(path, value)| path == &["place".to_owned()] && value == "作戰室"));
         // 不是照抄段（路徑認不得）就整段留在正文
-        let kept = gm_reply_parts("托倫點頭。\n\n（系統）狀態更新\n好感度：5", &tree);
+        let kept = gm_reply_parts("托倫點頭。\n\n（系統）狀態更新\n好感度：5", &tree, false);
         assert_eq!(kept.display, "托倫點頭。\n\n（系統）狀態更新\n好感度：5");
         assert_eq!(kept.raw, None);
+    }
+
+    /// playdata-loss-fixes 11a：照抄段裡本回合沒報的新值，合成更新區塊走一般桌與接管桌真正的提交路徑收進樹；
+    /// 本回合有 delta 的路徑不合成（不重算）；收不進去的值列給狀態更新事件。
+    #[test]
+    fn echoed_new_values_are_committed_on_plain_and_takeover_tables() {
+        for takeover in [false, true] {
+            let mut state: data::WorldState = serde_json::from_value(serde_json::json!({
+                "id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                "name": "照抄桌",
+                "current_scene": 0
+            }))
+            .unwrap();
+            for (key, value) in [("驻守天数", "2"), ("心情", "平静"), ("好感", "10")] {
+                data::set_tree_value(&mut state.state.tree, &[key.to_owned()], value);
+            }
+            state.mechanism.incremental = true;
+            let tree = state.state.tree.clone();
+            let reply = "托倫點頭。\n\n<UpdateVariable>\n<JSONPatch>\n[{\"op\":\"delta\",\"path\":\"/好感\",\"value\":5}]\n</JSONPatch>\n</UpdateVariable>\n\n（系統）狀態更新\n驻守天数：3\n心情：平静\n好感：15";
+            let parts = gm_reply_parts(reply, &tree, false);
+            assert_eq!(parts.display, "托倫點頭。");
+            assert_eq!(
+                parts.pending,
+                vec![(vec!["驻守天数".to_owned()], "3".to_owned())]
+            );
+            let loaded = state.mechanism.clone();
+            super::gm_commit_apply(
+                &mut state,
+                None,
+                &parts.block,
+                "玩家",
+                &loaded,
+                takeover,
+                false,
+            );
+            let at = |key: &str| data::node_at(&state.state.tree, &[key.to_owned()]).cloned();
+            assert_eq!(
+                at("驻守天数"),
+                Some(data::StateNode::Leaf("3".to_owned())),
+                "{takeover}"
+            );
+            assert_eq!(
+                at("好感"),
+                Some(data::StateNode::Leaf("15".to_owned())),
+                "delta 不重算"
+            );
+            assert!(crate::mechanism::unapplied(&state, &parts.pending).is_empty());
+            // 樹上沒有的路徑收不進去 → 列給狀態更新事件
+            let missing = vec![(vec!["軍糧".to_owned()], "三百石".to_owned())];
+            assert_eq!(
+                crate::mechanism::unapplied(&state, &missing),
+                vec![("軍糧".to_owned(), "三百石".to_owned())]
+            );
+        }
+    }
+
+    fn leftover_world(retired: bool, cells: &[(&str, &str)]) -> data::WorldState {
+        let mut state: data::WorldState = serde_json::from_value(serde_json::json!({
+            "id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            "name": "照抄桌",
+            "current_scene": 0
+        }))
+        .unwrap();
+        for (path, value) in cells {
+            let path: Vec<String> = path.split('.').map(str::to_owned).collect();
+            data::set_tree_value(&mut state.state.tree, &path, value);
+        }
+        state.mechanism.incremental = true;
+        state.statusbar_retired = retired;
+        state.refactor_mode = retired.then(|| "characters".to_owned());
+        state
+    }
+
+    /// 拆回覆 → 提交 → 狀態更新事件的行，同 gm_narrate 的接線。
+    fn run_turn(state: &mut data::WorldState, reply: &str) -> Vec<(String, String)> {
+        let tree = state.state.tree.clone();
+        let parts = gm_reply_parts(reply, &tree, state.statusbar_retired);
+        let loaded = state.mechanism.clone();
+        super::gm_commit_apply(state, None, &parts.block, "玩家", &loaded, false, false);
+        super::state_update_lines(state, "玩家", &parts.pending)
+            .into_iter()
+            .map(|update| (update.path, update.value))
+            .collect()
+    }
+
+    fn leaf_of(state: &data::WorldState, path: &str) -> Option<String> {
+        let path: Vec<String> = path.split('.').map(str::to_owned).collect();
+        match data::node_at(&state.state.tree, &path) {
+            Some(data::StateNode::Leaf(value)) => Some(value.clone()),
+            _ => None,
+        }
+    }
+
+    /// Sol 驗收 1：GM 用繁體別名 delta、照抄段寫簡體新值，或整項更新父路徑：照抄段不再補收，數值不算兩次。
+    #[test]
+    fn echoes_of_alias_or_parent_reports_are_not_counted_twice() {
+        let mut state = leftover_world(false, &[("体力", "10"), ("人物.林遠.心情", "平静")]);
+        let lines = run_turn(
+            &mut state,
+            "林遠喘口氣。\n<UpdateVariable><JSONPatch>[{\"op\":\"delta\",\"path\":\"/體力\",\"value\":5},{\"op\":\"replace\",\"path\":\"/人物/林遠\",\"value\":{\"心情\":\"愉快\"}}]</JSONPatch></UpdateVariable>\n\n（系統）狀態更新\n体力：15\n人物.林遠.心情：愉快",
+        );
+        assert_eq!(leaf_of(&state, "体力").as_deref(), Some("15"));
+        assert_eq!(leaf_of(&state, "人物.林遠.心情").as_deref(), Some("愉快"));
+        assert!(lines.iter().all(|(path, _)| path != "体力"), "{lines:?}");
+    }
+
+    /// Sol 驗收 3：退場桌卡片寫舊值、GM 本回合正式更新同一格：以正式更新為準，舊卡片值不追加進狀態更新；
+    /// 真的沒收的格子（樹上沒有）整值追加。
+    #[test]
+    fn card_values_superseded_by_formal_reports_are_not_appended() {
+        let mut state = leftover_world(true, &[("体力", "10")]);
+        let lines = run_turn(
+            &mut state,
+            "林遠喘口氣。\n<details><summary>状态栏</summary>\n体力: 10\n军需: 三百石\n</details>\n<UpdateVariable><JSONPatch>[{\"op\":\"delta\",\"path\":\"/体力\",\"value\":5}]</JSONPatch></UpdateVariable>",
+        );
+        assert_eq!(leaf_of(&state, "体力").as_deref(), Some("15"));
+        assert_eq!(lines, vec![("军需".to_owned(), "三百石".to_owned())]);
     }
 
     /// narrator-prefix-echo：開頭照抄的旁白標籤只從落檔正文剝，raw、機制輸入與點名照原文；剝完沒正文由 gm_narrate 擋
@@ -1127,7 +1283,7 @@ mod tests {
     fn gm_reply_parts_strip_narrator_label_from_text_only() {
         let tree = std::collections::BTreeMap::new();
         let reply = "（旁白）（旁白）夜更深了。\n\n```state\nplace: 酒館\n```\n\n下一位：狐狸";
-        let parts = gm_reply_parts(reply, &tree);
+        let parts = gm_reply_parts(reply, &tree, false);
         assert_eq!(parts.display, "夜更深了。");
         assert_eq!(parts.raw.as_deref(), Some(reply));
         assert_eq!(parts.next_raw.as_deref(), Some("狐狸"));
@@ -1136,9 +1292,9 @@ mod tests {
             .fields
             .iter()
             .any(|(path, value)| path == &["place".to_owned()] && value == "酒館"));
-        let empty = gm_reply_parts("GM：\n```state\nplace: 酒館\n```", &tree);
+        let empty = gm_reply_parts("GM：\n```state\nplace: 酒館\n```", &tree, false);
         assert!(empty.display.trim().is_empty());
-        let middle = gm_reply_parts("夜更深了。\n\n（旁白）風停了。", &tree);
+        let middle = gm_reply_parts("夜更深了。\n\n（旁白）風停了。", &tree, false);
         assert_eq!(middle.display, "夜更深了。\n\n（旁白）風停了。");
         assert_eq!(middle.raw, None);
         assert_eq!(aborted_narration("（旁白）夜更深").text, "夜更深");

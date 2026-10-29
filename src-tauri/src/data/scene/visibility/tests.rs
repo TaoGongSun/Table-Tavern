@@ -16,6 +16,10 @@ impl Table {
     fn new(label: &str, names: &[&str]) -> Self {
         let root = TestRoot::new(label);
         let world = create_world(root.path(), "桌").unwrap();
+        // 換幕結算只在重構過的桌跑（playdata-loss-fixes D4）
+        let mut state = read_state(root.path(), &world).unwrap();
+        state.refactor_mode = Some("characters".to_owned());
+        write_state(root.path(), &world, &state).unwrap();
         let mut table = Self {
             root,
             world,

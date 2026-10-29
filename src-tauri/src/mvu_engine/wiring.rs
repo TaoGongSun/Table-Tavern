@@ -59,12 +59,30 @@ pub fn zod_table_checked(root: &Path, world_id: &str) -> DataResult<Option<ZodTa
     let Some((char_name, zod)) = cards.next() else {
         return Ok(None);
     };
+    let mut initvars = zod.initvars;
+    for text in worldbook_initvars(root, world_id) {
+        if !initvars.contains(&text) {
+            initvars.push(text);
+        }
+    }
     Ok(Some(ZodTable {
         schema: Arc::new(SchemaScript::new(zod.source)),
-        initvars: zod.initvars,
+        initvars,
         char_name,
         skipped: cards.map(|(name, _)| name).collect(),
     }))
+}
+
+/// 桌世界書裡標題含 `[initvar]` 的條目內文（剝 `@@` 裝飾，停用的照收，同上游 initCheck 收所有世界書的 initvar）：
+/// 另外匯入的世界書帶的 initvar 才不會在 zod 桌上不存在（playdata-loss-fixes D6）。卡內角色書匯入時也進了桌世界書，
+/// 呼叫端用內文去重。讀不到世界書就當沒有。
+fn worldbook_initvars(root: &Path, world_id: &str) -> Vec<String> {
+    data::read_worldbook(root, world_id)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|entry| entry.title.to_lowercase().contains("[initvar]"))
+        .map(|entry| crate::world_info::entry::parse_decorators(&entry.content).1)
+        .collect()
 }
 
 /// 卡片前端自己呼叫 `Mvu.parseMessage`（card-shim-no-zod）：zod 桌交同一台引擎只算不寫，回結果表的 JSON 文字
@@ -169,13 +187,14 @@ pub(super) fn seed(
     world_id: &str,
     zod: &ZodTable,
     macros: &Macros,
-    opening: &str,
+    opening: impl FnOnce() -> String,
     deadline: Instant,
     records: &mut Vec<Record>,
 ) -> DataResult<Seeded> {
     if !with_commit(root, world_id, message_vars::needs_seed)? {
         return Ok(Seeded::NotNeeded);
     }
+    let opening = opening();
     for name in &zod.skipped {
         records.push(engine_notice(
             name,
@@ -203,7 +222,7 @@ pub(super) fn seed(
         world_id,
         &zod.schema,
         base,
-        opening,
+        &opening,
         &engine_macros(macros, zod),
         deadline,
     ) {
@@ -420,7 +439,10 @@ pub(super) fn prepare_turn(
     deadline: Instant,
 ) -> DataResult<Option<(Option<Json>, EngineRun)>> {
     let mut records = Vec::new();
-    let seeded = match seed(root, world_id, zod, macros, "", deadline, &mut records)? {
+    // 開場白當下引擎失敗、這一幕還沒啟用：補建種子時帶這一幕開場白原文，它的 `<initvar>` 才不會永久沒套上
+    // （playdata-loss-fixes 11b）。只在真的要建種子時才讀逐字稿。
+    let opening = || scene_opening(root, world_id);
+    let seeded = match seed(root, world_id, zod, macros, opening, deadline, &mut records)? {
         Seeded::Failed(message) => {
             let world = data::read_state(root, world_id)?;
             return Ok(Some((None, failed_run(world, user_name, records, message))));
@@ -438,6 +460,19 @@ pub(super) fn prepare_turn(
         root, world_id, zod, &input, text, block, user_name, macros, deadline, records,
     )?;
     Ok(Some((Some(input), run)))
+}
+
+/// 這一幕開場白的原文（有剝過東西時存在 `raw`）；沒有開場白或讀不到回空字串。
+fn scene_opening(root: &Path, world_id: &str) -> String {
+    let Ok(state) = data::read_state(root, world_id) else {
+        return String::new();
+    };
+    data::read_transcript(root, world_id, state.current_scene)
+        .unwrap_or_default()
+        .into_iter()
+        .find(|event| event.opening)
+        .map(|event| event.raw.unwrap_or(event.text))
+        .unwrap_or_default()
 }
 
 /// 這桌目前生效的 schema 憑證（雜湊）；不再是 zod 桌回 None
@@ -507,7 +542,15 @@ pub fn prepare_opening(
         char: None,
     };
     let mut records = Vec::new();
-    let seeded = match seed(root, world_id, &zod, &macros, raw, deadline, &mut records)? {
+    let seeded = match seed(
+        root,
+        world_id,
+        &zod,
+        &macros,
+        || raw.to_owned(),
+        deadline,
+        &mut records,
+    )? {
         Seeded::Failed(message) => {
             let (world, generation) = with_commit(root, world_id, |tx| -> DataResult<_> {
                 message_vars::settle_before_append(tx, None)?;

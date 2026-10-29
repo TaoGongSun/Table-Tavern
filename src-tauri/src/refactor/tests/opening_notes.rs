@@ -64,6 +64,16 @@ fn field_notes_and_time_cells_come_from_the_template() {
     assert_eq!(notes[&format!("{PEOPLE}.*.体力")], "0-100 的数值与简述");
     assert_eq!(notes[&format!("{PEOPLE}.*.行动")], "当前在做什么");
     assert_eq!(notes["状态栏.驿站物资.粮草"], "剩余石数");
+    // 模板外以欄位名開頭的條列規則句併進該欄註記；帶「格式」的、整份外層（状态栏）的不收（U7）
+    assert_eq!(
+        notes.get("状态栏.行动选项").unwrap_or_else(|| panic!("{notes:?}")),
+        "行动选项生成4个，必须从<user>角度出发，风格依次为:稳妥选项/调查选项/冒险选项/交际选项，每个选项30字以内。"
+    );
+    assert!(!notes.contains_key("状态栏"), "{notes:?}");
+    assert!(
+        notes.values().all(|note| !note.contains("emoji")),
+        "{notes:?}"
+    );
     assert!(!notes
         .keys()
         .any(|key| key.contains("名字") && key.starts_with(PEOPLE)));

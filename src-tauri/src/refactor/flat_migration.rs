@@ -5,7 +5,8 @@
 //! - 對到唯一一片葉子＝已取代：刪平欄那份。前三層命中、本次樹非權威、兩邊都是不帶模板的明確數字（純數字或
 //!   `現值/上限`）、平欄值合該欄數字規則時，採平欄的開場數字；其餘一律留產物值。帶模板的（`第 N 天`）不採：
 //!   介面產物把模板跟數字寫在同一個字串裡，換數字也還是 delta 不了，殼又直接讀樹值，不能改存數字＋模板。
-//! - 衝突（對到分支、同層多個候選、多個平欄鍵收到同一片葉子）：刪平欄、不寫值，只記 log。
+//! - 衝突（對到分支、同層多個候選、多個平欄鍵收到同一片葉子）與只對到末段：值跟對到的葉子不同就搬成頂層葉子
+//!   （原鍵被佔用改用「鍵（開場）」）並補每輪文字規則，不丟玩家的值（playdata-loss-fixes D5）；相同才只刪平欄。
 //! - 未收編（哪層都對不到）：搬成樹的頂層葉子並補每輪送的文字規則。
 //! - 圍欄還在用的桌（沒有接管殼）：圍欄的單段鍵只會轉寫到同名或只差字形的頂層葉子，其餘寫回平欄。所以只遷移
 //!   精確／字形命中與未收編；「/」前段、末段與衝突照舊留平欄，免得刪掉後下一輪圍欄又寫回來。
@@ -91,34 +92,58 @@ pub(super) fn migrate_flat_table(
         match fate {
             Fate::Replaced { path, layer } => {
                 if layer == Layer::Tail {
-                    log::warn!(
-                        "重構套用：平欄 {key} 只對到同名末段 {}，平欄值「{value}」不寫進樹",
-                        path.join(".")
-                    );
+                    park(state, &key, &value, &[path.join(".")]);
                 } else if !tree_authoritative {
                     adopt_number(state, &path, &value);
                 }
             }
-            Fate::Conflict { targets } => {
-                log::warn!(
-                    "重構套用：平欄 {key} 對到 {}，分不出是哪一欄，平欄值「{value}」不寫進樹",
-                    targets.join("、")
-                );
-            }
-            Fate::Unabsorbed => {
-                let segments = vec![key.clone()];
-                data::set_tree_value(&mut state.state.tree, &segments, &value);
-                if !mechanism::has_rule(&state.mechanism, &segments) {
-                    state
-                        .mechanism
-                        .rules
-                        .insert(key.clone(), turn_rule(FieldKind::Text));
-                }
-            }
+            Fate::Conflict { targets } => park(state, &key, &value, &targets),
+            Fate::Unabsorbed => top_leaf(state, &key, &value),
         }
         moved.push(key);
     }
     moved
+}
+
+/// 平欄值搬成頂層葉子並補每輪文字規則。
+fn top_leaf(state: &mut WorldState, key: &str, value: &str) {
+    let segments = vec![key.to_owned()];
+    data::set_tree_value(&mut state.state.tree, &segments, value);
+    if !mechanism::has_rule(&state.mechanism, &segments) {
+        state
+            .mechanism
+            .rules
+            .insert(key.to_owned(), turn_rule(FieldKind::Text));
+    }
+}
+
+/// 衝突或只對到末段的平欄值：跟對到的某片葉子值相同＝樹上已有，只刪平欄；否則搬成頂層葉子。原鍵（或只差字形的鍵）
+/// 已在樹頂層就改用「鍵（開場）」，也被佔用才放棄並記 log。
+fn park(state: &mut WorldState, key: &str, value: &str, targets: &[String]) {
+    let same = targets.iter().any(|target| {
+        let path: Vec<String> = target.split('.').map(str::to_owned).collect();
+        matches!(data::node_at(&state.state.tree, &path), Some(StateNode::Leaf(leaf)) if leaf.trim() == value.trim())
+    });
+    if same {
+        return;
+    }
+    let free = |name: &str| {
+        !state
+            .state
+            .tree
+            .keys()
+            .any(|existing| existing == name || data::glyph_equal(existing, name))
+    };
+    let name = [key.to_owned(), format!("{key}（開場）")]
+        .into_iter()
+        .find(|name| free(name));
+    match name {
+        Some(name) => top_leaf(state, &name, value),
+        None => log::warn!(
+            "重構套用：平欄 {key} 對到 {}，頂層也沒有空鍵，平欄值「{value}」不寫進樹",
+            targets.join("、")
+        ),
+    }
 }
 
 /// 本次寫入接管殼時清掉平欄 time／place／present：接管回覆不收圍欄，留著就凍在開場值，在場判定

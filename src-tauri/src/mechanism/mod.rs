@@ -8,6 +8,7 @@ mod collection;
 mod derive;
 pub mod engine_records;
 mod ledger;
+mod leftovers;
 mod mirror;
 mod note;
 mod parse;
@@ -47,6 +48,7 @@ mod test_support;
 #[cfg(test)]
 pub use ledger::apply_block;
 pub use ledger::{append_log, apply_block_typed, read_ledger, BlockScope, Ledger};
+pub use leftovers::{card_block_cells, echo_patch, retired_card_pending, unapplied, Cell};
 pub use mirror::{adopt_mirror_marks, mark_survey_mirrors, sync_mirrors_from_edit};
 pub use policy::{mvu_source, resolve_numeric_update};
 pub use rules::{has_rule, leaf_shown, rule_for_path};

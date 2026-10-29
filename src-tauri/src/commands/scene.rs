@@ -124,7 +124,7 @@ pub(crate) async fn post_opening(
             )?;
             (
                 if translated == Some(true) {
-                    text
+                    crate::world_scan::opening::with_original_initvar(&text, &evaluated)
                 } else {
                     evaluated
                 },
