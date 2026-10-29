@@ -13,10 +13,11 @@ claude 以外的四條路（api／codex／agy／grok）每換一個角色就整�
 - **CLI 側角色辨識實跑通過**：codex／agy／grok 三家的串角與私設洩漏都乾淨，三家都是「用了私設卻不說破」。同批輸出驗到包 A 的解析器在真實資料上正確。
 - 自驗：cargo 518／vitest 157／build／i18n 全綠，clippy 32（與改動前一致）。
 - **包 C 降為條件觸發**，延後。
+- **API 路徑角色辨識實機過**（2026-10-29 測試通道，OpenRouter `nvidia/nemotron-3-ultra-550b-a55b:free`，迷霧酒館 3 角色 7 通）：錯認前言者、串角、跨角色私設洩漏皆 0/7，三通專門誘發錯認（「接著說」、問誰說的、誘導「你是不是說過」）都答對歸屬；role 維持「全部台詞 assistant＋名字前綴」，不啟用全 user fallback〔模型判斷·未裁決〕。細節見[實測佇列](../reference/verification-queue.md)第 14 項。
 
 ## Next action
 
-API 路徑的實機 runtime 驗收（要使用者在電腦前）：錯認前言者（只有 API 測得到，CLI 攤平後 role 就消失）＋共線兩路（api、codex）快取成對測試（同角色／換角色 × 冷／暖），記絕對 cached tokens，codex 要先扣掉 CLI 自帶底線（0.164.0 起是 11,008）。
+只剩 api 路徑的快取成對測試（同角色／換角色 × 冷／暖，記絕對 cached tokens）：免費模型量不到——nemotron 免費端點 7 通都報 cached 0，連同角色連續兩通也是 0，分不出沒快取還是沒命中。要用會回報快取的付費模型再測。codex 那路已在實測佇列第 14 項記過（底線 11,008）。
 
 ## Constraints
 
