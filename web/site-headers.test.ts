@@ -5,7 +5,7 @@ import { readZodFrame, siteHeaders, zodFrameCsp } from "./site-headers";
 import { headersFor, parseHeadersFile } from "./e2e/static-server.mjs";
 
 const PROD_CSP =
-  "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; " +
+  "default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data:; font-src 'self'; " +
   "connect-src https://openrouter.ai https://api.github.com; frame-src 'self'; frame-ancestors 'none'; " +
   "object-src 'none'; base-uri 'none'; form-action 'none'";
 const SANDBOX = "frame-ancestors 'self'";

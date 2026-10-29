@@ -10,7 +10,7 @@ it("sanitizer config strips handlers, non-allowlisted tags and script URIs on it
       '<a href="https://e.com">連結</a><svg><script>alert(1)</script></svg><iframe src="https://e.com"></iframe>',
   );
 
-  expect(html).toBe("<p>字</p>a連結");
+  expect(html).toBe('<p style="color: red">字</p>a連結');
 });
 
 it("story renderer hooks behave the same in the real engine", () => {
@@ -58,4 +58,26 @@ it("structure probes leave no dangerous elements in the real engine", () => {
   const box = document.createElement("div");
   box.innerHTML = renderStoryMarkdown("&#xE000;tt-story-end&#xE001;<script>後文");
   expect(box.textContent).toContain("後文");
+});
+
+it("inline style colors apply and nested font sizes stay within 8–32px", () => {
+  const box = document.createElement("div");
+  box.style.fontSize = "16px";
+  document.body.append(box);
+  const nested = (style: string) => `${`<span style="${style}">`.repeat(5)}字${"</span>".repeat(5)}`;
+  const innermost = (style: string) => {
+    box.innerHTML = renderStoryMarkdown(nested(style));
+    const spans = box.querySelectorAll("span");
+    return getComputedStyle(spans[spans.length - 1]).fontSize;
+  };
+  for (const style of ["font-size:2em", "font-size:200%", "font-size:larger", "font-size:100px"]) {
+    expect(innermost(style), style).toBe("32px");
+  }
+  for (const style of ["font-size:0.5em", "font-size:50%", "font-size:smaller", "font-size:1px"]) {
+    expect(innermost(style), style).toBe("8px");
+  }
+  box.innerHTML = renderStoryMarkdown('<span style="color:red;background-color:rgba(0,0,0,.5)">字</span>');
+  const span = getComputedStyle(box.querySelector("span")!);
+  expect([span.color, span.backgroundColor]).toEqual(["rgb(255, 0, 0)", "rgba(0, 0, 0, 0.5)"]);
+  box.remove();
 });

@@ -1,10 +1,11 @@
 import DOMPurify, { type DOMPurify as Purifier } from "dompurify";
 import { Marked, type Tokens } from "marked";
 import { prepareRawHtml } from "./story-html-scan";
+import { sanitizeInlineStyle } from "./story-inline-style";
 
 // 訊息裡的原始 HTML 照 ST 放行再消毒（ST 是 DOMPurify 預設全清單，這裡只收排版類）：
 // 名單內照渲染，名單外剝標籤留內容（DOMPurify 的 KEEP_CONTENT），漏列只少樣式、不丟字。
-// 不收 a（連結只留文字，同 Markdown 連結）、表單、svg/math、影音、class/id/style
+// 不收 a（連結只留文字，同 Markdown 連結）、表單、svg/math、影音、class/id；style 只留字色、字型類（見 story-inline-style）
 export const STORY_MARKDOWN_ALLOWED_TAGS = [
   "em",
   "strong",
@@ -77,6 +78,7 @@ export const STORY_MARKDOWN_ALLOWED_ATTR: string[] = [
   "colspan",
   "rowspan",
   "align",
+  "style",
 ];
 
 // 圖片來源只收 http(s) 與內嵌 data:image。DOMPurify 的 ALLOWED_URI_REGEXP 對 src 攔不住
@@ -246,6 +248,11 @@ export function getStoryPurifier(): Purifier {
     if (node.nodeType === 1 && !data.allowedTags[data.tagName] && isUnknownElement(node as Element)) {
       breakLinesInUnknown(node as Element);
     }
+  });
+  purifier.addHook("uponSanitizeAttribute", (_node, data) => {
+    if (data.attrName !== "style") return;
+    data.attrValue = sanitizeInlineStyle(data.attrValue);
+    if (!data.attrValue) data.keepAttr = false;
   });
   storyPurifier = purifier;
   return purifier;

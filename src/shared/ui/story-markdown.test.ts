@@ -27,7 +27,7 @@ describe("renderStoryMarkdown", () => {
     expect(html).toContain("<li>項目</li>");
     expect(html).toContain("<code>code</code>");
     expect(STORY_MARKDOWN_ALLOWED_TAGS).toEqual(expect.arrayContaining(["em", "strong", "blockquote", "li", "code"]));
-    expect(STORY_MARKDOWN_ALLOWED_ATTR).not.toEqual(expect.arrayContaining(["href", "style", "class", "id"]));
+    expect(STORY_MARKDOWN_ALLOWED_ATTR).not.toEqual(expect.arrayContaining(["href", "class", "id"]));
   });
 
   // 卡片作者把配圖寫在開場白裡（實例：TestCards 的 furry-male-scenarios，30 個開場白共 32 張圖）
@@ -105,6 +105,17 @@ describe("raw HTML", () => {
     );
 
     expect(html).toContain('<span title="提示">s</span>');
+  });
+
+  it("keeps allowlisted inline style and drops the attribute when nothing survives", () => {
+    expect(renderStoryMarkdown('<span style="color:#c00;position:fixed;top:0">紅</span>')).toBe(
+      '<p><span style="color: #c00">紅</span></p>\n',
+    );
+    expect(renderStoryMarkdown('<span style="position:absolute;inset:0">字</span>')).toBe("<p><span>字</span></p>\n");
+    // 屬性值的實體在進掛鉤前已解碼，拼出的 url( 照樣被擋
+    expect(renderStoryMarkdown('<span style="background-color:&#x75;rl(https://e.com/x)">字</span>')).toBe(
+      "<p><span>字</span></p>\n",
+    );
   });
 
   it("keeps links as plain text whether written in markdown or raw HTML", () => {
@@ -334,7 +345,7 @@ describe("sanitizeStoryHtml", () => {
         '<a href="https://e.com">連結</a><svg><script>alert(1)</script></svg><iframe src="https://e.com"></iframe>',
     );
 
-    expect(html).toBe("<p>字</p>a連結");
+    expect(html).toBe('<p style="color: red">字</p>a連結');
   });
 
   it("keeps https images", () => {

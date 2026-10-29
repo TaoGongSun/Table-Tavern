@@ -14,6 +14,8 @@ export function hostCsp(mode: string, env: Record<string, string | undefined>): 
     "default-src 'self'",
     "script-src 'self'",
     "style-src 'self'",
+    // 訊息的行內 style 已由消毒器限成字色、字型類且不含函式（src/shared/ui/story-inline-style.ts）；<style> 元素照擋
+    "style-src-attr 'unsafe-inline'",
     // 第二層：外部圖片先在渲染時就換成替代文字（src/shared/ui/host-markdown.ts），CSP 再擋一次
     "img-src 'self' data:",
     "font-src 'self'",
