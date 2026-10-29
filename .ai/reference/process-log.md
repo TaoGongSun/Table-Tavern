@@ -8,5 +8,6 @@
 | interface-table-state-report | 2026-10-29 | 小（量測） | 0 | 0／0 | 0 | 子代理約 11 分鐘 |
 | refactor-preview-ellipsis | 2026-10-29 | 小（查因） | 0 | 0／0 | 0 | 主線數分鐘 |
 | story-html-style-attr | 2026-10-29 | 小（信任邊界，方案審） | 60–80 | 76／86 | 方案 1＋驗收 1 | 子代理約 30 分鐘 |
+| story-html-style-class | 2026-10-29 | 小（評估） | 0 | 0／0 | 0 | 子代理約 15 分鐘 |
 
 ## 觀察
