@@ -24,7 +24,7 @@ Updated: 2026-08-13T00:30:02.512381+08:00
 - v3 即時 CG：[vn-cg-generation](vn-cg-generation.md)（等實測 c 過）。
 
 ## Next action
-- 生圖管線已定案見 [vn-mode-image-spike](../plans/vn-mode-image-spike.md)（原生透明主路、CG 優先 Codex、NAI 暫不測）〔作者裁決 2026-10-27〕；VN v1 開工前先做 [vn-prestructure-split](vn-prestructure-split.md)
+- 生圖管線已定案見 [vn-mode-image-spike](../plans/vn-mode-image-spike.md)（原生透明主路、CG 優先 Codex、NAI 暫不測）〔作者裁決 2026-10-27〕；VN v1 開工前先做 [vn-prestructure-split](../handoffs/vn-prestructure-split.md)
 - 2026-08-07 討論立案完成（八項拍板＋三分期）；尚未排程，開工前置＝半天生圖實測 a／b／c 定管線，重點研究 NAI
 
 ## Constraints
