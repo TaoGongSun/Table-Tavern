@@ -25,7 +25,6 @@ fn agy_input(events: &[TranscriptEvent]) -> TurnInput<'_> {
     input
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn agy_resume_stall_is_sent_once_and_next_turn_reopens() {
     let _serial = crate::inflight::lock_real_process_tests();

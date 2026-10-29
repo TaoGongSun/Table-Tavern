@@ -273,6 +273,8 @@ pub fn run() {
         });
 }
 
+#[cfg(test)]
+mod test_fake_cli;
 #[cfg(all(test, unix))]
 mod test_perm;
 

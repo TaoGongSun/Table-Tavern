@@ -248,7 +248,6 @@ async fn gm_lane_reopens_on_system_change_and_deletes_the_replaced_session() {
 }
 
 /// 續聊失敗降級重開：舊 claude session 檔同樣刪掉。
-#[cfg(unix)]
 #[tokio::test]
 async fn gm_resume_failure_deletes_the_old_session_before_reopening() {
     let _serial = crate::inflight::lock_real_process_tests();

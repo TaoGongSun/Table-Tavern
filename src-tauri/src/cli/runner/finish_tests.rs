@@ -1,9 +1,10 @@
 //! 收尾與斷流（agy-long-survey-fail）：成功收尾後程序不退要寬限後殺掉、照常交回全文；
 //! 第一個正文／思考前有保底等待；錯誤收尾、取消競態、晚到的計費事件。
-#![cfg(unix)]
 #![allow(clippy::await_holding_lock)]
 
-use super::super::stream::{AGY_PROTOCOL, CLAUDE_PROTOCOL, CODEX_PROTOCOL};
+use super::super::stream::AGY_PROTOCOL;
+#[cfg(unix)]
+use super::super::stream::{CLAUDE_PROTOCOL, CODEX_PROTOCOL};
 use super::*;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -11,6 +12,7 @@ use std::time::{Duration, Instant};
 struct Fake {
     dir: PathBuf,
     script: PathBuf,
+    extra_envs: Vec<(String, String)>,
 }
 
 impl Drop for Fake {
@@ -19,11 +21,10 @@ impl Drop for Fake {
     }
 }
 
-/// python3 假 CLI；`emit(obj)` 印一行 JSON 並 flush，`hang()` 忽略 SIGTERM 後睡到天荒地老。
+/// python3 假 CLI（僅 unix）；`emit(obj)` 印一行 JSON 並 flush，`hang()` 忽略 SIGTERM 後睡到天荒地老。
+#[cfg(unix)]
 fn fake(tag: &str, body: &str) -> Fake {
-    let dir = std::env::temp_dir().join(format!("tt-finish-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = fake_dir(tag);
     let script = dir.join("fake.py");
     std::fs::write(
         &script,
@@ -34,24 +35,41 @@ fn fake(tag: &str, body: &str) -> Fake {
     .unwrap();
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
-    Fake { dir, script }
+    Fake {
+        dir,
+        script,
+        extra_envs: Vec::new(),
+    }
+}
+
+fn fake_dir(tag: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("tt-finish-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+/// 跨平台假 CLI（`examples/fake_cli.rs` 的 script 角色），開頭同 python 版：記 pid、讀完 stdin。
+fn fake_cli(tag: &str, lines: &[&str]) -> Fake {
+    let lines: Vec<&str> = ["pid", "stdin"].iter().chain(lines).copied().collect();
+    Fake {
+        dir: fake_dir(tag),
+        script: crate::test_fake_cli::program(),
+        extra_envs: crate::test_fake_cli::script(&lines),
+    }
 }
 
 impl Fake {
     fn envs(&self) -> Vec<(String, String)> {
-        vec![(
-            "PID_FILE".to_owned(),
-            self.dir.join("pid").to_string_lossy().into_owned(),
-        )]
+        let pid_file = self.dir.join("pid").to_string_lossy().into_owned();
+        let mut envs = vec![("PID_FILE".to_owned(), pid_file)];
+        envs.extend(self.extra_envs.iter().cloned());
+        envs
     }
 
     fn alive(&self) -> bool {
         let pid = std::fs::read_to_string(self.dir.join("pid")).unwrap();
-        std::process::Command::new("kill")
-            .args(["-0", pid.trim()])
-            .status()
-            .unwrap()
-            .success()
+        crate::cli::update::gate::pid_alive(pid.trim().parse().unwrap())
     }
 
     async fn run(
@@ -83,6 +101,7 @@ impl Fake {
     }
 }
 
+#[cfg(unix)]
 const AGY_RESULT: &str = r#"emit({'event': 'step_update', 'step_update': {'step_type': 'agent_response', 'text_delta': '答案'}})
 emit({'event': 'result', 'result': {'status': 'SUCCESS', 'response': '答案'}})"#;
 
@@ -97,13 +116,21 @@ fn completed(result: DataResult<CliFinish>) -> String {
 #[tokio::test]
 async fn success_then_hang_is_killed_after_grace_and_completes() {
     let _serial = crate::inflight::lock_real_process_tests();
-    let fx = fake("hang", &format!("{AGY_RESULT}\nhang()"));
+    let fx = fake_cli(
+        "hang",
+        &[
+            r#"out {"event":"step_update","step_update":{"step_type":"agent_response","text_delta":"答案"}}"#,
+            r#"out {"event":"result","result":{"status":"SUCCESS","response":"答案"}}"#,
+            "hang",
+        ],
+    );
     let started = Instant::now();
     assert_eq!(completed(fx.run(&AGY_PROTOCOL, None, None).await), "答案");
     assert!(started.elapsed() < STALL_WINDOW, "{:?}", started.elapsed());
     assert!(!fx.alive(), "程序要被殺掉收屍");
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn stderr_spam_after_success_does_not_starve_the_grace_deadline() {
     let _serial = crate::inflight::lock_real_process_tests();
@@ -118,6 +145,7 @@ async fn stderr_spam_after_success_does_not_starve_the_grace_deadline() {
 }
 
 /// claude 的 rate_limit_event 可能在 result 之後才到：寬限期間照常解析，超額旗標照記。
+#[cfg(unix)]
 #[tokio::test]
 async fn billing_event_after_result_is_still_parsed_during_grace() {
     let _serial = crate::inflight::lock_real_process_tests();
@@ -153,6 +181,7 @@ hang()"#;
 }
 
 /// 錯誤收尾不起算寬限、也不當完成；codex 的頂層 error 之後還有 turn.completed 時，寬限照樣起算。
+#[cfg(unix)]
 #[tokio::test]
 async fn error_finish_is_not_completion_and_codex_notice_does_not_block_grace() {
     let _serial = crate::inflight::lock_real_process_tests();
@@ -181,6 +210,7 @@ hang()"#;
 }
 
 /// 收尾後才按停止：完成贏，交回全文。
+#[cfg(unix)]
 #[tokio::test]
 async fn cancel_after_success_still_completes() {
     let _serial = crate::inflight::lock_real_process_tests();
@@ -203,6 +233,7 @@ async fn cancel_after_success_still_completes() {
 }
 
 /// 第一個進展前：只有 init 行時，超過斷流窗但沒超過保底照樣等到答案。
+#[cfg(unix)]
 #[tokio::test]
 async fn silent_thinking_before_first_progress_gets_the_floor_window() {
     let _serial = crate::inflight::lock_real_process_tests();
@@ -216,7 +247,7 @@ async fn silent_thinking_before_first_progress_gets_the_floor_window() {
 #[tokio::test]
 async fn no_progress_past_the_floor_or_silence_after_progress_stalls() {
     let _serial = crate::inflight::lock_real_process_tests();
-    let fx = fake("floor-exceeded", "emit({'event': 'init'})\nhang()");
+    let fx = fake_cli("floor-exceeded", &[r#"out {"event":"init"}"#, "hang"]);
     let started = Instant::now();
     let error = fx
         .run(&AGY_PROTOCOL, None, None)
@@ -235,8 +266,13 @@ async fn no_progress_past_the_floor_or_silence_after_progress_stalls() {
     );
     assert!(!fx.alive());
 
-    let body = "emit({'event': 'step_update', 'step_update': {'step_type': 'agent_response', 'text_delta': '半'}})\nhang()";
-    let fx = fake("after-progress", body);
+    let fx = fake_cli(
+        "after-progress",
+        &[
+            r#"out {"event":"step_update","step_update":{"step_type":"agent_response","text_delta":"半"}}"#,
+            "hang",
+        ],
+    );
     let started = Instant::now();
     let error = fx
         .run(&AGY_PROTOCOL, None, None)

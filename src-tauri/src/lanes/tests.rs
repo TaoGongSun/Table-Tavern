@@ -20,9 +20,8 @@ struct FakeCli {
     working_dir: PathBuf,
 }
 
-/// 假 claude CLI：照真檔格式寫 session JSONL、逐次把拿到的旗標與 prompt 記進 calls.jsonl，
-/// resume 找不到 session 檔就以非零碼結束（降級鏈用）。
-#[cfg(unix)]
+/// 假 claude CLI（`examples/fake_cli.rs` 的 claude 角色）：照真檔格式寫 session JSONL、
+/// 逐次把拿到的旗標與 prompt 記進 calls.jsonl，resume 找不到 session 檔就以非零碼結束（降級鏈用）。
 fn fake_claude(tag: &str) -> FakeCli {
     let dir = std::env::temp_dir().join(format!("tt-lanes-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
@@ -38,118 +37,19 @@ fn fake_claude(tag: &str) -> FakeCli {
         .unwrap()
         .to_path_buf();
     std::fs::create_dir_all(&session_dir).unwrap();
-    let script = dir.join("fake-claude.py");
-    std::fs::write(
-        &script,
-        r#"#!/usr/bin/env python3
-import json, sys, os, uuid
-args = sys.argv[1:]
-def flag(name):
-    return args[args.index(name) + 1] if name in args else None
-sid, rid = flag('--session-id'), flag('--resume')
-prompt = sys.stdin.read()
-sf = flag('--system-prompt-file')
-system = open(sf, encoding='utf-8').read() if sf else None
-d = os.environ['FAKE_SESSION_DIR']
-with open(os.path.join(d, 'calls.jsonl'), 'a') as f:
-    f.write(json.dumps({'args': args, 'prompt': prompt, 'system': system,
-                        'reminder_env': os.environ.get('CLAUDE_CODE_TOTAL_TOKENS_REMINDER')}) + '\n')
-path = os.path.join(d, (sid or rid) + '.jsonl')
-# 照真 CLI（2.1.287）的形狀只追加：queue-operation、user、attachment 夾雜項行、
-# thinking 與 text 拆成兩則 assistant、assistant 後再接 attachment
-last, users = None, 0
-stream = os.environ.get('FAKE_STREAM') == '1'
-def delta(text):
-    print(json.dumps({'type': 'stream_event', 'event': {'delta': {'type': 'text_delta', 'text': text}}}, ensure_ascii=False), flush=True)
-if rid:
-    if not os.path.exists(path):
-        # FAKE_STREAM：先吐一段才失敗（續聊失敗重開時，上一試已經吐過字）
-        if stream:
-            delta(os.environ.get('FAKE_REPLY_PREFIX', '') + '舊')
-        sys.exit(3)
-    for l in open(path):
-        if not l.strip():
-            continue
-        o = json.loads(l)
-        if isinstance(o.get('uuid'), str):
-            last = o['uuid']
-        if o.get('type') == 'user':
-            users += 1
-out = []
-def node(kind, **fields):
-    global last
-    me = str(uuid.uuid4())
-    out.append(dict(fields, type=kind, uuid=me, parentUuid=last))
-    last = me
-out.append({'type': 'queue-operation', 'operation': 'enqueue'})
-node('user', message={'role': 'user', 'content': prompt})
-node('attachment', attachment={'type': 'environment'})
-# FAKE_REMINDER：照真 CLI 存一筆 total_tokens 提醒（關提醒的環境變數失效時的樣子）
-if os.environ.get('FAKE_REMINDER') == '1':
-    node('attachment', attachment={'type': 'total_tokens_reminder', 'text': '<total_tokens>15000000 tokens left</total_tokens>'})
-out.append({'type': 'atis-latch'})
-node('attachment', attachment={'type': 'date'})
-reply = os.environ.get('FAKE_REPLY_PREFIX', '') + '回覆' + str(users + 1)
-# FAKE_REPLY_SUFFIX：回覆尾端接控制區塊；FAKE_REPLY_RESUME：續聊那試整段換成這個
-reply = (os.environ.get('FAKE_REPLY_RESUME') if rid else None) or reply + os.environ.get('FAKE_REPLY_SUFFIX', '')
-node('assistant', message={'role': 'assistant', 'content': [{'type': 'thinking', 'thinking': '…'}]})
-node('assistant', message={'role': 'assistant', 'content': [{'type': 'text', 'text': reply}]})
-node('attachment', attachment={'type': 'prompt_snapshot'})
-out.append({'type': 'last-prompt'})
-# FAKE_NO_SESSION：不寫 session 檔（回合後讀檔就會失敗）
-if os.environ.get('FAKE_NO_SESSION') != '1':
-    with open(path, 'a') as f:
-        for o in out:
-            f.write(json.dumps(o, ensure_ascii=False) + '\n')
-# 測試用環境變數（名稱可加 _RESUME／_OPEN 後綴，只套在那種嘗試）：
-# FAKE_USAGE＝收尾用量 JSON；FAKE_RATE_BEFORE／AFTER＝在 result 前後插 rate_limit_event；
-# FAKE_FAIL＝回 is_error 的 result 後以非零碼結束；FAKE_HANG＝吐完 BEFORE 事件後卡住等中止
-kind = 'RESUME' if rid else 'OPEN'
-def env(name):
-    return os.environ.get(name + '_' + kind) or os.environ.get(name)
-usage = json.loads(env('FAKE_USAGE') or json.dumps({
-    'input_tokens': 3, 'cache_read_input_tokens': 0, 'cache_creation_input_tokens': 1000,
-    'output_tokens': 10,
-    'cache_creation': {'ephemeral_1h_input_tokens': 1000, 'ephemeral_5m_input_tokens': 0}}))
-def rate(name):
-    info = env(name)
-    if info:
-        print(json.dumps({'type': 'rate_limit_event', 'rate_limit_info': json.loads(info)}), flush=True)
-rate('FAKE_RATE_BEFORE')
-if env('FAKE_HANG'):
-    open(os.path.join(d, 'hanging'), 'w').close()
-    import time
-    time.sleep(30)
-if env('FAKE_FAIL'):
-    print(json.dumps({'type': 'result', 'is_error': True, 'result': 'boom', 'usage': usage}))
-    sys.exit(1)
-# FAKE_RUNAWAY：吐不停的空白（輸出失控）；FAKE_RUNAWAY_BLOCK 另把 session 檔換成目錄，抹寫與棄用都會失敗
-if env('FAKE_RUNAWAY'):
-    if env('FAKE_RUNAWAY_BLOCK'):
-        os.remove(path)
-        os.makedirs(path)
-    while True:
-        delta(' ')
-if stream:
-    for ch in reply:
-        delta(ch)
-print(json.dumps({'type': 'result', 'is_error': False, 'result': reply, 'usage': usage}))
-rate('FAKE_RATE_AFTER')
-"#,
-    )
-    .unwrap();
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
 
     let call = LaneCall {
         provider: LaneProvider::Claude,
-        program: script,
+        program: crate::test_fake_cli::program(),
         working_dir: working_dir.clone(),
         prompt_dir: working_dir.with_file_name("prompts"),
-        envs: vec![(
-            "FAKE_SESSION_DIR".to_owned(),
-            session_dir.to_string_lossy().into_owned(),
-        )],
+        envs: vec![
+            crate::test_fake_cli::mode("claude"),
+            (
+                "FAKE_SESSION_DIR".to_owned(),
+                session_dir.to_string_lossy().into_owned(),
+            ),
+        ],
         model: Some("sonnet".to_owned()),
         // 帳本開著 runner 才會回填用量，lane 才估得出快取壽命
         usage_log: Some(dir.join("prompt-cache.jsonl")),
@@ -169,8 +69,8 @@ rate('FAKE_RATE_AFTER')
     }
 }
 
-/// 假 Agy：開線由 CLI 回傳固定 conversation ID；續聊只接受同一 ID，並回報 usage。
-#[cfg(unix)]
+/// 假 Agy（`examples/fake_cli.rs` 的 agy 角色）：開線由 CLI 回傳固定 conversation ID；
+/// 續聊只接受同一 ID，並回報 usage。
 fn fake_agy(tag: &str) -> FakeCli {
     let dir = std::env::temp_dir().join(format!("tt-lanes-agy-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
@@ -180,57 +80,18 @@ fn fake_agy(tag: &str) -> FakeCli {
     let usage_log = dir.join("usage.jsonl");
     std::fs::create_dir_all(&working_dir).unwrap();
     mark_playable(&root.join("worlds").join(&world_id));
-    let script = dir.join("fake-agy.py");
-    std::fs::write(
-        &script,
-        r#"#!/usr/bin/env python3
-import json, os, sys
-args = sys.argv[1:]
-def flag(name):
-    return args[args.index(name) + 1] if name in args else None
-cid = flag('--conversation')
-prompt = sys.stdin.read()
-d = os.environ['FAKE_AGY_DIR']
-with open(os.path.join(d, 'calls.jsonl'), 'a') as f:
-    f.write(json.dumps({'args': args, 'prompt': prompt}, ensure_ascii=False) + '\n')
-if cid and cid != 'agy-conversation-1':
-    sys.exit(3)
-if cid and os.environ.get('FAKE_STALL_RESUME') == '1':
-    print(json.dumps({'event': 'init', 'conversation_id': cid}), flush=True)
-    import time
-    time.sleep(60)
-if cid and os.environ.get('FAKE_RUNAWAY_RESUME') == '1':
-    print(json.dumps({'event': 'init', 'conversation_id': cid}), flush=True)
-    while True:
-        print(json.dumps({'event': 'step_update', 'step_update': {'step_type': 'agent_response', 'text_delta': ' '}}), flush=True)
-turn = 2 if cid else 1
-input_tokens = 1200 if cid else 1000
-output_tokens = 250 if cid else 100
-cached = 900 if cid else 0
-print(json.dumps({'event': 'init', 'conversation_id': 'agy-conversation-1'}))
-print(json.dumps({'event': 'result', 'result': {
-    'status': 'SUCCESS', 'response': os.environ.get('FAKE_REPLY_PREFIX', '') + '回覆' + str(turn), 'num_turns': turn,
-    'usage': {'input_tokens': input_tokens, 'output_tokens': output_tokens,
-              'thinking_tokens': 20, 'cache_read_tokens': cached,
-              'total_tokens': input_tokens + output_tokens}}}, ensure_ascii=False), flush=True)
-if os.environ.get('FAKE_HANG_AFTER_RESULT') == '1':
-    import signal, time
-    signal.signal(signal.SIGTERM, signal.SIG_IGN)
-    time.sleep(60)
-"#,
-    )
-    .unwrap();
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
     let call = LaneCall {
         provider: LaneProvider::Agy,
-        program: script,
+        program: crate::test_fake_cli::program(),
         working_dir: working_dir.clone(),
         prompt_dir: working_dir.with_file_name("prompts"),
-        envs: vec![(
-            "FAKE_AGY_DIR".to_owned(),
-            dir.to_string_lossy().into_owned(),
-        )],
+        envs: vec![
+            crate::test_fake_cli::mode("agy"),
+            (
+                "FAKE_AGY_DIR".to_owned(),
+                dir.to_string_lossy().into_owned(),
+            ),
+        ],
         model: Some("gemini-test".to_owned()),
         usage_log: Some(usage_log),
         claude_home: dir.join("unused-claude-home"),
@@ -671,7 +532,6 @@ fn prompt_carries_header_only_on_reopen_and_tail_alone_without_events() {
     );
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn agy_lane_persists_exact_conversation_and_resumes_with_delta_only() {
     let _serial = crate::inflight::lock_real_process_tests();
@@ -781,7 +641,6 @@ async fn agy_lane_persists_exact_conversation_and_resumes_with_delta_only() {
 
 /// 端到端（假 CLI）：開線→抹寫→續聊只送增量→正典被改→自動重開；
 /// 續聊呼叫失敗（session 檔消失）→ 同一輪內降級重開。
-#[cfg(unix)]
 #[tokio::test]
 async fn lane_turns_open_rewrite_resume_and_degrade() {
     // run_cli 會把子程序 pid 登記進 inflight 的全域 children 表；kill_all_children 的

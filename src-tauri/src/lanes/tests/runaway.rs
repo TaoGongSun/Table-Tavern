@@ -44,7 +44,6 @@ async fn open_then_extend(fake: &FakeCli, agy: bool) -> Vec<TranscriptEvent> {
     events
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn claude_resume_runaway_is_sent_once_and_next_turn_reopens() {
     let _serial = crate::inflight::lock_real_process_tests();

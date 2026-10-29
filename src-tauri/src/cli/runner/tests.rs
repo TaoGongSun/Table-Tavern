@@ -4,7 +4,6 @@ use super::super::stream::{parse_claude_usage, CLAUDE_PROTOCOL};
 use super::*;
 
 /// 以假 CLI 腳本走完 spawn→stdin→逐行解析→增量→收尾整條路（sh 腳本，僅 unix）
-#[cfg(unix)]
 #[tokio::test]
 async fn run_cli_streams_deltas_from_fake_cli_and_reads_stdin() {
     // run_cli 現在會把子程序 pid 登記進 inflight 的全域 children 表；kill_all_children
@@ -15,34 +14,27 @@ async fn run_cli_streams_deltas_from_fake_cli_and_reads_stdin() {
     let working_dir = dir.join("workspace");
     std::fs::create_dir_all(&working_dir).unwrap();
     std::fs::write(working_dir.join("cwd-marker"), "").unwrap();
-    let script = dir.join("fake-claude.sh");
-    std::fs::write(
-        &script,
-        concat!(
-            "#!/bin/sh\n",
-            "input=$(cat)\n", // 必須把 stdin 讀完，證明 prompt 有送達
-            "test -f ./cwd-marker || exit 8\n",
-            "echo '{\"type\":\"system\",\"subtype\":\"init\"}'\n",
-            "echo '{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"想\"}}}'\n",
-            "echo '{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"你\"}}}'\n",
-            "echo '{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"好\"}}}'\n",
-            "echo \"{\\\"type\\\":\\\"result\\\",\\\"is_error\\\":false,\\\"result\\\":\\\"你好\\\",\\\"total_cost_usd\\\":0.0015,\\\"usage\\\":{\\\"input_tokens\\\":1,\\\"cache_creation_input_tokens\\\":0,\\\"cache_read_input_tokens\\\":99,\\\"output_tokens\\\":2}}\"\n",
-            "test \"$input\" = \"提示詞\" || exit 9\n",
-        ),
-    )
-    .unwrap();
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let program = crate::test_fake_cli::program();
+    let envs = crate::test_fake_cli::script(&[
+        r#"stdin"#,
+        r#"need-file 8 ./cwd-marker"#,
+        r#"out {"type":"system","subtype":"init"}"#,
+        r#"out {"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"想"}}}"#,
+        r#"out {"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"你"}}}"#,
+        r#"out {"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"好"}}}"#,
+        r#"need-stdin 9 提示詞"#,
+        r#"out {"type":"result","is_error":false,"result":"你好","total_cost_usd":0.0015,"usage":{"input_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":99,"output_tokens":2}}"#,
+    ]);
 
     let log_path = dir.join("prompt-cache.jsonl");
     let seen = std::sync::atomic::AtomicU64::new(0);
     let mut deltas = Vec::new();
     let full = run_cli(
-        &script,
+        &program,
         &working_dir,
         &[],
         "提示詞",
-        &[],
+        &envs,
         &CLAUDE_PROTOCOL,
         true,
         RunawayPolicy::Off,
@@ -72,11 +64,11 @@ async fn run_cli_streams_deltas_from_fake_cli_and_reads_stdin() {
     // 同一份輸出、關掉思考轉發：聊天正文串流不得混進思考
     let mut quiet_deltas = Vec::new();
     let quiet = run_cli(
-        &script,
+        &program,
         &working_dir,
         &[],
         "提示詞",
-        &[],
+        &envs,
         &CLAUDE_PROTOCOL,
         false,
         RunawayPolicy::Off,
@@ -115,36 +107,27 @@ async fn run_cli_streams_deltas_from_fake_cli_and_reads_stdin() {
     assert_eq!(seen.load(std::sync::atomic::Ordering::Relaxed), 100);
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn run_cli_aborts_instantly_on_fatal_stderr_api_error_and_shows_it_in_tail() {
     let _serial = crate::inflight::lock_real_process_tests();
     let dir = std::env::temp_dir().join(format!("tt-fake-cli-fatal-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let script = dir.join("fake-claude-fatal.sh");
-    // stderr 吐設定類 API 錯誤後長睡（模擬 CLI 自己退避重試）；沒有立即中止就會撞測試逾時
-    std::fs::write(
-        &script,
-        concat!(
-            "#!/bin/sh\n",
-            "cat > /dev/null\n",
-            "echo 'API Error: 502 unknown provider for model claude-opus-4-7' >&2\n",
-            "sleep 30\n",
-        ),
-    )
-    .unwrap();
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let program = crate::test_fake_cli::program();
+    let envs = crate::test_fake_cli::script(&[
+        r#"stdin"#,
+        r#"err API Error: 502 unknown provider for model claude-opus-4-7"#,
+        r#"sleep 30000"#,
+    ]);
 
     let mut deltas = Vec::new();
     let result = tokio::time::timeout(
         std::time::Duration::from_secs(5),
         run_cli(
-            &script,
+            &program,
             &dir,
             &[],
             "提示詞",
-            &[],
+            &envs,
             &CLAUDE_PROTOCOL,
             true,
             RunawayPolicy::Off,
@@ -160,35 +143,26 @@ async fn run_cli_aborts_instantly_on_fatal_stderr_api_error_and_shows_it_in_tail
     assert!(deltas.iter().any(|d| d.contains("API Error")));
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn run_cli_reports_crash_without_result_event_instead_of_returning_partial_text() {
     let _serial = crate::inflight::lock_real_process_tests();
     let dir = std::env::temp_dir().join(format!("tt-fake-cli-crash-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let script = dir.join("fake-claude-crash.sh");
-    // 吐一筆正文增量後 crash（無 result 收尾事件）：殘缺正文不得當成功返回
-    std::fs::write(
-        &script,
-        concat!(
-            "#!/bin/sh\n",
-            "cat > /dev/null\n",
-            "echo '{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"殘\"}}}'\n",
-            "echo 'proxy connection reset' >&2\n",
-            "exit 3\n",
-        ),
-    )
-    .unwrap();
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let program = crate::test_fake_cli::program();
+    let envs = crate::test_fake_cli::script(&[
+        r#"stdin"#,
+        r#"out {"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"殘"}}}"#,
+        r#"err proxy connection reset"#,
+        r#"exit 3"#,
+    ]);
 
     let mut deltas = Vec::new();
     let error = run_cli(
-        &script,
+        &program,
         &dir,
         &[],
         "提示詞",
-        &[],
+        &envs,
         &CLAUDE_PROTOCOL,
         true,
         RunawayPolicy::Off,
@@ -214,31 +188,23 @@ async fn run_cli_reports_crash_without_result_event_instead_of_returning_partial
 
 /// 範圍 4：claude 超長的收尾行（真實樣本）→ 錯誤掛 AI_CONTEXT_TOO_LONG，不被 cli_reply_error 包掉；
 /// 經 ai_call_failure 也原樣放行
-#[cfg(unix)]
 #[tokio::test]
 async fn run_cli_surfaces_prompt_too_long_with_stable_code() {
     let _serial = crate::inflight::lock_real_process_tests();
     let dir = std::env::temp_dir().join(format!("tt-fake-cli-toolong-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let script = dir.join("fake-claude-toolong.sh");
-    std::fs::write(
-        &script,
-        concat!(
-            "#!/bin/sh\n",
-            "cat > /dev/null\n",
-            "echo '{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":true,\"api_error_status\":400,\"terminal_reason\":\"prompt_too_long\",\"result\":\"Prompt is too long · the request is ~902529 tokens (limit 200000)\"}'\n",
-            "exit 1\n",
-        ),
-    )
-    .unwrap();
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let program = crate::test_fake_cli::program();
+    let envs = crate::test_fake_cli::script(&[
+        r#"stdin"#,
+        r#"out {"type":"result","subtype":"success","is_error":true,"api_error_status":400,"terminal_reason":"prompt_too_long","result":"Prompt is too long · the request is ~902529 tokens (limit 200000)"}"#,
+        r#"exit 1"#,
+    ]);
     let error = run_cli(
-        &script,
+        &program,
         &dir,
         &[],
         "長",
-        &[],
+        &envs,
         &CLAUDE_PROTOCOL,
         false,
         RunawayPolicy::Off,
@@ -259,35 +225,27 @@ async fn run_cli_surfaces_prompt_too_long_with_stable_code() {
     );
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn run_cli_strips_inherited_anthropic_env_but_keeps_explicit_envs() {
     let _serial = crate::inflight::lock_real_process_tests();
     let dir = std::env::temp_dir().join(format!("tt-fake-cli-env-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let script = dir.join("fake-claude-env.sh");
-    // 繼承的 ANTHROPIC_BASE_URL 必須被拔掉；顯式 envs 傳入的 MARKER 必須到位
-    std::fs::write(
-        &script,
-        concat!(
-            "#!/bin/sh\n",
-            "cat > /dev/null\n",
-            "test -z \"$ANTHROPIC_BASE_URL\" || exit 7\n",
-            "test \"$ANTHROPIC_MARKER\" = \"explicit\" || exit 9\n",
-            "echo '{\"type\":\"result\",\"is_error\":false,\"result\":\"ok\"}'\n",
-        ),
-    )
-    .unwrap();
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let program = crate::test_fake_cli::program();
+    let mut envs = crate::test_fake_cli::script(&[
+        r#"stdin"#,
+        r#"need-env 7 ANTHROPIC_BASE_URL="#,
+        r#"need-env 9 ANTHROPIC_MARKER=explicit"#,
+        r#"out {"type":"result","is_error":false,"result":"ok"}"#,
+    ]);
+    envs.push(("ANTHROPIC_MARKER".to_owned(), "explicit".to_owned()));
 
     std::env::set_var("ANTHROPIC_BASE_URL", "http://127.0.0.1:9999");
     let result = run_cli(
-        &script,
+        &program,
         &dir,
         &[],
         "提示詞",
-        &[("ANTHROPIC_MARKER".to_owned(), "explicit".to_owned())],
+        &envs,
         &CLAUDE_PROTOCOL,
         false,
         RunawayPolicy::Off,
@@ -301,35 +259,27 @@ async fn run_cli_strips_inherited_anthropic_env_but_keeps_explicit_envs() {
 
 /// 反例：CLI 先吐 1MB stdout 才開始讀 stdin（2MB）。舊做法「先寫完 stdin 才讀輸出」會讓兩邊
 /// 各卡在滿掉的管線上，等到 60 秒逾時；寫入與讀取並行才過得去。
-#[cfg(unix)]
 #[tokio::test]
 async fn run_cli_feeds_long_stdin_while_draining_output() {
     let _serial = crate::inflight::lock_real_process_tests();
     let dir = std::env::temp_dir().join(format!("tt-fake-cli-pipe-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let script = dir.join("fake-chatty.sh");
-    std::fs::write(
-        &script,
-        concat!(
-            "#!/bin/sh\n",
-            "head -c 1048576 /dev/zero | tr '\\0' 'x'\n",
-            "echo\n",
-            "size=$(wc -c | tr -d ' ')\n",
-            "echo \"{\\\"type\\\":\\\"result\\\",\\\"is_error\\\":false,\\\"result\\\":\\\"got $size\\\"}\"\n",
-        ),
-    )
-    .unwrap();
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let program = crate::test_fake_cli::program();
+    let envs = crate::test_fake_cli::script(&[
+        r#"out-bytes 1048576"#,
+        r#"out"#,
+        r#"stdin"#,
+        r#"out {"type":"result","is_error":false,"result":"got {stdin_len}"}"#,
+    ]);
     let payload = "中".repeat(700_000); // 2.1MB
     let result = tokio::time::timeout(
         std::time::Duration::from_secs(20),
         run_cli(
-            &script,
+            &program,
             &dir,
             &[],
             &payload,
-            &[],
+            &envs,
             &CLAUDE_PROTOCOL,
             false,
             RunawayPolicy::Off,
@@ -345,36 +295,29 @@ async fn run_cli_feeds_long_stdin_while_draining_output() {
 
 /// 提早 return（這裡是 stderr 致命錯）也要先收屍才返回：呼叫端接著要刪提示詞暫存檔，
 /// Windows 上程序還開著檔就刪不掉。
-#[cfg(unix)]
 #[tokio::test]
 async fn run_cli_reaps_child_before_returning_an_error() {
     let _serial = crate::inflight::lock_real_process_tests();
     let dir = std::env::temp_dir().join(format!("tt-fake-cli-reap-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let script = dir.join("fake-fatal-pid.sh");
-    std::fs::write(
-        &script,
-        concat!(
-            "#!/bin/sh\n",
-            "echo $$ > \"$PID_FILE\"\n",
-            "cat > /dev/null\n",
-            "echo 'API Error: 401 authentication_error' >&2\n",
-            "exec sleep 30\n",
-        ),
-    )
-    .unwrap();
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let program = crate::test_fake_cli::program();
+    let mut envs = crate::test_fake_cli::script(&[
+        r#"pid"#,
+        r#"stdin"#,
+        r#"err API Error: 401 authentication_error"#,
+        r#"sleep 30000"#,
+    ]);
     let pid_file = dir.join("pid");
+    envs.push((
+        "PID_FILE".to_owned(),
+        pid_file.to_string_lossy().into_owned(),
+    ));
     let error = run_cli(
-        &script,
+        &program,
         &dir,
         &[],
         "x",
-        &[(
-            "PID_FILE".to_owned(),
-            pid_file.to_string_lossy().into_owned(),
-        )],
+        &envs,
         &CLAUDE_PROTOCOL,
         false,
         RunawayPolicy::Off,
@@ -385,11 +328,7 @@ async fn run_cli_reaps_child_before_returning_an_error() {
     .unwrap_err();
     assert!(error.to_string().contains("authentication_error"));
     let pid = std::fs::read_to_string(&pid_file).unwrap();
-    let alive = std::process::Command::new("kill")
-        .args(["-0", pid.trim()])
-        .status()
-        .unwrap()
-        .success();
+    let alive = crate::cli::update::gate::pid_alive(pid.trim().parse().unwrap());
     std::fs::remove_dir_all(&dir).unwrap();
     assert!(!alive, "run_cli 返回時子程序 {pid} 還活著");
 }
