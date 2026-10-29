@@ -42,7 +42,6 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [desktop-csp](tasks/desktop-csp.md) — 桌面版 CSP 是 null，訊息渲染只靠 DOMPurify 一層 — 下一步：未排程；先盤點 app 需要的來源
 - [card-prompt-only-regex](tasks/card-prompt-only-regex.md) — 後端套卡片 promptOnly 正則（含 depth），對齊 ST 送模型前的歷史處理 — 下一步：縮小成只套 TestCards 實際出現的 promptOnly 形狀〔模型判斷·未裁決〕；先盤點測試卡用法
 - [refactor-outcome-fields](tasks/refactor-outcome-fields.md) — 重構產物帶盤點 FIELDS 與不收格子名單（開場沒附狀態欄的卡也能追蹤；地圖、記憶不收） — 下一步：前置 statusbar-only-fields 已結案，可排程
-- [text-field-verbose](tasks/text-field-verbose.md) — GM 回報文字欄偏長（一次 60–80 字） — 下一步：下一個開工〔模型判斷·未裁決〕：先補量字數，偏長才在 turn_rule 加長度上限，不碰凍結快照
 - [unix-only-fake-cli-tests](tasks/unix-only-fake-cli-tests.md) — 123 個測試用 shell 假 CLI，Windows 跑不到 — 下一步：縮小成共用 Rust 假 CLI＋改 lane／runner 約 10–20 個代表測試〔模型判斷·未裁決〕；其餘維持 unix-only
 
 ## 階段 E：成本
