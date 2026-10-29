@@ -21,10 +21,10 @@ use crate::data;
 use std::sync::atomic::AtomicU64;
 
 #[cfg(test)]
-static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
+pub(crate) static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
 
 #[cfg(test)]
-fn character_card(id: &str, name: &str) -> data::CharacterCard {
+pub(crate) fn character_card(id: &str, name: &str) -> data::CharacterCard {
     data::CharacterCard {
         id: id.to_owned(),
         name: name.to_owned(),

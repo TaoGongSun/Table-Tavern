@@ -137,7 +137,7 @@ fn commit(root: &Path, world_id: &str, turn: &str, fence: &str, patch: &str) -> 
                 truncated: false,
             },
             |world, stat| {
-                crate::commands::chat::gm_commit_apply(
+                crate::chat_turn::gm_commit_apply(
                     world,
                     stat,
                     &block,

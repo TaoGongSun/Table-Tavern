@@ -1,4 +1,4 @@
-//! 聊天回合的實送組裝（GM 旁白／推進、角色接話）。`commands::chat` 送出與 `scene_budget` 量容量
+//! 聊天回合的實送組裝（GM 旁白／推進、角色接話）。`chat_turn` 送出與 `scene_budget` 量容量
 //! 共用這裡的每一個入口——量的就是會送的，不另寫一套近似。
 use crate::world_scan::{
     self, Budget, MacroInputs, MacroSession, Randomness, ScanRequest, TableBook, Viewer, WorldScan,

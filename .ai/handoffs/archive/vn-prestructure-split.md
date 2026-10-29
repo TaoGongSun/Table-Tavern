@@ -1,7 +1,7 @@
 # vn-prestructure-split — VN v1 開工前的結構拆檔
 
 ## 目的
-VN 模式開工前先把會疊功能的肥檔依功能拆好，避免在肥檔上再疊。commands 層只做 Tauri 邊界（接參數、呼叫 domain、整理回傳），業務邏輯搬到對應模組（[docs/STRUCTURE.md](../../docs/STRUCTURE.md)）。
+VN 模式開工前先把會疊功能的肥檔依功能拆好，避免在肥檔上再疊。commands 層只做 Tauri 邊界（接參數、呼叫 domain、整理回傳），業務邏輯搬到對應模組（[docs/STRUCTURE.md](../../../docs/STRUCTURE.md)）。
 
 ## 案別與預算（立案凍結）
 - 純結構搬遷、不改行為。新邏輯核心 0 行；只允許搬遷所需的 `pub(crate)`／`pub(super)`、use、mod 宣告、命令薄殼轉呼叫等連帶改動。
@@ -16,5 +16,5 @@ VN 模式開工前先把會疊功能的肥檔依功能拆好，避免在肥檔�
 - `src-tauri/src/transport/response.rs` 728、`src-tauri/src/refactor/apply.rs` 1001、`src/App.tsx` 1091、`src/features/play/chat/useChatController.ts` 905
 - `src-tauri/src/transport/` 頂層 26 支 .rs＋5 個子資料夾；`src/features/play/` 頂層 16 項（含 chat/、scene/）
 
-## 下一步
-拆法已定（作者 2026-10-29 確認），見 [plans/vn-prestructure-split.md](../plans/vn-prestructure-split.md)。包 1（三檔測試搬出）已完成、待 Sol 驗收；過了再做包 2（commands/chat.rs → chat_turn）。包 2 commit 時補 BACKLOG character-presence 那行「在場程式已原封搬到 chat_turn/arrivals.rs」。分支 `vn-prestructure-split`。
+## 結案
+2026-10-29 結案：包 1（三檔測試搬出）與包 2（commands/chat.rs → chat_turn）Sol 驗收皆 PASS，已合併 main。拆法與結果見 [plans/vn-prestructure-split.md](../../plans/vn-prestructure-split.md)。

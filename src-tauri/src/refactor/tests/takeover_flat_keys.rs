@@ -128,7 +128,7 @@ pub(super) fn commit_reply(
                 truncated: false,
             },
             |world, stat| {
-                let result = crate::commands::chat::gm_commit_apply(
+                let result = crate::chat_turn::gm_commit_apply(
                     world,
                     stat,
                     &block,

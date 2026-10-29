@@ -1,5 +1,6 @@
 mod card_sandbox;
 mod chat_assembly;
+mod chat_turn;
 mod cli;
 mod commands;
 mod data;

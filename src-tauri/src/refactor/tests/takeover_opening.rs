@@ -253,7 +253,7 @@ fn commit_reply(root: &Path, world_id: &str, reply: &str) -> data::WorldState {
                 truncated: false,
             },
             |world, stat| {
-                crate::commands::chat::gm_commit_apply(
+                crate::chat_turn::gm_commit_apply(
                     world,
                     stat,
                     &block,

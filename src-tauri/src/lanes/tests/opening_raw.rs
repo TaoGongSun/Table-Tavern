@@ -1,5 +1,5 @@
 //! greeting-context-st-parity：GM 線經假 claude CLI 實送——一般桌開場送原文（狀態欄在），
-//! 接管桌與狀態欄退場桌照 text。素材照 `commands::chat::gm_lane_reply` 的組法從真桌讀。
+//! 接管桌與狀態欄退場桌照 text。素材照 `chat_turn::gm` 的 `gm_lane_reply` 的組法從真桌讀。
 
 use super::*;
 use crate::chat_assembly;

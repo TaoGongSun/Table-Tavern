@@ -154,7 +154,7 @@ fn measure_timed(
         .unwrap_or_default()
 }
 
-/// GM 那條（與 `commands::chat::gm_narrate` 同一組裝）：lane 後端量「重開全量」那份
+/// GM 那條（與 `chat_turn::gm_narrate` 同一組裝）：lane 後端量「重開全量」那份
 /// （任何對不上都會降級重開），無狀態路徑量共線組裝＋同一個指示四態。
 /// 世界書在組裝裡依「傳入的事件」掃（固定部分清空事件後重組，不帶本輪關鍵字條目），量測一律唯讀：
 /// 變數只讀不落地、上一輪 outlet 只讀不更新、亂數固定 0。
@@ -215,7 +215,7 @@ fn gm_request(
     }
 }
 
-/// 角色那條（與 `commands::chat::chat_with_character` 同一組裝）。
+/// 角色那條（與 `chat_turn::chat_with_character` 同一組裝）。
 /// `shape`：lane 後端時與實送同一組開關（`lanes::chars_lane_shape`），None＝無狀態路徑。
 #[allow(clippy::too_many_arguments)]
 fn character_request(

@@ -1,6 +1,6 @@
 # vn-prestructure-split 拆法（作者 2026-10-29 確認）
 
-交接：[handoffs/vn-prestructure-split.md](../handoffs/vn-prestructure-split.md)。純結構搬遷，原封搬移、不改寫；行數為估計。
+交接（已歸檔）：[handoffs/archive/vn-prestructure-split.md](../handoffs/archive/vn-prestructure-split.md)。純結構搬遷，原封搬移、不改寫；行數為估計。
 
 ## 包 1：測試模組搬出（三檔，零邏輯）
 `#[cfg(test)] mod tests { … }` 原封搬進同名子資料夾的 `tests.rs`，原處留 `#[cfg(test)] mod tests;`（沿用 `response.rs`＋`response/tests.rs` 慣例，不必 `#[path]`）。
@@ -43,6 +43,9 @@ chat.rs 的測試不在包 1 搬，跟包 2 一起依新模組分（免得搬兩
 
 ## 包 1 結果
 transcript.rs 1300→729（tests.rs 569）、turns.rs 1149→620（tests.rs 527）、context.rs 1018→455（tests.rs 563）。`cargo test -- --list` 前後皆 2491 且清單逐行相同；搬出內容去空白與 rustfmt 尾逗號後雜湊一致；verify 13 步綠。
+
+## 包 2 結果
+commands/chat.rs 1839→34（三個命令薄殼，含 chat_abort）。chat_turn.rs 13；chat_turn/：gm 391、character 254、commit 189、arrivals 183、stream 75、gm_reply 73；測試照受測模組拆成同層 `*_tests.rs`（`#[path]`）：arrivals 269、gm 211、commit 145、gm_reply 64、character 20。與提案差異：StateUpdate 跟建構它的 state_update_* 放 commit.rs。連帶改動：可見性、use、`commands/mod.rs` 測試輔助 `NEXT_TEMP_ID`／`character_card` 改 `pub(crate)`、`chat_turn` 以 `#[cfg(test)]` 轉出 `gm_commit_apply`、refactor/tests 三處呼叫路徑與三處文件註解改指 chat_turn。原 chat.rs 每段（去空白、可見性、尾逗號後）都逐段出現在對應新檔；`cargo test -- --list` 前後 2491，只有 15 個 chat 測試的模組路徑改變、名稱一一對上；verify 13 步綠。
 
 ## 觀察
 - 範圍外但超過千行：`data/world_file.rs` 1415、`smart_free/mod.rs` 1250、`smart_free/failover.rs` 1035、`lanes/mod.rs` 1014，皆不在 VN 路徑。
