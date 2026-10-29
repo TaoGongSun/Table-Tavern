@@ -175,7 +175,7 @@ export const fr: WebMessages = {
   downloadAllFiles: "Toutes les versions et tous les fichiers",
   downloadInstallTitle: "Le système bloque l'installation ?",
   downloadInstallWindows:
-    "Windows : l'application de bureau n'a pas encore de certificat de signature de code, SmartScreen peut donc afficher « Windows a protégé votre ordinateur » ou « Éditeur inconnu ». Clique sur « Informations complémentaires », puis sur « Exécuter quand même ».",
+    "Windows : l'application de bureau n'a pas encore de certificat de signature de code, SmartScreen peut donc afficher « Windows a protégé votre ordinateur » ou « Éditeur inconnu ». Clique sur « Informations complémentaires », puis sur « Exécuter quand même ». Si le navigateur indique que le fichier n'est pas souvent téléchargé, choisis « Conserver ».",
   downloadInstallMac:
     "macOS (Apple Silicon uniquement) : glisse Table Tavern.app dans Applications et double-clique dessus. L'application n'est pas encore notarisée par Apple, Gatekeeper peut donc indiquer qu'il ne peut pas vérifier l'absence de logiciel malveillant. Clique sur « Terminé », ouvre « Réglages Système → Confidentialité et sécurité », fais défiler jusqu'en bas, clique sur « Ouvrir quand même » et confirme encore une fois.",
   downloadInstallWhy: "C'est un avertissement courant pour un logiciel non signé ou non notarisé. Ne télécharge que depuis la page des versions GitHub ci-dessus.",
@@ -193,6 +193,9 @@ export const fr: WebMessages = {
   compare_saves_web: "Dans le navigateur (peut être effacé) ; exportables",
   compare_saves_desktop:
     "Dans un dossier de ton ordinateur : la sauvegarde courante consiste à copier ce dossier, et une copie automatique est faite avant qu'une mise à jour convertisse le format d'une table",
+  compare_update: "Mises à jour",
+  compare_update_web: "Toujours la dernière version à l'ouverture",
+  compare_update_desktop: "Mise à jour en un clic dans l'app, retour possible à la version précédente",
   compare_ai: "Source de l'IA",
   compare_ai_web: "Modèles gratuits d'OpenRouter (limite quotidienne)",
   compare_ai_desktop: "Modèles gratuits et payants, ou ton abonnement Claude, ChatGPT, Gemini ou Grok",

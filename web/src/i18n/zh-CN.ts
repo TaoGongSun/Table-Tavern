@@ -162,7 +162,7 @@ export const zhCN: WebMessages = {
   downloadAllFiles: "所有版本与文件",
   downloadInstallTitle: "安装时被系统拦下？",
   downloadInstallWindows:
-    "Windows：桌面版还没有购买代码签名证书，SmartScreen 可能弹出“Windows 已保护你的电脑”或“未知发布者”——点“更多信息”，再点“仍要运行”。",
+    "Windows：桌面版还没有购买代码签名证书，SmartScreen 可能弹出“Windows 已保护你的电脑”或“未知发布者”——点“更多信息”，再点“仍要运行”。下载时浏览器若提示文件“不常下载”，选“保留”（Edge 在“…”里，再点“仍然保留”）。",
   downloadInstallMac:
     "macOS（仅 Apple Silicon）：把 Table Tavern.app 拖进“应用程序”后双击打开。桌面版还没送 Apple 公证，Gatekeeper 可能提示“无法验证是否包含恶意软件”：点“完成”，打开“系统设置 → 隐私与安全性”，滚到最底下点“仍要打开”，再确认一次就好。",
   downloadInstallWhy: "这是未签名或未公证的软件常见的提示；请只从上面的 GitHub 发布页下载。",
@@ -179,6 +179,9 @@ export const zhCN: WebMessages = {
   compare_saves: "存档",
   compare_saves_web: "存在浏览器（可能被清），可导出",
   compare_saves_desktop: "存在自己电脑的文件夹，平时备份就是复制这个文件夹；升级要转换桌的格式前会自动先备份",
+  compare_update: "更新",
+  compare_update_web: "打开就是最新版",
+  compare_update_desktop: "App 内一键更新，可退回上一版",
   compare_ai: "AI 来源",
   compare_ai_web: "OpenRouter 免费模型（每天有次数上限）",
   compare_ai_desktop: "免费与付费模型，或接 Claude、ChatGPT、Gemini、Grok 订阅",

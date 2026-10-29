@@ -173,7 +173,7 @@ export const ko: WebMessages = {
   downloadAllFiles: "모든 버전과 파일",
   downloadInstallTitle: "설치할 때 시스템이 막는다면",
   downloadInstallWindows:
-    "Windows: 데스크톱 앱은 아직 코드 서명 인증서를 구입하지 않아 SmartScreen이 ‘Windows의 PC 보호’나 ‘알 수 없는 게시자’를 띄울 수 있습니다. ‘추가 정보’를 누른 뒤 ‘실행’을 누르세요.",
+    "Windows: 데스크톱 앱은 아직 코드 서명 인증서를 구입하지 않아 SmartScreen이 ‘Windows의 PC 보호’나 ‘알 수 없는 게시자’를 띄울 수 있습니다. ‘추가 정보’를 누른 뒤 ‘실행’을 누르세요. 다운로드할 때 브라우저가 ‘일반적으로 다운로드되지 않는 파일’이라고 하면 ‘유지’를 선택하세요.",
   downloadInstallMac:
     "macOS(Apple Silicon 전용): Table Tavern.app을 ‘응용 프로그램’으로 끌어 놓고 더블 클릭하세요. 데스크톱 앱은 아직 Apple 공증을 받지 않아 Gatekeeper가 ‘악성 코드가 없음을 확인할 수 없습니다’라고 할 수 있습니다. ‘완료’를 누르고 ‘시스템 설정 → 개인정보 보호 및 보안’을 열어 맨 아래의 ‘그래도 열기’를 누른 뒤 한 번 더 확인하면 됩니다.",
   downloadInstallWhy: "서명이나 공증이 없는 소프트웨어에서 흔히 보이는 안내입니다. 다운로드는 위의 GitHub 릴리스 페이지에서만 받으세요.",
@@ -190,6 +190,9 @@ export const ko: WebMessages = {
   compare_saves: "저장",
   compare_saves_web: "브라우저에 저장(지워질 수 있음), 내보내기 가능",
   compare_saves_desktop: "내 컴퓨터의 폴더에 저장. 평소 백업은 그 폴더를 복사하면 되고, 업데이트로 테이블 형식을 변환하기 전에는 자동으로 먼저 백업",
+  compare_update: "업데이트",
+  compare_update_web: "열면 항상 최신 버전",
+  compare_update_desktop: "앱 안에서 원클릭 업데이트, 이전 버전으로 되돌리기 가능",
   compare_ai: "AI 연결",
   compare_ai_web: "OpenRouter 무료 모델(하루 횟수 제한)",
   compare_ai_desktop: "무료·유료 모델, 또는 Claude, ChatGPT, Gemini, Grok 구독",

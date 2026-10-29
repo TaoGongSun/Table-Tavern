@@ -174,7 +174,7 @@ export const de: WebMessages = {
   downloadAllFiles: "Alle Versionen und Dateien",
   downloadInstallTitle: "Blockiert das System die Installation?",
   downloadInstallWindows:
-    "Windows: Die Desktop-App hat noch kein Code-Signing-Zertifikat, daher zeigt SmartScreen eventuell „Windows hat Ihren PC geschützt“ oder „Unbekannter Herausgeber“. Klicke auf „Weitere Informationen“ und dann auf „Trotzdem ausführen“.",
+    "Windows: Die Desktop-App hat noch kein Code-Signing-Zertifikat, daher zeigt SmartScreen eventuell „Windows hat Ihren PC geschützt“ oder „Unbekannter Herausgeber“. Klicke auf „Weitere Informationen“ und dann auf „Trotzdem ausführen“. Meldet der Browser, dass die Datei selten heruntergeladen wird, wähle „Behalten“.",
   downloadInstallMac:
     "macOS (nur Apple Silicon): Ziehe Table Tavern.app in „Programme“ und öffne sie per Doppelklick. Die App ist noch nicht von Apple notarisiert, daher meldet Gatekeeper eventuell, dass sie nicht auf Malware überprüft werden kann. Klicke auf „Fertig“, öffne „Systemeinstellungen → Datenschutz & Sicherheit“, scrolle ganz nach unten, klicke auf „Dennoch öffnen“ und bestätige noch einmal.",
   downloadInstallWhy: "Das ist ein üblicher Hinweis bei nicht signierter oder nicht notarisierter Software. Lade nur von der GitHub-Release-Seite oben herunter.",
@@ -192,6 +192,9 @@ export const de: WebMessages = {
   compare_saves_web: "Im Browser (kann gelöscht werden); exportierbar",
   compare_saves_desktop:
     "In einem Ordner auf deinem Computer – die übliche Sicherung ist eine Kopie dieses Ordners; bevor ein Update das Format eines Tisches umwandelt, wird automatisch gesichert",
+  compare_update: "Updates",
+  compare_update_web: "Beim Öffnen immer die neueste Version",
+  compare_update_desktop: "Updates per Klick in der App, Rückkehr zur vorherigen Version möglich",
   compare_ai: "KI-Quelle",
   compare_ai_web: "Kostenlose OpenRouter-Modelle (Tageslimit)",
   compare_ai_desktop: "Kostenlose und kostenpflichtige Modelle oder dein Claude-, ChatGPT-, Gemini- oder Grok-Abo",

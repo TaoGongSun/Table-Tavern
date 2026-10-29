@@ -173,7 +173,7 @@ export const ja: WebMessages = {
   downloadAllFiles: "すべてのバージョンとファイル",
   downloadInstallTitle: "インストール時にブロックされたら",
   downloadInstallWindows:
-    "Windows：デスクトップ版はまだコード署名証明書を購入していないため、SmartScreen が「Windows によって PC が保護されました」や「不明な発行元」を表示することがあります。「詳細情報」を押し、「実行」を押してください。",
+    "Windows：デスクトップ版はまだコード署名証明書を購入していないため、SmartScreen が「Windows によって PC が保護されました」や「不明な発行元」を表示することがあります。「詳細情報」を押し、「実行」を押してください。ダウンロード時にブラウザが「一般的にダウンロードされていません」と表示したら「保存」を選んでください。",
   downloadInstallMac:
     "macOS（Apple Silicon のみ）：Table Tavern.app を「アプリケーション」にドラッグしてダブルクリックします。デスクトップ版はまだ Apple の公証を受けていないため、Gatekeeper が「マルウェアが含まれていないことを検証できません」と表示することがあります。「完了」を押し、「システム設定 → プライバシーとセキュリティ」を開いて一番下の「このまま開く」を押し、もう一度確認すれば開けます。",
   downloadInstallWhy: "署名や公証のないソフトウェアによく出る表示です。ダウンロードは上の GitHub リリースページからだけにしてください。",
@@ -191,6 +191,9 @@ export const ja: WebMessages = {
   compare_saves_web: "ブラウザに保存（消えることがある）、書き出し可能",
   compare_saves_desktop:
     "自分のパソコンのフォルダに保存。普段のバックアップはそのフォルダのコピー。アップデートで卓の形式を変換する前には自動でバックアップ",
+  compare_update: "更新",
+  compare_update_web: "開けば常に最新版",
+  compare_update_desktop: "アプリ内でワンクリック更新、前のバージョンにも戻せる",
   compare_ai: "AI の接続先",
   compare_ai_web: "OpenRouter の無料モデル（1 日の回数上限あり）",
   compare_ai_desktop: "無料・有料モデル、または Claude、ChatGPT、Gemini、Grok のサブスクリプション",

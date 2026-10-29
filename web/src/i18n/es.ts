@@ -174,7 +174,7 @@ export const es: WebMessages = {
   downloadAllFiles: "Todas las versiones y archivos",
   downloadInstallTitle: "¿El sistema lo bloquea al instalar?",
   downloadInstallWindows:
-    "Windows: la app de escritorio aún no tiene un certificado de firma de código, así que SmartScreen puede mostrar «Windows protegió su PC» o «Editor desconocido». Pulsa «Más información» y luego «Ejecutar de todas formas».",
+    "Windows: la app de escritorio aún no tiene un certificado de firma de código, así que SmartScreen puede mostrar «Windows protegió su PC» o «Editor desconocido». Pulsa «Más información» y luego «Ejecutar de todas formas». Si el navegador dice que el archivo no se descarga habitualmente, elige «Conservar».",
   downloadInstallMac:
     "macOS (solo Apple Silicon): arrastra Table Tavern.app a Aplicaciones y ábrela con doble clic. La app aún no está notarizada por Apple, así que Gatekeeper puede decir que no puede verificar que esté libre de malware. Pulsa «OK», abre «Ajustes del Sistema → Privacidad y seguridad», baja hasta el final, pulsa «Abrir igualmente» y confirma una vez más.",
   downloadInstallWhy: "Es un aviso habitual del software sin firmar o sin notarizar. Descarga solo desde la página de versiones de GitHub de arriba.",
@@ -192,6 +192,9 @@ export const es: WebMessages = {
   compare_saves_web: "En el navegador (puede borrarse); se pueden exportar",
   compare_saves_desktop:
     "En una carpeta de tu equipo; la copia de seguridad habitual es copiar esa carpeta, y antes de que una actualización convierta el formato de una mesa se hace una copia automática",
+  compare_update: "Actualizaciones",
+  compare_update_web: "Siempre la última versión al abrirla",
+  compare_update_desktop: "Actualización con un clic dentro de la app, con opción de volver a la versión anterior",
   compare_ai: "Origen de la IA",
   compare_ai_web: "Modelos gratuitos de OpenRouter (límite diario)",
   compare_ai_desktop: "Modelos gratuitos y de pago, o tu suscripción de Claude, ChatGPT, Gemini o Grok",

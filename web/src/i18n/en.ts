@@ -174,7 +174,7 @@ export const en: WebMessages = {
   downloadAllFiles: "All versions and files",
   downloadInstallTitle: "Blocked by the system while installing?",
   downloadInstallWindows:
-    "Windows: the desktop app doesn't have a code-signing certificate yet, so SmartScreen may show “Windows protected your PC” or “Unknown publisher”. Click “More info”, then “Run anyway”.",
+    "Windows: the desktop app doesn't have a code-signing certificate yet, so SmartScreen may show “Windows protected your PC” or “Unknown publisher”. Click “More info”, then “Run anyway”. If your browser says the file isn't commonly downloaded, choose “Keep” (in Edge it's under “…”, then “Keep anyway”).",
   downloadInstallMac:
     "macOS (Apple Silicon only): drag Table Tavern.app into Applications and double-click it. The desktop app hasn't been notarized by Apple yet, so Gatekeeper may say it can't verify the app is free of malware. Click “Done”, open “System Settings → Privacy & Security”, scroll to the bottom, press “Open Anyway” and confirm once more.",
   downloadInstallWhy: "This is a common prompt for unsigned or un-notarized software. Only download from the GitHub releases page above.",
@@ -192,6 +192,9 @@ export const en: WebMessages = {
   compare_saves_web: "Stored in the browser (may be cleared); can be exported",
   compare_saves_desktop:
     "Stored in a folder on your computer — back up by copying that folder; tables are backed up automatically before an upgrade converts their format",
+  compare_update: "Updates",
+  compare_update_web: "Always the latest version when you open it",
+  compare_update_desktop: "One-click in-app updates, with rollback to the previous version",
   compare_ai: "AI source",
   compare_ai_web: "Free OpenRouter models (daily limit)",
   compare_ai_desktop: "Free and paid models, or your Claude, ChatGPT, Gemini or Grok subscription",

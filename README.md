@@ -7,7 +7,7 @@ AI plays a whole table of characters — and the GM (game master) too. Drop in o
 ## Coming from SillyTavern? Bring your stuff
 
 - **Character cards and lorebooks import directly** — PNG or JSON — and you can export your cards back out.
-- **Cards with their own interface and variable system (MVU) still work**: the status bars, buttons, and stats the card defines show up and respond as written.
+- **Cards with their own interface and variable system (MVU, including zod rules) still work**: the status bars, buttons, and stats the card defines show up and respond as written, and HTML layout and text styling in the story display like they do in SillyTavern.
 - **Web saves carry over to the desktop app**, so you can keep playing there — conversation, variables, and lorebook state included.
 
 ## Play now
@@ -24,11 +24,11 @@ Web saves live in your browser. Safari may clear data for sites you haven't open
 
 The download buttons above fetch the latest version directly. The release isn't code-signed yet, so your system will warn you the first time you open it. Do the steps below once — it's not malware.
 
-**Windows**: run the installer you downloaded. If you see "Windows protected your PC": click **More info → Run anyway**.
+**Windows**: if your browser says the file isn't commonly downloaded, choose **Keep** (in Edge it's under **…**, then **Keep anyway**). Run the installer you downloaded. If you see "Windows protected your PC": click **More info → Run anyway**.
 
 **macOS** (Apple Silicon): open the `.dmg` you downloaded, drag `Table Tavern.app` into Applications, double-click. If macOS says it can't verify the app: press **Done**, open **System Settings → Privacy & Security**, scroll to the bottom, click **Open Anyway**, and confirm once.
 
-When a new version comes out, the app lets you know and updates in one click.
+When a new version comes out, the app lets you know and updates in one click; if you'd rather not keep it, you can roll back to the previous version from inside the app.
 
 ## Getting started
 
@@ -38,8 +38,9 @@ When a new version comes out, the app lets you know and updates in one click.
 
 ## Why it's fun — and easy on your budget
 
+- **Pick who speaks at multi-character tables**: **Let ○○ reply** appears under the GM's narration, and **Send + reply** sits next to the send button. Cards that provide setting but never speak (places, factions) can be made **stage cards**, so they're never asked to talk.
 - **Play completely free**: once OpenRouter is connected, the app picks a good free model for you. If that one is busy or temporarily unavailable, it switches to the next one and tells you in the chat.
-- **Use the subscription you already have**: with a Claude, ChatGPT, Gemini, or Grok subscription, you can route play through that provider's official command-line tool and spend the allowance you already pay for. The app installs it in one click, walks you through signing in, and shows **Connected** once it detects you're logged in. Providers' rules on this kind of use differ; the app explains the risks before you switch, and the choice is yours.
+- **Use the subscription you already have**: with a Claude, ChatGPT, Gemini, or Grok subscription, you can route play through that provider's official command-line tool and spend the allowance you already pay for. The app installs it in one click, walks you through signing in, and shows **Connected** once it detects you're logged in. For Claude, Codex and Grok, the app prefers the tool version it was tested with (falling back to the latest if that can't be downloaded); Gemini always gets the latest. The app keeps the tool from updating itself while the app runs it; if a tool update breaks its output format, the app says so and offers **Check for CLI update**. Providers' rules on this kind of use differ; the app explains the risks before you switch, and the choice is yours.
 - **Saves usage everywhere**:
   - Makes the most of AI providers' prompt caching, so the setup resent each turn isn't billed at full price again and again; the usage page shows your hit rate.
   - Card refactoring: for cards that reprint their whole interface every turn, the app takes over drawing the interface and the model only reports the values that changed — shorter replies, shorter waits.
