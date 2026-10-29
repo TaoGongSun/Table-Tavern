@@ -9,4 +9,5 @@ Status: todo〔作者裁決 2026-10-06：立案，CLI 與 OpenRouter 兩件併�
 2. **OpenRouter 檔位預填寫死**：`src/features/settings/SettingsForm.tsx` 的 `SUGGESTED_TIER_MODELS`（claude-opus-4.8／claude-sonnet-5／gemini-3.5-flash）要發版才會變，玩家一存檔就固定。改成 app 執行時從官方來源決定（見 memory「智慧選模＝分數排行」：不靠人工清單、不寫死型號），已存的手選值同樣走第 1 點的提醒。
 
 ## Next action
-先查各 CLI 模型清單能不能分辨預設／最新、OpenRouter 有哪些官方 API 能判斷「同系列的新版」與付費檔位的排行，再拍板提醒出現的位置與頻率。
+2026-10-29 輕防重審：縮小〔模型判斷·未裁決〕（作者裁決只管立案與兩件併一案）。最小版＝OpenRouter 預填改成執行時從官方來源決定（不寫死型號）；CLI 提醒先只做 grok（`grok models` 有 `(default)` 標記）。開工先查 OpenRouter 官方 API 能否判斷同系列新版與付費檔位排行，再拍板提醒的位置與頻率。
+刪掉的部分成已知限制：清單分不出預設版的 CLI 不提醒換新版。

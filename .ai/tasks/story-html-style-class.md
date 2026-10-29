@@ -9,7 +9,7 @@ blackboard、Status_block、StatusData 這類靠 `<style>`＋class 排版的狀�
 - 與 story-html-style-attr 共用 CSS 消毒，可一起做。
 
 ## Next action
-未排程；等 story-html-whitelist 結案後評估。
+2026-10-29 輕防重審：維持立案〔模型判斷·未裁決〕。前置 story-html-whitelist 已結案；排在 [story-html-style-attr](story-html-style-attr.md) 最小版之後再評估——屆時看沒重構的狀態欄卡（重構後狀態欄由 app 自己畫）實際占比與新依賴（CSS 解析器、網頁版 CSSOM）的工，再決定做不做；不做就列已知限制「沒重構的狀態欄卡不套卡片自帶樣式」。
 
 ## 驗收方向
 TestCards 的狀態欄卡外觀接近 ST；樣式不外溢到 app 介面。

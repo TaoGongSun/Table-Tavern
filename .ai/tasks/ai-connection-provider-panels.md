@@ -15,7 +15,8 @@ Updated: 2026-09-09T16:21:41+08:00
 - 2026-09-09：拆案。免費玩家 onboarding 成為優先路線；本案降為後續設定頁整理，不得阻擋或擴張前者。
 
 ## Next action
-- **暫不開工。** 等 [free-player-onboarding](../plans/free-player-onboarding.md) 的「免 key」與「推薦／限時免費模型」兩階段完成後，再看真實玩家是否仍被設定頁困擾，再決定是否值得動 CLI／高中低 UI。
+- 前置 [free-player-onboarding](../plans/free-player-onboarding.md) 三階段已結案（作者 2026-10-04 實機驗收過）。
+- 2026-10-29 輕防重審：暫不動工、保留立案〔模型判斷·未裁決〕。剩下的條件是「真實玩家是否仍被設定頁困擾」，要有玩家回饋才判得了；有回饋再決定要不要動 CLI／高中低 UI。
 
 ## Constraints
 - 不搶先修改 `free-player-onboarding` 正在依賴的 OpenRouter onboarding／模型發現流程。

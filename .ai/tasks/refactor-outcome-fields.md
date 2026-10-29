@@ -8,4 +8,4 @@ statusbar-only-fields（2026-10-28）拆出來的案子，三件事都會改重�
 本案完成前，地圖、記憶這類格子如果出現在開場狀態欄，會照一般格子追蹤。
 
 ## Next action
-未排程，等 statusbar-only-fields 結案後開工。statusbar-only-fields 的計畫檔裡有 UNTRACKED 第 4 版的設計可以參考。
+未排程；前置 statusbar-only-fields 已結案（2026-10-28），可排程。statusbar-only-fields 的計畫檔裡有 UNTRACKED 第 4 版的設計可以參考。
