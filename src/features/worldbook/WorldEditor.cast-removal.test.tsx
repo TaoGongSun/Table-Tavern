@@ -105,6 +105,7 @@ describe("WorldEditor after a character is deleted", () => {
         convertColor="#e07a5f"
         onEntryConverted={async () => {}}
         onRefactorApplied={async () => {}}
+        onRefreshReceipts={async () => {}}
         isTurnRunning={() => false}
         pendingRefactorCard={null}
         onPendingRefactorCardTaken={() => {}}

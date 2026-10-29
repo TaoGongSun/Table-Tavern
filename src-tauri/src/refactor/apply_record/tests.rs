@@ -43,7 +43,7 @@ fn second_character_failure_rolls_back_to_zero_writes() {
             &outcome,
             &selection,
             &[],
-            true,
+            RefactorApplyOrigin::Card,
             &held,
         )
         .unwrap_err()
@@ -70,7 +70,7 @@ fn second_character_failure_rolls_back_to_zero_writes() {
         &outcome,
         &selection,
         &[],
-        true,
+        RefactorApplyOrigin::Card,
         &held,
     )
     .unwrap();
@@ -98,7 +98,7 @@ fn rejection_before_writes_keeps_earlier_receipt() {
         &outcome,
         &with_player,
         &[],
-        true,
+        RefactorApplyOrigin::Card,
         &held,
     )
     .unwrap();
@@ -109,7 +109,7 @@ fn rejection_before_writes_keeps_earlier_receipt() {
         &outcome,
         &with_player,
         &[],
-        true,
+        RefactorApplyOrigin::Card,
         &held,
     )
     .unwrap_err()
@@ -146,7 +146,7 @@ fn rollback_failure_keeps_receipt_and_reports_partial() {
             &outcome,
             &selection,
             &[],
-            true,
+            RefactorApplyOrigin::Card,
             &held,
         )
         .unwrap_err()
@@ -167,7 +167,7 @@ fn rollback_failure_keeps_receipt_and_reports_partial() {
         &outcome,
         &selection,
         &[],
-        true,
+        RefactorApplyOrigin::Card,
         &held,
     )
     .unwrap();
@@ -190,7 +190,7 @@ fn unrecorded_failure_does_not_touch_the_earlier_receipt() {
         &outcome_of(&["前一次"]),
         &no_player_selection(vec![0]),
         &[],
-        true,
+        RefactorApplyOrigin::Card,
         &held,
     )
     .unwrap();
@@ -210,7 +210,7 @@ fn unrecorded_failure_does_not_touch_the_earlier_receipt() {
             &outcome_of(&["甲", "乙"]),
             &no_player_selection(vec![0, 1]),
             &[],
-            true,
+            RefactorApplyOrigin::Card,
             &held,
         )
         .unwrap_err()
@@ -247,7 +247,7 @@ fn applied_with_deleted_sources(label: &str) -> (TestRoot, String, [u64; 2]) {
         &outcome,
         &selection,
         &[],
-        true,
+        RefactorApplyOrigin::Card,
         &held,
     )
     .unwrap();
@@ -371,7 +371,7 @@ fn refactor_receipt_append_failure_keeps_earlier_receipts_intact() {
         &outcome_of(&["前一次"]),
         &no_player_selection(vec![0]),
         &[],
-        true,
+        RefactorApplyOrigin::Card,
         &held,
     )
     .unwrap();

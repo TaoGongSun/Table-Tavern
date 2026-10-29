@@ -392,4 +392,30 @@ describe("undo last import shares the table lock with imports", () => {
     await undoFromMenu();
     expect(dialogs.confirm.mock.calls[0][0]).toContain("重構卡");
   });
+
+  // refactor-undo-ai-apply：最後一筆是 AI 重構套用的屏障 → 陣容欄沒有復原項目；屏障上面有匯入 → 有
+  it("hides undo when the last receipt is the AI refactor barrier", async () => {
+    const barrier = { kind: "refactor_ai", label: "重構套用", timestamp: "2026-10-29 10:00", character_id: "" };
+    receipts = [receipt("甲角", "c1"), barrier];
+    await start();
+    expect(await menuItem(t("undoLastImport"))).toBeUndefined();
+    await closeMenu();
+    await pickFile();
+    expect(await menuItem(t("undoLastImport"))).toBeDefined();
+  });
+
+  // 前端以為撤得動、後端說是屏障：報翻譯後的訊息並重讀收據，選單跟上
+  it("rereads receipts when the backend refuses at the refactor barrier", async () => {
+    const blocked = `TTMSG:${JSON.stringify({ code: "undo_blocked_by_refactor" })}`;
+    backend.handlers.undo_last_import = () => {
+      receipts = [{ kind: "refactor_ai", label: "重構套用", timestamp: "2026-10-29 10:00", character_id: "" }];
+      throw blocked;
+    };
+    await start();
+    const reads = called("list_import_receipts").length;
+    await undoFromMenu();
+    expect(called("list_import_receipts").length).toBeGreaterThan(reads);
+    expect(document.body.textContent).toContain(backendText(blocked));
+    expect(await menuItem(t("undoLastImport"))).toBeUndefined();
+  });
 });

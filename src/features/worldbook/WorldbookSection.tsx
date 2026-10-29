@@ -268,7 +268,8 @@ export function WorldbookSection({
           )}
         </div>
       )}
-      {draft && draft.uid === null && entryForm}
+      {/* 新條目；或既有條目已不在清單（重構套用失敗補救時被刪掉）——草稿留在清單底部，玩家才拿得回未存的文字 */}
+      {draft && (draft.uid === null || !entries.some((entry) => entry.uid === draft.uid)) && entryForm}
     </section>
   );
 }

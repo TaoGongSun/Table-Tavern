@@ -89,6 +89,7 @@ describe("WorldEditor", () => {
         convertColor="#e07a5f"
         onEntryConverted={async () => {}}
         onRefactorApplied={async () => {}}
+        onRefreshReceipts={async () => {}}
         isTurnRunning={() => false}
         pendingRefactorCard={pending}
         onPendingRefactorCardTaken={taken}

@@ -71,6 +71,10 @@ interface UseRefactorWorkflowOptions {
   refreshAfterApply: (live: () => boolean, entryChanges: EntryChanges | null) => Promise<void>;
   /** 清回前先把開著的既有條目草稿存起來並關掉（乾淨的也關）；存不起來回 false，不清回 */
   flushDraft: () => Promise<boolean>;
+  /** 套用失敗後的補救：開著的既有條目草稿存成才關；條目已被刪或存不起來就留著、回 false（之後不刷新桌面） */
+  flushDraftForRecovery: () => Promise<boolean>;
+  /** 只重讀收據清單：套用失敗後不管桌面刷新成不成都要試，陣容欄的復原項目才對得上 */
+  refreshReceipts: () => Promise<void>;
   /** 同步問「這桌有沒有回合在跑」：有的話套用會排在它後面（後端持整桌獨占） */
   isTurnRunning: () => boolean;
 }
@@ -125,6 +129,8 @@ export function useRefactorWorkflow({
   setStatusMessage,
   refreshAfterApply,
   flushDraft,
+  flushDraftForRecovery,
+  refreshReceipts,
   isTurnRunning,
 }: UseRefactorWorkflowOptions) {
   const { run: runQueued, waiting: waitingForTurn } = useTurnWait(isTurnRunning, world);
@@ -817,7 +823,8 @@ export function useRefactorWorkflow({
             worldId: world,
             outcome,
             selection: nextSelection,
-            recordReceipt: origin !== "ai",
+            // AI 結果卡無還原、只放復原屏障；重構卡記完整收據（後端必填，見 refactor/apply_record.rs）
+            origin: origin === "ai" ? "ai" : "card",
             assetToken,
           });
         });
@@ -848,7 +855,11 @@ export function useRefactorWorkflow({
           });
         } else if (live() && String(reason).includes(REFACTOR_EMPTY_SELECTION)) {
           setStatusMessage(t("refactorEmptySelection"));
-        } else if (live()) setStatusMessage(String(reason));
+        } else if (live()) {
+          // 套用可能留下了變動（部分套用、收據或屏障）：補救刷新後才報原錯，刷新的錯不蓋掉它
+          if (!gone) await recoverAfterFailedApply(live);
+          if (live()) setStatusMessage(String(reason));
+        }
       } finally {
         // 按鈕鎖一律放開（卸載後 React 不會套用），換桌後留著的面板不能永遠鎖死
         setBusy(false);
@@ -857,6 +868,24 @@ export function useRefactorWorkflow({
     // 沒送到後端（等回合時換桌或卸載）或後端拒套放回：元件已卸載就沒人會再關這張卡，這裡釋放
     applyPhase.current = "idle";
     if (!mounted.current && heldToken.current === held) releaseHeldAssets();
+  }
+
+  // 套用失敗的補救：先存草稿（存不成就不刷新桌面，草稿留著），再刷新桌面，最後一定重讀收據；每步各自吞錯
+  async function recoverAfterFailedApply(live: () => boolean) {
+    const flushed = await flushDraftForRecovery().catch(() => false);
+    if (flushed && live()) {
+      try {
+        await refreshAfterApply(live, null);
+      } catch (error) {
+        console.warn("refactor apply recovery refresh failed", error);
+      }
+    }
+    if (!live()) return;
+    try {
+      await refreshReceipts();
+    } catch (error) {
+      console.warn("refactor apply recovery receipts failed", error);
+    }
   }
 
   // 匯出結果卡上這份還沒套用（或剛套用完）的產物，供之後用「匯入重構卡」讀回重玩。

@@ -78,7 +78,7 @@ pub fn apply_to_table(
     outcome: &super::RefactorOutcome,
     selection: &super::RefactorSelection,
     assets: &[super::card_png::CardAsset],
-    record_receipt: bool,
+    origin: super::RefactorApplyOrigin,
     held: &data::WorldExclusive,
 ) -> Result<super::RefactorApplySummary, String> {
     if selection.is_empty() {
@@ -90,14 +90,7 @@ pub fn apply_to_table(
     }
     // 中途失敗會在裡面記收據並立刻撤銷，回到零寫入（見 refactor/apply_record.rs）
     let result = super::apply_and_record(
-        root,
-        world_id,
-        lang,
-        outcome,
-        selection,
-        assets,
-        record_receipt,
-        held,
+        root, world_id, lang, outcome, selection, assets, origin, held,
     );
     data::message_vars::world_swapped(root, world_id);
     result.map_err(|error| error.to_string())

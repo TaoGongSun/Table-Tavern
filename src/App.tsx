@@ -45,7 +45,11 @@ import {
 import { nextTurnFailure, TurnFailedDialog } from "./features/play/chat/TurnFailedDialog";
 import { showWorldInfoNotices } from "./features/play/world-info-notices";
 import { resetWorldInfoTiming } from "./features/play/world-info-reset";
-import { useImportController, type WebSaveImport } from "./features/import/useImportController";
+import {
+  canUndoLastReceipt,
+  useImportController,
+  type WebSaveImport,
+} from "./features/import/useImportController";
 import { openWebSaveTable as openWebSaveTableFlow } from "./features/import/web-save-table";
 import { useOpeningPost } from "./features/import/useOpeningPost";
 import { useSceneActions } from "./features/play/scene/useSceneActions";
@@ -760,7 +764,8 @@ function App() {
 
   // 排在回合後面的期間可能已經換桌：撤銷照樣在原桌完成，但之後每個 await 邊界 live() 為 false 就不再動現在這桌的畫面
   async function runUndoLastImport({ live, backend }: TurnWaitOp) {
-    if (imports.receipts.length === 0) return;
+    // 沒收據、或最後一筆是 AI 重構套用的屏障：沒有撤得動的（陣容欄同一個判斷）
+    if (!canUndoLastReceipt(imports.receipts)) return;
     setError("");
     const receiptCount = imports.receipts.length;
     const last = imports.receipts[receiptCount - 1];
@@ -831,8 +836,11 @@ function App() {
     } catch (reason) {
       if (!live()) return;
       setError(String(reason));
-      // 收據已換過：重讀清單，下次確認框顯示的就是新的最後一筆
-      if (backendCode(reason) === "import_receipt_changed") await imports.refreshReceipts(table);
+      // 收據已換過、或最後一筆其實是 AI 重構的屏障：重讀清單，確認框與陣容欄跟上
+      const code = backendCode(reason);
+      if (code === "import_receipt_changed" || code === "undo_blocked_by_refactor") {
+        await imports.refreshReceipts(table);
+      }
     }
   }
 

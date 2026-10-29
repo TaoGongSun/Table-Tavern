@@ -692,7 +692,7 @@ fn apply_failure_after_source_deletion_rolls_back_with_raw_fields() {
             &outcome,
             &entries_selection(1),
             &[],
-            true,
+            crate::refactor::RefactorApplyOrigin::Card,
             &held,
         )
         .unwrap_err()

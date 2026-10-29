@@ -218,6 +218,8 @@ pub enum UiMsg {
     NoImportToUndo,
     /// 撤銷確認框顯示的那筆已不是最後一筆（期間又有匯入、重構套用寫了收據）：不撤，請玩家再按一次。
     ImportReceiptChanged,
+    /// 最後一筆是 AI 重構套用的屏障：AI 套用無還原，復原不跨過它去撤更早的匯入〔作者裁決 2026-10-29〕。
+    UndoBlockedByRefactor,
     /// 存的是既有條目，但它已經不在了（例如被撤銷匯入刪掉）：不以新條目寫回。
     WorldbookEntryGone,
 
@@ -277,6 +279,8 @@ pub enum UiMsg {
     RefactorApplyPartialNoReceipt {
         error: String,
     },
+    /// AI 套用前要先放的復原屏障寫不進去（收據檔讀不了或寫不進去）：沒有套用。
+    RefactorBarrierFailed,
 
     // ── 更新器與版本庫
     UpdateNotChecked,

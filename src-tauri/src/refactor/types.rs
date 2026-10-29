@@ -167,6 +167,15 @@ pub struct ApplyFailure {
     pub progress: ApplyProgress,
 }
 
+/// 套用的來源：AI 結果卡（無還原〔作者裁決 2026-08-11〕，放復原屏障）或匯入的重構卡（記完整收據、可復原）。
+/// 前端必填，沒有預設值：呼叫端不會默默拿到錯的收據模式。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RefactorApplyOrigin {
+    Ai,
+    Card,
+}
+
 /// apply() 的完整結果：summary 給前端，其餘給呼叫端組收據（receipts::record_refactor_apply）。
 #[derive(Debug)]
 pub struct RefactorApplyResult {

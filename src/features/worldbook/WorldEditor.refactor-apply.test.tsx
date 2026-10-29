@@ -7,6 +7,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { t } from "../../i18n";
+import { backendText } from "../../shared/ui/backend-text";
 import type { WorldbookEntry } from "../../shared/contracts/backend-contracts";
 import type { PendingRefactorCard } from "../refactor/refactor-card";
 import type { EntryChanges } from "./worldbook-model";
@@ -69,6 +70,8 @@ describe("WorldEditor after a refactor apply or reset", () => {
   let host: HTMLDivElement | null = null;
   const leaveGuard: { current: (() => Promise<boolean>) | null } = { current: null };
   let book: WorldbookEntry[];
+  const refactorApplied = vi.fn(async (_live: () => boolean) => {});
+  const refreshReceipts = vi.fn(async () => {});
 
   beforeEach(() => {
     book = [entry(1), entry(2), entry(3)];
@@ -87,6 +90,8 @@ describe("WorldEditor after a refactor apply or reset", () => {
     };
     backend.calls = [];
     dialogs.confirm.mockClear();
+    refactorApplied.mockClear();
+    refreshReceipts.mockClear();
   });
 
   afterEach(() => {
@@ -107,7 +112,8 @@ describe("WorldEditor after a refactor apply or reset", () => {
         leaveGuard={leaveGuard}
         convertColor="#e07a5f"
         onEntryConverted={async () => {}}
-        onRefactorApplied={async () => {}}
+        onRefactorApplied={refactorApplied}
+        onRefreshReceipts={refreshReceipts}
         isTurnRunning={() => false}
         pendingRefactorCard={pending}
         onPendingRefactorCardTaken={() => {}}
@@ -363,5 +369,66 @@ describe("WorldEditor after a refactor apply or reset", () => {
     expect(order.indexOf("upsert_worldbook_entry")).toBeLessThan(order.indexOf("dedupe_worldbook"));
     expect(upserts()[0]).toMatchObject({ uid: 1, content: "玩家內文" });
     expect(form()).toBeNull();
+  });
+
+  /** 套用中途失敗、沒能整個退回：後端已改了世界書（mutate），回部分套用的錯 */
+  async function failApply(mutate: () => void) {
+    backend.handlers.refactor_apply = () => {
+      mutate();
+      return Promise.reject('TTMSG:{"code":"refactor_apply_partial","error":"寫卡失敗"}');
+    };
+    const pending = { worldId: "w1", file: new File(["{}"], "card.png"), generation: 1 };
+    await act(async () => root!.render(editor(pending)));
+    await vi.waitFor(() => expect(button(t("refactorApplyAll"))).toBeDefined());
+    await act(async () => button(t("refactorApplyAll")).click());
+    await vi.waitFor(() => expect(refreshReceipts).toHaveBeenCalledTimes(1));
+    await act(async () => {});
+  }
+
+  it("a failed apply saves the open dirty draft before refreshing, then rereads the receipts", async () => {
+    await mount();
+    await openEntry(3);
+    await typeInto(entryContent(), "玩家內文");
+    await failApply(() => {
+      book = book.filter((item) => item.uid !== 2);
+    });
+    expect(upserts()).toHaveLength(1);
+    expect(upserts()[0]).toMatchObject({ uid: 3, content: "玩家內文" });
+    expect(refactorApplied).toHaveBeenCalledTimes(1);
+    expect(form()).toBeNull();
+  });
+
+  it("a failed apply that deleted the drafted entry keeps the draft open with the unsaved text", async () => {
+    backend.handlers.upsert_worldbook_entry = ({ entry: saved, create }) => {
+      const next = saved as WorldbookEntry;
+      if (!create && !book.some((item) => item.uid === next.uid)) {
+        throw 'TTMSG:{"code":"worldbook_entry_gone"}';
+      }
+      book = book.map((item) => (item.uid === next.uid ? { ...next } : item));
+      return next.uid;
+    };
+    await mount();
+    await openEntry(2);
+    await typeInto(entryContent(), "玩家內文");
+    await failApply(() => {
+      book = book.filter((item) => item.uid !== 2);
+    });
+    expect(upserts()).toHaveLength(1);
+    expect(form()).not.toBeNull();
+    expect(entryContent().value).toBe("玩家內文");
+    expect(refactorApplied).not.toHaveBeenCalled();
+    expect(refreshReceipts).toHaveBeenCalledTimes(1);
+
+    // 按存檔：後端拒寫，表單照留、文字還在，訊息說條目已不在〔作者裁決 2026-10-29〕
+    await act(async () => form()!.requestSubmit());
+    await act(async () => {});
+    expect(upserts()).toHaveLength(2);
+    expect(form()).not.toBeNull();
+    expect(entryContent().value).toBe("玩家內文");
+    expect(host!.textContent).toContain(backendText('TTMSG:{"code":"worldbook_entry_gone"}'));
+
+    // 切到別條照舊關掉這份草稿（已知限制）
+    await openEntry(3);
+    expect(entryContent().value).toBe("原文3");
   });
 });

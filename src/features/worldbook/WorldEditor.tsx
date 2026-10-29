@@ -21,6 +21,7 @@ export function WorldEditor({
   convertColor,
   onEntryConverted,
   onRefactorApplied,
+  onRefreshReceipts,
   isTurnRunning,
   pendingRefactorCard,
   onPendingRefactorCardTaken,
@@ -38,6 +39,8 @@ export function WorldEditor({
   onEntryConverted: () => Promise<void>;
   /** AI 卡重構套用成功後：角色清單／卡片介面／桌面狀態都可能變了，交回 App 層重載 */
   onRefactorApplied: (live: () => boolean) => Promise<void>;
+  /** 只重讀收據清單：重構套用失敗後的補救（桌面刷新不了也要讓陣容欄的復原項目對上） */
+  onRefreshReceipts: () => Promise<void>;
   /** 同步問「這桌有沒有回合在跑」：重構套用會排在它後面 */
   isTurnRunning: () => boolean;
   /** 陣容欄交過來的重構卡 PNG：只接同一桌的、每個世代只接一次 */
@@ -71,6 +74,8 @@ export function WorldEditor({
     setStatusMessage: worldbook.setMessage,
     refreshAfterApply,
     flushDraft: worldbook.flushAndCloseExistingDraft,
+    flushDraftForRecovery: worldbook.flushExistingDraftForRecovery,
+    refreshReceipts: onRefreshReceipts,
     isTurnRunning,
   });
 

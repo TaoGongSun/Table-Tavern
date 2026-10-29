@@ -52,6 +52,7 @@ interface MainViewProps {
   worldOpen: boolean;
   onEntryConverted: () => Promise<void>;
   onRefactorApplied: (live: () => boolean) => Promise<void>;
+  onRefreshReceipts: () => Promise<void>;
   pendingRefactorCard: PendingRefactorCard | null;
   onPendingRefactorCardTaken: (generation: number) => void;
   /** 確定已刪的角色通知：開著的世界設定據此重讀 */
@@ -92,6 +93,7 @@ export function MainView({
   worldOpen,
   onEntryConverted,
   onRefactorApplied,
+  onRefreshReceipts,
   pendingRefactorCard,
   onPendingRefactorCardTaken,
   worldChange,
@@ -160,6 +162,7 @@ export function MainView({
           convertColor={nextColor}
           onEntryConverted={onEntryConverted}
           onRefactorApplied={onRefactorApplied}
+          onRefreshReceipts={onRefreshReceipts}
           pendingRefactorCard={pendingRefactorCard}
           onPendingRefactorCardTaken={onPendingRefactorCardTaken}
           worldChange={worldChange}

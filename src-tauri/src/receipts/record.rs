@@ -3,12 +3,14 @@
 //! 記帳失敗不得影響匯入成功與否。
 
 use super::{
-    append_receipt, append_receipt_atomic, read_receipts, read_receipts_checked,
-    worldbook_entry_fingerprint, write_receipts, ImportReceipt, MechanismUndo, ModeUndo,
-    PostedOpening, ReceiptWorldbookEntry, Recorded, Snapshot,
+    append_receipt, append_receipt_atomic, is_barrier, pop_receipts, read_receipts,
+    read_receipts_checked, worldbook_entry_fingerprint, write_receipts, ImportReceipt,
+    MechanismUndo, ModeUndo, PostedOpening, ReceiptWorldbookEntry, Recorded, Snapshot,
+    REFACTOR_AI_BARRIER_KIND,
 };
 use super::{discard_import_source, ImportSource};
 use crate::data::{self, Trigger, WorldState, WorldbookEntry};
+use crate::ui_msg::UiMsg;
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::Path;
@@ -37,7 +39,8 @@ pub fn record_posted_opening(
                 .is_some_and(|source| source.file == file)
         }),
         None if index.is_some() => None,
-        None => receipts.last_mut(),
+        // 屏障撤不掉：掛上去的開場白就再也收不掉，當成沒有收據可掛
+        None => receipts.last_mut().filter(|receipt| !is_barrier(receipt)),
     };
     let Some(target) = target else {
         // 沒有收據可掛（什麼都沒新增的匯入）：沒挑序號就沒東西要記；挑了序號卻歸屬不了＝不完整
@@ -419,9 +422,62 @@ pub fn record_last_import_rename(
     _held: &data::WorldExclusive,
 ) {
     let mut receipts = read_receipts(root, world_id);
-    let Some(last) = receipts.last_mut() else {
+    let Some(last) = receipts.last_mut().filter(|receipt| !is_barrier(receipt)) else {
         return;
     };
     last.renamed_from = Some(old_name.to_owned());
     let _ = write_receipts(root, world_id, &receipts);
+}
+
+/// AI 重構套用前放屏障（refactor/apply_record.rs）：先放再套用，寫不進去（含收據檔讀壞）就回錯、不套用。
+pub fn push_refactor_barrier(
+    root: &Path,
+    world_id: &str,
+    label: &str,
+    _held: &data::WorldExclusive,
+) -> data::DataResult<()> {
+    let barrier = ImportReceipt {
+        kind: REFACTOR_AI_BARRIER_KIND.to_owned(),
+        label: label.to_owned(),
+        timestamp: data::local_timestamp().unwrap_or_default(),
+        character_id: None,
+        character_ids: Vec::new(),
+        worldbook_entries: Vec::new(),
+        mechanism: None,
+        world_card_created: None,
+        gm_image_created: false,
+        opening: None,
+        interface_shell_created: false,
+        interface_shell_restore: None,
+        refactor_mode: None,
+        renamed_from: None,
+        rewritten_entries: Vec::new(),
+        deleted_entries: Vec::new(),
+        deleted_entries_raw: Vec::new(),
+        visibility_restores: Vec::new(),
+        stage_restores: Vec::new(),
+        added_ledger_lines: String::new(),
+        import_source: None,
+    };
+    if append_receipt_atomic(root, world_id, barrier) {
+        Ok(())
+    } else {
+        Err(UiMsg::RefactorBarrierFailed.into_error())
+    }
+}
+
+/// AI 套用沒留下任何變動（寫入前被拒、中途失敗已回滾成功）時拿掉這次的屏障；最後一筆不是屏障就不動。
+pub fn pop_refactor_barrier(
+    root: &Path,
+    world_id: &str,
+    _held: &data::WorldExclusive,
+) -> data::DataResult<()> {
+    let Some(mut receipts) = read_receipts_checked(root, world_id) else {
+        return Err(data::invalid_data("import receipts unreadable"));
+    };
+    if !receipts.last().is_some_and(is_barrier) {
+        return Ok(());
+    }
+    receipts.pop();
+    pop_receipts(root, world_id, &receipts)
 }

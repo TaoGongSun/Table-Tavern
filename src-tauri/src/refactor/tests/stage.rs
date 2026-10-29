@@ -66,7 +66,7 @@ fn apply_recorded_summary(
         outcome,
         selection,
         &[],
-        true,
+        crate::refactor::RefactorApplyOrigin::Card,
         &data::test_exclusive(world_id),
     )
     .unwrap()
@@ -177,7 +177,7 @@ fn second_stage_write_failure_rolls_back_first() {
             &outcome,
             &stage_selection(vec![0, 1]),
             &[],
-            true,
+            crate::refactor::RefactorApplyOrigin::Card,
             &data::test_exclusive(&world_id),
         )
         .unwrap_err()

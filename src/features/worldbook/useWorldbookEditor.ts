@@ -248,9 +248,12 @@ export function useWorldbookEditor({
     });
   }
 
-  /** 把表單寫回世界書：saved＝寫好了；gone＝既有條目已不在（後端拒寫），這份草稿已關；failed＝原因留在
-   * 清單訊息列（表單不關） */
-  async function persistDraft(source: DraftState): Promise<"saved" | "gone" | "failed"> {
+  /** 把表單寫回世界書：saved＝寫好了；gone＝既有條目已不在（後端拒寫），這份草稿已關（closeOnGone 為
+   * false 時留著）；failed＝原因留在清單訊息列（表單不關） */
+  async function persistDraft(
+    source: DraftState,
+    { closeOnGone = true }: { closeOnGone?: boolean } = {},
+  ): Promise<"saved" | "gone" | "failed"> {
     const form = source.draft;
     if (!form) return "saved";
     const visibility = draftVisibility(form);
@@ -277,7 +280,9 @@ export function useWorldbookEditor({
       setMessage(String(reason));
       if (backendCode(reason) !== "worldbook_entry_gone") return "failed";
       // 只關送出的那份：等待途中新開的草稿不動
-      updateDraft((current) => (current.seq === source.seq ? { ...current, ...CLOSED } : current));
+      if (closeOnGone) {
+        updateDraft((current) => (current.seq === source.seq ? { ...current, ...CLOSED } : current));
+      }
       await refreshWorldbook().catch(() => {});
       return "gone";
     }
@@ -342,7 +347,8 @@ export function useWorldbookEditor({
     if (!(await settleRebase("write"))) return;
     const latest = draftRef.current;
     if (!latest.draft) return;
-    const result = await persistDraft(latest);
+    // 玩家親手按存檔被拒（條目已不在）：留著表單，文字才複製得走〔作者裁決 2026-10-29〕；切換、離開照舊關
+    const result = await persistDraft(latest, { closeOnGone: false });
     if (result !== "saved") return;
     updateDraft((current) => (current.seq === latest.seq ? { ...current, ...CLOSED } : current));
     setMessage(t("worldbookEntrySaved"));
@@ -468,6 +474,22 @@ export function useWorldbookEditor({
     return true;
   }
 
+  /** 重構套用失敗後的補救（刷新前）：開著的既有條目草稿有改動就存，存成才關；條目已被部分套用刪掉（gone）或
+   * 存不起來都留著不關、回 false，未存文字不丟。乾淨的照 flushAndCloseExistingDraft 關掉。新條目草稿不動 */
+  async function flushExistingDraftForRecovery() {
+    const current = draftRef.current;
+    if (current.draft && current.draft.uid !== null && isDirty(current)) {
+      if (!(await settleRebase("leave"))) return false;
+      const latest = draftRef.current;
+      if (latest.draft && latest.draft.uid !== null && isDirty(latest)) {
+        if ((await persistDraft(latest, { closeOnGone: false })) !== "saved") return false;
+        updateDraft((state) => (state.seq === latest.seq ? { ...state, ...CLOSED } : state));
+        return true;
+      }
+    }
+    return flushAndCloseExistingDraft();
+  }
+
   return {
     entries,
     ledger,
@@ -497,6 +519,7 @@ export function useWorldbookEditor({
     convertEntryToCharacter,
     flushExistingDraftForLeave,
     flushAndCloseExistingDraft,
+    flushExistingDraftForRecovery,
   };
 }
 

@@ -118,6 +118,7 @@ describe("WorldEditor after an import", () => {
         convertColor="#e07a5f"
         onEntryConverted={async () => {}}
         onRefactorApplied={async () => {}}
+        onRefreshReceipts={async () => {}}
         isTurnRunning={() => false}
         pendingRefactorCard={null}
         onPendingRefactorCardTaken={() => {}}

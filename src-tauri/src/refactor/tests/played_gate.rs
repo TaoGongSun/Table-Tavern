@@ -100,7 +100,7 @@ fn apply_here(root: &Path, world_id: &str) -> Result<RefactorApplySummary, Strin
         &outcome(),
         &selection(),
         &[],
-        true,
+        crate::refactor::RefactorApplyOrigin::Card,
         &data::test_exclusive(world_id),
     )
 }
@@ -378,7 +378,7 @@ fn empty_selection_is_refused_without_touching_the_table() {
         &outcome(),
         &no_player_selection(Vec::new()),
         &[],
-        true,
+        crate::refactor::RefactorApplyOrigin::Card,
         &data::test_exclusive(&world_id),
     )
     .unwrap_err();

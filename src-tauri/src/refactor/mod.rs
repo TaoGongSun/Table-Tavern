@@ -31,8 +31,8 @@ pub(crate) use reset::refactored;
 pub use reset::{apply_to_table, rerun_status, reset_to_import_source, RerunStatus, ResetOutcome};
 pub(crate) use stage::{keep_resolvable as keep_stage_cards, player_card_name};
 pub use types::{
-    normalize_stored_mode, RefactorApplySummary, RefactorCharacter, RefactorInterface,
-    RefactorOutcome, RefactorSelection,
+    normalize_stored_mode, RefactorApplyOrigin, RefactorApplySummary, RefactorCharacter,
+    RefactorInterface, RefactorOutcome, RefactorSelection,
 };
 
 #[cfg(test)]

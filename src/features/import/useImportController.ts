@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { message as showMessage } from "@tauri-apps/plugin-dialog";
 import { Lang, t } from "../../i18n";
-import { decideImportRoute } from "./import-routing";
+import { decideImportRoute, type ImportReceiptKind } from "./import-routing";
 import { hasRefactorCardChunk } from "../refactor/refactor-card";
 import { useTurnWait } from "../play/useTurnWait";
 import { type WorldbookEntry } from "../../shared/contracts/backend-contracts";
@@ -76,12 +76,28 @@ interface WorldbookImportResult extends WorldbookImport {
   widened_entries?: number[];
 }
 
+/** AI 重構套用在收據清單放的屏障（後端 receipts::REFACTOR_AI_BARRIER_KIND）：復原撤到這裡就停〔作者裁決 2026-10-29〕 */
+export const REFACTOR_AI_BARRIER_KIND = "refactor_ai";
+
 /** 匯入收據摘要：陣容欄「撤銷上次匯入」項靠這份判斷要不要出現 */
 export interface ImportReceiptSummary {
-  kind: "character" | "worldbook";
+  kind: "character" | "worldbook" | "refactor" | typeof REFACTOR_AI_BARRIER_KIND;
   label: string;
   timestamp: string;
   character_id?: string | null;
+}
+
+/** 「復原上次匯入」撤不撤得動：有收據，而且最後一筆不是 AI 重構套用的屏障（後端會拒撤） */
+export function canUndoLastReceipt(receipts: ImportReceiptSummary[]): boolean {
+  const last = receipts[receipts.length - 1];
+  return last !== undefined && last.kind !== REFACTOR_AI_BARRIER_KIND;
+}
+
+/** 第二張卡路由要看的收據身分：屏障不是匯入，只扣掉它（匯入重構卡的 refactor 收據是真匯入，照算） */
+export function importRouteKinds(receipts: ImportReceiptSummary[]): ImportReceiptKind[] {
+  return receipts
+    .map((receipt) => receipt.kind)
+    .filter((kind): kind is ImportReceiptKind => kind !== REFACTOR_AI_BARRIER_KIND);
 }
 
 function worldbookImportedMessage(book: WorldbookImport) {
@@ -441,11 +457,12 @@ export function useImportController(input: {
   // direct 零打擾直接匯；ask／merge_worldbook 開框，框裡選完才真的匯（見 answerRoute）。
   const routeImport = useCallback(
     async (identity: "character" | "worldbook", data: number[], label: string) => {
+      const kinds = importRouteKinds(receipts);
       // 收據為空才問條目：那可能是收據功能之前的舊桌、手建的桌或範例桌
-      const needsFallback = identity === "worldbook" && receipts.length === 0;
+      const needsFallback = identity === "worldbook" && kinds.length === 0;
       const route = decideImportRoute(
         identity,
-        receipts.map((receipt) => receipt.kind),
+        kinds,
         needsFallback && (await tableHasWorldbookEntries()),
       );
       if (worldRef.current !== worldId) return;

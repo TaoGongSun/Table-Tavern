@@ -6,7 +6,7 @@ import type { RepairNotice, TableGate } from "../features/world-format/open-worl
 import type { CardInterfaceController } from "../features/card-interface/useCardInterfaceController";
 import type { CharacterController } from "../features/characters/useCharacterController";
 import type { ChatController } from "../features/play/chat/useChatController";
-import type { ImportController } from "../features/import/useImportController";
+import { canUndoLastReceipt, type ImportController } from "../features/import/useImportController";
 import { advanceThenReopen, type SceneActions } from "../features/play/scene/useSceneActions";
 import type { TableStateController } from "../features/table-state/useTableStateController";
 import {
@@ -261,7 +261,7 @@ export function AppWorkspace({
         onImportFile={(file) => void imports.importFile(file)}
         importLocked={tableOpBusy}
         undoImportLocked={undoImportLocked}
-        canUndoImport={imports.receipts.length > 0 && !chattedSinceImport}
+        canUndoImport={canUndoLastReceipt(imports.receipts) && !chattedSinceImport}
         onUndoImport={() => void onUndoImport()}
         turnWaiting={turnWaiting}
       />
@@ -372,6 +372,7 @@ export function AppWorkspace({
               worldOpen={mainView?.kind === "world"}
               onEntryConverted={onEntryConverted}
               onRefactorApplied={onRefactorApplied}
+              onRefreshReceipts={() => imports.refreshReceipts(table)}
               pendingRefactorCard={pendingRefactorCard}
               onPendingRefactorCardTaken={onPendingRefactorCardTaken}
               worldChange={worldChange}

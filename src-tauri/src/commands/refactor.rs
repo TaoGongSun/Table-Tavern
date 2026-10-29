@@ -11,7 +11,8 @@ use std::path::Path;
 /// AI 卡重構中止時的錯誤字串 sentinel：前端靠它分流「玩家主動取消」與其他失敗，一字不差。
 pub(crate) const REFACTOR_ABORTED: &str = "refactor-aborted";
 
-/// AI 卡重構套用：玩家勾選的角色／介面／機制落檔，收據記「實際套用的那份」供一鍵倒退。整段持整桌獨占：
+/// AI 卡重構套用：玩家勾選的角色／介面／機制落檔。重構卡（origin card）收據記「實際套用的那份」供一鍵倒退；
+/// AI 結果卡（origin ai）無還原，只放復原屏障（見 refactor/apply_record.rs）。整段持整桌獨占：
 /// 收據靠套用前後 diff，中間插進來的寫入會被記成這次套用、undo 時一起退掉。
 #[tauri::command]
 pub(crate) async fn refactor_apply(
@@ -19,7 +20,7 @@ pub(crate) async fn refactor_apply(
     world_id: String,
     outcome: refactor::RefactorOutcome,
     selection: refactor::RefactorSelection,
-    record_receipt: Option<bool>,
+    origin: refactor::RefactorApplyOrigin,
     asset_token: Option<String>,
 ) -> Result<refactor::RefactorApplySummary, String> {
     // 重構卡附的角色圖：取整桌鎖之前就從暫存槽取走，由這次呼叫持有到結束（見 refactor/card_import.rs）
@@ -46,14 +47,7 @@ pub(crate) async fn refactor_apply(
         .map_or(&[][..], |staged| &staged.assets[..]);
     // 已遊玩擋下（不寫、不換世代）；其餘套用後整桌交換。見 refactor/reset.rs
     refactor::apply_to_table(
-        &root,
-        &world_id,
-        &lang,
-        &outcome,
-        &selection,
-        assets,
-        record_receipt.unwrap_or(true),
-        &held,
+        &root, &world_id, &lang, &outcome, &selection, assets, origin, &held,
     )
     .map_err(|error| refactor::return_assets(claimed, error))
 }

@@ -3,7 +3,7 @@
 
 use super::undo_changes;
 use super::{
-    discard_import_source, pop_receipts, worldbook_entry_fingerprint, ExpectedReceipt,
+    discard_import_source, is_barrier, pop_receipts, worldbook_entry_fingerprint, ExpectedReceipt,
     ImportReceipt, UndoReport,
 };
 use crate::data::{self, DataResult, Trigger, WorldbookEntry};
@@ -124,6 +124,10 @@ fn undo_last(
             UiMsg::NoImportToUndo.into_error()
         }
     })?;
+    // AI 重構套用的屏障：拒撤、磁碟不寫（上面的 pop 只在記憶體裡）。自動回滾也一樣不跨過它。
+    if is_barrier(&receipt) {
+        return Err(UiMsg::UndoBlockedByRefactor.into_error());
+    }
     if let Some(expected) = expected {
         let same = expected.count == receipts.len() + 1
             && expected.kind == receipt.kind

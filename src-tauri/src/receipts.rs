@@ -20,8 +20,9 @@ pub use character_delete::{
     CharacterDeleteOutcome,
 };
 pub use record::{
-    record_character_import, record_last_import_rename, record_posted_opening,
-    record_refactor_apply, record_worldbook_import, RefactorRecord,
+    pop_refactor_barrier, push_refactor_barrier, record_character_import,
+    record_last_import_rename, record_posted_opening, record_refactor_apply,
+    record_worldbook_import, RefactorRecord,
 };
 pub use sources::{
     begin_pending, discard_import_source, finish_pending, import_replays, store_import_source,
@@ -200,9 +201,17 @@ struct ModeUndo {
     before: Option<String>,
 }
 
+/// AI 重構套用在收據清單放的屏障（不帶撤銷內容）：AI 套用無還原〔作者裁決 2026-08-11〕，復原撤到這裡就停，
+/// 不跨過它去撤重構前的匯入〔作者裁決 2026-10-29〕。
+pub const REFACTOR_AI_BARRIER_KIND: &str = "refactor_ai";
+
+fn is_barrier(receipt: &ImportReceipt) -> bool {
+    receipt.kind == REFACTOR_AI_BARRIER_KIND
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ImportReceipt {
-    kind: String, // "character" | "worldbook" | "refactor"
+    kind: String, // "character" | "worldbook" | "refactor" | "refactor_ai"（屏障）
     label: String,
     timestamp: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]

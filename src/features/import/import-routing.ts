@@ -3,7 +3,7 @@
 // 純函式、零 UI／invoke 依賴——App.tsx 只管接線，判斷邏輯在這裡單獨測。
 
 export type ImportIdentity = "character" | "worldbook";
-export type ImportReceiptKind = "character" | "worldbook";
+export type ImportReceiptKind = "character" | "worldbook" | "refactor";
 export type ImportRoute = "direct" | "merge_worldbook" | "ask";
 
 /**

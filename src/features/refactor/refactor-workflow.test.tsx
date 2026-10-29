@@ -42,6 +42,8 @@ let host: HTMLElement | null = null;
 let controller: RefactorWorkflowController | null = null;
 const refreshAfterApply = vi.fn(async (_live: () => boolean, _changes: unknown) => {});
 const flushDraft = vi.fn(async () => true);
+const flushDraftForRecovery = vi.fn(async () => true);
+const refreshReceipts = vi.fn(async () => {});
 
 function Harness({ world = "W" }: { world?: string }) {
   controller = useRefactorWorkflow({
@@ -50,6 +52,8 @@ function Harness({ world = "W" }: { world?: string }) {
     setStatusMessage: (message: string) => statuses.push(message),
     refreshAfterApply,
     flushDraft,
+    flushDraftForRecovery,
+    refreshReceipts,
     isTurnRunning: () => turn.running,
   });
   return null;
