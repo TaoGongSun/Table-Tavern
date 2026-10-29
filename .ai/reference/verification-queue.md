@@ -24,6 +24,8 @@
 
 4h. [shell-update-flash](../handoffs/archive/shell-update-flash.md) 離線：毛絨轉變桌（殼靠 CDN 的 tailwind、daisyui、字型）斷網後走一回合：新殼最遲 1500 ms 強制翻上來（可能是半載好的殼），之後介面可繼續用、不卡住。 2026-10-28 替代做法（CDN 網址改走本機代理，切「直接拒絕／連線卡住」；非整機斷網）：拒絕模式殼照常 ready、鎖 129–163 ms；卡住模式 7 次中 6 次鎖 1501–1503 ms 強制翻面，之後殼半載、宿主介面與下一回合照常可用；第一次卡住鎖了 7.7 秒未再重現；卡住期間主頁計時器最大間隔約 1 秒（測試包內，原因未查）。 **舊數據降級**：當時的 `vq/tools/rewrite_cdn.py` 改網址漏了主機名那段，代理抓不到，連線正常模式也全部 502，上述鎖定時間與「殼半載」不代表真 CDN 行為。2026-10-28 [shell-keep-old-on-timeout](../handoffs/archive/shell-keep-old-on-timeout.md) 改成逾時或載入失敗保留舊殼後，用修好的工具重跑（scratchpad `keepold-tools/`：cdn-proxy.mjs 加暫扣／503 模式、rewrite_cdn.py、run.mjs，截圖在 `keepold-tools/shots/`）10/10 過：暫扣逾時保留舊殼並解鎖、放行後翻面畫出新數值、503 與拒連保留舊殼、下一回合恢復；暫扣中關開面板空白（已知限制）。→ 本項過。
 
+4i. [desktop-csp](../handoffs/desktop-csp.md) Windows 安全驗收（macOS 已用測試通道代測；零 AI 派送）：Windows 打包版①卡片介面桌（WestFantsy）介面照常載出、DevTools console 無 CSP 違規　②方案「驗證計畫」第 4 項的沙盒探測（內層試 `__TAURI_INTERNALS__.invoke`、`fetch(http://ipc.localhost/…)`、`window.ipc.postMessage`／`chrome.webview.postMessage` 帶真 key）：探測指令計數只剩宿主那一次。
+
 排這梯前先確認該項驗收步驟裡沒有換幕：換幕一定走模型產前情提要摘要（`advance_scene`），避不開。
 
 ## 梯 2：要開 API 實聊、會燒額度

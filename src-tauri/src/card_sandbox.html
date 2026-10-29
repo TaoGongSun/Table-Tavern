@@ -1,0 +1,40 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="referrer" content="no-referrer" />
+    <style>
+      html, body, iframe { margin: 0; border: 0; width: 100%; height: 100%; display: block; overflow: hidden; }
+    </style>
+    <script>
+      // 卡片介面沙盒外層（.ai/plans/desktop-csp.md）：這份是 Tauri 判為 local 的文件，只准跑這段固定轉送碼，
+      // 卡片內容一律進內層 srcdoc（about:srcdoc，Tauri 判 Remote、指令全拒）。不寫入、不求值任何收到的內容。
+      (function () {
+        // 只在不透明來源（宿主掛 sandbox 且沒給 allow-same-origin）下工作
+        if (window.origin !== "null") return;
+        var host = window.parent;
+        var inner = null;
+        window.addEventListener("message", function (event) {
+          var data = event.data;
+          if (inner === null) {
+            if (event.source !== host || !data || data.source !== "table-tavern-host" || data.kind !== "load") return;
+            if (typeof data.token !== "string" || typeof data.html !== "string") return;
+            inner = document.createElement("iframe");
+            inner.setAttribute("sandbox", "allow-scripts");
+            inner.srcdoc = data.html;
+            document.body.appendChild(inner);
+            return;
+          }
+          // 之後只轉送：宿主 → 內層、內層 → 宿主；其他來源（含再一次 load）不理
+          if (event.source === host) {
+            if (data && data.kind === "load") return;
+            inner.contentWindow.postMessage(data, "*");
+          } else if (event.source === inner.contentWindow) {
+            host.postMessage(data, "*");
+          }
+        });
+      })();
+    </script>
+  </head>
+  <body></body>
+</html>

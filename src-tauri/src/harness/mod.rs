@@ -7,6 +7,7 @@ pub(crate) mod dialog;
 mod eval;
 pub(crate) mod motion;
 mod occlusion;
+pub(crate) mod probe;
 mod rewrite_evidence;
 mod root;
 mod route;

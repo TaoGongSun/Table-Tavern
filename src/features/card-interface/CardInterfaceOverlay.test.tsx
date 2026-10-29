@@ -8,6 +8,8 @@ import { buildOverlayComposer, CardInterfaceOverlay, type OverlayComposer } from
 import { type CardChat } from "./card-chat-shim";
 import { acceptsInput, createShellRegistry, type ShellRegistry } from "./shell-frames/shell-frames-state";
 
+vi.mock("@tauri-apps/api/core", () => ({ convertFileSrc: (_path: string, protocol: string) => `${protocol}://localhost/` }));
+
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const composer = (over: Partial<OverlayComposer> = {}): OverlayComposer => ({
@@ -108,6 +110,18 @@ describe("CardInterfaceOverlay 殼雙緩衝與讀訊息推送", () => {
       { source: "table-tavern-host", kind: "chat", token: "k1", chat: chatB, mvu: null },
       "*",
     );
+  });
+
+  it("殼走 tt-sandbox 外層：只在首次 load 送一次殼文件（帶 token），之後的 load 不再送", async () => {
+    await render(chatA, "k1");
+    const { frame, postMessage } = spyFrame("k1");
+    expect(frame.getAttribute("src")).toBe("tt-sandbox://localhost/");
+    expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
+    expect(frame.hasAttribute("srcdoc")).toBe(false);
+    await act(async () => frame.dispatchEvent(new Event("load")));
+    await act(async () => frame.dispatchEvent(new Event("load")));
+    const loads = postMessage.mock.calls.filter(([message]) => message.kind === "load");
+    expect(loads).toEqual([[{ source: "table-tavern-host", kind: "load", token: "k1", html: "<html>k1</html>" }, "*"]]);
   });
 
   it("首開直接繪：只有一支、是 front、沒有擋板", async () => {

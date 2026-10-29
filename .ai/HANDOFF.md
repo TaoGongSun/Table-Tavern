@@ -8,6 +8,7 @@
 - [card-mvu-shim](handoffs/card-mvu-shim.md) — 卡片介面沙盒墊 MVU 讀寫變數：全部已合併 main，剩實測佇列梯 1 項目（含 iframe 內按鈕實際互動）
 
 ## 等實機驗收（順序見[實測佇列](reference/verification-queue.md)）
+- [desktop-csp](handoffs/desktop-csp.md) — 桌面版 CSP：已進 main、macOS 測試通道過；剩 Windows 安全驗收（實測佇列梯 1 第 4i）
 - [desktop-tour](handoffs/desktop-tour.md) — 網頁版的桌面版導覽頁：2026-10-23 已上線（main 7f686cb）、WebKit e2e 與站上實開都過，無剩餘事項
 - [release-2-ci-windows](handoffs/release-2-ci-windows.md) — 桌面版首個正式版 v0.3.0 已發布（2026-10-12，未簽章）；剩作者 Windows／Mac 照繞過步驟下載安裝能開
 - [image-model-free-tier-hide](handoffs/image-model-free-tier-hide.md) — OpenRouter 免費層不顯示生圖模型選單：已進 main，剩真 key 與整窗重開（實測佇列梯 2 第 22）

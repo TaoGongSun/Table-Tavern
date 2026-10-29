@@ -1,8 +1,11 @@
 // 卡片介面殼的雙緩衝（.ai/plans/shell-update-flash.md）：新殼先掛在舊殼下面載，殼內墊片 postMessage
 // ready 才翻面；首開與換桌／還原／切卡直接繪。新殼逾時或載入失敗時保留載好過的舊殼、只解鎖
 // （.ai/plans/shell-keep-old-on-timeout.md）。兩支 iframe 是同一父層下依時間排的 keyed siblings，
-// 翻面只改角色、不搬元素（搬動 iframe 會重載）；絕不改既有元素的 srcdoc。
-import { useCallback, useEffect, useLayoutEffect, useReducer, useRef } from "react";
+// 翻面只改角色、不搬元素（搬動 iframe 會重載）；每支 iframe 只在首次載入時收一次殼文件。
+// iframe 載的是 Rust 的 tt-sandbox 外層（src-tauri/src/card_sandbox.rs，自帶寬政策、不吃宿主 CSP），
+// 殼文件經 postMessage 送進去，外層放進內層 srcdoc 跑；訊息經外層雙向轉送（.ai/plans/desktop-csp.md）。
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, type SyntheticEvent } from "react";
 import {
   EMPTY_FRAMES,
   FLIP_TIMEOUT_MS,
@@ -179,7 +182,14 @@ function ShellFrame({
   title: string;
   frameRef: (element: HTMLIFrameElement | null) => void;
 }) {
-  const { key } = slot;
+  const { key, doc } = slot;
+  const loaded = useRef(false);
+  const onLoad = (event: SyntheticEvent<HTMLIFrameElement>) => {
+    // 只有第一次 load 是外層載好；之後的 load 不再送
+    if (loaded.current) return;
+    loaded.current = true;
+    event.currentTarget.contentWindow?.postMessage({ source: "table-tavern-host", kind: "load", token: key, html: doc }, "*");
+  };
   useLayoutEffect(() => {
     recordShellTiming({ type: role === "pending" ? "pending" : "mount", key });
     return () => recordShellTiming({ type: "unmount", key });
@@ -191,7 +201,8 @@ function ShellFrame({
       data-shell-key={key}
       data-shell-role={role}
       sandbox="allow-scripts"
-      srcDoc={slot.doc}
+      src={convertFileSrc("", "tt-sandbox")}
+      onLoad={onLoad}
       title={title}
       tabIndex={role === "pending" || locked ? -1 : undefined}
       inert={role === "pending" || locked}

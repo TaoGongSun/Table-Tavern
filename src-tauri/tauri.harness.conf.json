@@ -3,5 +3,13 @@
   "identifier": "com.tabletavern.app.harness",
   "bundle": {
     "createUpdaterArtifacts": false
+  },
+  "app": {
+    "security": {
+      "csp": {
+        "script-src": "'self' 'unsafe-eval'",
+        "style-src": "'self' 'unsafe-inline'"
+      }
+    }
   }
 }

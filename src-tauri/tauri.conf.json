@@ -18,7 +18,21 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self'",
+        "style-src": "'self'",
+        "style-src-attr": "'unsafe-inline'",
+        "img-src": "'self' data: https: http:",
+        "font-src": "'self'",
+        "connect-src": "ipc: http://ipc.localhost https://openrouter.ai",
+        "frame-src": "tt-sandbox: http://tt-sandbox.localhost",
+        "worker-src": "'self'",
+        "object-src": "'none'",
+        "base-uri": "'none'",
+        "form-action": "'none'",
+        "frame-ancestors": "'none'"
+      }
     }
   },
   "bundle": {

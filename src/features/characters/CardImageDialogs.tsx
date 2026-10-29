@@ -2,6 +2,8 @@
 // 兩者都只產出暫存圖交回編輯頁，按儲存才落地。
 import { useEffect, useState } from "react";
 import Cropper, { Area } from "react-easy-crop";
+// 套件預設在執行時插 <style>，桌面 CSP（style-src 'self'）會擋；改用它自帶的樣式檔
+import "react-easy-crop/react-easy-crop.css";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { t } from "../../i18n";
@@ -103,6 +105,7 @@ export function CropDialog({
       <div className="crop-area">
         <Cropper
           image={src}
+          disableAutomaticStylesInjection
           crop={crop}
           zoom={zoom}
           aspect={aspect}

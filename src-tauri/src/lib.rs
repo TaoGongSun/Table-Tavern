@@ -1,3 +1,4 @@
+mod card_sandbox;
 mod chat_assembly;
 mod cli;
 mod commands;
@@ -73,6 +74,9 @@ pub fn run() {
     #[cfg(feature = "test-harness")]
     let builder = builder.plugin(harness::motion::init());
     builder
+        .register_uri_scheme_protocol(card_sandbox::SCHEME, |_ctx, request| {
+            card_sandbox::respond(request.uri().path())
+        })
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(updater::PendingUpdate::default())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -84,6 +88,10 @@ pub fn run() {
             }
         }))
         .invoke_handler(tauri::generate_handler![
+            #[cfg(feature = "test-harness")]
+            harness::probe::harness_probe,
+            #[cfg(feature = "test-harness")]
+            harness::probe::harness_probe_count,
             commands::world::list_worlds,
             commands::world::create_world,
             commands::world::create_sample_world,
@@ -384,6 +392,8 @@ mod command_classification {
     ];
 
     const NOT_WORLD: &[&str] = &[
+        "harness_probe",
+        "harness_probe_count",
         "chat_abort",
         "check_character_image",
         "cli_verified",
