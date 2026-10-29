@@ -9,9 +9,10 @@
 - 動到中性版要作者裁決。
 
 ## Next action
-2026-10-29 輕防重審：縮小成只量測〔模型判斷·未裁決〕。最小版＝挑 2–3 張未重構的真介面桌多輪續聊，量 time／place／present 缺欄頻率與在場裁切後果，結果交作者；不改中性版、不做「從卡片狀態欄讀值」。
-刪掉的部分成已知限制：未重構的真介面桌不保證有 time／place／present（記在 [gm-no-state-fence-worldbook-table](../plans/gm-no-state-fence-worldbook-table.md)）。介面桌依〔作者裁決 2026-10-27〕不點名，main 已有「確定不點名的桌」判定，後果比立案時輕。
-量出來缺欄多、要動中性版，仍需作者裁決。
+量測完成（2026-10-29），結果與結論見 [plans/interface-table-state-report.md](../plans/interface-table-state-report.md)：兩張卡 time／place／present 全缺，可見後果只有頂列「—」，建議列已知限制結案〔模型判斷·未裁決〕。待作者看結果；結案時壓縮合併進 main、刪分支。
 
 ## 驗收方向
 未重構的真介面桌多輪續聊，time／place／present 有值，卡片介面不受影響。
+
+## 結案（2026-10-29）
+量測兩張未重構真介面卡 time／place／present 全缺，可見後果只有頂列顯示「—」；列已知限制、不改中性版，結果見 [方案檔](../../plans/interface-table-state-report.md)。

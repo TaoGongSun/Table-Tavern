@@ -32,7 +32,6 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 ## 階段 D：引擎行為實聊
 已在 HANDOFF／實測佇列，不重列任務檔：[card-arrival-private-leak](handoffs/card-arrival-private-leak.md)、[worldbook-card-import](handoffs/worldbook-card-import.md)、[ui-redesign](handoffs/ui-redesign.md)（9、12）、順手驗梯 2 第 11／18／19、[hide-first-action](handoffs/archive/hide-first-action.md)。
 
-- [interface-table-state-report](tasks/interface-table-state-report.md) — 未重構的真介面桌走中性版指示，不保證回報 time／place／present — 下一步：縮小成只量測幾張真介面桌的缺欄頻率〔模型判斷·未裁決〕，不改中性版；動中性版需作者裁決
 - [refactor-preview-ellipsis](tasks/refactor-preview-ellipsis.md) — 重構進行中預覽文字夾雜「⋯」，純外觀、低優先 — 下一步：未排程
 - [branch-glyph-match](tasks/branch-glyph-match.md) — 分支綁定 auto_match_branch 只認精確同名，卡名與分支鍵字形不同要手動指認 — 下一步：只記已知限制、暫不動工〔模型判斷·未裁決〕；真遇到實卡再做
 - [story-html-style-attr](tasks/story-html-style-attr.md) — 訊息 HTML 放行 style 屬性（字色底色），需 CSS 消毒與網頁 CSP 取捨 — 下一步：縮小成少數屬性白名單（字色、底色、字重等，帶函式整條丟棄）〔模型判斷·未裁決〕；前置 story-html-whitelist 已結案，可排程
