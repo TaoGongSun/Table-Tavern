@@ -120,8 +120,6 @@ export interface RefactorOutcome {
   stage_cards?: string[];
   /** 盤點 FIELDS：退場桌套用時樹上沒有的欄位補空格子追蹤。 */
   fields?: string[];
-  /** 盤點 UNTRACKED：不收的格子（地圖或導航、記憶或摘要），退場桌套用時移除。 */
-  untracked?: string[];
 }
 
 export interface RefactorSelection {
@@ -202,8 +200,6 @@ export interface RefactorSurveyOutcome {
   mirrors?: Record<string, string>;
   /** STAGE：AI 判為舞台卡、本桌對得到的既有角色卡名，照抄進產物。 */
   stage_cards?: string[];
-  /** UNTRACKED：不收的格子（只有 characters 玩法），照抄進產物。 */
-  untracked?: string[];
 }
 
 /** 本地零呼叫組裝的完整產物，對照後端 src-tauri/src/refactor_assemble.rs 的 RefactorLocalAssembly。 */
@@ -496,7 +492,6 @@ export function assembleRefactorOutcome(parts: {
   mirrors?: Record<string, string>;
   stageCards?: string[];
   fields?: string[];
-  untracked?: string[];
 }): RefactorOutcome {
   return {
     characters: parts.characters,
@@ -517,7 +512,6 @@ export function assembleRefactorOutcome(parts: {
     ...(parts.mirrors && Object.keys(parts.mirrors).length > 0 ? { mirrors: parts.mirrors } : {}),
     ...(parts.stageCards && parts.stageCards.length > 0 ? { stage_cards: parts.stageCards } : {}),
     ...(parts.fields && parts.fields.length > 0 ? { fields: parts.fields } : {}),
-    ...(parts.untracked && parts.untracked.length > 0 ? { untracked: parts.untracked } : {}),
   };
 }
 
@@ -721,8 +715,6 @@ export function parseRefactorOutcomeValue(raw: unknown): RefactorOutcome {
   if (stageCards.length > 0) outcome.stage_cards = stageCards;
   const fields = readStringArray(raw, "fields");
   if (fields.length > 0) outcome.fields = fields;
-  const untracked = readStringArray(raw, "untracked");
-  if (untracked.length > 0) outcome.untracked = untracked;
   // 全區皆空＝這檔案沒有任何內容，多半根本不是重構產物；dropped／unabsorbed／audit 有其一
   // 仍算合法產物——純介面卡選 characters 的 dropped-only 匯出要能讀回重玩（套用落 mode）。
   const empty =

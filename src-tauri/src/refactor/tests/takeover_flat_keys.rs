@@ -76,7 +76,6 @@ pub(super) fn interface_outcome(
         mirrors: Default::default(),
         stage_cards: Vec::new(),
         fields: Vec::new(),
-        untracked: Vec::new(),
     }
 }
 

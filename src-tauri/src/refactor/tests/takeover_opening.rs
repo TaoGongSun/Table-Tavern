@@ -56,7 +56,6 @@ fn outcome_with(
         mirrors: Default::default(),
         stage_cards: Vec::new(),
         fields: Vec::new(),
-        untracked: Vec::new(),
     }
 }
 

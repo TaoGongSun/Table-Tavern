@@ -209,15 +209,13 @@ describe("保留來源", () => {
     );
   });
 
-  it("盤點 FIELDS 與不收格子照抄進產物，匯出再匯入留著；不是字串陣列＝壞檔", () => {
+  it("盤點 FIELDS 照抄進產物，匯出再匯入留著；不是字串陣列＝壞檔", () => {
     const entries = [{ title: "設定", kind: "setting", content: "x", source_uids: ["5"], rules: {}, triggers: [] } as never];
     const fields = ["当前物品", "推荐行动"];
-    const untracked = ["世界地图"];
-    const outcome = assembleRefactorOutcome({ characters: [], interfaces: [], entries, fields, untracked });
+    const outcome = assembleRefactorOutcome({ characters: [], interfaces: [], entries, fields });
     const parsed = parseRefactorOutcome(JSON.stringify(outcome));
     expect(parsed.fields).toEqual(fields);
-    expect(parsed.untracked).toEqual(untracked);
-    expect(() => parseRefactorOutcome(JSON.stringify({ ...outcome, untracked: [1] }))).toThrow(REFACTOR_IMPORT_INVALID);
+    expect(() => parseRefactorOutcome(JSON.stringify({ ...outcome, fields: [1] }))).toThrow(REFACTOR_IMPORT_INVALID);
   });
 });
 

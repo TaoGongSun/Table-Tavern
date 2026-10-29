@@ -104,7 +104,6 @@ pub(super) fn outcome(
             .collect(),
         stage_cards: Vec::new(),
         fields: Vec::new(),
-        untracked: Vec::new(),
     }
 }
 

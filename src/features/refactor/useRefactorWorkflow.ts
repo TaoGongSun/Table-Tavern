@@ -679,7 +679,6 @@ export function useRefactorWorkflow({
           mirrors: survey.mirrors,
           stageCards: survey.stage_cards,
           fields: survey.fields,
-          untracked: survey.untracked,
           preserveSourceUids: unfinishedSourceUids(
             pool.map((task) => ({ uids: refactorTaskUids(task), succeeded: succeeded.has(task) })),
             conflictUids,

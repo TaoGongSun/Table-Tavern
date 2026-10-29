@@ -88,7 +88,7 @@ fn diff_mechanism(
 
     let (added_rule_keys, mut restored_rules) =
         diff_added_and_overwritten(&before.mechanism.rules, &after.mechanism.rules);
-    // 套用刪掉的規則（重構的不收格子）也記原值，undo 插回
+    // 套用刪掉的規則也記原值，undo 插回
     restored_rules.extend(
         before
             .mechanism

@@ -459,17 +459,7 @@ fn apply_into(
     let retired_opening =
         mode == Some("characters") && state.statusbar_retired && mvu_before == Some(false);
     if retired_opening {
-        moved_table_keys.extend(survey_fields::drop_untracked(
-            &mut state,
-            &outcome.untracked,
-            &mut aligned_mirrors,
-        ));
-        survey_fields::seed_fields(
-            &mut state,
-            &outcome.fields,
-            &outcome.untracked,
-            &aligned_mirrors,
-        );
+        survey_fields::seed_fields(&mut state, &outcome.fields, &aligned_mirrors);
     }
     let opening = retired_opening && opening_fields::has_opening_cells(&state);
     if needs_rule_reporting(&state, &merged_rules, &merged_triggers, opening) {

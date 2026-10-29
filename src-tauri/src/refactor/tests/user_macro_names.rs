@@ -26,7 +26,6 @@ fn outcome_of(characters: Vec<RefactorCharacter>) -> RefactorOutcome {
         mirrors: Default::default(),
         stage_cards: Vec::new(),
         fields: Vec::new(),
-        untracked: Vec::new(),
     }
 }
 

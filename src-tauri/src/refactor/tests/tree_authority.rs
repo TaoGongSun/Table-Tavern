@@ -89,7 +89,6 @@ fn outcome(mode: &str, state_fields: serde_json::Value) -> RefactorOutcome {
         mirrors: Default::default(),
         stage_cards: Vec::new(),
         fields: Vec::new(),
-        untracked: Vec::new(),
     }
 }
 
