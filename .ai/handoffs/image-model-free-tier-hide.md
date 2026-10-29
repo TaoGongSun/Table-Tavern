@@ -10,5 +10,8 @@
 ## 現況
 已進 main（做法見 [plans/image-model-free-tier-hide.md](../plans/image-model-free-tier-hide.md)）：verify 10 步綠；測試通道接本機假 `/key` 看過 free 藏、paid／404 顯示、改草稿 base 不查、藏著存檔 `image_model` 原值保留、快取首屏即藏、換 key 立即恢復顯示；Sol 驗收通過。
 
-## 等實機驗收
-排在[實測佇列](../reference/verification-queue.md)梯 2 第 22 項：真免費／付費 key 各看一次設定頁；整個關掉設定視窗再開確認首屏不閃。都過就結案歸檔。
+## 實機驗收
+2026-10-29 真免費 key（測試通道，只打 `GET /key`）：存檔後生圖模型選單隱藏；整個關掉設定視窗再開，首屏就藏著、全程未出現。整個 app 重啟後（記憶體快取清空）第一次渲染選單約 10ms 閃現再隱藏，冷啟動無快取屬設計內。
+
+## Next action
+只剩付費 key 那半：列缺數據〔作者裁決 2026-10-29〕，作者有儲值帳戶時再補（付費 key 開設定頁生圖模型顯示）；補完或作者放棄即結案歸檔。

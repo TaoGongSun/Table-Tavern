@@ -11,7 +11,7 @@
 - [desktop-csp](handoffs/desktop-csp.md) — 桌面版 CSP：已進 main、macOS 測試通道過；剩 Windows 安全驗收（實測佇列梯 1 第 4i）
 - [desktop-tour](handoffs/desktop-tour.md) — 網頁版的桌面版導覽頁：2026-10-23 已上線（main 7f686cb）、WebKit e2e 與站上實開都過，無剩餘事項
 - [release-2-ci-windows](handoffs/release-2-ci-windows.md) — 桌面版首個正式版 v0.3.0 已發布（2026-10-12，未簽章）；剩作者 Windows／Mac 照繞過步驟下載安裝能開
-- [image-model-free-tier-hide](handoffs/image-model-free-tier-hide.md) — OpenRouter 免費層不顯示生圖模型選單：已進 main，剩真 key 與整窗重開（實測佇列梯 2 第 22）
+- [image-model-free-tier-hide](handoffs/image-model-free-tier-hide.md) — OpenRouter 免費層不顯示生圖模型選單：已進 main，免費 key 與整窗重開實測過，只剩付費 key 半（列缺數據，實測佇列梯 2 第 22）
 - [image-model-picker](handoffs/image-model-picker.md) — 生圖來源不列 claude、生圖模型下拉、免費 key 專屬錯誤、生圖統一存 PNG：已進 main，剩真模型與 CLI 真生圖（實測佇列梯 2 第 21）
 - [card-arrival-private-leak](handoffs/card-arrival-private-leak.md) — 回歸事件漏私設：已進 main，等實機看私設只到 GM
 - [ui-redesign](handoffs/ui-redesign.md) — 介面整體重新設計：五包已進 main、範例桌詢問已過；剩重構三窗、實聊名牌與打字指示（自 ui-overhaul 併入）、格式轉換更新等觸發條件型對話窗、Windows 等未實機驗項目
