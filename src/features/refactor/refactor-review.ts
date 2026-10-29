@@ -246,6 +246,8 @@ export interface RefactorApplySummary {
   images_failed: string[];
   /** 這次改了哪些既有條目（停用、刪除）；套用後讀不到世界書是 null */
   entry_changes: EntryChanges | null;
+  /** 沒收編的機制內容：對不到狀態樹而略過的規則路徑與觸發標題、真矛盾只取一份的欄位路徑 */
+  skipped: { rules: string[]; triggers: string[]; conflicts: string[] };
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

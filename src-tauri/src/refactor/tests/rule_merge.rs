@@ -156,6 +156,28 @@ fn three_way_conflict_takes_the_smallest_source_uid_regardless_of_order() {
     assert_eq!(forward, rules_after(true));
 }
 
+/// 真矛盾的欄位進摘要；相容合併的不列。
+#[test]
+fn only_true_conflicts_are_reported_in_the_summary() {
+    let conflicts = |second: FieldRule| {
+        let (root, world_id, uids) = fortress("rule-merge-reported", "第 1 天", 2);
+        let outcome = characters_outcome(vec![
+            mechanism_entry("甲", uids[0], &[(DAYS, counter_from(0.0))], Vec::new()),
+            mechanism_entry("乙", uids[1], &[(DAYS, second)], Vec::new()),
+        ]);
+        apply(root.path(), &world_id, &outcome, &select_entries(2))
+            .unwrap()
+            .summary
+            .skipped
+            .conflicts
+    };
+    assert_eq!(
+        conflicts(FieldRule::for_kind(FieldKind::Text)),
+        vec![DAYS.to_owned()]
+    );
+    assert!(conflicts(counter_from(1.0)).is_empty());
+}
+
 /// 相容合併也不受選取順序影響。
 #[test]
 fn compatible_merge_ignores_selection_order() {
@@ -383,7 +405,8 @@ fn reconcile_breaks_ties_by_order_and_puts_non_numeric_uids_last() {
                 candidate(text.clone(), Some(3)),
                 candidate(counter.clone(), Some(3))
             ]
-        ),
+        )
+        .0,
         text
     );
     assert_eq!(
@@ -393,7 +416,8 @@ fn reconcile_breaks_ties_by_order_and_puts_non_numeric_uids_last() {
                 candidate(text.clone(), None),
                 candidate(counter.clone(), Some(9))
             ]
-        ),
+        )
+        .0,
         counter
     );
 }

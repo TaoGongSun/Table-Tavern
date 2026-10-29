@@ -2,7 +2,7 @@
 //! （incremental＋把規則與觸發讀的欄位在樹上備好初值）。人物落檔不在這裡（apply.rs）。
 
 use super::rule_merge::{min_uid, reconcile, RuleCandidate};
-use super::types::{RefactorOutcome, RefactorSelection};
+use super::types::{RefactorOutcome, RefactorSelection, SkippedMechanics};
 use crate::data::{self, DataResult, FieldKind, FieldRule, StateNode, WorldState};
 use crate::mechanism;
 use std::collections::{BTreeMap, BTreeSet};
@@ -218,6 +218,8 @@ pub(super) type RuleSet = (BTreeMap<String, FieldRule>, Vec<data::Trigger>);
 pub(super) struct Candidates {
     pub(super) entries: BTreeMap<usize, RuleSet>,
     pub(super) mechanisms: BTreeMap<usize, RuleSet>,
+    /// 沒收編的規則／觸發與取捨過的矛盾欄位，給結果框讓玩家知道。
+    pub(super) skipped: SkippedMechanics,
 }
 
 impl Candidates {
@@ -232,20 +234,18 @@ impl Candidates {
         namespace: &BTreeMap<String, StateNode>,
     ) -> DataResult<Self> {
         let scope = scope.as_ref();
-        let mut dropped = (0usize, 0usize);
+        let mut skipped = SkippedMechanics::default();
         let mut filter = |rules: AlignedRules, triggers: Vec<data::Trigger>| {
-            let total = rules.values().map(Vec::len).sum::<usize>();
-            let kept_rules: AlignedRules = rules
+            let (kept_rules, dropped_rules): (AlignedRules, AlignedRules) = rules
                 .into_iter()
-                .filter(|(path, _)| keep_rule(path, scope))
-                .collect();
-            let kept_triggers: Vec<data::Trigger> = triggers
-                .iter()
-                .filter(|trigger| keep_trigger(trigger, scope))
-                .cloned()
-                .collect();
-            dropped.0 += total - kept_rules.values().map(Vec::len).sum::<usize>();
-            dropped.1 += triggers.len() - kept_triggers.len();
+                .partition(|(path, _)| keep_rule(path, scope));
+            let (kept_triggers, dropped_triggers): (Vec<_>, Vec<_>) = triggers
+                .into_iter()
+                .partition(|trigger| keep_trigger(trigger, scope));
+            skipped.rules.extend(dropped_rules.into_keys());
+            skipped
+                .triggers
+                .extend(dropped_triggers.into_iter().map(|trigger| trigger.title));
             (kept_rules, kept_triggers)
         };
         let mut aligned_entries = BTreeMap::new();
@@ -276,11 +276,11 @@ impl Candidates {
                 ),
             );
         }
-        if dropped != (0, 0) {
+        if !skipped.rules.is_empty() || !skipped.triggers.is_empty() {
             log::warn!(
                 "重構套用：{} 條規則、{} 組觸發對不到狀態樹，已略過",
-                dropped.0,
-                dropped.1
+                skipped.rules.len(),
+                skipped.triggers.len()
             );
         }
         // 整欄收齊：每份原始候選帶來源 uid，先後＝條目 index、機制 index、條目內原路徑字典序
@@ -318,7 +318,10 @@ impl Candidates {
         let resolved: BTreeMap<String, FieldRule> = grouped
             .into_iter()
             .map(|(path, candidates)| {
-                let rule = reconcile(&path, &candidates);
+                let (rule, conflict) = reconcile(&path, &candidates);
+                if conflict {
+                    skipped.conflicts.push(path.clone());
+                }
                 (path, rule)
             })
             .collect();
@@ -339,9 +342,13 @@ impl Candidates {
         };
         let entries = settle(aligned_entries);
         let mechanisms = settle(aligned_mechanisms);
+        skipped.rules.sort();
+        skipped.rules.dedup();
+        skipped.triggers.dedup();
         Ok(Self {
             entries,
             mechanisms,
+            skipped,
         })
     }
 }

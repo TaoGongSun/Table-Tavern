@@ -18,14 +18,14 @@ pub(super) fn min_uid<'a>(uids: impl IntoIterator<Item = &'a String>) -> Option<
 }
 
 /// 整欄的候選收齊後一次裁決：全部相容就合併；任一對不相容＝真矛盾，原樣取來源 uid 最小那份
-/// （不逐對合併，敗方的限制不會殘留），記 warn。
-pub(super) fn reconcile(path: &str, candidates: &[RuleCandidate]) -> FieldRule {
+/// （不逐對合併，敗方的限制不會殘留），記 warn。回傳 `(規則, 是否為真矛盾的取捨)`。
+pub(super) fn reconcile(path: &str, candidates: &[RuleCandidate]) -> (FieldRule, bool) {
     if let [only] = candidates {
-        return only.rule.clone();
+        return (only.rule.clone(), false);
     }
     let rules: Vec<&FieldRule> = candidates.iter().map(|candidate| &candidate.rule).collect();
     if let Some(merged) = merge_compatible(&rules) {
-        return merged;
+        return (merged, false);
     }
     let winner = candidates
         .iter()
@@ -42,7 +42,7 @@ pub(super) fn reconcile(path: &str, candidates: &[RuleCandidate]) -> FieldRule {
         origins.join("／"),
         winner.origin
     );
-    winner.rule.clone()
+    (winner.rule.clone(), true)
 }
 
 /// 相容＝kind、update、formula 相同，branch 相同或一邊缺省；min／max 依該型的缺省語意取交集，

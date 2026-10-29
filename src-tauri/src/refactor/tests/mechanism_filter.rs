@@ -137,6 +137,39 @@ fn empty_pre_apply_tree_keeps_every_candidate() {
     assert_eq!(applied.triggers.len(), 1);
 }
 
+/// 略過的規則路徑與觸發標題進摘要（結果框列給玩家看）；留下的不列、沒矛盾就沒有 conflicts。
+#[test]
+fn skipped_rules_and_triggers_are_reported_in_the_summary() {
+    let root = TestRoot::new("filter-reported");
+    let world_id = data::create_world(root.path(), "酒館").unwrap();
+    seed_tree(root.path(), &world_id);
+    let source = seed_entry(root.path(), &world_id, "機制", "變數更新規則");
+    let outcome = mechanism_outcome(
+        BTreeMap::from([
+            ("基础信息.时间".to_owned(), rule(FieldKind::Text)),
+            ("迷宮之主位置".to_owned(), rule(FieldKind::Text)),
+        ]),
+        vec![
+            trigger("翻譯名", vec![range("撤退進度", None)], None),
+            trigger("留下", vec![range("甲.HP", None)], None),
+        ],
+        source,
+        None,
+        None,
+    );
+    let summary = apply(
+        root.path(),
+        &world_id,
+        &outcome,
+        &mechanism_selection(false),
+    )
+    .unwrap();
+    let skipped = summary.summary.skipped;
+    assert_eq!(skipped.rules, vec!["迷宮之主位置".to_owned()]);
+    assert_eq!(skipped.triggers, vec!["翻譯名".to_owned()]);
+    assert!(skipped.conflicts.is_empty());
+}
+
 #[test]
 fn rules_and_triggers_off_the_tree_are_dropped() {
     let root = TestRoot::new("filter-off-tree");

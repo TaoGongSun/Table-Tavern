@@ -664,6 +664,7 @@ fn apply_into(
         images_applied,
         images_failed,
         entry_changes,
+        skipped: candidates.skipped,
     })
 }
 

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { confirm, message as showMessage, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { t } from "../../i18n";
+import { t, type MsgKey } from "../../i18n";
 import {
   assembleRefactorOutcome,
   mergeRefactorInterfaces,
@@ -105,8 +105,24 @@ function exportedMessage(bytes: number): string {
   return t("refactorExportDone", { size });
 }
 
+const SKIPPED_NAMES_SHOWN = 5;
+
+// 沒收編的規則／觸發／矛盾欄位各一行，名稱最多列前幾個；有任何一行就補一句換模型重構的出路
+function refactorSkippedLines(summary: RefactorApplySummary): string[] {
+  const names = (list: string[]) =>
+    list.slice(0, SKIPPED_NAMES_SHOWN).join(t("listSeparator")) + (list.length > SKIPPED_NAMES_SHOWN ? "…" : "");
+  const line = (key: MsgKey, list: string[] | undefined) =>
+    list?.length ? [t(key, { n: list.length, names: names(list) })] : [];
+  const lines = [
+    ...line("refactorSkippedRules", summary.skipped?.rules),
+    ...line("refactorSkippedTriggers", summary.skipped?.triggers),
+    ...line("refactorRuleConflicts", summary.skipped?.conflicts),
+  ];
+  return lines.length > 0 ? [...lines, t("refactorSkippedHint")] : [];
+}
+
 function refactorApplyMessage(summary: RefactorApplySummary) {
-  return [
+  const done = [
     summary.new_characters > 0 && t("refactorApplyDoneCharacters", { n: summary.new_characters }),
     summary.player_assigned && t("refactorApplyDonePlayer"),
     summary.stage_cards > 0 && t("refactorApplyDoneStage", { n: summary.stage_cards }),
@@ -121,6 +137,7 @@ function refactorApplyMessage(summary: RefactorApplySummary) {
   ]
     .filter(Boolean)
     .join("・");
+  return [done, ...refactorSkippedLines(summary)].join("\n");
 }
 
 export function useRefactorWorkflow({

@@ -128,6 +128,17 @@ impl RefactorSelection {
     }
 }
 
+/// 套用時沒收編進來的機制內容（結果框列給玩家看，之後可換模型重構）。
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct SkippedMechanics {
+    /// 對不到狀態樹而略過的規則路徑。
+    pub rules: Vec<String>,
+    /// 對不到狀態樹而略過的觸發標題。
+    pub triggers: Vec<String>,
+    /// 多份規則真矛盾、只取一份的欄位路徑。
+    pub conflicts: Vec<String>,
+}
+
 /// 套用摘要，前端顯示用。
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct RefactorApplySummary {
@@ -149,6 +160,7 @@ pub struct RefactorApplySummary {
     pub images_failed: Vec<String>,
     /// 這次改了哪些既有條目（停用、刪除）：給世界設定開著的條目草稿定基；套用後讀不到世界書是 None。
     pub entry_changes: Option<crate::receipts::undo_changes::EntryChanges>,
+    pub skipped: SkippedMechanics,
 }
 
 /// 套用中途失敗時已經落地的部分：呼叫端靠它記收據再撤銷，回到零寫入。

@@ -26,6 +26,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ revealItemInDir: vi.fn(async () => {}) }));
 
+import { message as showMessage } from "@tauri-apps/plugin-dialog";
 import { useRefactorWorkflow, type RefactorWorkflowController } from "./useRefactorWorkflow";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -161,6 +162,42 @@ describe("套用送的 origin", () => {
     await act(async () => controller!.applyRefactor(controller!.selection!));
     expect(applyArgs()).toHaveLength(1);
     expect(applyArgs()[0].origin).toBe("ai");
+  });
+});
+
+describe("套用結果框列出沒收編的規則與觸發", () => {
+  it("略過的規則、觸發與矛盾欄位各一行（名稱最多列 5 個），並提示換模型重構", async () => {
+    await mount();
+    await pickCard();
+    backend.handlers.refactor_apply = () => ({
+      new_characters: 1,
+      entry_changes: null,
+      skipped: {
+        rules: ["a", "b", "c", "d", "e", "f"],
+        triggers: ["第7天斥候登場"],
+        conflicts: ["天數"],
+      },
+    });
+    await act(async () => controller!.applyRefactor(controller!.selection!));
+    const text = vi.mocked(showMessage).mock.calls.slice(-1)[0][0];
+    expect(text).toContain("6 條規則");
+    expect(text).toContain("a、b、c、d、e…");
+    expect(text).not.toContain("f");
+    expect(text).toContain("第7天斥候登場");
+    expect(text).toContain("天數");
+    expect(text).toContain("換較強的模型");
+  });
+
+  it("沒有略過的就不多出任何一行", async () => {
+    await mount();
+    await pickCard();
+    backend.handlers.refactor_apply = () => ({
+      new_characters: 1,
+      entry_changes: null,
+      skipped: { rules: [], triggers: [], conflicts: [] },
+    });
+    await act(async () => controller!.applyRefactor(controller!.selection!));
+    expect(vi.mocked(showMessage).mock.calls.slice(-1)[0][0]).not.toContain("\n");
   });
 });
 
