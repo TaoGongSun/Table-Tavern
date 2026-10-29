@@ -5,5 +5,8 @@ playdata-loss-fixes 稽核發現（範圍外舊碼）：重構套用時，對不
 
 併入 playdata-loss-fixes 的 U1：同欄多份規則矛盾時（`refactor/rule_merge.rs` `reconcile`）取 uid 最小那份只記 warn，也走同一個結果框顯示。
 
+## 預算
+中案，核心估約 120 行（後端收集略過與矛盾清單、接到結果框、i18n 不算）；測試 ≤ 核心 2 倍；動到結果框要跑測試通道。
+
 ## Next action
 排在 playdata-loss-fixes 之後；最小版＝結果框顯示略過筆數與名稱。

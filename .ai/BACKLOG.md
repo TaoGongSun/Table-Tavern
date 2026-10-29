@@ -10,7 +10,7 @@
 **每案交辦固定帶**：動到的檔案先看行數與資料夾檔數；照 [docs/STRUCTURE.md](../docs/STRUCTURE.md)「修改既有功能要不要順便搬」——容得下的 structure-only 小搬遷同案做，大搬家另立案先做；驗收回報附動到檔案的前後行數。
 
 ## 優先：遊玩資料修復（2026-10-29 稽核）
-- [refactor-skipped-rules-visible](tasks/refactor-skipped-rules-visible.md) — 重構套用默默略過的規則與觸發顯示在結果框 — 下一步：排在 playdata-loss-fixes 之後
+- [refactor-skipped-rules-visible](tasks/refactor-skipped-rules-visible.md) — 重構套用默默略過的規則與觸發顯示在結果框（中案，核心估約 120） — 下一步：開工
 
 ## 階段 A：先拍板
 - 梯 2 第 5、6 項（refactor-mode-split、ai-card-refactor＋person-promote＋state-values-mvu）已驗已結案（2026-10-27），不再列。
