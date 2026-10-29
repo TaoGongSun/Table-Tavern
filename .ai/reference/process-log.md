@@ -6,5 +6,6 @@
 |---|---|---|---|---|---|---|
 | lane-session-superseded-leftover | 2026-10-29 | 小（文件） | 0 | 0／0 | 0 | 主線數分鐘 |
 | interface-table-state-report | 2026-10-29 | 小（量測） | 0 | 0／0 | 0 | 子代理約 11 分鐘 |
+| refactor-preview-ellipsis | 2026-10-29 | 小（查因） | 0 | 0／0 | 0 | 主線數分鐘 |
 
 ## 觀察
