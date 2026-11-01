@@ -50,7 +50,7 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [vn-full-auto-dual-track](tasks/vn-full-auto-dual-track.md) — 全自動雙軌 — 下一步：暫不動工、保留立案〔模型判斷·未裁決〕；屬 vn-mode 後續
 
 ## 階段 H：VN 模式
-- [vn-mode](tasks/vn-mode.md) — VN 桌型：AI 生成視覺小說模式（劇本格式＋演出＋選項制）；大案、分包 0–8 核心估共約 3850 行 — 下一步：整體計畫 [plans/vn-mode.md](plans/vn-mode.md) 十五項已拍板（2026-11-01，含作品包匯出匯入），送 Sol 方案審再開包 0；生圖管線已定案（[實測報告](plans/vn-mode-image-spike.md)）；前置 vn-prestructure-split 已完成（2026-10-29）
+- [vn-mode](tasks/vn-mode.md) — VN 桌型：AI 生成視覺小說模式（劇本格式＋演出＋選項制）；大案、分包 0–9 核心估共約 4300 行 — 下一步：整體計畫 [plans/vn-mode.md](plans/vn-mode.md) 十九項已拍板（2026-11-01，含作品包與初始 VN 卡），送 Sol 方案審再開包 0；生圖管線已定案（[實測報告](plans/vn-mode-image-spike.md)）；前置 vn-prestructure-split 已完成（2026-10-29）
 - [vn-cg-generation](tasks/vn-cg-generation.md) — VN 模式 CG 即時生成：外接吃到飽生圖訂閱（NAI 類）＋提示詞規範 — 下一步：前置 `vn-mode` 已立案（2026-08-07），本任務為其 v3 分期；最省驗證＝拿一把 NAI token 打一發看出圖品質與回傳格式
 
 ## 排後
