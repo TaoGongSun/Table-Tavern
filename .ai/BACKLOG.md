@@ -53,6 +53,9 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [vn-mode](tasks/vn-mode.md) — VN 桌型：AI 生成視覺小說模式（劇本格式＋演出＋選項制）；大案、分包 0–9 核心估共約 4300 行 — 下一步：整體計畫 [plans/vn-mode.md](plans/vn-mode.md) 十九項已拍板（2026-11-01，含作品包與初始 VN 卡），送 Sol 方案審再開包 0；生圖管線已定案（[實測報告](plans/vn-mode-image-spike.md)）；前置 vn-prestructure-split 已完成（2026-10-29）
 - [vn-cg-generation](tasks/vn-cg-generation.md) — VN 模式 CG 即時生成：外接吃到飽生圖訂閱（NAI 類）＋提示詞規範 — 下一步：前置 `vn-mode` 已立案（2026-08-07），本任務為其 v3 分期；最省驗證＝拿一把 NAI token 打一發看出圖品質與回傳格式
 
+## 中國安卓（2026-11-02 立案）
+- [cn-web-provider](tasks/cn-web-provider.md) — 網頁版接中國模型供應商（階段 1，中案估 250 行，要方案送審） — 下一步：作者裁決預設模型排序與不自動升付費兩題後開工；階段 2 APK 薄殼、階段 3 發佈另行立案
+
 ## 排後
 原訂 16 件（發佈平台 5、API 限定 5、供應商設定 3、其他功能 2、碰運氣 1）；以下為目前 BACKLOG 裡不屬於上面各階段的案子，逐件歸類待作者確認〔模型判斷·未裁決〕。
 - [initvar-entry-yaml-semantics](tasks/initvar-entry-yaml-semantics.md) — [initvar] 條目挑選與 YAML 語意（$meta、# 註解）對齊上游 — 下一步：縮小〔模型判斷·未裁決〕：第 3 項照作者裁決，第 1、2 項只做合併條目＋剝圍欄＋# 當註解，$meta 分支留限制；排在 initvar-yaml-list 之後
