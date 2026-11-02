@@ -1,0 +1,26 @@
+{
+  /* 手機客戶端（src/）：瀏覽器型別。伺服器（server/）的 Workers 型別與 DOM 型別互相衝突，所以分兩份；
+     客戶端只 import 伺服器核心的純 TS（協定型別、劇情段落投影、測試用的假伺服器）。 */
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "types": [],
+    "paths": {
+      "@desktop/*": ["../src/*"],
+      "@web/*": ["../web/src/*"]
+    }
+  },
+  "include": ["src"]
+}

@@ -9,7 +9,7 @@ import { readdirSync, statSync } from "node:fs";
 import { join, relative, basename, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// 三棵原始碼樹各自套同一套規則：桌面版 src/、網頁版 web/src/、多人房間伺服器 party/server/。根層入口、組合外殼清單分開列。
+// 四棵原始碼樹各自套同一套規則：桌面版 src/、網頁版 web/src/、多人房間客戶端 party/src/ 與伺服器 party/server/。根層入口、組合外殼清單分開列。
 // 測試住處預設是 features/<name>/ 或 shared/<area>/；party/server 沒有 features，測試跟著 core/ 或 workers/ 住。
 const inFeatureOrShared = (owner) => (owner[0] === "features" || owner[0] === "shared") && owner.length >= 3;
 const TREES = [
@@ -30,6 +30,13 @@ const TREES = [
   {
     label: "web/src",
     dir: fileURLToPath(new URL("../web/src/", import.meta.url)),
+    rootAllowed: new Set(["App.tsx", "App.css", "main.tsx", "vite-env.d.ts"]),
+    shellAllowed: new Set(),
+  },
+  {
+    // 多人房間的手機客戶端：比照網頁版
+    label: "party/src",
+    dir: fileURLToPath(new URL("../party/src/", import.meta.url)),
     rootAllowed: new Set(["App.tsx", "App.css", "main.tsx", "vite-env.d.ts"]),
     shellAllowed: new Set(),
   },

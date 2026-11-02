@@ -54,6 +54,7 @@ Rust 側相反：新 module 先用單檔 `foo.rs`，等它真的長出兩個以�
 - `party/server/core/`：房間伺服器的純 TS 核心，只用語言內建、`TextEncoder` 與 WebCrypto，不 import 任何 Workers／Node 模組；平台殼只透過 `runner.ts` 的介面接進來。
 - `party/server/workers/`：Cloudflare Workers＋Durable Objects 殼與 `wrangler.toml`（不放帳號 id 與密鑰）。之後的 Node 自架殼放同層另一個資料夾。
 - `party/server/` 根層不放檔案；測試跟著它測的東西住在 `core/` 或 `workers/`，`check-structure` 檢查這棵樹。
+- `party/src/`：手機客戶端（Vite＋React），規則同 `web/src/`（features 落點、根層只放 `App.tsx`、`App.css`、`main.tsx`、`vite-env.d.ts`，`check-structure` 也檢查）。協定型別與劇情段落投影直接 import `party/server/core/` 的純 TS，不複製；桌面版與網頁版模組照樣經 `@desktop/*`、`@web/*` 別名引。型別檢查分兩份（`tsconfig.json` 管伺服器的 Workers 型別、`tsconfig.app.json` 管客戶端的 DOM 型別，兩者互相衝突）。`npm run build` 產 `party/dist/`，由 `server/workers/wrangler.toml` 的 `[assets]` 跟 Worker 一起部署。
 
 ## 禁止事項
 

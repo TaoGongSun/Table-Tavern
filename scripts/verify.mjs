@@ -28,9 +28,10 @@ const steps = [
   // 網頁版（web/，自己一份 package.json）：共用桌面版純 TS 模組（D2），所以兩邊一起跑
   { name: "web vitest", cmd: "npm", args: ["test"], cwd: WEB, shell: WIN },
   { name: "web build", cmd: "npm", args: ["run", "build"], cwd: WEB, shell: WIN },
-  // 多人房間（party/，自己一份 package.json）：伺服器核心＋Workers 殼；匯出測試引網頁版存檔解碼，排在 web 之後
+  // 多人房間（party/，自己一份 package.json）：伺服器核心＋Workers 殼＋手機客戶端；匯出測試引網頁版存檔解碼，排在 web 之後
   { name: "party vitest", cmd: "npm", args: ["test"], cwd: PARTY, shell: WIN },
   { name: "party typecheck", cmd: "npm", args: ["run", "typecheck"], cwd: PARTY, shell: WIN },
+  { name: "party build", cmd: "npm", args: ["run", "build"], cwd: PARTY, shell: WIN },
   { name: "cargo check", cmd: "cargo", args: ["check"], cwd: TAURI },
   { name: "cargo test", cmd: "cargo", args: ["test"], cwd: TAURI },
   // 測試通道只在 feature 下編譯，單獨跑一次確保它沒爛掉。

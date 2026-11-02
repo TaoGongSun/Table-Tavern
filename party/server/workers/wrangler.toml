@@ -5,6 +5,13 @@ main = "index.ts"
 compatibility_date = "2025-09-01"
 # account_id = "<部署者自己的帳號 id，不進版控>"
 
+# 手機客戶端（party/src；`npm run build` 產 party/dist）跟 Worker 一起部署（Workers Static Assets）。
+# /r/<房間碼> 這類沒有對應檔案的路徑回 index.html（單頁應用）；/api/* 一律先交給 Worker（建房、WebSocket、匯出）。
+[assets]
+directory = "../../dist"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
+
 [[durable_objects.bindings]]
 name = "ROOM"
 class_name = "RoomDO"
