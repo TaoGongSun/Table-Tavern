@@ -24,6 +24,9 @@ pub use character::{
     set_character_archived, set_character_auto_hidden, set_character_stage, write_character,
     CastRole, CharacterCard, CharacterMeta, StageChange, StageFlags,
 };
+#[cfg(test)]
+pub(crate) use config::apply_play_override;
+pub(crate) use config::set_play_override;
 pub use config::{
     install_sponsor_pack, migrate_legacy_config, read_config, read_model_catalog,
     sponsor_pack_active, update_config, update_config_with, write_model_catalog, AppConfig,

@@ -9,10 +9,10 @@ use serde::Serialize;
 /// 角色對話的回傳。`aborted` 為真時 `text` 是停止當下已經吐出的半截，可能是空的。
 #[derive(Serialize)]
 pub(crate) struct ChatReply {
-    text: String,
+    pub(crate) text: String,
     /// 剝殼前的台詞原文（已剝本輪前綴）；與 text 相同就是 None，前端照樣存進事件裡
-    raw: Option<String>,
-    aborted: bool,
+    pub(crate) raw: Option<String>,
+    pub(crate) aborted: bool,
 }
 
 /// 角色回覆收尾的接線層：純函式剝前綴與控制區塊，完成回合剝完沒正文就回錯

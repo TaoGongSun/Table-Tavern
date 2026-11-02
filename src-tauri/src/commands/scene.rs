@@ -52,6 +52,8 @@ pub(crate) fn append_player_event(
     event: TranscriptEvent,
     action_id: Option<String>,
 ) -> Result<PlayerAppend, String> {
+    // 房間模式期間不收桌面輸入框的玩家句（會與房間 GM 鏈交錯寫同一桌）
+    crate::room::refuse_if_active(&world_id)?;
     let _permit = data::world_write_permit(&world_id)?;
     let root = data_root(&app)?;
     // 換幕容量鎖：玩家句落檔前就擋，被擋時不留孤立玩家句（卡片介面 /send 也走這裡）

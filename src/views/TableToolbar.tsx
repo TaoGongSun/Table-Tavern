@@ -41,6 +41,8 @@ interface TableToolbarProps {
   updateDot: boolean;
   onOpenSettings: () => void;
   onOpenVersions: () => void;
+  /** 多人房間模式面板（multiplayer-room 包 2） */
+  onOpenRoom: () => void;
 }
 
 export function TableToolbar({
@@ -63,6 +65,7 @@ export function TableToolbar({
   updateDot,
   onOpenSettings,
   onOpenVersions,
+  onOpenRoom,
 }: TableToolbarProps) {
   return (
     <header className="table-toolbar">
@@ -162,6 +165,12 @@ export function TableToolbar({
             icon: <IconExport />,
             disabled: locked,
             onSelect: onExportTranscript,
+          },
+          {
+            key: "room",
+            label: t("roomOpen"),
+            disabled: locked,
+            onSelect: onOpenRoom,
           },
         ]}
       />

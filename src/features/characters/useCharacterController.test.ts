@@ -8,6 +8,7 @@ import { t } from "../../i18n";
 const backend = vi.hoisted(() => ({
   handlers: {} as Record<string, (args: Record<string, unknown>) => unknown>,
   calls: [] as string[],
+  listeners: {} as Record<string, (event: { payload: unknown }) => unknown>,
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -16,6 +17,12 @@ vi.mock("@tauri-apps/api/core", () => ({
     const handler = backend.handlers[command];
     if (handler) return handler(args);
     return command.startsWith("list_") ? [] : undefined;
+  }),
+}));
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(async (name: string, handler: (event: { payload: unknown }) => unknown) => {
+    backend.listeners[name] = handler;
+    return () => {};
   }),
 }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ confirm: vi.fn(async () => true) }));
@@ -321,5 +328,29 @@ describe("useCharacterController after switching tables mid-call", () => {
     });
     expect(controller!.list.map((character) => character.id)).toEqual(["A", "B", "C"]);
     expect(errors.filter(Boolean)).toEqual(["寫不進去"]);
+  });
+
+  it("rereads the player card and cast when the room changes this table's player card", async () => {
+    await act(async () => controller!.hydrate([meta("A"), meta("B")], new Set(), null));
+    backend.handlers.read_state = () => ({ player_card_id: "A" });
+    backend.handlers.list_characters = () => [meta("B")];
+    backend.handlers.read_character = () => ({ id: "A", name: "A" });
+    await act(async () => {
+      await backend.listeners["room-table-changed"]({ payload: { worldId: "w2" } });
+    });
+    expect(backend.calls).not.toContain("read_state"); // 別桌的通知不理
+    await act(async () => {
+      await backend.listeners["room-table-changed"]({ payload: { worldId: "w1" } });
+    });
+    expect(controller!.list.map((character) => character.id)).toEqual(["B"]);
+    expect(controller!.player?.id).toBe("A");
+    // 房間關了：玩家卡還原成沒有，名單把那張卡放回來
+    backend.handlers.read_state = () => ({ player_card_id: null });
+    backend.handlers.list_characters = () => [meta("A"), meta("B")];
+    await act(async () => {
+      await backend.listeners["room-table-changed"]({ payload: { worldId: "w1" } });
+    });
+    expect(controller!.list.map((character) => character.id)).toEqual(["A", "B"]);
+    expect(controller!.player).toBeNull();
   });
 });

@@ -41,6 +41,24 @@ describe("parseMarker", () => {
   });
 });
 
+describe("多人房間的四個在場標記", () => {
+  it("parseMarker 認得四種、缺名字的不算", () => {
+    for (const type of ["player_watch", "player_arrival", "player_to_npc", "player_absent"]) {
+      expect(parseMarker({ type, name: "阿濤" })).toEqual({ type, name: "阿濤" });
+      expect(parseMarker({ type })).toBeNull();
+    }
+  });
+
+  it("標頭照語系組出、本文空時只有標頭", () => {
+    expect(eventDisplayText(system({ type: "player_watch", name: "阿濤" }, ""))).toBe("〈阿濤〉這回合觀望");
+    expect(eventDisplayText(system({ type: "player_arrival", name: "小雨" }, ""))).toBe("（玩家登場）〈小雨〉");
+    expect(eventDisplayText(system({ type: "player_to_npc", name: "守衛" }, ""))).toBe(
+      "（玩家離席）〈守衛〉改由 GM 當 NPC 扮演",
+    );
+    expect(eventDisplayText(system({ type: "player_absent", name: "阿明" }, ""))).toBe("（玩家離席）〈阿明〉暫不登場");
+  });
+});
+
 describe("eventDisplayText", () => {
   it("rebuilds headings, section labels and line breaks like the backend", () => {
     expect(eventDisplayText(system({ type: "card_arrival", name: "狐狸" }, "尾巴很大。"))).toBe(

@@ -72,6 +72,19 @@ pub(crate) fn spawn(command: &mut Command, envs: &[(String, String)]) -> io::Res
 
 /// 更新模式：CLI 的更新／還原指令與安裝腳本。不過擋板（擋板就是更新流程自己立的），
 /// 不注入關閉自動更新的變數，放進獨立程序群組（逾時殺整組）。環境由呼叫端組好。
+/// 非 CLI 的常駐輔助程序（房間模式防休眠的 caffeinate／systemd-inhibit，room/awake.rs）：標準輸入輸出全關，
+/// 照一般路徑 spawn（不是四家 CLI，不過擋板）；`Spawned` 丟掉就終止並收屍。
+#[cfg(unix)]
+pub(crate) fn spawn_helper(program: &str, args: &[String]) -> io::Result<Spawned> {
+    let mut command = Command::new(program);
+    command
+        .args(args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    spawn(&mut command, &[])
+}
+
 pub(crate) fn spawn_update(command: &mut Command) -> io::Result<TreeChild> {
     tree::prepare(command);
     command.kill_on_drop(true);

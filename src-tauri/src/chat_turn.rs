@@ -5,8 +5,6 @@ mod character;
 mod commit;
 mod gm;
 mod gm_reply;
-// 包 2（房間執行端）接上前只有測試在用
-#[cfg_attr(not(test), allow(dead_code))]
 mod party_batch;
 mod stream;
 
@@ -14,7 +12,6 @@ pub(crate) use character::{chat_with_character, ChatReply};
 #[cfg(test)]
 pub(crate) use commit::gm_commit_apply;
 pub(crate) use gm::{gm_narrate, GmNarration};
-#[allow(unused_imports)]
 pub(crate) use party_batch::{
     append_party_batch, BatchOutcome, DepartureMode, PartyAction, PartyBatch,
 };

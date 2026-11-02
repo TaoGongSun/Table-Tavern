@@ -7,6 +7,7 @@ pub(crate) mod genesis;
 pub(crate) mod image;
 pub(crate) mod openrouter_key;
 pub(crate) mod refactor;
+pub(crate) mod room;
 pub(crate) mod scene;
 pub(crate) mod settings;
 pub(crate) mod state;

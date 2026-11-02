@@ -594,3 +594,19 @@ dialog.lightbox {
   color: var(--ink-3);
 }
 
+
+/* 多人房間模式面板（features/room/RoomPanel.tsx） */
+.room-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+}
+.room-label {
+  flex: 0 0 9em;
+  color: var(--ink-2);
+}
+.room-value {
+  flex: 1 1 auto;
+  min-width: 0;
+}

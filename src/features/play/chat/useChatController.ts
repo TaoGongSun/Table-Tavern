@@ -215,6 +215,22 @@ export function useChatController({
     };
   }, [worldId]);
 
+  // 房間模式（multiplayer-room 包 2）：GM 鏈在 Rust 執行端跑、直接落檔，落完通知這裡重讀逐字稿
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void listen<{ worldId: string }>("room-table-changed", (event) => {
+      if (event.payload.worldId === worldId && !busyRef.current) void reload();
+    }).then((stop) => {
+      if (disposed) stop();
+      else unlisten = stop;
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [worldId, reload]);
+
   const takeResponseTruncated = useCallback(async () => {
     // Rust 端先 emit 再讓 invoke resolve；讓事件佇列多一個 tick 完成投遞。
     await new Promise<void>((resolve) => setTimeout(resolve, 0));

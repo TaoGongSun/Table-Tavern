@@ -71,7 +71,7 @@ export function RoomScreen({ view, c }: { view: RoomView; c: RoomControls }) {
       {tab === "story" && (
         <>
           <StoryView view={view} loadOlder={c.loadOlder} />
-          {view.me.cardId ? <ActionBox view={view} act={c.act} sendDraft={c.sendDraft} cancelDraft={c.cancelDraft} /> : canSit && <SeatPicker view={view} act={c.act} />}
+          {view.me.cardId && view.room.status !== "closed" ? <ActionBox view={view} act={c.act} sendDraft={c.sendDraft} cancelDraft={c.cancelDraft} /> : canSit && <SeatPicker view={view} act={c.act} />}
         </>
       )}
       {tab === "members" && <MemberList view={view} act={c.act} onLeave={c.onLeave} />}

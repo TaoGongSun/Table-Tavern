@@ -1,7 +1,7 @@
 // 故事串：GM 旁白、NPC 對話、玩家行動、系統標記；串流中那段即時長出，定稿整段取代。
 // 一律純文字（協定 §10：別人的行動與模型輸出都是不可信文字，不插 HTML）。
 import { useEffect, useRef, useState } from "react";
-import { hideUpdateVariableStreaming } from "@web/features/mvu/hide-update-variable";
+import { streamDisplayText } from "@desktop/features/play/stream-display";
 import type { Speaker } from "../../../server/core/types";
 import { t, type MsgKey } from "../../i18n";
 import type { RoomView } from "./room-state";
@@ -47,7 +47,7 @@ export function StoryView({ view, loadOlder }: { view: RoomView; loadOlder: (bef
       ))}
       {s && (
         <div data-testid="streaming">
-          <Part view={view} speaker={s.speaker} text={hideUpdateVariableStreaming(s.text)} flag={t("storyStreaming")} />
+          <Part view={view} speaker={s.speaker} text={streamDisplayText(s.text)} flag={t("storyStreaming")} />
         </div>
       )}
       {pending.map((e) => (

@@ -1,4 +1,4 @@
-import { type Dispatch, type SetStateAction, useRef } from "react";
+import { type Dispatch, type SetStateAction, useRef, useState } from "react";
 import type { AppConfig } from "../shared/contracts/backend-contracts";
 import { PALETTE } from "../features/characters/card-model";
 import { FormatBanner, FormatRepair } from "../features/world-format/FormatNotice";
@@ -24,6 +24,7 @@ import { CastRail } from "../features/characters/CastRail";
 import { StateBar } from "../features/table-state/StateBar";
 import { useKnownPresentNames } from "../features/table-state/present-glyphs";
 import { TableToolbar } from "./TableToolbar";
+import { RoomPanel } from "../features/room/RoomPanel";
 import type { SettingsTab } from "../features/settings/SettingsWindow";
 import type { PendingRefactorCard } from "../features/refactor/refactor-card";
 
@@ -172,6 +173,7 @@ export function AppWorkspace({
   // 一次改名只結算一次：Enter 送出後輸入框卸載會再引發 blur、Esc 取消後也一樣，
   // 不擋的話前者多送一次 rename_world、後者取消了還是存下去
   const renameSettled = useRef(true);
+  const [roomOpen, setRoomOpen] = useState(false);
   function startRename(name: string) {
     renameSettled.current = false;
     setEditingName({ value: name });
@@ -287,7 +289,9 @@ export function AppWorkspace({
           updateDot={updateDot}
           onOpenSettings={() => onOpenSettings("appearance")}
           onOpenVersions={() => onOpenSettings("versions")}
+          onOpenRoom={() => setRoomOpen(true)}
         />
+        {roomOpen && <RoomPanel worldId={table} onClose={() => setRoomOpen(false)} />}
 
         {gate === "repair" && repairNotice ? (
           <FormatRepair notice={repairNotice} onOpenFolder={onOpenRepairFolder} />

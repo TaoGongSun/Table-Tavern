@@ -50,6 +50,13 @@ pub(super) struct StateUpdate {
     value: String,
 }
 
+impl StateUpdate {
+    /// 變動紀錄一行（與前端落 `state_update` 事件同格式）
+    pub(super) fn line(&self) -> String {
+        format!("{}：{}", self.path, self.value)
+    }
+}
+
 /// 一輪 GM 回合的回合紀錄（計畫 8.3）。開始時記下、提交時核對 turn_id；沒走到提交就離開（中止、出錯、
 /// 空回覆）時，drop 把還在生成中的紀錄改成已中止，卡寫與面板手改隨即放行。
 pub(super) struct TurnGuard {

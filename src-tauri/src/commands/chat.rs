@@ -12,6 +12,8 @@ pub(crate) async fn chat_with_character(
     on_delta: tauri::ipc::Channel<String>,
     action_id: Option<String>,
 ) -> Result<ChatReply, String> {
+    // 房間模式期間劇情由房間執行端推進（它走 domain、不經這裡），桌面的鈕一律拒收
+    crate::room::refuse_if_active(&world_id)?;
     chat_turn::chat_with_character(app, world_id, character_id, turn_id, on_delta, action_id).await
 }
 
@@ -24,6 +26,7 @@ pub(crate) async fn gm_narrate(
     on_delta: tauri::ipc::Channel<String>,
     action_id: Option<String>,
 ) -> Result<GmNarration, String> {
+    crate::room::refuse_if_active(&world_id)?;
     chat_turn::gm_narrate(app, world_id, turn_id, on_delta, action_id).await
 }
 

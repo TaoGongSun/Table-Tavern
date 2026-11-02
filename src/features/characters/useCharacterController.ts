@@ -2,7 +2,9 @@
 // 所有權從 App() 搬過來；發言對象（speaker）留在 App，這裡只回報「這張卡沒了，該換誰」。
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { confirm } from "@tauri-apps/plugin-dialog";
+import type { WorldState } from "../../shared/contracts/backend-contracts";
 import { t } from "../../i18n";
 import { firstSpeakerCandidate, isCharacterHidden } from "./character-visibility";
 import { type CharacterCard, type CharacterDeleteOutcome, type CharacterMeta } from "./card-model";
@@ -219,6 +221,33 @@ export function useCharacterController(input: {
     },
     [worldId, loadCharacterImages],
   );
+
+  // 房間模式（multiplayer-room）：Rust 執行端入座、退出或關房時改了這桌的玩家卡（set_party／clear_party），
+  // 落完發 room-table-changed；玩家卡換了就重讀名單（後端名單不含玩家卡）與玩家卡
+  const playerCardRef = useRef(playerCardId);
+  playerCardRef.current = playerCardId;
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void listen<{ worldId: string }>("room-table-changed", async (event) => {
+      if (event.payload.worldId !== worldId) return;
+      try {
+        const next = (await invoke<WorldState>("read_state", { worldId })).player_card_id ?? null;
+        if (disposed || next === playerCardRef.current) return;
+        setPlayerCardId(next);
+        await refresh();
+      } catch (reason) {
+        if (!disposed) onError(String(reason));
+      }
+    }).then((stop) => {
+      if (disposed) stop();
+      else unlisten = stop;
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [worldId, refresh, onError]);
 
   const reloadImages = useCallback(
     async () => loadCharacterImages(worldId, characters.map((c) => c.id)),

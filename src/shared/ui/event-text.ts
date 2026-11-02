@@ -6,6 +6,10 @@ const NAMED: Record<string, "name" | "title"> = {
   card_private: "name",
   gm_call: "name",
   person_arrival: "title",
+  player_watch: "name",
+  player_arrival: "name",
+  player_to_npc: "name",
+  player_absent: "name",
 };
 const BARE = new Set(["scene_summary", "state_update"]);
 
@@ -36,6 +40,15 @@ export function markerHeading(marker: KnownMarker): string {
       return t("marker_state_update");
     case "gm_call":
       return t("marker_gm_call", { name: marker.name.trim() || t("playerLabel") });
+    // 多人房間（multiplayer-room 包 3）的在場標記：本文都是空的，整則只有標頭
+    case "player_watch":
+      return t("marker_player_watch", { name: marker.name });
+    case "player_arrival":
+      return t("marker_player_arrival", { name: marker.name });
+    case "player_to_npc":
+      return t("marker_player_to_npc", { name: marker.name });
+    case "player_absent":
+      return t("marker_player_absent", { name: marker.name });
   }
 }
 

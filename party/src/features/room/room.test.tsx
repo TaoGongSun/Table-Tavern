@@ -90,6 +90,10 @@ async function table(bEnv: Partial<RoomEnv> = {}) {
   await hub.exec("gen.part.begin", { dispatchId, part: 0, speaker: { kind: "gm" } });
   await hub.exec("gen.delta", { dispatchId, part: 0, text: "風在吹" });
   await until(() => B.q('[data-testid="streaming"]')?.textContent?.includes("風在吹"));
+  // 回覆尾端的狀態欄圍欄串流中就截掉（同桌面版 streamDisplayText）
+  await hub.exec("gen.delta", { dispatchId, part: 0, text: "。\n\n```state\ntime: 夜" });
+  await until(() => B.q('[data-testid="streaming"]')?.textContent?.includes("風在吹。"));
+  expect(B.q('[data-testid="streaming"]')!.textContent).not.toContain("```");
   await hub.exec("gen.part.end", { dispatchId, part: 0, text: "風在吹，酒館門開了。", interrupted: false });
   await until(() => !B.q('[data-testid="streaming"]') && B.text().includes("風在吹，酒館門開了。"));
   await hub.exec("gen.done", { dispatchId, aborted: false });
@@ -123,6 +127,7 @@ describe("手機客戶端對真伺服器核心", () => {
     B.click("跳過");
     await until(() => room.s.round?.phase === "queued");
     await until(() => A.text().includes("GM 生成中…") && B.text().includes("GM 生成中…"));
+    expect((A.button("收回修改") as HTMLButtonElement).disabled).toBe(true); // 結算後不能收回
     expect(room.events("round.resolved").at(-1)!.payload.by).toBe("all");
     expect(B.q('[data-testid="story"]')!.textContent).toContain("我拔劍"); // 結算後進故事串
   });
@@ -189,6 +194,8 @@ describe("手機客戶端對真伺服器核心", () => {
     A.click("關閉房間");
     await until(() => A.text().includes("房間已結束"));
     expect(A.q('[data-testid="story"]') ?? A.q('[data-testid="host-panel"]')).toBeTruthy(); // 留著畫面，房主還能匯出
+    A.tab("story");
+    expect(A.q('[data-testid="action-box"]')).toBeNull(); // 關了就不再給行動格
   });
 
   it("GM 被擋時全員看到公開說明；出額度者看到細節並從面板重試", async () => {

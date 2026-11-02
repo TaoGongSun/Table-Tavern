@@ -56,6 +56,7 @@ import {
   type ClaudeOverageMsgKey,
 } from "./features/claude-overage";
 import { cliUpdateMessage, isCliUpdateMsgKey, type CliUpdateMsgKey } from "./features/cli-update";
+import { isRoomMsgKey, roomMessage, type RoomMsgKey } from "./features/room";
 import { expandPlural } from "./plural";
 import { detectLang, LANGUAGE_OPTIONS, normalizeLang, type Lang } from "./languages";
 
@@ -72,7 +73,8 @@ export type MsgKey =
   | NoteMsgKey
   | TranscriptMarkerMsgKey
   | ClaudeOverageMsgKey
-  | CliUpdateMsgKey;
+  | CliUpdateMsgKey
+  | RoomMsgKey;
 
 const MESSAGES = {
   "zh-TW": zh,
@@ -125,7 +127,9 @@ export function t(key: MsgKey, params?: Record<string, string | number>): string
                         ? claudeOverageMessage(lang, key)
                         : isCliUpdateMsgKey(key)
                           ? cliUpdateMessage(lang, key)
-                          : MESSAGES[lang][key as CoreMsgKey];
+                          : isRoomMsgKey(key)
+                            ? roomMessage(lang, key)
+                            : MESSAGES[lang][key as CoreMsgKey];
   return formatMessage(raw, lang, params);
 }
 

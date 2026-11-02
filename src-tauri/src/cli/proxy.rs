@@ -56,6 +56,18 @@ fn system_proxy() -> Option<String> {
     None
 }
 
+/// 房間執行端的 WebSocket（room/link.rs）自己走代理：環境變數優先，Windows 再讀系統代理
+pub(crate) fn proxy_url() -> Option<String> {
+    ["HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"]
+        .iter()
+        .find_map(|key| {
+            std::env::var(key)
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+        })
+        .or_else(system_proxy)
+}
+
 /// 掛在需要連外網的子程序上。PAC 自動設定檔（AutoConfigURL）解不了，維持現狀不處理。
 pub fn apply_system_proxy(command: &mut Command) {
     const KEYS: [&str; 4] = ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"];

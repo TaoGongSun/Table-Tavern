@@ -156,6 +156,8 @@ pub enum UiMsg {
     InterfaceTableGmOnly,
     /// 舞台卡只提供設定、不參與角色發言：它的角色回合一律拒收，不寫樓、不打模型、不扣容量
     StageCardNoTurn,
+    /// 這桌正在房間模式（multiplayer-room 包 2）：劇情由房間執行端推進，桌面輸入框與 GM／角色鈕一律拒收
+    RoomModeActive,
     PreviousSceneEmpty,
     TranscriptEmpty,
     SceneNotFound {

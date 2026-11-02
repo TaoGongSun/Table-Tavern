@@ -131,6 +131,10 @@ export type KnownMarker =
   | { type: "person_arrival"; title: string }
   | { type: "card_private"; name: string }
   | { type: "state_update" }
-  | { type: "gm_call"; name: string };
+  | { type: "gm_call"; name: string }
+  | { type: "player_watch"; name: string }
+  | { type: "player_arrival"; name: string }
+  | { type: "player_to_npc"; name: string }
+  | { type: "player_absent"; name: string };
 export type UnknownMarker = { type: string };
 export type EventMarker = KnownMarker | UnknownMarker;

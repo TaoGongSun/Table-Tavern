@@ -44,7 +44,7 @@ export function ActionBox({ view, act, sendDraft, cancelDraft }: { view: RoomVie
       {error && <div className="field-error" data-testid="action-error">{error}</div>}
       <div className="action-buttons">
         {done ? (
-          <button type="button" onClick={() => run("action.retract")}>{t("actionRetract")}</button>
+          <button type="button" disabled={!acting} onClick={() => run("action.retract")}>{t("actionRetract")}</button>
         ) : (
           <>
             <button type="button" className="ghost" disabled={!acting} onClick={() => commit("action.skip")}>{t("actionSkip")}</button>

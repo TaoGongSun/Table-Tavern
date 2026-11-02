@@ -15,6 +15,7 @@ pub(crate) mod home_cleanup;
 pub(crate) mod install;
 mod prompt_file;
 mod proxy;
+pub(crate) use proxy::proxy_url;
 mod request;
 mod runner;
 mod spawn;
@@ -37,6 +38,8 @@ pub use request::{
 pub use runner::{is_stall_error, is_updating_error, run_cli, run_cli_cancellable, CliFinish};
 #[cfg(target_os = "windows")]
 pub(crate) use spawn::auto_update_off;
+#[cfg(unix)]
+pub(crate) use spawn::{spawn_helper, Spawned};
 pub use stream::{
     parse_agy_usage, parse_claude_usage, parse_codex_usage, parse_grok_usage, AGY_PROTOCOL,
     CLAUDE_PROTOCOL, CODEX_PROTOCOL, GROK_PROTOCOL,

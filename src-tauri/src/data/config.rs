@@ -25,10 +25,50 @@ pub struct AppConfig {
 
 pub fn read_config(root: &Path) -> DataResult<AppConfig> {
     let path = root.join("config.json");
-    if !path.exists() {
-        return Ok(AppConfig::default());
+    let mut config = if path.exists() {
+        serde_json::from_str(&fs::read_to_string(path)?)?
+    } else {
+        AppConfig::default()
+    };
+    if let Some((route, model)) = play_override()
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+        .as_ref()
+    {
+        apply_play_override(&mut config, route, model);
     }
-    Ok(serde_json::from_str(&fs::read_to_string(path)?)?)
+    Ok(config)
+}
+
+/// 房間模式（multiplayer-room 包 2）的幕設定覆寫槽：(路線, 模型)，只活在這個程序裡、不寫回 config.json。
+/// 讀設定的地方（GM／角色／換幕摘要）都經 `read_config` 拿到覆寫後的值；設定頁讀寫走原始 JSON，看不到它。
+fn play_override() -> &'static Mutex<Option<(String, String)>> {
+    static SLOT: OnceLock<Mutex<Option<(String, String)>>> = OnceLock::new();
+    SLOT.get_or_init(|| Mutex::new(None))
+}
+
+/// 進房／換幕／遠端切模型時放進新值，退出房間模式時清掉（`None`）。
+pub(crate) fn set_play_override(value: Option<(String, String)>) {
+    *play_override()
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner()) = value;
+}
+
+/// 路線＝`preferences.transport`；模型只蓋 GM 檔位（API 蓋 `tier_models[<檔位>]`，命令列工具蓋
+/// `tier_models[<工具>:<檔位>]`）。`default`＝這條路線沒有可選模型，照該路線自己的預設。
+pub(crate) fn apply_play_override(config: &mut AppConfig, route: &str, model: &str) {
+    config
+        .preferences
+        .insert("transport".to_owned(), Value::String(route.to_owned()));
+    if model == "default" {
+        return;
+    }
+    let tier = crate::transport::gm_tier(config).as_str();
+    let key = match route {
+        "api" => tier.to_owned(),
+        cli => format!("{cli}:{tier}"),
+    };
+    config.tier_models.insert(key, model.to_owned());
 }
 
 fn config_lock() -> &'static Mutex<()> {

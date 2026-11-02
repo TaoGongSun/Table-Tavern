@@ -19,6 +19,7 @@ mod receipts;
 mod refactor;
 mod refactor_ai;
 mod refactor_assemble;
+mod room;
 mod scene_budget;
 mod smart_free;
 mod st_macros;
@@ -214,6 +215,10 @@ pub fn run() {
             commands::image::delete_gallery_image,
             commands::chat::gm_narrate,
             commands::chat::chat_abort,
+            commands::room::room_status,
+            commands::room::room_enter,
+            commands::room::room_exit,
+            commands::room::room_pair_code,
             commands::settings::usage_report,
             commands::scene::advance_scene,
             commands::scene::scene_budget,
@@ -257,6 +262,10 @@ pub fn run() {
             // app 專用 CLI 家目錄的啟動回收（agy 對話、grok prompt 歷史與搜尋索引）
             if let (Ok(config), Ok(data)) = (config_root(app.handle()), data_root(app.handle())) {
                 cli::home_cleanup::spawn_startup_sweep(config, data);
+            }
+            // 房間模式：上次沒按退出就自動接回同一房間（multiplayer-room 包 2）
+            if let Ok(engine) = room::AppEngine::shared(app.handle()) {
+                tauri::async_runtime::spawn(room::resume(engine));
             }
             #[cfg(feature = "test-harness")]
             harness::start(app.handle());
@@ -389,6 +398,8 @@ mod command_classification {
         "refactor_stage_cards",
         "refactor_survey",
         "refactor_table_mode",
+        "room_enter",
+        "room_exit",
         "scene_appearances",
         "scene_budget",
         "world_has_state_bar",
@@ -426,6 +437,8 @@ mod command_classification {
         "delete_version",
         "list_versions",
         "rollback_install",
+        "room_pair_code",
+        "room_status",
         "update_check",
         "update_cli",
         "update_config",

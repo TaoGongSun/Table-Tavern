@@ -80,26 +80,34 @@ async fn gm_lane_reply(
 /// GM 沒點名或名字對不上名單＝None，前端就地停下、不當錯誤。
 #[derive(Serialize)]
 pub(crate) struct GmNarration {
-    pub(super) text: String,
+    pub(crate) text: String,
     /// 剝殼前的模型原文；與 text 相同就是 None，前端照樣存進事件裡
-    pub(super) raw: Option<String>,
-    pub(super) next: Option<String>,
+    pub(crate) raw: Option<String>,
+    pub(crate) next: Option<String>,
     /// 多人房間（multiplayer-room 包 3）：GM 點名點到某位真人玩家時是那張玩家卡 id（此時 next 是玩家哨兵）；
     /// 一般桌恆 None、不序列化，前端契約不變。
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(super) next_player: Option<String>,
+    pub(crate) next_player: Option<String>,
     /// 長文字欄這一輪的新值；前端接到就補一則 system 事件進 transcript。空的就不補。
     pub(super) state_updates: Vec<StateUpdate>,
     /// 這輪剛回歸（登場）的角色卡 id（AI 卡重構包 4b）；前端拿它把卡從隱藏區搬回主區。
     #[serde(default)]
-    pub(super) arrived_characters: Vec<String>,
+    pub(crate) arrived_characters: Vec<String>,
     /// 這輪剛登場的世界書人物 title（4a 就有登場事件，4b 才在回傳裡帶出來）。
     #[serde(default)]
     pub(super) arrived_persons: Vec<String>,
     /// 玩家按下停止、而且取消贏過完成。true 時上面的寫入欄位都是空的。
-    pub(super) aborted: bool,
+    pub(crate) aborted: bool,
     /// 狀態更新沒寫成（磁碟錯誤等）：正文照常落檔，前端提示這一輪的狀態可能沒更新
     pub(super) state_error: Option<String>,
+}
+
+impl GmNarration {
+    /// 長文字欄變動紀錄的本文（房間執行端代前端落 `state_update` 事件用）；空字串＝這輪沒有
+    pub(crate) fn state_update_text(&self) -> String {
+        let lines: Vec<String> = self.state_updates.iter().map(StateUpdate::line).collect();
+        lines.join("\n")
+    }
 }
 
 /// 簡易導演：GM 旁白＋點名一次呼叫完成（NewPlan §6.1＋快取包 5）。
