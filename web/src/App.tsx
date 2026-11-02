@@ -14,7 +14,10 @@ import type { QuotaState } from "./features/funnel/quota";
 import { useLatestRelease } from "./features/funnel/useLatestRelease";
 import { ConnectPanel } from "./features/openrouter/ConnectPanel";
 import type { OAuthCallback } from "./features/openrouter/oauth";
-import { useOpenRouterSession } from "./features/openrouter/useOpenRouterSession";
+import { KeyPanel } from "./features/provider/KeyPanel";
+import { SettingsMenu, providerName } from "./features/provider/ProviderSettings";
+import { isCn } from "./features/provider/providers";
+import { useAiConnection } from "./features/provider/useAiConnection";
 import { openSaveStore, requestPersistence, restoreGlobals } from "./features/saves/save-store";
 
 function QuotaBadge({ quota }: { quota: QuotaState }) {
@@ -35,7 +38,9 @@ function QuotaBadge({ quota }: { quota: QuotaState }) {
 }
 
 export default function App({ callback, lang: initialLang }: { callback: OAuthCallback | null; lang: Lang }) {
-  const session = useOpenRouterSession(callback);
+  const connection = useAiConnection(callback, initialLang);
+  const session = connection.session;
+  const cn = isCn(connection.provider);
   // 換語系：整棵重繪、文案跟著換；桌、輸入框草稿都是各自的 state，不受影響
   const [lang, setLangState] = useState(initialLang);
   const changeLang = useCallback((next: Lang) => {
@@ -43,9 +48,23 @@ export default function App({ callback, lang: initialLang }: { callback: OAuthCa
     rememberLang(next);
     setLangState(next);
   }, []);
-  const release = useLatestRelease();
+  // 中國供應商模式藏下載鈕、不打 GitHub（作者裁決 2026-11-02；之後有 APK 再改成下載 APK）
+  const release = useLatestRelease(!cn);
   const downloadPage = useDownloadPage();
   const [game, setGame] = useState<GameSetup | null>(null);
+  // 回合進行中不能換供應商或模型（舊回合收尾前不換 session）
+  const [chatBusy, setChatBusy] = useState(false);
+  const busy = game !== null && chatBusy;
+  // 換到一家沒存金鑰的供應商＝離開這張桌（同登出）：不然貼完金鑰聊天畫面會從開桌時的快照重掛，
+  // 自動存檔還會拿那份舊快照蓋掉較新的存檔。桌都在存檔庫，從「接著玩」回來
+  const [leftTable, setLeftTable] = useState(false);
+  useEffect(() => {
+    if (session.apiKey) setLeftTable(false);
+    else if (game) {
+      setLeftTable(true);
+      setGame(null);
+    }
+  }, [session.apiKey, game]);
   const [quotaDismissed, setQuotaDismissed] = useState(false);
   const exhausted = session.quota.kind === "exhausted";
   const saves = useMemo(() => openSaveStore(), []);
@@ -82,7 +101,16 @@ export default function App({ callback, lang: initialLang }: { callback: OAuthCa
         <div className="topbar-actions">
           <LanguagePicker lang={lang} onChange={changeLang} />
           {session.apiKey && <QuotaBadge quota={session.quota} />}
-          <DownloadLink release={release} />
+          {session.apiKey && (
+            <SettingsMenu
+              className="provider-menu"
+              summary={providerName(connection.provider)}
+              testId="provider-menu"
+              connection={connection}
+              busy={busy}
+            />
+          )}
+          {!cn && <DownloadLink release={release} />}
           {session.apiKey && (
             <button
               type="button"
@@ -109,15 +137,35 @@ export default function App({ callback, lang: initialLang }: { callback: OAuthCa
 
       <main className="stage">
         {!session.apiKey ? (
-          <ConnectPanel session={session} />
+          <div className="connect-stack">
+            {isCn(connection.provider) ? (
+              // 依供應商重掛：貼到一半的草稿不會跟著換到另一家、送去那家
+              <KeyPanel key={connection.provider} provider={connection.provider} session={connection.keyed} />
+            ) : (
+              <ConnectPanel session={connection.openrouter} />
+            )}
+            {leftTable && (
+              <p className="key-note" data-testid="left-table">
+                {t("leftTableHint")}
+              </p>
+            )}
+            <SettingsMenu className="connect-more" summary={t("settingsToggle")} connection={connection} busy={false} />
+          </div>
         ) : !globalsReady ? null : game ? (
-          <ChatView game={game} session={session} saves={saves} release={release} onBack={() => setGame(null)} />
+          <ChatView
+            game={game}
+            session={session}
+            saves={saves}
+            release={release}
+            onBack={() => setGame(null)}
+            onBusyChange={setChatBusy}
+          />
         ) : (
           <CardPicker onStart={setGame} saves={saves} persisted={persisted} release={release} />
         )}
       </main>
 
-      {exhausted && !quotaDismissed && <QuotaPanel release={release} onClose={() => setQuotaDismissed(true)} />}
+      {exhausted && !quotaDismissed && !cn && <QuotaPanel release={release} onClose={() => setQuotaDismissed(true)} />}
       {downloadPage.open && <DownloadPage release={release} onClose={downloadPage.close} />}
     </div>
   );

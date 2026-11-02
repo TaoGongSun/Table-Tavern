@@ -3,12 +3,16 @@
 export interface Endpoints {
   openrouterApi: string;
   openrouterAuth: string;
+  modelscopeApi: string;
+  siliconflowApi: string;
   githubApi: string;
 }
 
 export const OFFICIAL_ENDPOINTS: Endpoints = {
   openrouterApi: "https://openrouter.ai/api/v1",
   openrouterAuth: "https://openrouter.ai/auth",
+  modelscopeApi: "https://api-inference.modelscope.cn/v1",
+  siliconflowApi: "https://api.siliconflow.cn/v1",
   githubApi: "https://api.github.com",
 };
 
@@ -19,6 +23,8 @@ export function resolveEndpoints(mode: string, env: Record<string, string | unde
   return {
     openrouterApi: env.VITE_TT_OPENROUTER_API ?? OFFICIAL_ENDPOINTS.openrouterApi,
     openrouterAuth: env.VITE_TT_OPENROUTER_AUTH ?? OFFICIAL_ENDPOINTS.openrouterAuth,
+    modelscopeApi: env.VITE_TT_MODELSCOPE_API ?? OFFICIAL_ENDPOINTS.modelscopeApi,
+    siliconflowApi: env.VITE_TT_SILICONFLOW_API ?? OFFICIAL_ENDPOINTS.siliconflowApi,
     githubApi: env.VITE_TT_GITHUB_API ?? OFFICIAL_ENDPOINTS.githubApi,
   };
 }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { renderHostMarkdown } from "../../shared/ui/host-markdown";
 import { t } from "../../i18n";
-import type { OpenRouterSession } from "../openrouter/useOpenRouterSession";
+import type { AiSession } from "../provider/ai-session";
 import { quotaBlocksSending } from "../funnel/quota";
 import type { ReleaseInfo } from "../funnel/releases";
 import { downloadCard, downloadStChat, downloadWebSave } from "../saves/download";
@@ -134,14 +134,18 @@ export function ChatView({
   saves = null,
   release,
   onBack,
+  onBusyChange,
 }: {
   game: GameSetup;
-  session: OpenRouterSession;
+  session: AiSession;
   saves?: SaveStore | null;
   release: ReleaseInfo;
   onBack: () => void;
+  /** 回合進行中（送出到收尾）：頂欄的供應商／模型切換跟著停用 */
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const chat = useChat(game, session, saves);
+  useEffect(() => onBusyChange?.(chat.busy), [chat.busy, onBusyChange]);
   const endRef = useRef<HTMLDivElement>(null);
   const blocked = quotaBlocksSending(session.quota);
   const name = game.card.text.name;

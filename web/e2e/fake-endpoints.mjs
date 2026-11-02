@@ -1,5 +1,5 @@
-// 端對端用的本機假端點：OpenRouter（授權頁、換金鑰、/key、模型清單與排行、上游、串流聊天）與
-// GitHub Releases API。全部帶 CORS *，行為由回傳的 state 物件即時切換。不連任何外部服務。
+// 端對端用的本機假端點：OpenRouter（授權頁、換金鑰、/key、模型清單與排行、上游、串流聊天）、
+// 魔搭（/ms/v1，OpenAI 形狀錯誤）、矽基流動（/sf/v1，根層形狀錯誤）與 GitHub Releases API。全部帶 CORS *，行為由回傳的 state 物件即時切換。不連任何外部服務。
 import { createHash } from "node:crypto";
 import http from "node:http";
 
@@ -30,6 +30,11 @@ const RELEASE = {
 };
 
 export const E2E_KEY = "sk-or-v1-e2e-local-test";
+export const MS_KEY = "ms-e2e-local-token";
+export const SF_KEY = "sk-sf-e2e-local-key";
+/** 中國供應商的 /models：名單裡的模型、名單外的大模型、帶外部計費後綴的模型 */
+const MS_MODELS = ["deepseek-ai/DeepSeek-V4.1-Flash", "Qwen/Qwen3.5-397B-A17B", "other/big-model", "Qwen/Qwen3-1.7B:DashScope"];
+const SF_MODELS = ["XingChenAGI/Xing4.0-29B", "Qwen/Qwen3-8B", "Pro/Qwen/Qwen3-8B", "deepseek-ai/DeepSeek-V3"];
 
 const base64Url = (buffer) => buffer.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
@@ -44,6 +49,12 @@ export async function startFake() {
     challenge: null,
     exchanges: [],
     chatRequests: [],
+    /** 中國供應商：normal 照常串流；401／403／429 回錯誤 */
+    cnChat: "normal",
+    /** 每個中國供應商請求的路徑、帶的金鑰與模型 */
+    cnRequests: [],
+    /** 打過 GitHub 的次數 */
+    githubHits: 0,
   };
   const sockets = new Set();
 
@@ -70,6 +81,24 @@ export async function startFake() {
     });
     const authorized = req.headers.authorization === `Bearer ${E2E_KEY}`;
     const path = url.pathname;
+    const cn = path.match(/^\/(ms|sf)\/v1\/(models|chat\/completions)$/);
+    if (cn) {
+      const [, provider, route] = cn;
+      const payload = route === "models" ? {} : JSON.parse(body || "{}");
+      state.cnRequests.push({ provider, route, auth: req.headers.authorization ?? null, xTitle: req.headers["x-title"] ?? null, model: payload.model ?? null });
+      const ok = req.headers.authorization === `Bearer ${provider === "ms" ? MS_KEY : SF_KEY}`;
+      // 魔搭是 OpenAI 形狀、矽基流動是根層形狀
+      const fail = (status, message) => json(status, provider === "ms" ? { error: { message } } : { code: 30000 + status, message, data: null });
+      if (route === "models") {
+        // 魔搭的 /models 不驗令牌；矽基流動要金鑰
+        if (provider === "sf" && !ok) return fail(401, "Token is invalid.");
+        return json(200, { data: (provider === "ms" ? MS_MODELS : SF_MODELS).map((id) => ({ id, object: "model" })) });
+      }
+      if (!ok) return fail(401, "Authentication failed");
+      if (state.cnChat !== "normal") return fail(Number(state.cnChat), `fake ${state.cnChat}`);
+      state.chatRequests.push(payload);
+      return streamReply(payload);
+    }
 
     if (path === "/auth") {
       state.challenge = url.searchParams.get("code_challenge");
@@ -109,10 +138,7 @@ export async function startFake() {
       const provider = decodeURIComponent(endpoints[1]).startsWith("alpha") ? "ProviderA" : "ProviderB";
       return json(200, { data: { endpoints: [{ provider_name: provider }] } });
     }
-    if (path === "/api/v1/chat/completions" && req.method === "POST") {
-      if (!authorized) return json(401, { error: { code: 401 } });
-      const payload = JSON.parse(body || "{}");
-      state.chatRequests.push(payload);
+    async function streamReply(payload) {
       res.writeHead(200, { ...cors, "Content-Type": "text/event-stream" });
       const send = (delta) => res.write(`data: ${JSON.stringify({ model: payload.model, choices: [{ delta }] })}\n\n`);
       const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -133,9 +159,15 @@ export async function startFake() {
       }
       res.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] })}\n\n`);
       res.end("data: [DONE]\n\n");
-      return;
+    }
+    if (path === "/api/v1/chat/completions" && req.method === "POST") {
+      if (!authorized) return json(401, { error: { code: 401 } });
+      const payload = JSON.parse(body || "{}");
+      state.chatRequests.push(payload);
+      return streamReply(payload);
     }
     if (path === "/github/repos/TaoGongSun/Table-Tavern/releases/latest") {
+      state.githubHits += 1;
       return state.release === "none" ? json(404, { message: "Not Found" }) : json(200, RELEASE);
     }
     json(404, { error: { code: 404, message: `no route ${req.method} ${path}` } });

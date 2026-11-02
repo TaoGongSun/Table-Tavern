@@ -55,6 +55,7 @@ async function turn(context: Record<string, number>, results: StreamResult[], hi
       tokenizer: () => "Qwen",
     },
     quotaEvent: () => {},
+    dailyCheck: async () => null,
     refreshQuota: async () => {},
   } as unknown as OpenRouterSession;
   const queue = [...results];
@@ -172,6 +173,7 @@ describe("choosing models with the real free pool", () => {
       runtime: new FailoverRuntime(),
       pool: new FreePool(deps),
       quotaEvent: () => {},
+      dailyCheck: async () => null,
       refreshQuota: async () => {},
     } as unknown as OpenRouterSession;
     vi.mocked(streamChat).mockReset();

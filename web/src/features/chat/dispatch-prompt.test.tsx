@@ -37,6 +37,7 @@ async function sendTurn(data: unknown, options: { fits: string[]; results: Strea
     runtime: options.runtime ?? new FailoverRuntime(),
     pool: { refresh: async () => {}, plan: () => plan, contextLength: (id: string) => CONTEXT[id] ?? 0, tokenizer: () => null },
     quotaEvent: () => {},
+    dailyCheck: async () => null,
     refreshQuota: async () => {},
   } as unknown as OpenRouterSession;
   const results = [...options.results];

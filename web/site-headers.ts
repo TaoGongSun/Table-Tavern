@@ -10,6 +10,8 @@ const origin = (url: string) => new URL(url).origin;
 
 export function hostCsp(mode: string, env: Record<string, string | undefined>): string {
   const endpoints = resolveEndpoints(mode, env);
+  // `_headers` 是建置時寫死的，執行時才選供應商：所有供應商與 GitHub 都得列（e2e 時同一個假端點，去重）
+  const connect = [endpoints.openrouterApi, endpoints.modelscopeApi, endpoints.siliconflowApi, endpoints.githubApi].map(origin);
   return [
     "default-src 'self'",
     "script-src 'self'",
@@ -19,7 +21,7 @@ export function hostCsp(mode: string, env: Record<string, string | undefined>): 
     // 第二層：外部圖片先在渲染時就換成替代文字（src/shared/ui/host-markdown.ts），CSP 再擋一次
     "img-src 'self' data:",
     "font-src 'self'",
-    `connect-src ${origin(endpoints.openrouterApi)} ${origin(endpoints.githubApi)}`,
+    `connect-src ${[...new Set(connect)].join(" ")}`,
     // 卡片介面只掛同站的 sandbox.html（沙盒 iframe、不透明來源）
     "frame-src 'self'",
     "frame-ancestors 'none'",

@@ -44,6 +44,8 @@ export interface StreamRequest {
   signal: AbortSignal;
   onDelta: (delta: string) => void;
   window?: StallWindow;
+  /** 供應商要的額外請求頭（OpenRouter 的 X-Title；魔搭的預檢不放行它，別家不帶）。 */
+  headers?: Record<string, string>;
 }
 
 const STALLED = Symbol("stalled");
@@ -70,9 +72,9 @@ export async function streamChat(request: StreamRequest): Promise<StreamResult> 
       response = await request.fetch(`${request.apiBase}/chat/completions`, {
         method: "POST",
         headers: {
+          ...request.headers,
           Authorization: `Bearer ${request.apiKey}`,
           "Content-Type": "application/json",
-          "X-Title": "Table Tavern Web",
         },
         body: JSON.stringify({ model, messages: request.messages, stream: true }),
         signal: local.signal,

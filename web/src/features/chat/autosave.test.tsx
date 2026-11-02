@@ -32,6 +32,7 @@ const session = {
   runtime: new FailoverRuntime(),
   pool: { refresh: async () => {}, plan: () => plan, contextLength: () => 65536, tokenizer: () => null },
   quotaEvent: () => {},
+  dailyCheck: async () => null,
   refreshQuota: async () => {},
 } as unknown as OpenRouterSession;
 

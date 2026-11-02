@@ -6,7 +6,7 @@ import { headersFor, parseHeadersFile } from "./e2e/static-server.mjs";
 
 const PROD_CSP =
   "default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data:; font-src 'self'; " +
-  "connect-src https://openrouter.ai https://api.github.com; frame-src 'self'; frame-ancestors 'none'; " +
+  "connect-src https://openrouter.ai https://api-inference.modelscope.cn https://api.siliconflow.cn https://api.github.com; frame-src 'self'; frame-ancestors 'none'; " +
   "object-src 'none'; base-uri 'none'; form-action 'none'";
 const SANDBOX = "frame-ancestors 'self'";
 const ZOD_FRAME = zodFrameCsp(readZodFrame());
@@ -36,8 +36,11 @@ describe("site _headers", () => {
 
   it("ignores endpoint overrides outside e2e mode", () => {
     const env = { VITE_TT_OPENROUTER_API: "http://127.0.0.1:9/api/v1", VITE_TT_GITHUB_API: "http://127.0.0.1:9" };
-    expect(siteHeaders("production", env)).toContain("connect-src https://openrouter.ai https://api.github.com;");
-    expect(siteHeaders("e2e", env)).toContain("connect-src http://127.0.0.1:9 http://127.0.0.1:9;");
+    expect(siteHeaders("production", env)).toContain(
+      "connect-src https://openrouter.ai https://api-inference.modelscope.cn https://api.siliconflow.cn https://api.github.com;",
+    );
+    // 同一個假端點只列一次
+    expect(siteHeaders("e2e", env)).toContain("connect-src http://127.0.0.1:9 https://api-inference.modelscope.cn https://api.siliconflow.cn;");
   });
 
   it("puts the host CSP on the host page only and a frame-ancestors-only policy on the sandbox", () => {

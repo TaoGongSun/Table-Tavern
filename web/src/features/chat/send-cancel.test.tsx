@@ -5,6 +5,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { SAMPLE_PLAY_CARD } from "../cards/sample-card";
 import { FailoverRuntime } from "../openrouter/failover";
 import { FreePool } from "../openrouter/free-pool";
+import { fetchFreeDaily } from "../openrouter/openrouter-api";
 import type { OpenRouterSession } from "../openrouter/useOpenRouterSession";
 import { useChat, type ChatController, type GameSetup } from "./useChat";
 
@@ -36,6 +37,10 @@ function controlledSession() {
     logout: () => {},
     refreshQuota: async () => {},
     quotaEvent: () => {},
+    provider: "openrouter",
+    headers: {},
+    rateLimit: "openrouter",
+    dailyCheck: (key) => fetchFreeDaily(deps, key),
   };
   const release = () =>
     releaseKey(new Response(JSON.stringify({ data: { free_model_daily_requests: { limit: 50, remaining: 25 } } })));
@@ -135,7 +140,14 @@ function twoAccountFetch(hangKey: string) {
 
 function sessionWith(fetchImpl: typeof fetch, apiKey: string): OpenRouterSession {
   const deps = { fetch: fetchImpl, apiBase: "http://fake/api/v1" };
-  return { ...controlledSession().session, apiKey, deps, pool: new FreePool(deps), runtime: new FailoverRuntime() };
+  return {
+    ...controlledSession().session,
+    apiKey,
+    deps,
+    pool: new FreePool(deps),
+    runtime: new FailoverRuntime(),
+    dailyCheck: (key) => fetchFreeDaily(deps, key),
+  };
 }
 
 describe("useChat and the shared model pool", () => {

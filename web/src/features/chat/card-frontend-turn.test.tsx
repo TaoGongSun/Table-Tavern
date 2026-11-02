@@ -36,6 +36,7 @@ const session = {
     tokenizer: () => null,
   },
   quotaEvent: () => {},
+  dailyCheck: async () => null,
   refreshQuota: async () => {},
 } as unknown as OpenRouterSession;
 

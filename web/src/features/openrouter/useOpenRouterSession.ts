@@ -7,27 +7,25 @@ import { FreePool } from "./free-pool";
 import { browserStorage, clearKey, loadKey, saveKey } from "./key-store";
 import { beginAuthorization, completeAuthorization, type OAuthCallback } from "./oauth";
 import { fetchFreeDaily, type ApiDeps } from "./openrouter-api";
+import type { AiSession } from "../provider/ai-session";
 
-export interface OpenRouterSession {
-  apiKey: string | null;
+export interface OpenRouterSession extends AiSession {
   connecting: boolean;
   /** i18n 鍵（oauth_*、keySessionOnly）；null＝沒有要說的。 */
   notice: string | null;
-  quota: QuotaState;
-  deps: ApiDeps;
   pool: FreePool;
-  runtime: FailoverRuntime;
   connect: () => Promise<void>;
   adoptKey: (key: string) => void;
-  logout: () => void;
-  refreshQuota: () => Promise<void>;
-  quotaEvent: (event: QuotaEvent) => void;
 }
+
+/** OpenRouter 才帶的請求頭（魔搭的預檢不放行 X-Title）。 */
+export const OPENROUTER_HEADERS = { "X-Title": "Table Tavern Web" };
 
 /** 同一組回呼只換一次金鑰（StrictMode 會把 effect 跑兩次，兩次拿到的是同一個 callback 物件）。 */
 let exchangeInFlight: { callback: OAuthCallback; promise: Promise<string> } | null = null;
 
-export function useOpenRouterSession(callback: OAuthCallback | null): OpenRouterSession {
+/** `active`＝目前選的是 OpenRouter；沒選它就不在背景查 /key（中國網路下那是一個 15 秒逾時的請求）。 */
+export function useOpenRouterSession(callback: OAuthCallback | null, active = true): OpenRouterSession {
   const deps = useMemo<ApiDeps>(() => ({ fetch: (...args) => fetch(...args), apiBase: OPENROUTER_API }), []);
   const [apiKey, setApiKey] = useState<string | null>(() => loadKey(browserStorage("local")));
   const [connecting, setConnecting] = useState(callback !== null);
@@ -82,8 +80,8 @@ export function useOpenRouterSession(callback: OAuthCallback | null): OpenRouter
   }, [deps, quotaEvent]);
 
   useEffect(() => {
-    if (apiKey) void refreshQuota();
-  }, [apiKey, refreshQuota]);
+    if (apiKey && active) void refreshQuota();
+  }, [apiKey, active, refreshQuota]);
 
   const connect = useCallback(async () => {
     const session = browserStorage("session");
@@ -119,5 +117,24 @@ export function useOpenRouterSession(callback: OAuthCallback | null): OpenRouter
     quotaEvent({ type: "logout" });
   }, [runtime, pool, quotaEvent]);
 
-  return { apiKey, connecting, notice, quota, deps, pool, runtime, connect, adoptKey: adoptPasted, logout, refreshQuota, quotaEvent };
+  const dailyCheck = useCallback((key: string) => fetchFreeDaily(deps, key), [deps]);
+
+  return {
+    provider: "openrouter",
+    apiKey,
+    connecting,
+    notice,
+    quota,
+    deps,
+    headers: OPENROUTER_HEADERS,
+    rateLimit: "openrouter",
+    pool,
+    runtime,
+    dailyCheck,
+    connect,
+    adoptKey: adoptPasted,
+    logout,
+    refreshQuota,
+    quotaEvent,
+  };
 }

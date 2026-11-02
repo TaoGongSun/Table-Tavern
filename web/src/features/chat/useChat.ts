@@ -4,7 +4,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PlayCard } from "../cards/play-card";
 import { quotaBlocksSending } from "../funnel/quota";
-import { fetchFreeDaily } from "../openrouter/openrouter-api";
 import {
   isDailyExhausted,
   NO_FREE_MODEL,
@@ -14,7 +13,7 @@ import {
   type FailoverNotice,
 } from "../openrouter/smart-call";
 import { streamChat } from "../openrouter/stream-chat";
-import type { OpenRouterSession } from "../openrouter/useOpenRouterSession";
+import type { AiSession } from "../provider/ai-session";
 import { RESERVED_OUTPUT_TOKENS } from "../openrouter/catalog";
 import { EMPTY_CARRY, toWebSave, type SaveCarry } from "../saves/web-save-codec";
 import { forgetPendingInput, readPendingInput, rememberPendingInput } from "../saves/pending-input";
@@ -110,7 +109,7 @@ export interface ChatController {
   setCardStorage: (entries: Record<string, string>) => void;
 }
 
-export function useChat(game: GameSetup, session: OpenRouterSession, saves: SaveStore | null = null): ChatController {
+export function useChat(game: GameSetup, session: AiSession, saves: SaveStore | null = null): ChatController {
   const [saveId] = useState(() => game.saveId ?? newSaveId());
   const worldInfo = useMemo(() => tableWorldInfo(game.card, (game.resume?.carry ?? EMPTY_CARRY).worldInfo), [game.card, game.resume]);
   const setup = useMemo<ChatSetup>(
@@ -222,7 +221,7 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
       setFailover(null);
       try {
         // 同桌面版 smart_free::prepare_call；用完就不送、原文留在輸入框
-        const daily = await fetchFreeDaily(session.deps, apiKey);
+        const daily = await session.dailyCheck(apiKey);
         if (cancelled()) return;
         session.quotaEvent({ type: "key-info", daily });
         if (daily?.kind === "counted" && daily.remaining <= 0) return;
@@ -299,8 +298,9 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
           outcome = await runSmartCall(plan, session.runtime, {
             signal: controller.signal,
             now: nowSecs,
+            rateLimit: session.rateLimit,
             dailyRemaining: async () => {
-              const result = await fetchFreeDaily(session.deps, apiKey);
+              const result = await session.dailyCheck(apiKey);
               return result?.kind === "counted" ? result.remaining : null;
             },
             send: (model) => {
@@ -313,6 +313,7 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
               return streamChat({
                 fetch: session.deps.fetch,
                 apiBase: session.deps.apiBase,
+                headers: session.headers,
                 apiKey,
                 model,
                 messages: turn.messages,
@@ -369,7 +370,8 @@ export function useChat(game: GameSetup, session: OpenRouterSession, saves: Save
         if (isDailyExhausted(outcome)) session.quotaEvent({ type: "daily-exhausted-error" });
         else if (result.error !== null) {
           const display = result.error;
-          setError(() => () => explainError(display));
+          const context = { provider: session.provider, apiKey };
+          setError(() => () => explainError(display, context));
         }
         // 更新今日免費次數（/key 不佔次數）
         void session.refreshQuota();

@@ -1,10 +1,12 @@
-// 網頁版對外連的所有端點（OpenRouter、GitHub）。只有 e2e 模式才換成本機假端點（見 resolve.ts）。
+// 網頁版對外連的所有端點（模型供應商、GitHub）。只有 e2e 模式才換成本機假端點（見 resolve.ts）。
 import { resolveEndpoints } from "./resolve";
 
 const endpoints = resolveEndpoints(import.meta.env.MODE, import.meta.env);
 
 export const OPENROUTER_API = endpoints.openrouterApi;
 export const OPENROUTER_AUTH = endpoints.openrouterAuth;
+export const MODELSCOPE_API = endpoints.modelscopeApi;
+export const SILICONFLOW_API = endpoints.siliconflowApi;
 export const GITHUB_API = endpoints.githubApi;
 
 export const REPO = "TaoGongSun/Table-Tavern";

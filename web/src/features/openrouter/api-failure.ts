@@ -56,9 +56,9 @@ export function detailFromErrorObject(error: unknown): ErrorDetail {
 function detailFromBody(body: string): ErrorDetail {
   try {
     const value = JSON.parse(body) as Record<string, unknown> | null;
-    return value && typeof value === "object" && "error" in value
-      ? detailFromErrorObject(value.error)
-      : EMPTY_DETAIL;
+    if (!value || typeof value !== "object") return EMPTY_DETAIL;
+    // OpenAI 形狀包在 error 裡；矽基流動把 code／message 放在根層
+    return detailFromErrorObject("error" in value ? value.error : value);
   } catch {
     return EMPTY_DETAIL;
   }
@@ -159,6 +159,12 @@ export type FailureClass = "model" | "gone" | "unknown-rate-limit" | "account" |
 export const countsTowardSwitch = (cls: FailureClass) =>
   cls === "model" || cls === "gone" || cls === "unknown-rate-limit";
 
+/**
+ * 429 怎麼讀：openrouter＝`x-ratelimit-remaining <= 0` 或 free-models-per-* 字樣算帳號級（換哪支都一樣被擋）；
+ * per-model（中國供應商）＝各模型各自限速，沒有可辨識的帳號級證據，一律當暫時限速、計入換模、不算每日用完。
+ */
+export type RateLimitRule = "openrouter" | "per-model";
+
 /** 無平台證據的 429 才查 /key；結果只用來排除「每日用完」。 */
 export type KeyCheck = { kind: "not-queried" } | { kind: "failed" } | { kind: "remaining"; remaining: number };
 
@@ -178,18 +184,20 @@ function platformEvidence(failure: ApiFailure): boolean {
  * 限流都歸 account（換哪支都一樣被擋，桌面版 classify 同樣如此）；但只有每日證據才擋送出、
  * 跳用完導流——每分鐘限流稍等就好。
  */
-export function dailyEvidence(failure: ApiFailure, key: KeyCheck): boolean {
-  if (failureCode(failure) !== 429) return false;
+export function dailyEvidence(failure: ApiFailure, key: KeyCheck, rule: RateLimitRule = "openrouter"): boolean {
+  if (rule !== "openrouter" || failureCode(failure) !== 429) return false;
   if (key.kind === "remaining" && key.remaining <= 0) return true;
   return [failure.detail.message, failure.display].some((value) => value.toLowerCase().includes("free-models-per-day"));
 }
 
-export const needsKeyCheck = (failure: ApiFailure) => failureCode(failure) === 429 && !platformEvidence(failure);
+export const needsKeyCheck = (failure: ApiFailure, rule: RateLimitRule = "openrouter") =>
+  rule === "openrouter" && failureCode(failure) === 429 && !platformEvidence(failure);
 
-export function classifyFailure(failure: ApiFailure, key: KeyCheck): FailureClass {
+export function classifyFailure(failure: ApiFailure, key: KeyCheck, rule: RateLimitRule = "openrouter"): FailureClass {
   const code = failureCode(failure);
   if (code !== null && code >= 401 && code <= 403) return "account";
   if (code === 429) {
+    if (rule === "per-model") return "unknown-rate-limit";
     const dailyGone = key.kind === "remaining" && key.remaining <= 0;
     return platformEvidence(failure) || dailyGone ? "account" : "unknown-rate-limit";
   }

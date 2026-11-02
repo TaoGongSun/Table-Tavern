@@ -1,7 +1,8 @@
 // 網頁版端對端（npm run e2e）：本機假端點＋正式建置（端點換成假端點）＋WebKit。
 // 走一遍：授權→選卡→串流→送出互斥→取消未完成回合→停止並保留→自動存檔（重新整理後繼續）→匯出網頁存檔
 // （契約檢查、用桌面版繼續導流）→匯出 ST 聊天檔→存檔區刪除與匯入→匯入卡（錯誤說明、選開場白、玩家名、
-// ST 提示組裝、重新生成／編輯／刪除最後一則）→額度用完導流→下載頁與下載連結→找卡清單→登出→英文瀏覽器走一遍與換語系。
+// ST 提示組裝、重新生成／編輯／刪除最後一則）→額度用完導流→下載頁與下載連結→找卡清單→登出→英文瀏覽器走一遍與換語系
+// →簡中情境（中國供應商，cn-provider.mjs）。
 // 不連任何外部服務、不花額度。不進 verify（CI 沒裝瀏覽器）。
 // TT_WEB_EXPORT_OUT＝路徑：把這次真匯出的網頁存檔另存一份（桌面版來回測試的 fixture 由它產生）；
 // TT_WEB_EXPORT_WI_OUT 同理，另存帶世界書觸發狀態的那一份；TT_WEB_EXPORT_MVU_OUT 另存帶 MVU 與卡片設定的那一份。
@@ -12,6 +13,7 @@ import { parseWebSave } from "../../src/shared/contracts/web-save/web-save.ts";
 import { join } from "node:path";
 import { build } from "vite";
 import { webkit } from "playwright";
+import { runCnScenario } from "./cn-provider.mjs";
 import { E2E_KEY, startFake } from "./fake-endpoints.mjs";
 import { startStaticServer } from "./static-server.mjs";
 
@@ -24,6 +26,8 @@ const RELEASES_PAGE = "https://github.com/TaoGongSun/Table-Tavern/releases";
 const fake = await startFake();
 process.env.VITE_TT_OPENROUTER_API = `${fake.url}/api/v1`;
 process.env.VITE_TT_OPENROUTER_AUTH = `${fake.url}/auth`;
+process.env.VITE_TT_MODELSCOPE_API = `${fake.url}/ms/v1`;
+process.env.VITE_TT_SILICONFLOW_API = `${fake.url}/sf/v1`;
 process.env.VITE_TT_GITHUB_API = `${fake.url}/github`;
 
 // 只有 e2e 模式才接受 VITE_TT_* 覆寫（src/shared/endpoints/resolve.ts）
@@ -42,7 +46,8 @@ const step = (name) => console.log(`• ${name}`);
 try {
   step("站點標頭：宿主頁帶 CSP（只連假端點）、沙盒那條路徑只限本站嵌入、帶 hash 的資產長快取、缺檔回 404");
   const hostHeaders = (await fetch(base)).headers;
-  assert.match(hostHeaders.get("content-security-policy"), new RegExp(`connect-src ${new URL(fake.url).origin} ${new URL(fake.url).origin};`));
+  // 所有供應商與 GitHub 都是同一個假端點：去重後只列一次
+  assert.match(hostHeaders.get("content-security-policy"), new RegExp(`connect-src ${new URL(fake.url).origin};`));
   assert.match(hostHeaders.get("content-security-policy"), /frame-ancestors 'none'/);
   assert.equal(hostHeaders.get("cache-control"), "public, max-age=0, must-revalidate", "首頁用 Pages 預設、每次重新驗證");
   const sandboxRedirect = await fetch(new URL("sandbox.html?x=1", base), { redirect: "manual" });
@@ -539,6 +544,8 @@ try {
     await english.getByTestId("download-page").locator("button.ghost").click();
   }
   await englishContext.close();
+
+  await runCnScenario({ browser, base, fake, step, consoleErrors });
 
   const csp = consoleErrors.filter((text) => /Content Security Policy|Refused to/i.test(text));
   assert.deepEqual(csp, [], "不該有 CSP 擋下的資源");

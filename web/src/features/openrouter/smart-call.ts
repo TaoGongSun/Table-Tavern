@@ -10,6 +10,7 @@ import {
   type ApiFailure,
   type FailureClass,
   type KeyCheck,
+  type RateLimitRule,
 } from "./api-failure";
 import { pickForSentence, type FailoverRuntime, type Ticket } from "./failover";
 import type { StreamResult } from "./stream-chat";
@@ -31,6 +32,8 @@ export interface CallEnv {
   dailyRemaining: () => Promise<number | null>;
   signal: AbortSignal;
   now: () => number;
+  /** 429 的讀法（預設 openrouter）。 */
+  rateLimit?: RateLimitRule;
 }
 
 export interface FailoverNotice {
@@ -65,12 +68,13 @@ export const FREE_MODEL_BUSY = "AI_FREE_MODEL_BUSY:";
 const displayName = (plan: CallPlan, model: string) => plan.names.get(model) ?? model;
 
 async function classify(failure: ApiFailure, env: CallEnv): Promise<{ cls: FailureClass; daily: boolean }> {
+  const rule = env.rateLimit ?? "openrouter";
   let key: KeyCheck = { kind: "not-queried" };
-  if (needsKeyCheck(failure)) {
+  if (needsKeyCheck(failure, rule)) {
     const remaining = await env.dailyRemaining();
     key = remaining === null ? { kind: "failed" } : { kind: "remaining", remaining };
   }
-  return { cls: classifyFailure(failure, key), daily: dailyEvidence(failure, key) };
+  return { cls: classifyFailure(failure, key, rule), daily: dailyEvidence(failure, key, rule) };
 }
 
 /** 給畫面的錯誤：模型層級掛 AI_FREE_MODEL_BUSY；自己判的停滯、失控保留原碼。 */
