@@ -23,6 +23,9 @@ pub(crate) enum ApiMode {
 /// Chat Completions. A full endpoint ending in `/responses` is the only automatic opt-in. Users can
 /// always explicitly select `responses` in settings when their provider exposes both endpoint types.
 pub(crate) fn api_mode(config: &AppConfig) -> ApiMode {
+    if transport::siliconflow::active(config) {
+        return ApiMode::ChatCompletions;
+    }
     match config
         .preferences
         .get("api_mode")
@@ -252,10 +255,7 @@ async fn stream_responses_windowed(
     mut on_delta: impl FnMut(&str),
 ) -> DataResult<transport::StreamChatResult> {
     let base = transport::base_url(config);
-    let api_key = config
-        .api_keys
-        .get("openrouter")
-        .filter(|key| !key.is_empty());
+    let api_key = transport::siliconflow::api_key(config);
     if api_key.is_none() && base == transport::DEFAULT_BASE_URL {
         return Err(UiMsg::OpenrouterApiKeyMissing.into_error());
     }

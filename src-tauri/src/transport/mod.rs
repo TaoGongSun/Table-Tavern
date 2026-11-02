@@ -17,6 +17,7 @@ mod reply_cleanup;
 mod response;
 pub(crate) mod responses;
 mod runaway;
+pub(crate) mod siliconflow;
 mod stall;
 mod state_view;
 mod state_yaml;

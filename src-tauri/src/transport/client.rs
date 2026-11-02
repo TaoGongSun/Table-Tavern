@@ -73,6 +73,9 @@ pub fn refactor_expand_tier(config: &AppConfig, transport_kind: &str) -> Tier {
 /// 檔位→模型解析。模型 id 一律來自設定檔（config.tier_models），程式不內建。
 /// 智慧免費不經這個 resolver，會在送出前從帳號可用清單組 `models` 陣列。
 pub fn resolve_model(tier: Tier, config: &AppConfig) -> Result<String, String> {
+    if super::siliconflow::active(config) {
+        return Ok(super::siliconflow::tier_model(config, tier));
+    }
     let key = tier.as_str();
     config
         .tier_models
@@ -513,10 +516,7 @@ async fn stream_chat_windowed(
     mut on_delta: impl FnMut(&str),
 ) -> DataResult<StreamChatResult> {
     let base = base_url(config);
-    let api_key = config
-        .api_keys
-        .get("openrouter")
-        .filter(|key| !key.is_empty());
+    let api_key = super::siliconflow::api_key(config);
     if api_key.is_none() && base == DEFAULT_BASE_URL {
         return Err(UiMsg::OpenrouterApiKeyMissing.into_error());
     }
@@ -687,10 +687,7 @@ async fn stream_chat_models_windowed(
     } else {
         configured
     };
-    let api_key = config
-        .api_keys
-        .get("openrouter")
-        .filter(|key| !key.is_empty());
+    let api_key = super::siliconflow::api_key(config);
     if api_key.is_none() && official {
         return Err(ApiFailure::local(
             UiMsg::OpenrouterApiKeyMissing.to_string(),
@@ -835,6 +832,15 @@ async fn stream_chat_models_windowed(
     })
 }
 
+/// 生圖只有 OpenRouter 有：選了矽基流動時生圖仍打 OpenRouter（要另有 OpenRouter 金鑰）。
+fn image_base(config: &AppConfig) -> String {
+    if super::siliconflow::active(config) {
+        DEFAULT_BASE_URL.to_owned()
+    } else {
+        base_url(config)
+    }
+}
+
 /// OpenRouter 專用 Images API（POST {base}/images）；回傳 data URL 或遠端圖片網址。
 pub async fn generate_image(config: &AppConfig, prompt: &str) -> Result<String, String> {
     let api_key = config
@@ -854,7 +860,7 @@ pub async fn generate_image(config: &AppConfig, prompt: &str) -> Result<String, 
     // 建 client 放在時限外（macOS 首次建立會查系統代理，可能花數秒）；時限只包 /images 的送出與讀本文
     let client = reqwest::Client::new();
     let request = client
-        .post(format!("{}/images", base_url(config)))
+        .post(format!("{}/images", image_base(config)))
         .bearer_auth(api_key)
         .json(&serde_json::json!({
             "model": model,
@@ -870,7 +876,7 @@ pub async fn generate_image(config: &AppConfig, prompt: &str) -> Result<String, 
         ImageReply::Http(status, body) => {
             let error = http_error(status, &body);
             if matches!(status.as_u16(), 402 | 403)
-                && key_tier(&base_url(config), api_key).await == Some(true)
+                && key_tier(&image_base(config), api_key).await == Some(true)
             {
                 return Err(format!("{IMAGE_FREE_KEY}: {error}"));
             }
@@ -927,7 +933,8 @@ const KEY_LOOKUP_TIMEOUT: std::time::Duration = std::time::Duration::from_millis
 /// 設定頁用：以已存檔 config 的 base 查草稿 key，回傳實際打的 base 與三態結果。
 /// key 空白不發請求，直接當不確定。
 pub(crate) async fn key_tier_for(config: &AppConfig, api_key: &str) -> (String, Option<bool>) {
-    let base = base_url(config);
+    // 查的是 OpenRouter 金鑰：選了矽基流動也只問 OpenRouter，不把這把金鑰送去別家
+    let base = image_base(config);
     let api_key = api_key.trim();
     if api_key.is_empty() {
         return (base, None);

@@ -34,7 +34,15 @@ export interface ModelOption {
 }
 
 /** 一起預熱；"api"＝OpenRouter 公開清單，"api-image"＝其中能出圖的，其餘走各自的 CLI */
-export const CATALOG_SOURCES = ["api", "api-image", "claude", "codex", "agy", "grok"] as const;
+export const CATALOG_SOURCES = [
+  "api",
+  "api-image",
+  "siliconflow",
+  "claude",
+  "codex",
+  "agy",
+  "grok",
+] as const;
 
 /** 生圖模型留空時後端用的預設；與 Rust 的 transport::DEFAULT_IMAGE_MODEL 同值（測試對齊） */
 export const DEFAULT_IMAGE_MODEL = "google/gemini-3.1-flash-image";

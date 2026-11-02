@@ -56,17 +56,28 @@ pub(crate) fn set_play_override(value: Option<(String, String)>) {
 
 /// 路線＝`preferences.transport`；模型只蓋 GM 檔位（API 蓋 `tier_models[<檔位>]`，命令列工具蓋
 /// `tier_models[<工具>:<檔位>]`）。`default`＝這條路線沒有可選模型，照該路線自己的預設。
+/// `siliconflow`＝API 通道指到矽基流動（模型蓋 `siliconflow:<檔位>`）；從矽基流動切回 `api` 時拿掉 base_url。
 pub(crate) fn apply_play_override(config: &mut AppConfig, route: &str, model: &str) {
+    use crate::transport::siliconflow;
+    let transport = if route == "siliconflow" { "api" } else { route };
+    if route == "siliconflow" {
+        config.preferences.insert(
+            "base_url".to_owned(),
+            Value::String(siliconflow::BASE_URL.to_owned()),
+        );
+    } else if route == "api" && siliconflow::active(config) {
+        config.preferences.remove("base_url");
+    }
     config
         .preferences
-        .insert("transport".to_owned(), Value::String(route.to_owned()));
+        .insert("transport".to_owned(), Value::String(transport.to_owned()));
     if model == "default" {
         return;
     }
     let tier = crate::transport::gm_tier(config).as_str();
     let key = match route {
         "api" => tier.to_owned(),
-        cli => format!("{cli}:{tier}"),
+        other => format!("{other}:{tier}"),
     };
     config.tier_models.insert(key, model.to_owned());
 }

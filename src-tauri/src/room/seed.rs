@@ -179,35 +179,70 @@ pub(super) fn seed_frames(root: &Path, world: &str) -> Result<(Vec<Value>, Vec<S
     Ok((frames, ids))
 }
 
-/// `capabilities`（協定 §6.2、§7.3）：目前路線，加上有金鑰時的 API 路線；模型＝各檔位設定的模型（去重），
+/// `capabilities`（協定 §6.2、§7.3）：目前路線，加上有金鑰的 API 路線（OpenRouter `api`、矽基流動
+/// `siliconflow`）；模型＝各檔位設定的模型（去重），矽基流動再補上整份免費清單；
 /// 沒有可選模型的路線給 `default`（照該路線自己的預設）。
 pub(super) fn capabilities(config: &AppConfig) -> Value {
-    let current = transport::dispatch::chat_transport(config);
+    let siliconflow = transport::siliconflow::active(config);
+    let raw = transport::dispatch::chat_transport(config);
+    let current = if raw == "api" && siliconflow {
+        "siliconflow".to_owned()
+    } else {
+        raw.clone()
+    };
+    let has_key = |slot: &str| {
+        config
+            .api_keys
+            .get(slot)
+            .is_some_and(|key| !key.trim().is_empty())
+    };
     let mut routes = vec![current.clone()];
-    if current != "api" && config.api_keys.values().any(|key| !key.trim().is_empty()) {
-        routes.push("api".to_owned());
+    for (route, slot) in [("api", "openrouter"), ("siliconflow", "siliconflow")] {
+        if current != route && has_key(slot) {
+            routes.push(route.to_owned());
+        }
+    }
+    // OpenRouter 路線的檔位模型要在「沒選矽基流動」的設定上解析
+    let mut openrouter = config.clone();
+    if siliconflow {
+        openrouter.preferences.remove("base_url");
     }
     let models = |route: &str| {
         let mut list: Vec<String> = Vec::new();
-        for tier in [data::Tier::Best, data::Tier::Balanced, data::Tier::Fast] {
-            let model = transport::tier_model(config, route, tier)
-                .model
-                .unwrap_or_default();
-            if !model.trim().is_empty() && !list.contains(&clip(&model, 200)) {
-                list.push(clip(&model, 200));
+        let mut push = |model: &str| {
+            if !model.trim().is_empty() && !list.contains(&clip(model, 200)) {
+                list.push(clip(model, 200));
             }
+        };
+        for tier in [data::Tier::Best, data::Tier::Balanced, data::Tier::Fast] {
+            let model = match route {
+                "siliconflow" => transport::siliconflow::tier_model(config, tier),
+                "api" => transport::tier_model(&openrouter, route, tier)
+                    .model
+                    .unwrap_or_default(),
+                cli => transport::tier_model(config, cli, tier)
+                    .model
+                    .unwrap_or_default(),
+            };
+            push(&model);
+        }
+        if route == "siliconflow" {
+            transport::siliconflow::FREE_MODELS
+                .iter()
+                .for_each(|model| push(model));
         }
         if list.is_empty() {
             list.push("default".to_owned());
         }
         list
     };
-    let gm = transport::tier_model(config, &current, transport::gm_tier(config))
+    let gm = transport::tier_model(config, &raw, transport::gm_tier(config))
         .model
         .filter(|model| !model.trim().is_empty())
         .map_or_else(|| "default".to_owned(), |model| clip(&model, 200));
     let label = |route: &str| match route {
         "api" => "API".to_owned(),
+        "siliconflow" => "SiliconFlow".to_owned(),
         cli => clip(&format!("{cli} CLI"), 64),
     };
     let max = config

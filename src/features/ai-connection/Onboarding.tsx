@@ -1,5 +1,6 @@
 // 首次設定卡：transport 走 api、且還沒存過 OpenRouter key 時，才長在遊玩畫面頂端。
 // 主路徑是一鍵 OAuth；手動 key 只留在次要 fallback，兩條路都交給後端共用保存／bootstrap 邏輯。
+import { isSiliconFlow } from "./siliconflow";
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -20,7 +21,13 @@ export function Onboarding({ config, onSaved }: { config: AppConfig; onSaved: (c
   const transport = config.preferences["transport"] ?? "api";
   const keyWarning = checkApiKey(apiKey, String(config.preferences["base_url"] ?? ""));
 
-  if (transport !== "api" || (config.api_keys["openrouter"] ?? "").trim()) return null;
+  if (
+    transport !== "api" ||
+    isSiliconFlow(config.preferences["base_url"]) ||
+    (config.api_keys["openrouter"] ?? "").trim()
+  ) {
+    return null;
+  }
 
   async function connect() {
     setMessage("");

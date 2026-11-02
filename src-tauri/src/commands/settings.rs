@@ -91,6 +91,9 @@ pub(crate) async fn detect_clis(app: tauri::AppHandle) -> Vec<cli::CliInfo> {
 /// 必須是 async：同步 command 跑在主執行緒，抓取期間整個視窗會凍住。
 #[tauri::command]
 pub(crate) async fn list_cli_models(app: tauri::AppHandle, cli: String) -> Vec<cli::ModelOption> {
+    if cli == "siliconflow" {
+        return transport::siliconflow::model_options();
+    }
     // 環境備不出來就回空清單、記下原因。退回無環境等於讓 grok／agy 摸回使用者自己的目錄，
     // 設定頁會顯示終端機的登入態，與旁白實跑的 app profile 對不起來。
     let envs = match cli_envs(&app, &cli) {

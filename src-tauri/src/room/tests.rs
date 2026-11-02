@@ -804,6 +804,32 @@ fn errors_overrides_and_capabilities() {
     assert_eq!(routes, ["claude", "api"]);
     assert_eq!(caps["current"]["model"], "claude-x");
     assert_eq!(caps["maxRoundSpeakers"], 3);
+
+    // 矽基流動：目前路線顯示 siliconflow、模型列整份免費清單；OpenRouter 路線照自己的檔位模型
+    config
+        .api_keys
+        .insert("siliconflow".to_owned(), "sk-sf".to_owned());
+    data::apply_play_override(&mut config, "siliconflow", "default");
+    let caps = seed::capabilities(&config);
+    let route = |id: &str| {
+        caps["routes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["route"] == id)
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(caps["current"]["route"], "siliconflow");
+    assert_eq!(
+        caps["current"]["model"],
+        crate::transport::siliconflow::FREE_MODELS[0]
+    );
+    assert_eq!(
+        route("siliconflow")["models"].as_array().unwrap().len(),
+        crate::transport::siliconflow::FREE_MODELS.len()
+    );
+    assert_eq!(route("api")["models"][1]["id"], "vendor/m2");
 }
 
 /// 明文 http 只放行本機與私網，其餘必須 https（憑證不走明文）；本機不走代理

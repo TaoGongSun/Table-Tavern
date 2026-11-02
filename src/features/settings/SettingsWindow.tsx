@@ -8,6 +8,7 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { isSiliconFlow } from "../ai-connection/siliconflow";
 import { LANGUAGE_OPTIONS, normalizeLang, t } from "../../i18n";
 import { ALL_THEMES, KOFI_URL, resolveTheme, SPONSOR_THEMES, TEXT_SIZE_DEFAULT, TEXT_SIZE_PX, type ThemeId } from "./appearance";
 import { AppConfig } from "../../shared/contracts/backend-contracts";
@@ -368,7 +369,7 @@ export function SettingsWindow({
               onBlockingChange={reportBlocking}
             >
               {/* 相容格式即存、不算未儲存，看的是已存的 config（不是表單草稿） */}
-              {transport === "api" && !stableFree && (
+              {transport === "api" && !stableFree && !isSiliconFlow(apiBaseUrl) && (
                 <div className="settings-form">
                   <details>
                     <summary>{t("apiCompatAdvancedSummary")}</summary>

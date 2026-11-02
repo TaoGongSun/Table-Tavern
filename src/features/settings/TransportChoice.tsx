@@ -5,6 +5,8 @@ import { backendText } from "../../shared/ui/backend-text";
 import { CLI_LABELS, CliInfo, cliConnectedKey } from "../ai-connection/cli";
 import { CliUpdateAction } from "../../shared/ui/CliUpdateAction";
 import { AppConfig } from "../../shared/contracts/backend-contracts";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { SILICONFLOW_KEY_URL } from "../ai-connection/siliconflow";
 
 type CliInstallStage = "detect" | "install" | "login" | "verify" | "done" | "error";
 
@@ -68,6 +70,7 @@ const optionClass = (on: boolean) => (on ? "transport-option transport-option-on
 
 export function TransportChoice({
   transport,
+  siliconflow,
   onTransport,
   clis,
   config,
@@ -77,6 +80,9 @@ export function TransportChoice({
   testedPrompts,
 }: {
   transport: string;
+  /** API 通道指到矽基流動：「中國供應商」那列亮、「API 直連」那列不亮 */
+  siliconflow: boolean;
+  /** id 為 "siliconflow"＝選中國供應商（API 通道換 base_url） */
   onTransport: (id: string) => void;
   /** null＝偵測還沒回來 */
   clis: CliInfo[] | null;
@@ -90,16 +96,30 @@ export function TransportChoice({
   return (
     <fieldset className="transport-list">
       <legend>{t("transportLegend")}</legend>
-      <div className={optionClass(transport === "api")}>
+      <div className={optionClass(transport === "api" && !siliconflow)}>
         <label className="transport-option-name">
           <input
             type="radio"
             name="transport"
-            checked={transport === "api"}
+            checked={transport === "api" && !siliconflow}
             onChange={() => onTransport("api")}
           />
           {t("transportApi")}
         </label>
+      </div>
+      <div className={optionClass(transport === "api" && siliconflow)}>
+        <label className="transport-option-name">
+          <input
+            type="radio"
+            name="transport"
+            checked={transport === "api" && siliconflow}
+            onChange={() => onTransport("siliconflow")}
+          />
+          {t("transportCn")}
+        </label>
+        <button type="button" className="btn btn-sm" onClick={() => void openUrl(SILICONFLOW_KEY_URL)}>
+          {t("cnGetKeyBtn")}
+        </button>
       </div>
       {(["claude", "codex", "agy", "grok"] as const).map((id) => {
         // clis === null＝偵測還沒回來，與「偵測不到」是兩回事：此時不給按鈕，避免誤按一鍵安裝

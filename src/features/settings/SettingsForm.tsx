@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { t } from "../../i18n";
 import { backendText } from "../../shared/ui/backend-text";
 import { checkApiKey } from "../ai-connection/api-key-check";
+import { isSiliconFlow, SILICONFLOW_BASE_URL } from "../ai-connection/siliconflow";
 import { tierLabel } from "../ai-connection/model-catalog";
 import { refreshCatalog, useModelCatalogs } from "../ai-connection/model-catalog-store";
 import { ImageModelField } from "./ImageModelField";
@@ -171,6 +172,9 @@ export function Settings({
   // 穩定免費只挑 OpenRouter 的免費模型；自訂 base URL 時後端也一律照手動設定走
   const onOpenRouter = ["", "https://openrouter.ai/api/v1"].includes(baseUrl.trim().replace(/\/+$/, ""));
   const keyWarning = checkApiKey(apiKey, baseUrl);
+  // 中國供應商＝API 通道指到矽基流動：金鑰另存一槽，檔位模型照命令列工具那樣存 siliconflow:<檔位>
+  const onSiliconFlow = isSiliconFlow(baseUrl);
+  const [cnKey, setCnKey] = useState(config.api_keys["siliconflow"] ?? "");
   const [imageModel, setImageModel] = useState(String(config.preferences["image_model"] ?? ""));
   const [claudeCompatBaseUrl, setClaudeCompatBaseUrl] = useState(
     String(config.preferences["claude_base_url"] ?? ""),
@@ -180,11 +184,19 @@ export function Settings({
   const [maxRound, setMaxRound] = useState(String(config.preferences["max_round_speakers"] ?? 3));
   const [transport, setTransport] = useState(String(config.preferences["transport"] ?? "api"));
   const stableFree = transport === "api" && onOpenRouter && modelMode === "stable_free";
+  /** 檔位下拉讀哪份清單、存哪組鍵：命令列工具用自己的名字，矽基流動用 siliconflow */
+  const provider = transport === "api" ? "siliconflow" : transport;
+  const cnActive = transport === "api" && onSiliconFlow;
   const recommendedApiModel = transport === "api" && onOpenRouter && modelMode === "recommended";
   const fixedApiModel = stableFree || recommendedApiModel;
   // 確定是免費層（打不了生圖）才藏生圖模型；藏著時草稿保留但不算未儲存、不寫進存檔
-  const keyTier = useKeyTier(apiKey, transport, String(config.preferences["base_url"] ?? ""));
-  const imageModelHidden = transport === "api" && keyTier === "free";
+  // 選了矽基流動時不查 OpenRouter 金鑰等級（生圖欄本來就藏著）
+  const keyTier = useKeyTier(
+    apiKey,
+    cnActive ? "" : transport,
+    String(config.preferences["base_url"] ?? ""),
+  );
+  const imageModelHidden = transport === "api" && (keyTier === "free" || cnActive);
   const [permissionNotice, setPermissionNoticeState] = useState("");
   const noticeRef = useRef("");
   const [riskAccepted, setRiskAccepted] = useState(config.preferences["cli_risk_accepted"] === true);
@@ -467,6 +479,7 @@ export function Settings({
   // 未儲存偵測：與 config 現值逐欄比對（比對值採 save() 相同的正規化），改幾欄算幾項
   const dirtyCount = [
     apiKey.trim() !== (config.api_keys["openrouter"] ?? ""),
+    cnKey.trim() !== (config.api_keys["siliconflow"] ?? ""),
     baseUrl.trim() !== String(config.preferences["base_url"] ?? ""),
     !imageModelHidden && imageModel.trim() !== String(config.preferences["image_model"] ?? ""),
     claudeCompatBaseUrl.trim() !== String(config.preferences["claude_base_url"] ?? ""),
@@ -554,6 +567,7 @@ export function Settings({
     );
     const apiKeys: Record<string, string> = {};
     if (apiKey.trim() !== (config.api_keys["openrouter"] ?? "")) apiKeys.openrouter = apiKey.trim();
+    if (cnKey.trim() !== (config.api_keys["siliconflow"] ?? "")) apiKeys.siliconflow = cnKey.trim();
     if (claudeCompatKey.trim() !== (config.api_keys["claude_compat"] ?? "")) {
       apiKeys.claude_compat = claudeCompatKey.trim();
     }
@@ -611,7 +625,13 @@ export function Settings({
         >
           <TransportChoice
             transport={transport}
-            onTransport={setTransport}
+            siliconflow={onSiliconFlow}
+            onTransport={(id) => {
+              // 中國供應商與 API 直連是同一條通道換 base_url；從矽基流動切回直連才清掉它
+              if (id === "siliconflow") setBaseUrl(SILICONFLOW_BASE_URL);
+              else if (id === "api" && onSiliconFlow) setBaseUrl("");
+              setTransport(id === "siliconflow" ? "api" : id);
+            }}
             clis={clis}
             config={config}
             installingCli={installingCli}
@@ -643,7 +663,22 @@ export function Settings({
             </p>
           )}
           {/* OpenRouter 專屬欄位只在 API 直連時顯示，避免 CLI 使用者誤以為必填 */}
-          {transport === "api" && (
+          {cnActive && (
+            <>
+              <label>
+                {t("cnKeyLabel")}
+                <input
+                  type="password"
+                  value={cnKey}
+                  onChange={(e) => setCnKey(e.currentTarget.value)}
+                />
+              </label>
+              <p className="risk-box" role="note">
+                {t("cnRiskNote")}
+              </p>
+            </>
+          )}
+          {transport === "api" && !cnActive && (
             <>
               <label>
                 {t("apiKeyLabel")}
@@ -662,7 +697,7 @@ export function Settings({
               )}
             </>
           )}
-          {transport === "api" ? (
+          {transport === "api" && !cnActive ? (
             <>
               {!imageModelHidden && (
                 <ImageModelField
@@ -797,9 +832,9 @@ export function Settings({
           ) : (
             <>
               {(["best", "balanced", "fast"] as const).map((tier) => {
-                const key = `${transport}:${tier}`;
+                const key = `${provider}:${tier}`;
                 const value = tierModels[key] ?? "";
-                const catalog = catalogs[transport] ?? [];
+                const catalog = catalogs[provider] ?? [];
                 const custom =
                   customTiers[key] ?? (value !== "" && !catalog.some((m) => m.id === value));
                 return (
@@ -817,7 +852,11 @@ export function Settings({
                         }
                       }}
                     >
-                      <option value="">{t("cliDefaultOption")}</option>
+                      <option value="">
+                        {cnActive
+                          ? t("cnDefaultOption", { model: catalog[0]?.id ?? "" })
+                          : t("cliDefaultOption")}
+                      </option>
                       {catalog.map((m) => (
                         <option key={m.id} value={m.id}>
                           {backendText(m.label)}
@@ -837,15 +876,17 @@ export function Settings({
                   </label>
                 );
               })}
-              <p className="cli-version" role="note">
-                {transport === "claude"
-                  ? t("cliCatalogClaude")
-                  : transport === "agy"
-                    ? t("cliCatalogAgy")
-                    : transport === "grok"
-                      ? t("cliCatalogGrok")
-                    : t("cliCatalogCodex")}
-              </p>
+              {!cnActive && (
+                <p className="cli-version" role="note">
+                  {transport === "claude"
+                    ? t("cliCatalogClaude")
+                    : transport === "agy"
+                      ? t("cliCatalogAgy")
+                      : transport === "grok"
+                        ? t("cliCatalogGrok")
+                        : t("cliCatalogCodex")}
+                </p>
+              )}
             </>
           )}
           {transport === "claude" && (
@@ -894,7 +935,7 @@ export function Settings({
             />
           </label>
           {/* 智慧免費必然在 OpenRouter 預設站台（設了自訂 URL 就不算智慧免費），這欄對它沒意義 */}
-          {transport === "api" && !fixedApiModel && (
+          {transport === "api" && !fixedApiModel && !cnActive && (
             <label>
               {t("baseUrlLabel")}
               <input
