@@ -6,7 +6,6 @@ export const en: PartyMessages = {
   connecting: "Connecting…",
   reconnecting: "Connection lost, reconnecting…",
 
-  wechatOpenInBrowser: "This may not connect inside WeChat: tap “⋯” at the top right and choose “Open in Browser”.",
   joinNeedInvite: "You need an invite link from the host to join.",
   joinTitle: "Join room {code}",
   joinNickname: "Your nickname",

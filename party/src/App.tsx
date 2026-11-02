@@ -1,7 +1,7 @@
 // 手機客戶端外殼：解析邀請連結 → （新裝置）填暱稱 → 連房間。環境（網址、儲存、WebSocket、fetch）從外面注入，測試換成假伺服器。
 import { useMemo, useState } from "react";
-import { deviceId, isWeChat, joinedNickname, parseInvite, rememberJoined, withoutPairCode, type Invite } from "./features/connection/invite";
-import { JoinForm, WeChatBanner } from "./features/join/JoinForm";
+import { deviceId, inAppBrowser, joinedNickname, parseInvite, rememberJoined, withoutPairCode, type Invite } from "./features/connection/invite";
+import { JoinForm, OpenInBrowserBanner } from "./features/join/JoinForm";
 import { LanguagePicker } from "./features/language/LanguagePicker";
 import { errorText } from "./features/room/error-text";
 import { RoomScreen } from "./features/room/RoomScreen";
@@ -49,6 +49,7 @@ function Room({ env, invite, device, nickname }: { env: RoomEnv; invite: Invite;
 export default function App({ env, lang: initial }: { env: RoomEnv; lang: Lang }) {
   const [lang, setLang] = useState(initial);
   const invite = useMemo(() => parseInvite(env.href), [env.href]);
+  const inApp = inAppBrowser(env.userAgent);
   const device = useMemo(() => deviceId(env.storage), [env.storage]);
   const [nickname, setNickname] = useState(() => (invite ? joinedNickname(env.storage, invite.code) : null));
   return (
@@ -57,7 +58,7 @@ export default function App({ env, lang: initial }: { env: RoomEnv; lang: Lang }
         <span className="brand">Table Tavern{invite && <span className="muted"> · {invite.code}</span>}</span>
         <LanguagePicker lang={lang} onChange={(next) => (applyLang(next), setLang(next))} />
       </header>
-      {isWeChat(env.userAgent) && <WeChatBanner />}
+      {inApp && <OpenInBrowserBanner app={inApp} />}
       {!invite ? (
         <p className="center-note">{t("joinNeedInvite")}</p>
       ) : nickname ? (

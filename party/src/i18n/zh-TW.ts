@@ -7,7 +7,6 @@ export const zhTW = {
   connecting: "連線中…",
   reconnecting: "連線中斷，正在重新連線…",
 
-  wechatOpenInBrowser: "微信內開啟可能連不上：請點右上角「⋯」，選「在瀏覽器開啟」。",
   joinNeedInvite: "需要房主給的邀請連結才能加入。",
   joinTitle: "加入房間 {code}",
   joinNickname: "你的暱稱",

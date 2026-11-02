@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import { applyLang, initialLang } from "./i18n";
 import "./App.css";
+import { followVisualViewport } from "./features/room/viewport";
 
 function storage(): Storage | null {
   try {
@@ -11,6 +12,8 @@ function storage(): Storage | null {
     return null; // 瀏覽器不讓存：deviceId 只在這次有效
   }
 }
+
+followVisualViewport(window);
 
 // 語系在第一次繪製前定好（存過的優先，否則照瀏覽器語系）
 const lang = initialLang();

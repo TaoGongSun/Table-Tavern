@@ -89,6 +89,11 @@ export function RoomPanel({ worldId, onClose }: { worldId: string; onClose: () =
   return (
     <Dialog title={t("roomTitle")} size="m" onDismiss={onClose} closeButton end={end}>
       <p>{t("roomIntro")}</p>
+      {!here && (
+        <p className="risk-box" role="note">
+          {t("roomRisk")}
+        </p>
+      )}
       {otherTable && <p role="alert">{t("roomOtherTable")}</p>}
       {!here && (
         <label className="room-row">

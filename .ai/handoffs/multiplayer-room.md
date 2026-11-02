@@ -1,41 +1,34 @@
 # Task
 Task-ID: multiplayer-room
-Title: 多人跑團房間：AI 當 GM、手機優先、出額度者一鍵接供應商
-Status: in_progress（2026-11-02 開工，分支 multiplayer-room）
+Title: 多人跑團房間：AI 當 GM、全員手機玩、出額度者的桌面版當 GM 執行端
+Status: 等實機驗收（v1 包 0–7 全部通過驗收、2026-11-03 已進 main；剩作者本人實機項目）
 Created: 2026-11-02
-案別：大案，v1 分包 0–7 核心估共約 2400 行（立案估，各包估見計畫 §10；v2 另行立案估約 750 行）；碰到信任邊界（執行端配對、玩家文字派工）、spawn／程序控制與防休眠系統呼叫、伺服器程序，依規約方案與驗收都送審。
 
 ## Summary
-中國朋友提案：幾個人一起跑團，AI 當 GM，用手機玩（先安卓 APK，iOS 之後），GM 用的 AI 同一幕固定、換幕時可以換。〔作者裁決 2026-11-02：立案〕
+v1＝出額度者家裡的桌面版當 GM 執行端，所有人（含出額度者）用手機瀏覽器玩；伺服器只做中繼與回合裁判、不碰金鑰。規格與裁決見 [plans/multiplayer-room.md](../plans/multiplayer-room.md)（§11 拍板、§12 觀察、§13 Node 殼），協定見 [plans/multiplayer-room-protocol.md](../plans/multiplayer-room-protocol.md)（§14 Workers 實作差異、§15 Node 殼差異，以這兩節與程式為準）。v2（伺服器代打、純手機群）另行立案；APK 屬 [cn-apk-shell](../tasks/cn-apk-shell.md)，不在本案。
 
-這不是在現有 app 上加功能，是新的執行形態：桌面版與網頁版都是「資料只在自己裝置、中間沒有伺服器」，多人要一個大家都連得到的房間。做法見計畫 [plans/multiplayer-room.md](../plans/multiplayer-room.md)：**v1＝桌面版當 GM 執行端**——出額度者家裡的電腦開著桌面版、持續連網，GM 那一發由它打（既有 Rust GM 引擎、OpenRouter 一鍵、官方命令列工具通道全沿用，訂閱額度因此能用），所有人包含出額度者都用手機玩；伺服器（Cloudflare Workers＋DO）只做中繼與回合裁判、不碰金鑰；手機客戶端放同 repo 獨立 `party/`。v2＝伺服器代打（純手機群）另行立案。
+## 落點
+- 伺服器：`party/server/core/`（純 TS）、`party/server/workers/`（DO 殼）、`party/server/node/`（自架殼，用法見 `main.ts` 檔頭）。
+- 手機客戶端：`party/src/`（繁簡英齊、七語先英文；QQ／微信內建瀏覽器引導固定簡中，QQ 優先）。
+- 桌面版執行端：Rust `src-tauri/src/room.rs`＋`room/`、`commands/room.rs`；前端 `src/features/room/RoomPanel.tsx`（進入前顯示出額度者風險說明）。多玩家 GM 提示在 `chat_turn/party_batch.rs`。
+- 中國供應商：桌面版「連接 AI」的矽基流動（`transport/siliconflow.rs`），房間 capabilities 多一條 `siliconflow` 路線。
 
-## 作者裁決（2026-11-02）
-1. 供應商不限中國境內：朋友裡有人買了 Gemini。但**設定要極簡**：只有出 GM 額度的人設定一次、一鍵完成，其他玩家零設定；境內境外的差別由 app 內部處理，玩家不必懂。
-2. 想玩的人多半想玩成人內容，中國供應商過不了審查。**極端退路**：預設玩家都有 VPN，由出 GM 額度的人改用境外供應商（Claude、Gemini 等）。
-3. GM 的 AI 同一幕固定，換幕才換。
-4. 伺服器：Cloudflare Workers＋Durable Objects 先做，伺服器核心寫成純 TS、最後一包補 Node 薄殼留可自架（計畫 §5 選項丙）。
-5. 客戶端：同 repo 獨立 `party/` package，不進 web/、不另開 repo（計畫 §6）。
-6. 順序：本案可直接開工；cn-web-provider 改排 v2 前。與 VN 模式無關，不互相牽動。〔2026-11-02 改訂，原為 cn-web-provider → 本案〕
-7. v1＝桌面版當 GM 執行端（出額度者電腦開著連網即可、人離開電腦用手機玩），v2＝伺服器代打另行立案。
-8. v1 不做執行端交接：執行端固定為建房那台桌面版，換幕只能換供應商與模型；協定保留交接訊息位，整桌匯出與交接另排小案。〔包 0 發現桌面版沒有整桌匯出〕
-9. 玩家行動在結算前**即時公開**，大家看得到彼此寫了什麼（推翻協定文件初版的「結算前不公開」）。
-10. 手機端 v1 不顯示卡片介面（MVU 狀態面板），列已知限制。
+## 下一步：作者實機驗收（排在[實測佇列](../reference/verification-queue.md)）
+1. 真手機：iOS Safari、Android Chrome 加入選角、送出／收回／跳過、串流、鍵盤彈出；手機 QQ、微信內建瀏覽器看到簡中「用瀏覽器開啟」引導，照文案操作能跳到外部瀏覽器（QQ 選項名稱「浏览器打开」未在真機核對），QQ 瀏覽器 App 不跳引導。
+2. iOS 鍵盤開著時點「送出」要點兩次：確認是否只是模擬器注入點擊的現象。
+3. 防休眠：Windows 先 `cargo check`（`SetThreadExecutionState` 路徑未編譯驗證）再實跑；Linux `systemd-inhibit`。
+4. 牆內：系統代理模式下 WebSocket 走 CONNECT 連得上 Cloudflare。
+5. 命令列工具通道（Claude／Codex／Gemini）在房間模式無人值守跑一晚；撞額度時手機端看到 quota 類錯誤並能切路線。
+6. 真 Workers 部署：`party/server/workers/wrangler.toml` 填 `account_id` 與 Rate Limiting binding，`party/dist` 走 Static Assets；桌面版輸入 https 網址開房。
+7. Node 殼放在 Caddy 反向代理後實跑（`PUBLIC_ORIGIN`、`TRUST_PROXY=1`），手機經 https 加入跑兩回合。
 
-## 前置與順序
-- 無前置，可直接開工〔作者裁決 2026-11-02〕。[cn-web-provider](../tasks/cn-web-provider.md) 改排 v2 前：v1 的境內供應商是桌面版小包（計畫 §10 包 5），只有 v2 伺服器代打依賴它的網頁版供應商層。其階段 2（APK 薄殼）、階段 3（發佈）的結論本案照用。
-
-## 現況與下一步
-- 2026-11-02 開工。雲端環境審查員＝opus-reviewer 子代理（雲端接不到 Sol）〔作者裁決 2026-11-02〕；實作派 Opus 子代理，主線只統籌、讀 diff、重跑 verify。
-- 包 0（協定文件）**完成**：[plans/multiplayer-room-protocol.md](../plans/multiplayer-room-protocol.md) 635 行（commit 7878e52）。opus-reviewer 方案審 2 輪：第 1 輪 REVISE 三必改（空名單無限結算、退出房間模式永久卡死、換幕摘要被 30 秒逾時打斷）已修，第 2 輪 PASS。審查員提醒包 2：收到 `job.cancel` 而本機沒有在跑的工作時，照桌上幕號判斷回 ok 或失敗，不得不回。
-- 包 1（伺服器 `party/server/`）與包 3（多玩家進 GM 提示，Rust）並行施工中，各在 worktree；完成後主線合回本分支、重跑 verify、送 opus-reviewer 驗收。
-- **包 1 預算重訂**〔主線判斷 2026-11-02〕：初稿核心約 1,376 行、超過立案估 600 的 2 倍，代理照規約停下。主線裁定多出的是協定 §1–§10 列明的範圍（600 是協定定稿前的估計），預算重訂為約 1,400、測試以 §12.2 驗收清單為準（目標約核心 1 倍）。v1 總預算隨之由 2,400 調為約 3,200；process-log 結案時記。
-- §13「主線裁定與已知限制」已寫進協定文件（原待確認 11 條的裁定＋已知限制 9 條），交接檔不再重複。
-- 包 0 讀程式發現（包 2／包 3 要處理）：GM 鏈接力在前端 `useChatController.ts` 不在 Rust；GM 路線與模型是全域設定無每房覆寫；桌面版無整桌匯出；網頁存檔契約裝不下多人（有損）；單一玩家卡假設在 `state.json` 的 `player_card_id` 與 `PLAYER_SENTINEL`。
-- 拍板清單見計畫 §11（五項，2026-11-02）。
+## 已知限制（v1，不另立案）
+- 伺服器：切模型後 `round.dispatch.settings` 不更新（手機標頭顯示舊模型，執行端靠本機 `room.json` 覆寫撐）；`seat.create` 連點多建卡；成員上限 12 含已離開者；快照含第 1 幕整份種子歷史無上限；`scene_full` 的 held 仍可 `round.continue`；`webSocketClose` 未回 `ws.close()`。Node 殼：狀態與鬧鐘分兩次落地（崩潰時鬧鐘早醒或晚到一次）、靜態檔 realpath 檢查與開檔之間有 TOCTOU 窗（自架者控制目錄）、建房限流只在單程序內。
+- 執行端：socks 代理與代理帳密不支援；桌面版不報額度，撞額度只靠 `gen.failed`；覆寫槽整個程序共用（房間期間其他桌含重構也走房間路線與模型）；held 後晚到結果丟掉；NPC 不在名冊（>64 張卡）時 `gen.part.begin` 被 4400 關連線會無限重送；QR 碼未做；境內供應商以 HTTP 400 帶審查文字拒答時被歸成「連不上供應商」（動作仍可切路線）〔作者裁決 2026-11-03〕；矽基流動路線的生圖仍走 OpenRouter。
+- 引擎：`{{user}}` 與世界書玩家名只代換主玩家；分段摘要無多人句；低階模型可能替真人玩家卡說話（多人段指示在、遵守度看模型）。
+- 手機端：七語先英文；純文字不做 Markdown；不顯示卡片介面〔作者裁決 2026-11-02〕；自建角色、改暱稱、人數上限設定未做；故事串不顯示「某某觀望」；`round.opened` 不帶暫停剩餘時間。
+- 協定 §13 另列 9 條（執行端永久失聯只給匯出、去重以派工為單位等）。
 
 ## Constraints
-- AI 額度一律由出額度的玩家自備，app 不代購不代付；伺服器不持有任何平台帳號。
-- 一個房間同時只有一個 GM 請求在飛；回合編號當版本號。
-- v1 伺服器不持有金鑰；金鑰留在出額度者的桌面版。v2 若讓金鑰經伺服器，只在房間存活期間保存、不落日誌、不給其他玩家。
-- 專案 AGPL-3.0：誰拿改過的伺服器給別人用，就要向使用者提供原始碼；交給朋友營運前要說清楚。
+- AI 額度一律由出額度者自備，伺服器不持有任何平台帳號或金鑰。
+- 專案 AGPL-3.0：誰拿改過的伺服器給別人用，要向使用者提供原始碼；交給朋友營運前要說清楚。

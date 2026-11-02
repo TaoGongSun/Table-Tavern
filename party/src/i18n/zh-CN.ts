@@ -6,7 +6,6 @@ export const zhCN: PartyMessages = {
   connecting: "连接中…",
   reconnecting: "连接中断，正在重新连接…",
 
-  wechatOpenInBrowser: "在微信内打开可能连不上：请点右上角「⋯」，选「在浏览器打开」。",
   joinNeedInvite: "需要房主给的邀请链接才能加入。",
   joinTitle: "加入房间 {code}",
   joinNickname: "你的昵称",

@@ -19,7 +19,16 @@ export function parseInvite(href: string): Invite | null {
 /** 配對碼一次性：加入後從網址拿掉，免得重新整理再送一次、累積全房錯誤次數 */
 export const withoutPairCode = (href: string) => href.replace(/([#&])p=[^&]*&?/, "$1").replace(/[#&]$/, "");
 
-export const isWeChat = (ua: string) => /MicroMessenger/i.test(ua);
+/**
+ * App 內建瀏覽器（計畫 §9）：手機 QQ 用的人比微信多，QQ 優先〔作者裁決 2026-11-03〕。手機 QQ 內建網頁的 UA 帶「空格＋QQ/版本」
+ * （Android 另有 V1_AND_SQ、MQQBrowser 核心）；獨立的 QQ 瀏覽器 App 只有 MQQBrowser/、沒有「 QQ/」，是一般瀏覽器不提示。
+ * 微信（Android 也帶 MQQBrowser 核心）認 MicroMessenger。
+ */
+export function inAppBrowser(ua: string): "qq" | "wechat" | null {
+  if (/\sQQ\/\d/.test(ua)) return "qq";
+  if (/MicroMessenger/i.test(ua)) return "wechat";
+  return null;
+}
 
 const DEVICE = "tt-party:device";
 const ROOMS = "tt-party:rooms";

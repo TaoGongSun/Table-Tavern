@@ -113,7 +113,7 @@ textarea {
   display: flex;
   flex-direction: column;
   height: 100%;
-  height: 100dvh;
+  height: var(--app-height, 100dvh);
   max-width: 720px;
   margin: 0 auto;
 }
@@ -212,6 +212,7 @@ textarea {
 
 .tabs {
   display: flex;
+  flex-shrink: 0;
   gap: 4px;
   padding: 6px var(--gutter);
   overflow-x: auto;

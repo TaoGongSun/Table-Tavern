@@ -65,6 +65,7 @@ describe("RoomPanel", () => {
     await render();
     const input = host.ownerDocument.querySelector<HTMLInputElement>("input.room-value");
     expect(input?.value).toBe("https://rooms.example.test");
+    expect(host.ownerDocument.querySelector('[role="note"]')?.textContent).toBe(t("roomRisk"));
     await act(async () => button(t("roomEnter"))!.click());
     expect(backend.calls).toContainEqual(["room_enter", { worldId: "w1", server: "https://rooms.example.test" }]);
   });
