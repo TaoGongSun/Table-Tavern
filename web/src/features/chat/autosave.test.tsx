@@ -66,7 +66,7 @@ describe("自動存檔", () => {
     await act(async () => chat.send());
     await settle();
     const [meta] = await saves.list();
-    expect(meta).toMatchObject({ title: "瑟拉", messageCount: 3 });
+    expect(meta).toMatchObject({ title: "索倫", messageCount: 3 });
     const save = await saves.get(meta.id);
     expect(parseWebSave(JSON.stringify(save)).ok).toBe(true);
     expect(save?.messages.map((message) => [message.role, message.text])).toEqual([

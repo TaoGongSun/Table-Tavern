@@ -19,7 +19,7 @@ describe("ST 匯出附的原卡檔", () => {
 
   it("其他卡給原卡 JSON 外殼", () => {
     const file = cardFile(SAMPLE_PLAY_CARD);
-    expect(file.name).toBe("瑟拉.json");
+    expect(file.name).toBe("索倫.json");
     expect(JSON.parse(file.body as string)).toEqual(SAMPLE_CARD);
   });
 

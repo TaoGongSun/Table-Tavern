@@ -159,7 +159,7 @@ describe("ST prompt assembly with the built-in sample card", () => {
     const opening: ChatEntry = { id: "o", role: "char", text: "開場", opening: true };
     const user: ChatEntry = { id: "u", role: "user", text: "你好" };
     const messages = composePrompt(setup, [opening, user]).messages;
-    expect(messages[0]).toEqual({ role: "system", content: "Write 瑟拉's next reply in a fictional chat between 瑟拉 and 旅人." });
+    expect(messages[0]).toEqual({ role: "system", content: "Write 索倫's next reply in a fictional chat between 索倫 and 旅人." });
     expect(messages.some((message) => message.content.includes("{{"))).toBe(false);
     expect(messages.slice(-3)).toEqual([
       { role: "system", content: "[Start a new Chat]" },

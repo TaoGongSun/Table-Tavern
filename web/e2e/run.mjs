@@ -125,7 +125,7 @@ try {
   fake.state.chat = "hang";
   await page.getByPlaceholder("輸入你的行動或對話…").fill("第二句");
   await page.getByRole("button", { name: "送出" }).click();
-  await page.getByText("瑟拉 正在回覆…").waitFor();
+  await page.getByText("索倫 正在回覆…").waitFor();
   await page.getByRole("button", { name: "停止" }).click();
   await page.getByRole("button", { name: "送出" }).waitFor();
   assert.equal(await page.getByPlaceholder("輸入你的行動或對話…").inputValue(), "第二句");
@@ -148,11 +148,11 @@ try {
   await page.getByRole("button", { name: "送出" }).waitFor();
   assert.equal(await page.getByTestId("autosave-note").textContent(), "對話自動存在這個瀏覽器");
   await page.getByRole("button", { name: "← 換一張卡" }).click();
-  await page.getByTestId("save-item").getByText("瑟拉").waitFor();
+  await page.getByTestId("save-item").getByText("索倫").waitFor();
   // Safari 的 ITP 提示放在存檔區（e2e 跑的是 WebKit）
   await page.getByText("Safari 會在七天沒打開本站後清掉網站資料").waitFor();
   await page.reload();
-  await page.getByTestId("save-item").getByText("瑟拉").waitFor();
+  await page.getByTestId("save-item").getByText("索倫").waitFor();
   await page.getByTestId("save-item").getByRole("button", { name: "繼續" }).click();
   await page.getByText("鞋上的雪先跺乾淨").waitFor();
   assert.equal(await page.getByTestId("message-user").count(), 3, "三句玩家句都接得上");
@@ -188,7 +188,7 @@ try {
 
   step("匯出網頁存檔：過得了契約檢查、帶逐字稿與變數，附「用桌面版繼續」導流");
   const [saveDownload] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "匯出存檔" }).click()]);
-  assert.match(saveDownload.suggestedFilename(), /^瑟拉 \d{4}-\d{2}-\d{2} \d{4}\.json$/);
+  assert.match(saveDownload.suggestedFilename(), /^索倫 \d{4}-\d{2}-\d{2} \d{4}\.json$/);
   const savePath = await saveDownload.path();
   const saveText = readFileSync(savePath, "utf8");
   // 這個 session 帶著測試金鑰、選過免費模型：存檔裡不能有金鑰與模型設定
@@ -213,7 +213,7 @@ try {
   const exported = parseWebSave(saveText);
   assert.ok(exported.ok, `匯出的存檔沒過契約檢查：${JSON.stringify(exported.error)}`);
   const save = exported.save;
-  assert.equal(save.card.data.name, "瑟拉");
+  assert.equal(save.card.data.name, "索倫");
   assert.equal(save.import_route, "character");
   assert.equal(save.user_name, "玩家");
   assert.equal(save.opening_index, 0);
@@ -237,11 +237,11 @@ try {
     page.waitForEvent("download"),
     page.getByRole("button", { name: "匯出成 SillyTavern 聊天檔" }).click(),
   ]);
-  assert.match(stDownload.suggestedFilename(), /^瑟拉 - \d{4}-\d{2}-\d{2}@\d{2}h\d{2}m\d{2}s\d{3}ms\.jsonl$/);
+  assert.match(stDownload.suggestedFilename(), /^索倫 - \d{4}-\d{2}-\d{2}@\d{2}h\d{2}m\d{2}s\d{3}ms\.jsonl$/);
   const stLines = readFileSync(await stDownload.path(), "utf8").split("\n").map((line) => JSON.parse(line));
   assert.equal(stLines.length, 8);
   assert.deepEqual(Object.keys(stLines[0]), ["user_name", "character_name", "create_date", "chat_metadata"]);
-  assert.equal(stLines[0].character_name, "瑟拉");
+  assert.equal(stLines[0].character_name, "索倫");
   assert.deepEqual(stLines[6], { ...stLines[6], name: "玩家", is_user: true, is_system: false, mes: "我付了錢", extra: {} });
   await page.getByTestId("export-st-hint").getByText("SillyTavern 聊天檔只帶對話").waitFor();
   // D3「對話與卡」：同一處給原卡檔（內建卡沒有 PNG，給原卡 JSON 外殼）
@@ -249,9 +249,9 @@ try {
     page.waitForEvent("download"),
     page.getByTestId("export-st-hint").getByRole("button", { name: "下載這張角色卡" }).click(),
   ]);
-  assert.equal(cardDownload.suggestedFilename(), "瑟拉.json");
+  assert.equal(cardDownload.suggestedFilename(), "索倫.json");
   const cardJson = JSON.parse(readFileSync(await cardDownload.path(), "utf8"));
-  assert.deepEqual([cardJson.spec, cardJson.data.name], ["chara_card_v3", "瑟拉"]);
+  assert.deepEqual([cardJson.spec, cardJson.data.name], ["chara_card_v3", "索倫"]);
   assert.deepEqual(cardJson, save.card, "給的就是存檔裡那份原卡外殼");
 
   step("存檔區：刪除要確認一次；匯入剛匯出的存檔回網頁版，繼續就接得上；版號不認得的存檔拒收");
@@ -262,7 +262,7 @@ try {
   await page.getByTestId("save-file").setInputFiles(`${SAVES}future-version.json`);
   await page.getByTestId("saves-error").getByText("這份存檔的版本（2）這個網頁版看不懂").waitFor();
   await page.getByTestId("save-file").setInputFiles(savePath);
-  await page.getByTestId("save-item").getByText("瑟拉").waitFor();
+  await page.getByTestId("save-item").getByText("索倫").waitFor();
   await page.getByTestId("save-item").getByRole("button", { name: "繼續" }).click();
   await page.getByTestId("message-user").getByText("我付了錢").waitFor();
   assert.equal(await page.getByTestId("message-user").count(), 3);

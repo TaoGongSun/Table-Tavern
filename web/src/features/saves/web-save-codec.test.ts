@@ -92,7 +92,7 @@ describe("匯出網頁存檔", () => {
     const restored = restoreWebSave(save);
     if (!restored.ok) throw new Error(JSON.stringify(restored.error));
     expect(restored.game.card.png).toBeUndefined();
-    expect(restored.game.card.text.name).toBe("瑟拉");
+    expect(restored.game.card.text.name).toBe("索倫");
   });
 
   it("計時算到的那則被刪掉：last_message_id 改回 null", () => {
