@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2024"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    /* 核心只用語言內建＋TextEncoder＋WebCrypto；Workers 殼的平台型別由 workers-types 提供 */
+    "types": ["@cloudflare/workers-types"],
+    /* 測試拿桌面版與網頁版的存檔契約檢查匯出（協定 §9.3） */
+    "paths": {
+      "@desktop/*": ["../src/*"],
+      "@web/*": ["../web/src/*"]
+    }
+  },
+  "include": ["server"],
+  /* 這支測試引網頁版的存檔解碼（含 DOM 型別的模組），網頁版自己的 tsc 會檢查它們 */
+  "exclude": ["server/core/export.test.ts"]
+}

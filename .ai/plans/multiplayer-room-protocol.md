@@ -633,3 +633,26 @@ interface ExecutorPort { deliver(frame: Frame): void } // v1：轉成 WebSocket 
 - 倒數暫停與恢復沒有專屬事件（包 1 順手可加 `round.deadline`）。
 - 封鎖只記裝置雜湊，清掉瀏覽器資料就能用新連結回來（房主可再重生邀請）。
 - 配對碼錯 5 次是全房鎖，惡意成員可以讓出額度者 10 分鐘配不了對。
+
+## 14 包 1 實作差異（2026-11-02，主線接受；包 2／包 4 以本節為準）
+
+伺服器核心在 `party/server/core/`。以下是實作與上文的差異，程式註解裡標「與協定 §… 的差異」的為前三項。
+
+1. **`reduce` 是 async**（`reduce.ts`）：WebCrypto SHA-256 只有非同步版、讀事件也要 await。單執行緒語意改由 `runner.ts` 的 `RoomRunner` 每房序列化佇列保證（§12.1 說的 DO 單執行緒在 await 之間不成立）。`ctx` 多帶 `live`（串流緩衝、分片建房、頻率桶等不落地的記憶體值）與 store 讀取函式。
+2. **`seq` 由核心配**（`tx.ts` `emit`）：`CoreOutput.events` 已帶序號，`RoomStore.load()` 不回 `tailSeq`；commit 失敗時記憶體仍是舊狀態，序號自然不前進。
+3. **儲存三張表**（`room-do.ts` `SqlRoomStore`）取代 §9.1 六張：`room` 單列整份狀態 JSON（不含名冊）、`cards` 單列名冊（換名冊才重寫）、`events` 一事件一列。名冊整份限 1 MiB（DO 單列上限 2 MB）。
+4. **收件者**：`sends.to` 是具體連線 id；送執行端用固定收件者 `@executor`，經 `ExecutorPort` 轉送（v1 WebSocket、v2 程序內）。
+5. **建房限流**：Rate Limiting binding 週期只有 10 或 60 秒，先設同 IP 每分鐘 1 次近似「每小時 10 次」（`wrangler.toml` 註解）。
+6. **快照**：`story` 也帶玩家行動（段號從 −1 起遞減）與幕摘要（段號 32，避開 GM 段 0–31）；另加 `quota`，出額度者多一個 `quotaDetail`。
+7. **協定外多加的欄位**：`history.page` 回覆多 `before`（這次掃到的最小序號，接著往前翻用）；`scene.summary` 事件多 `round`；`gen.failed` 逾時時多 `code: "E_GEN_TIMEOUT"`。
+8. **遠端控制回覆**：`ctl.result` 轉回發令者為 `ok { id, result: { ok, error? } }`。`retry` 與切模型在轉送當下就把 `held` 改回 `generating`，執行端回失敗再退回原錯誤；切換成功後才發 `scene.settings_switched`。
+9. **`seat.create`**：等執行端 `job.result` 回來、替他入座之後才回 ok 或錯誤。
+10. **換幕帶 `next`**：房主不是出額度者時回 `E_FORBIDDEN`，不靜默忽略。
+11. **新增持久事件 `round.deadline`**：倒數暫停與續跑都發（§13 原列建議，已做）。
+12. **串流與計時**：增量不落地；15 分鐘無進度計時每分鐘最多刷新一次；執行端任何訊框都算在線，`lastSeen` 寫入節流 5 秒、`hb` 一定寫。
+13. **執行端心跳 30 秒逾時**：標離線並以 1001 關掉該連線。
+14. **重連細節**：`welcome` 一定先於任何新事件送出；執行端重連時 `InflightReport` 報同一 `dispatchId`（不論狀態）就把 `queued` 視為 `generating`；`gen.*` 在 `queued` 也收並同時轉 `generating`。
+15. **`room.seed`**：中途斷片回 `E_STATE_CONFLICT`（detail `seed_restart`），執行端從第 0 片重送；一房只接受一次 seed。
+16. **配對碼**：可帶連字號、大小寫不分；第 5 次錯誤仍回 `E_PAIR_CODE_INVALID` 並開始鎖，之後才回 `E_PAIR_LOCKED`；已有出額度者時一般碼拒收且該碼不作廢。
+
+另：`party` 的 tsc 排除 `export.test.ts`（它引網頁版帶 DOM 型別的模組，由網頁版 tsc 檢查）；`party/package-lock.json` 由 npm 11 產生（npm 10 全新解析會崩潰，`npm ci` 讀它正常）；`wrangler` 與 `@cloudflare/workers-types` 釘在兩週以上的版本。

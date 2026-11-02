@@ -9,7 +9,9 @@ import { readdirSync, statSync } from "node:fs";
 import { join, relative, basename, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// 兩棵原始碼樹各自套同一套規則：桌面版 src/ 與網頁版 web/src/。根層入口、組合外殼清單分開列。
+// 三棵原始碼樹各自套同一套規則：桌面版 src/、網頁版 web/src/、多人房間伺服器 party/server/。根層入口、組合外殼清單分開列。
+// 測試住處預設是 features/<name>/ 或 shared/<area>/；party/server 沒有 features，測試跟著 core/ 或 workers/ 住。
+const inFeatureOrShared = (owner) => (owner[0] === "features" || owner[0] === "shared") && owner.length >= 3;
 const TREES = [
   {
     label: "src",
@@ -30,6 +32,14 @@ const TREES = [
     dir: fileURLToPath(new URL("../web/src/", import.meta.url)),
     rootAllowed: new Set(["App.tsx", "App.css", "main.tsx", "vite-env.d.ts"]),
     shellAllowed: new Set(),
+  },
+  {
+    label: "party/server",
+    dir: fileURLToPath(new URL("../party/server/", import.meta.url)),
+    // 根層只放 core/（純 TS 核心）與 workers/（平台殼）兩個資料夾，不放檔案
+    rootAllowed: new Set(),
+    shellAllowed: new Set(),
+    testHome: (owner) => owner.length >= 2,
   },
 ];
 const SOURCE_EXT = new Set([".ts", ".tsx", ".css"]);
@@ -60,7 +70,7 @@ function walk(tree, dir = tree.dir, depth = 0) {
 
     if (depth === 0 && !tree.rootAllowed.has(entry)) {
       problems.push(
-        `${at(full)} ：${tree.label} 根層只放應用程式入口（${[...tree.rootAllowed].join("、")}）。` +
+        `${at(full)} ：${tree.label} 根層${tree.rootAllowed.size ? `只放應用程式入口（${[...tree.rootAllowed].join("、")}）` : "不放檔案"}。` +
           `新功能請放進 features/<name>/，跨 feature 共用的放 shared/<area>/。`,
       );
     }
@@ -79,10 +89,7 @@ function walk(tree, dir = tree.dir, depth = 0) {
     }
 
     if (entry.endsWith(".test.ts") || entry.endsWith(".test.tsx")) {
-      const owner = path.split("/");
-      const inFeature = owner[0] === "features" && owner.length >= 3;
-      const inShared = owner[0] === "shared" && owner.length >= 3;
-      if (!inFeature && !inShared) {
+      if (!(tree.testHome ?? inFeatureOrShared)(path.split("/"))) {
         problems.push(
           `${at(full)} ：測試要跟著它測的東西住，放進 features/<name>/ 或 shared/<area>/。`,
         );

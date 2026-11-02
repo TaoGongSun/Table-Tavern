@@ -1,0 +1,19 @@
+{
+  "name": "table-tavern-party",
+  "private": true,
+  "version": "0.1.0",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "dev:server": "wrangler dev --config server/workers/wrangler.toml"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "~5.20261008.1",
+    "typescript": "~5.8.3",
+    "vite": "~7.3.7",
+    "vitest": "4.1.11",
+    "wrangler": "~4.149.0"
+  }
+}
