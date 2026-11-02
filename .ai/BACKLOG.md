@@ -54,6 +54,7 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [vn-cg-generation](tasks/vn-cg-generation.md) — VN 模式 CG 即時生成：外接吃到飽生圖訂閱（NAI 類）＋提示詞規範 — 下一步：前置 `vn-mode` 已立案（2026-08-07），本任務為其 v3 分期；最省驗證＝拿一把 NAI token 打一發看出圖品質與回傳格式
 
 ## 中國安卓（2026-11-02 立案）
+- [cn-apk-shell](tasks/cn-apk-shell.md) — 網頁版包成 Android APK（Capacitor；階段 2，大案估 350 行，方案與驗收都送審） — 下一步：開工先寫方案；階段 3 發佈（自有網域、側載說明）另行立案
 
 ## 排後
 原訂 16 件（發佈平台 5、API 限定 5、供應商設定 3、其他功能 2、碰運氣 1）；以下為目前 BACKLOG 裡不屬於上面各階段的案子，逐件歸類待作者確認〔模型判斷·未裁決〕。
