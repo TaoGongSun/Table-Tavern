@@ -5,6 +5,7 @@
 分類規則：仍需程式施工／規格落地才放「進行中」；施工已完成、只剩可執行環境／使用者實機／外部條件驗收則移到「等實機驗收」，並同步列入[實測佇列](reference/verification-queue.md)。
 
 ## 進行中
+- [multiplayer-room](handoffs/multiplayer-room.md) — 多人跑團房間（v1 桌面版當 GM 執行端、全員手機玩）：大案分包 0–7，2026-11-02 開工，包 0 協定文件進行中
 - [card-mvu-shim](handoffs/card-mvu-shim.md) — 卡片介面沙盒墊 MVU 讀寫變數：全部已合併 main，剩實測佇列梯 1 項目（含 iframe 內按鈕實際互動）
 
 ## 等實機驗收（順序見[實測佇列](reference/verification-queue.md)）
