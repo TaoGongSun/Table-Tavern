@@ -43,7 +43,7 @@ const TREES = [
   {
     label: "party/server",
     dir: fileURLToPath(new URL("../party/server/", import.meta.url)),
-    // 根層只放 core/（純 TS 核心）與 workers/（平台殼）兩個資料夾，不放檔案
+    // 根層只放 core/（純 TS 核心）與 workers/、node/（平台殼）資料夾，不放檔案
     rootAllowed: new Set(),
     shellAllowed: new Set(),
     testHome: (owner) => owner.length >= 2,

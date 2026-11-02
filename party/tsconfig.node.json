@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    /* Node 自架殼（server/node）與核心一起檢查；順帶證明核心沒漏用 Workers 型別 */
+    "types": ["node"]
+  },
+  "include": ["server/core", "server/node"],
+  "exclude": ["server/core/export.test.ts"]
+}

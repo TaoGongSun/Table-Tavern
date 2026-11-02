@@ -138,3 +138,52 @@ v1 伺服器做四件事：房間與成員、回合裁判、執行端配對與�
 - 本機實機驗收（2026-11-02，claude-haiku 當 GM）：開場旁白替已入座的真人玩家卡（吟遊詩人）說了台詞，多人段指示在、模型沒守；低階模型的遵守度，換幕或換模型時再看。
 - 模型把「下一位：X」寫在狀態欄圍欄之前時，串流中會閃過這行（手機與桌面版同，`streamDisplayText` 只截圍欄與標籤），定稿後消失。
 - 手機故事串不顯示「某某觀望」：觀望標記只落在桌面版逐字稿，伺服器 `story` 不帶。
+
+## 13 包 7 方案：Node 自架殼〔模型判斷·未裁決；Sol 方案審 1 輪，必改 2 條已併入〕
+
+**目標**：同一個 `party/server/core/` 跑在一般 Node 主機上（一個程序、一個 SQLite 檔），行為對齊 Workers 殼；手機客戶端與桌面版執行端不改。核心估 **約 250 行**（立案 150 偏低：store＋鬧鐘＋連線管理＋路由＋靜態檔＋設定各要一塊），測試約 250。
+
+**落點**（`docs/STRUCTURE.md` 已預留「同層另一個資料夾」）：`party/server/node/`
+- `index.ts`：設定、`node:http` 伺服器、路由（照 `workers/index.ts`：建房＋重產碼 5 次、房間路徑正規式、export 只收 GET、成員 WS 驗 `Origin`）、靜態檔、`ws` upgrade、SIGTERM。路由約 30 行與 `workers/index.ts` 重複，刻意不抽象（`Request` 與 `IncomingMessage` 兩套型別，抽了比重複長）。
+- `rooms.ts`：房間表 `Map<code, Room>`，`Room` 持有 `RoomRunner`＋該房連線；實作 `Connections`／`Alarm`；成員心跳與掃描；閒置卸載。
+- `sqlite-store.ts`：`RoomStore`＋鬧鐘持久化。
+- 測試同住 `node/`；`check-structure` 的 `party/server` 規則已容許。
+
+**三個介面**
+- `RoomStore`：**單一 SQLite 檔**（`node:sqlite` 的 `DatabaseSync`，WAL），表照 DO 三張再加房間碼欄：`room(code PK, state)`、`cards(code PK, cards)`、`events(code, seq, at, type, payload, PK(code, seq))`，另加 `alarms(code PK, at)`。`commit` 一筆 `BEGIN…COMMIT`；`deleteAll` 在一筆交易刪該房四表的列。選單檔不選一房一檔（可原樣重用 `SqlRoomStore`）：自架者只要備份一個檔；重用要把 `SqlRoomStore` 從 workers-types 搬開、改動 Workers 殼，不划算，重複約 40 行 SQL。
+- `Connections`：`list()` 回該房在 `Room` 裡登記的 `ws`；`send`／`close` 包 try（同 DO 的 `tryIt`）。
+- `Alarm`：`set(at)` 先寫 `alarms` 表再排 `setTimeout`；`null` 刪列清計時器。`setTimeout` 上限 2³¹−1 ms（約 24.8 天，閒置天數可到 365），超過就排到上限、醒來 `now < at` 再排一次。到期 → 先跑成員掃描、再 `runner.run({ kind: "alarm" })`（照 `RoomDO.alarm`）。
+
+**序列化與重啟續跑**
+- 每房一個 `RoomRunner`，它本身就是每房序列化佇列（協定 §14-1）；同房所有輸入（HTTP、訊框、斷線、鬧鐘）都經 `runner.run`。不同房間互不等。`DatabaseSync` 同步呼叫在單執行緒內本來就不交錯。
+- 房間懶載入：第一次有請求或鬧鐘才建 `Room`；`runner` 首步 `load()`＋把狀態裡已不存在的連線補離線（既有邏輯），程序重啟後即等同 DO 喚醒。
+- 啟動掃描：`room` 表 LEFT JOIN `alarms` 全部排回計時器（過期或缺列的立刻跑，醒來由核心重算 `nextAlarm`）。`nextAlarm` 一定含閒置期限，所以每個存活房間都會被掃到。
+- 已知限制：狀態與鬧鐘分兩次落地（`RoomRunner` 先 commit 再 `alarm.set`，同 DO）。程序在兩者之間崩潰時，`alarms` 留舊值：舊值較早只是早醒一次重算，較晚則該次計時晚到；缺列由上面的 LEFT JOIN 補。
+- 卸載（對應 Hibernation）：每次取得 `Room` 就在第一次 await 前把工作數 +1，涵蓋整段掃描＋`runner.run`，`finally` 再 −1；只有「沒有連線且工作數為 0」時，同步核對 Map 裡仍是同一個 `Room` 才移除，避免舊 `Room` 的回呼醒來時與新 `Room` 兩個 runner 寫同一房。串流緩衝與頻率桶隨卸載丟失，與 DO 被逐出相同（協定 §4.3 已容許）。鬧鐘計時器只記房間碼，到期再按碼重新取 `Room`。
+
+**連線與信任邊界**
+- 錯誤收尾：每條 `ws` 的 `error` 與 `close` 共用一個可重複呼叫的斷線收尾（只送一次 `disconnect`）；`ws` 擋下超大或非法 UTF-8 訊框會發 `error`，不聽會讓整個程序退出。HTTP、upgrade、計時器三個入口都包一層，接住同步例外與 Promise rejection（HTTP 回 500、upgrade 毀掉 socket、計時器記 log），一房出錯不影響其他房。
+- `ws`（Node 沒有內建 WebSocket 伺服器；業界標準）`noServer` 模式，`maxPayload` 1 MiB＝平台上限（成員 16 KiB 由核心 `validate` 擋）；二進位訊框當 `""` 交核心（同 DO）；`ws` 預設會擋非法 UTF-8。
+- 成員心跳：殼攔截字面 `{"t":"ping"}` 直接回 `{"t":"pong"}` 並記時間戳，不進佇列（對齊 DO 自動回應不喚醒）；每次該房有訊框或鬧鐘時，照 `RoomDO.sweep` 關掉 45 秒沒心跳的成員（1001）並送 `disconnect`；另每 15 秒全域掃一次（DO 沒訊框也靠鬧鐘醒，Node 補這個是因為死 TCP 不一定有 close 事件）。執行端 `hb` 照常進核心。
+- 建房 body 上限 16 KiB（串流讀到超過就 400）；房間碼不合格式 404、不建 `Room`。
+- 靜態檔：Node 自己服務（不全交給 Caddy：區網自用沒有反向代理時，手機仍要從這台載客戶端）。`/api/*` 先走路由，其餘從 `party/dist` 回檔；`decodeURIComponent` 失敗回 400；`resolve` 後用 `path.relative` 判斷（不得以 `..` 段開頭、不得是絕對路徑），按路徑分段而非字串前綴，擋穿越；找不到檔 → `index.html`（`/r/<碼>` 單頁）；小型 MIME 表；`/assets/*` 帶 `immutable` 快取。不加依賴。
+- 建房限流：程序內每 IP 滑動視窗，**真的照協定每小時 10 次**（Workers 只能近似每分鐘 1 次）；過期桶定期清。IP 預設取 socket 位址；`TRUST_PROXY=1` 才取 `X-Forwarded-For` 最右一段（反向代理加的那段）；前提是代理一定補寫這個標頭，且 Node 只聽 127.0.0.1 或被防火牆擋住、外部無法繞過代理直連，這兩點寫進檔頭的部署範例。
+
+**TLS 與網址**：Node 只講 http，不碰憑證。對外一律放在反向代理後（Caddy 自動 HTTPS 一行 `reverse_proxy`，nginx 要設 `Upgrade` 標頭），檔頭註解附 Caddy 範例；區網自用可直接 http（桌面版已放行私網 http）。`PUBLIC_ORIGIN`（例 `https://party.example.com`）決定邀請連結與成員 WS 的 `Origin` 比對，**不從 `Host` 標頭推**（客戶端可控，會削弱來源檢查）；沒設預設 `http://localhost:<PORT>` 並在啟動時印警告。
+
+**設定（環境變數）**：`PORT`（8787）、`HOST`（127.0.0.1，區網自用改 0.0.0.0）、`PUBLIC_ORIGIN`、`TRUST_PROXY`、`ROOM_IDLE_DAYS`（30，1–365 同 Workers）、`DB_PATH`（`./data/rooms.sqlite`）、`STATIC_DIR`（`party/dist`）。
+
+**啟動與建置**：核心是無副檔名 import，Node 型別剝除跑不了，用既有的 Vite 打包（`build.ssr`，`vite.node.config.ts`，輸出 `party/dist-node/`、gitignore），`ws` 外部化；`npm run build:node`、`npm run start:node`。不加 `tsx`。新依賴：`ws`（執行期）、`@types/ws`、`@types/node`（開發）；`engines.node >= 22.13`（`node:sqlite` 免旗標起點）。型別檢查加第三份 `tsconfig.node.json`（`types: ["node"]`，含 `server/core`＋`server/node`），`tsconfig.json` 排除 `server/node`；順帶證明核心沒漏用 Workers 型別。`typecheck` 腳本三份都跑；verify 的 party 步驟不改（它已跑 test／typecheck／build）。
+
+**與 Workers 殼的行為差異**：見協定 [§15](multiplayer-room-protocol.md)。
+
+**實作結果**：核心約 400 行（http 139、rooms 138、sqlite-store 77、main 37、Vite 設定 10），測試 205。超出估計的主要是 Sol 必改兩條（錯誤收尾、卸載工作計數）與靜態檔。實跑：Node 殼＋測試通道桌面版＋瀏覽器手機，建房、配對入座、一回合，SIGTERM 後同一 DB 重開，桌面版自動接回，手機再跑一回合（GM 串流與 NPC 接話正常）。
+
+**測試計畫**（`node/*.test.ts`，真 `ws`＋`node:sqlite` 暫存檔，port 0）
+- store：兩房互不干擾、commit 交易（events 與 state 同進同退）、`deleteAll` 只刪該房、名冊只在變更時重寫。
+- 端到端：HTTP 建房 → 執行端與成員連線 → `ev` 送出當下該列已落地 → 關伺服器、用同一 DB 重開 → 序號接續、狀態接回、舊連線補離線。
+- 鬧鐘：重開時掃描排回；超過 2³¹−1 的期限被夾住再排（注入假 `setTimeout`）。
+- 錯誤收尾：超大訊框、非法 UTF-8、畸形 `%` 路徑之後，程序仍在、另一房照常操作。
+- 卸載競態：用可控制的 await 讓舊 `Room` 停在掃描中途、連線全斷後重連，驗證不會出現第二個 runner（舊回呼醒來後仍用同一個 `Room`）。
+- 邊界：成員 `ping`→`pong` 不進核心、45 秒沒心跳被 1001；建房第 11 次 429；成員 WS 錯 `Origin` 403；超大訊框被 `ws` 擋；靜態檔 `/r/<碼>` 回 index、`/../` 穿越被擋。
+- 實跑：`npm run build && npm run build:node && npm run start:node`，桌面版測試通道連 `http://localhost:8787` 建房＋瀏覽器手機加入跑一兩回合。

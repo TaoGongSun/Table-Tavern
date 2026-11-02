@@ -8,6 +8,9 @@ src-tauri/gen/mvu-engine.js
 src-tauri/output
 # wrangler dev 的本機房間狀態（party npm run dev:server）
 .wrangler
+# Node 自架殼的打包與房間資料庫（party npm run build:node／start:node）
+party/dist-node
+party/data
 
 # .ai 交接 Markdown 要進版控（! 規則蓋過全域 gitignore 的排除）；本機狀態檔仍排除
 !.ai/

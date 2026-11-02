@@ -22,5 +22,5 @@
   },
   "include": ["server"],
   /* 這支測試引網頁版的存檔解碼（含 DOM 型別的模組），網頁版自己的 tsc 會檢查它們 */
-  "exclude": ["server/core/export.test.ts"]
+  "exclude": ["server/core/export.test.ts", "server/node"]
 }

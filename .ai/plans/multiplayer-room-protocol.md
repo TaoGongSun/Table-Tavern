@@ -656,3 +656,15 @@ interface ExecutorPort { deliver(frame: Frame): void } // v1：轉成 WebSocket 
 16. **配對碼**：可帶連字號、大小寫不分；第 5 次錯誤仍回 `E_PAIR_CODE_INVALID` 並開始鎖，之後才回 `E_PAIR_LOCKED`；已有出額度者時一般碼拒收且該碼不作廢。
 
 另：`party` 的 tsc 排除 `export.test.ts`（它引網頁版帶 DOM 型別的模組，由網頁版 tsc 檢查）；`party/package-lock.json` 由 npm 11 產生（npm 10 全新解析會崩潰，`npm ci` 讀它正常）；`wrangler` 與 `@cloudflare/workers-types` 釘在兩週以上的版本。
+
+## 15 包 7 Node 自架殼與 Workers 殼的差異（2026-11-02）
+
+殼在 `party/server/node/`，核心與協定訊息不變；以下只列平台行為差異，方案與設定見計畫 §13。
+
+1. 建房限流真實每小時 10 次；`TRUST_PROXY` 沒設且放在代理後，全部人共用一桶（啟動訊息提醒）。
+2. 單一程序、單一 DB：所有房間共用一顆 CPU；同步 SQLite 寫入期間其他房間等待（v1 規模可接受）。
+3. 成員死連線除了訊框／鬧鐘時掃，另有 15 秒全域掃描，比 DO 早發現。
+4. SIGTERM：停收新連線、全部 `ws` 以 1001 關（客戶端照既有退避重連）、等各房佇列跑完再關 DB；DO 部署重啟則是平台直接斷。
+5. 不做多程序或叢集（同一房必須落在同一程序）；水平擴充列已知限制。
+6. 成員 WS 來源只認 `PUBLIC_ORIGIN` 一個（Workers 比的是請求自己的網址）；同一台用兩個網址（例：區網 IP 與網域）開客戶端，只有設定的那個能加入。
+7. 靜態檔由 Node 自己送（Workers 用 Static Assets）：字面路徑與 realpath 後的目標都要在 `party/dist` 裡，根內指向根外的符號連結不送。
