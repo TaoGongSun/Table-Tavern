@@ -488,7 +488,10 @@ pub fn summary_messages(
         )
     };
 
-    let mut messages = vec![message("system", instruction)];
+    let mut messages = vec![message(
+        "system",
+        instruction + &summary_party_note(events, en),
+    )];
     // 摘要會變成下一幕的公開旁白、回到每個角色的上下文，只能讀角色側看得到的內容
     for line in events
         .iter()
@@ -497,6 +500,54 @@ pub fn summary_messages(
         push_merged(&mut messages, "user", line);
     }
     messages
+}
+
+/// 多人房間（multiplayer-room 包 3）：本幕是房間批次落的（有觀望／登場／離席標記，或同一個派工下有兩則玩家句）
+/// 且有兩位以上具名玩家時，要摘要逐一交代、不合稱「玩家」。一般桌（含改過名的單人玩家）回空字串，提示逐字不變。
+fn summary_party_note(events: &[TranscriptEvent], en: bool) -> String {
+    let mut actions = std::collections::HashSet::new();
+    let batched = events.iter().any(|event| {
+        use crate::data::EventMarker::*;
+        let repeated = event.kind == TranscriptKind::Player
+            && event
+                .action_id
+                .as_deref()
+                .is_some_and(|id| !actions.insert(id));
+        repeated
+            || matches!(
+                event.marker,
+                Some(
+                    PlayerWatch { .. }
+                        | PlayerArrival { .. }
+                        | PlayerToNpc { .. }
+                        | PlayerAbsent { .. }
+                )
+            )
+    });
+    if !batched {
+        return String::new();
+    }
+    let mut players: Vec<&str> = Vec::new();
+    for event in events
+        .iter()
+        .filter(|event| event.kind == TranscriptKind::Player)
+    {
+        let name = event.speaker_name.trim();
+        if !name.is_empty() && !players.contains(&name) {
+            players.push(name);
+        }
+    }
+    match (players.len() >= 2, en) {
+        (false, _) => String::new(),
+        (true, true) => format!(
+            " Several real players' characters took part in this scene: {}. Cover each of them as a separate character; never lump them together as \"the player\".",
+            players.join("、")
+        ),
+        (true, false) => format!(
+            "本場景有多位真人玩家的角色：{}；每一位都當成在場人物分別交代，不要合稱「玩家」。",
+            players.join("、")
+        ),
+    }
 }
 
 fn summary_plain_only(interface_takeover: bool, en: bool) -> &'static str {

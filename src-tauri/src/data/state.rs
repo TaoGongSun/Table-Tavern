@@ -426,6 +426,17 @@ pub struct WorldState {
     pub model_bindings: BTreeMap<String, String>,
     #[serde(default)]
     pub player_card_id: Option<String>,
+    /// 多人房間（multiplayer-room 包 3）這一回合在場的真人玩家卡，固定順序（派工 `players`）。空＝一般桌，行為與加這欄
+    /// 前相同。非空時 `player_card_id` 恆為第一張（主玩家：`{{user}}`、世界書玩家名、「玩家角色」段照舊用它），
+    /// 其餘照一般角色卡列在桌上，只是不進 GM 點名名單、改以真人玩家點名（`chat_assembly::Party`）。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub player_card_ids: Vec<String>,
+    /// 多人房間：玩家離席、房主選「標離席」的卡——照一般角色卡留在桌上，但不點名、不由角色線接話。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub absent_card_ids: Vec<String>,
+    /// 多人房間：進房前這桌的單人玩家卡，`clear_party` 退出房間時還原；房間期間它不進 NPC 點名名單。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub solo_player_card_id: Option<String>,
     #[serde(default)]
     pub current_scene: u64,
     #[serde(default)]
@@ -535,6 +546,57 @@ pub fn set_player_card(root: &Path, world_id: &str, card_id: Option<String>) -> 
             return Ok(());
         }
         state.player_card_id = card_id;
+        write_state(root, world_id, &state)
+    })
+}
+
+/// 這桌是否在多人房間裡（`set_party` 之後、`clear_party` 之前）。
+fn in_party(state: &WorldState) -> bool {
+    !state.player_card_ids.is_empty()
+        || !state.absent_card_ids.is_empty()
+        || state.solo_player_card_id.is_some()
+}
+
+/// 多人房間（multiplayer-room 包 3）：照派工換上在場真人玩家（固定順序），主玩家 `player_card_id` 跟著第一張；
+/// 進房那一次先把原本的單人玩家卡記進 `solo_player_card_id`。上一批在場、這批不在也沒標 `npc` 的，和 `absent`
+/// 一起記進離席不點名的名單（協定 §3.4 預設 absent）；回座或改當 NPC 的移出。短提交鎖內讀改寫，不碰其他欄位。
+pub fn set_party(
+    root: &Path,
+    world_id: &str,
+    players: &[String],
+    absent: &[String],
+    npc: &[String],
+) -> DataResult<()> {
+    super::state_commit::with_commit(root, world_id, |_| {
+        let mut state = read_state_cache(root, world_id)?;
+        if !in_party(&state) {
+            state.solo_player_card_id = state.player_card_id.clone();
+        }
+        let kept = |id: &String| !players.contains(id) && !npc.contains(id);
+        state.absent_card_ids.retain(kept);
+        let left = std::mem::take(&mut state.player_card_ids);
+        for id in absent.iter().chain(&left).filter(|id| kept(id)) {
+            if !state.absent_card_ids.contains(id) {
+                state.absent_card_ids.push(id.clone());
+            }
+        }
+        state.player_card_ids = players.to_vec();
+        state.player_card_id = players.first().cloned();
+        write_state(root, world_id, &state)
+    })
+}
+
+/// 多人房間退出／關房（包 2 呼叫）：還原進房前的單人玩家卡、清掉在場與離席名單，這桌回到一般單人桌。
+/// 不在房間裡就什麼都不動。
+pub fn clear_party(root: &Path, world_id: &str) -> DataResult<()> {
+    super::state_commit::with_commit(root, world_id, |_| {
+        let mut state = read_state_cache(root, world_id)?;
+        if !in_party(&state) {
+            return Ok(());
+        }
+        state.player_card_id = state.solo_player_card_id.take();
+        state.player_card_ids.clear();
+        state.absent_card_ids.clear();
         write_state(root, world_id, &state)
     })
 }

@@ -84,6 +84,10 @@ pub(crate) struct GmNarration {
     /// 剝殼前的模型原文；與 text 相同就是 None，前端照樣存進事件裡
     pub(super) raw: Option<String>,
     pub(super) next: Option<String>,
+    /// 多人房間（multiplayer-room 包 3）：GM 點名點到某位真人玩家時是那張玩家卡 id（此時 next 是玩家哨兵）；
+    /// 一般桌恆 None、不序列化，前端契約不變。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) next_player: Option<String>,
     /// 長文字欄這一輪的新值；前端接到就補一則 system 事件進 transcript。空的就不補。
     pub(super) state_updates: Vec<StateUpdate>,
     /// 這輪剛回歸（登場）的角色卡 id（AI 卡重構包 4b）；前端拿它把卡從隱藏區搬回主區。
@@ -372,12 +376,12 @@ pub(crate) async fn gm_narrate(
             );
         }
     }
-    let next =
-        chat_assembly::next_speaker(materials.takeover, &materials.cards, next_raw, player_name);
+    let (next, next_player) = chat_assembly::gm_next_speaker(&materials, next_raw);
     Ok(GmNarration {
         raw: (reply != display).then_some(reply),
         text: display,
         next,
+        next_player,
         state_updates,
         arrived_characters,
         arrived_persons,

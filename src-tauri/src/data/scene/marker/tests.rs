@@ -195,14 +195,16 @@ fn shared_dictionary_is_complete() {
     ];
     assert_eq!(dictionary.len(), langs.len());
     let keys: BTreeSet<&String> = dictionary["zh-TW"].keys().collect();
-    assert_eq!(keys.len(), 8);
+    // 多人房間（multiplayer-room 包 3）加了觀望、登場、兩種離席四個
+    assert_eq!(keys.len(), 12);
     for lang in langs {
         let entries = &dictionary[lang];
         assert_eq!(entries.keys().collect::<BTreeSet<_>>(), keys, "{lang}");
         for (key, text) in entries {
             assert!(!text.trim().is_empty(), "{lang}.{key}");
             let placeholder = match key.as_str() {
-                "card_arrival" | "card_private" | "gm_call" => Some("{name}"),
+                "card_arrival" | "card_private" | "gm_call" | "player_watch" | "player_arrival"
+                | "player_to_npc" | "player_absent" => Some("{name}"),
                 "person_arrival" => Some("{title}"),
                 _ => None,
             };

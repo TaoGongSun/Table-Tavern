@@ -60,6 +60,7 @@ pub(super) fn aborted_narration(reply: &str) -> GmNarration {
         },
         raw: None,
         next: None,
+        next_player: None,
         state_updates: Vec::new(),
         arrived_characters: Vec::new(),
         arrived_persons: Vec::new(),

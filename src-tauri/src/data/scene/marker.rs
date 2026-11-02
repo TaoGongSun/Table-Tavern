@@ -25,6 +25,22 @@ pub enum EventMarker {
     GmCall {
         name: String,
     },
+    /// 多人房間（multiplayer-room 包 3）：真人玩家這回合沒行動（跳過、逾時、房主結算）。以下四種本文都是空的。
+    PlayerWatch {
+        name: String,
+    },
+    /// 多人房間：真人玩家中途入座，這回合起在場。
+    PlayerArrival {
+        name: String,
+    },
+    /// 多人房間：真人玩家離席，角色改當 NPC（GM 可點名、角色線接話）。
+    PlayerToNpc {
+        name: String,
+    },
+    /// 多人房間：真人玩家離席，角色標離席、不點名。
+    PlayerAbsent {
+        name: String,
+    },
     #[serde(other)]
     Unknown,
 }
@@ -133,6 +149,12 @@ pub fn marker_heading(marker: &EventMarker, lang: &str) -> Option<String> {
             };
             template(lang, "gm_call", Some(("name", name)))
         }
+        EventMarker::PlayerWatch { name } => template(lang, "player_watch", Some(("name", name))),
+        EventMarker::PlayerArrival { name } => {
+            template(lang, "player_arrival", Some(("name", name)))
+        }
+        EventMarker::PlayerToNpc { name } => template(lang, "player_to_npc", Some(("name", name))),
+        EventMarker::PlayerAbsent { name } => template(lang, "player_absent", Some(("name", name))),
         EventMarker::Unknown => return None,
     })
 }

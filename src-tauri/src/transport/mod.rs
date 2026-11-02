@@ -65,8 +65,8 @@ pub use response::card_format_instruction;
 pub use response::{
     card_format_turn, extract_next_speaker, extract_scene_title, extract_state_block, gm_closing,
     gm_turn_format, narrate_instruction, narration_closing_with_updates, narration_update_note,
-    parse_indented_fields, pick_speaker, summary_closing, takeover_instruction, GmTurnFormat,
-    StateBlock,
+    parse_indented_fields, party_instruction, pick_speaker, summary_closing, takeover_instruction,
+    GmTurnFormat, StateBlock,
 };
 pub(crate) use runaway::{runaway_message, LINE_CAP_BYTES, RUNAWAY_CODE};
 pub use runaway::{RunawayGuard, RunawayPolicy, RunawayReason};

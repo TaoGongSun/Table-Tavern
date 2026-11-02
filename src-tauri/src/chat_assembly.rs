@@ -30,6 +30,48 @@ pub(crate) struct GmMaterials {
     pub opening: transport::GmOpening,
     /// 卡片 promptOnly 正則（送模型的歷史副本套用；`prompt_regex`）
     pub prompt_regex: transport::PromptRegex,
+    /// 多人房間的真人玩家（multiplayer-room 包 3）；一般桌是空的
+    pub party: Party,
+}
+
+/// 多人房間的真人玩家（multiplayer-room 包 3，來源 `WorldState::player_card_ids`／`absent_card_ids`）：
+/// 在場的照固定順序帶 (卡 id, 卡名)，離席不點名的只帶 id。一般桌兩者皆空，點名與提示照舊。
+#[derive(Clone, Default)]
+pub(crate) struct Party {
+    pub present: Vec<(String, String)>,
+    pub absent: Vec<String>,
+}
+
+impl Party {
+    pub(crate) fn load(root: &std::path::Path, world_id: &str, state: &data::WorldState) -> Party {
+        Party {
+            present: state
+                .player_card_ids
+                .iter()
+                .filter_map(|id| {
+                    let card = data::read_character(root, world_id, id).ok()?;
+                    Some((id.clone(), card.name))
+                })
+                .collect(),
+            // 進房前的單人玩家卡沒被認領時也不點名（退出房間會還原成玩家卡）
+            absent: state
+                .absent_card_ids
+                .iter()
+                .chain(&state.solo_player_card_id)
+                .filter(|id| !state.player_card_ids.contains(id))
+                .cloned()
+                .collect(),
+        }
+    }
+
+    pub(crate) fn names(&self) -> Vec<String> {
+        self.present.iter().map(|(_, name)| name.clone()).collect()
+    }
+
+    /// 不進 NPC 點名名單的卡：在場真人玩家與離席不點名的
+    fn holds(&self, id: &str) -> bool {
+        self.present.iter().any(|(player, _)| player == id) || self.absent.iter().any(|a| a == id)
+    }
 }
 
 /// 這一桌送進提示詞的卡（發言角色＋舞台卡；不含封存、自動隱藏），照 `prompt_card` 整理成送進提示詞的樣子。
@@ -146,6 +188,7 @@ pub(crate) fn sole_card_name(
 
 pub(crate) fn gm_materials(root: &std::path::Path, world_id: &str) -> Result<GmMaterials, String> {
     let mut state = data::read_state(root, world_id).map_err(|error| error.to_string())?;
+    let party = Party::load(root, world_id, &state);
     // 數字欄更新策略算這一次：提示詞與這一輪的提交（turn.commit）都用這一份
     state.mechanism.numeric_update = mechanism::resolve_numeric_update(root, world_id, &state);
     let events = data::read_transcript(root, world_id, state.current_scene)
@@ -169,6 +212,7 @@ pub(crate) fn gm_materials(root: &std::path::Path, world_id: &str) -> Result<GmM
         metas: data::list_characters(root, world_id).map_err(|error| error.to_string())?,
         player: data::read_player_card(root, world_id).map_err(|error| error.to_string())?,
         takeover,
+        party,
     })
 }
 
@@ -230,6 +274,50 @@ pub(crate) fn next_speaker(
     speakers(cards)
         .find(|card| card.name == picked)
         .map(|card| card.id.clone())
+}
+
+/// GM 點名對回（旁白回合用）：(前端的 next＝角色 id 或玩家哨兵, 多人桌點到的那位真人玩家卡 id)。
+/// 一般桌就是 `next_speaker`、第二格恆 None。多人桌候選＝NPC（不含真人玩家與離席卡）＋在場玩家名，
+/// 點到玩家名或哨兵都回哨兵（前端照舊停下），寫了名字的另帶卡 id 給房間決定下一回合。
+pub(crate) fn gm_next_speaker(
+    materials: &GmMaterials,
+    next_raw: Option<String>,
+) -> (Option<String>, Option<String>) {
+    let party = &materials.party;
+    if party.present.is_empty() && party.absent.is_empty() {
+        let player = materials.player.as_ref().map(|card| card.name.as_str());
+        let next = next_speaker(materials.takeover, &materials.cards, next_raw, player);
+        return (next, None);
+    }
+    let roster = call_roster(materials);
+    let picked = match (materials.takeover, next_raw) {
+        (false, Some(raw)) => transport::pick_speaker(&raw, &roster, None),
+        _ => None,
+    };
+    let Some(picked) = picked else {
+        return (None, None);
+    };
+    if let Some(card) = npcs(materials).find(|card| card.name == picked) {
+        return (Some(card.id.clone()), None);
+    }
+    let player = party.present.iter().find(|(_, name)| *name == picked);
+    (
+        Some(transport::PLAYER_SENTINEL.to_owned()),
+        player.map(|(id, _)| id.clone()),
+    )
+}
+
+/// 能被點名的 NPC：發言角色扣掉多人房間的真人玩家與離席卡（一般桌就是 `speakers`）。
+fn npcs(materials: &GmMaterials) -> impl Iterator<Item = &data::CharacterCard> {
+    speakers(&materials.cards).filter(|card| !materials.party.holds(&card.id))
+}
+
+/// GM 導演指示的「下一位」名單：NPC 在前、在場真人玩家在後（一般桌＝`speaker_roster`）。
+fn call_roster(materials: &GmMaterials) -> Vec<String> {
+    npcs(materials)
+        .map(|card| card.name.clone())
+        .chain(materials.party.names())
+        .collect()
 }
 
 /// GM 視角掃一次世界書（方案三之 2）並代換組裝文字（三之 7）。`events` 是要掃的本幕事件（量測的固定部分傳
@@ -380,11 +468,12 @@ pub(crate) fn gm_turn_instruction(
     lang: &str,
 ) -> (transport::ChatMessage, &'static str) {
     let card_scripts: Vec<import::InterfaceScript> = import::reply_format_scripts(root, world_id);
-    match transport::gm_turn_format(
+    let format = transport::gm_turn_format(
         !card_scripts.is_empty(),
         materials.takeover,
         materials.state.refactor_mode.as_deref(),
-    ) {
+    );
+    let (mut instruction, closing) = match format {
         transport::GmTurnFormat::CardFormat | transport::GmTurnFormat::CardFormatAbsent => {
             // 只點名全文真的進得了本輪提示的格式條目；找不到就用中性版（指示與收尾句同一判定）
             let prompt_entries = transport::gm_prompt_full_entries(scan, &materials.events);
@@ -413,7 +502,15 @@ pub(crate) fn gm_turn_instruction(
             };
             (instruction_message, closing)
         }
-    }
+    };
+    // 多人房間：在場真人玩家與本回合行動（一般桌是空字串）
+    let call = format == transport::GmTurnFormat::Narration && !roster.is_empty();
+    instruction.content.push_str(&transport::party_instruction(
+        lang,
+        &materials.party.names(),
+        call,
+    ));
+    (instruction, closing)
 }
 
 /// GM 回合的指示與收尾（含名冊與玩家名，旁白與推進共用）。
@@ -424,8 +521,12 @@ pub(crate) fn gm_instruction(
     scan: &WorldScan,
     lang: &str,
 ) -> (transport::ChatMessage, &'static str) {
-    let roster = speaker_roster(&materials.cards);
-    let player_name = materials.player.as_ref().map(|card| card.name.as_str());
+    let roster = call_roster(materials);
+    // 多人桌的玩家名已在名單裡、以名字點名；「玩家（某某）」只留給一般桌
+    let player_name = match materials.party.present.is_empty() {
+        true => materials.player.as_ref().map(|card| card.name.as_str()),
+        false => None,
+    };
     gm_turn_instruction(root, world_id, materials, scan, &roster, player_name, lang)
 }
 
