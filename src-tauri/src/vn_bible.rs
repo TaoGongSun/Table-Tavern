@@ -13,16 +13,19 @@ pub const PLAYED: &str = "VN_BIBLE_PLAYED";
 /// 解析重試一次仍失敗。
 pub const FAILED: &str = "VN_BIBLE_FAILED";
 pub const NO_BIBLE: &str = "VN_BIBLE_MISSING";
+/// VN 卡鎖住章數：劇本分頁存檔不收章數變更。
+pub const CHAPTER_LOCKED: &str = "VN_CHAPTER_LOCKED";
 
 fn text<E: std::fmt::Display>(error: E) -> String {
     error.to_string()
 }
 
-/// 生成與重骰的素材：world.md、送進提示詞的卡（含私設）、GM-only 世界書條目。
+/// 生成與重骰的素材：world.md、送進提示詞的卡（含私設）、GM-only 世界書條目、玩家卡（卡定主角桌的主角）。
 struct Materials {
     world_md: String,
     cards: Vec<data::CharacterCard>,
     gm_entries: Vec<(String, String)>,
+    player: Option<data::CharacterCard>,
 }
 
 impl Materials {
@@ -37,6 +40,7 @@ impl Materials {
             world_md: data::read_world_md(root, world_id).map_err(text)?,
             cards: crate::chat_assembly::active_cards(root, world_id)?,
             gm_entries,
+            player: data::read_player_card(root, world_id).map_err(text)?,
         })
     }
 
@@ -60,9 +64,11 @@ impl Materials {
         }
     }
 
+    /// 正規化對秘密持有者用的名單：登場角色＋玩家卡（卡定主角也可以持有秘密）。
     fn cast(&self) -> Vec<(String, String)> {
         self.cards
             .iter()
+            .chain(self.player.as_ref())
             .map(|card| (card.id.clone(), card.name.clone()))
             .collect()
     }
@@ -107,11 +113,27 @@ pub(crate) async fn generate(
 ) -> Result<(), String> {
     data::state_commit::with_commit(root, world_id, |tx| vn::create_if_missing(tx, spoiler_lock))
         .map_err(text)?;
+    // VN 卡建的桌（卡上有聖經）：重骰改成恢復卡內原版（§2.4），不呼叫模型
+    let card = vn::read_vn(root, world_id).map_err(text)?.card;
+    if card.is_some_and(|card| card.original_bible.is_some()) {
+        return restore_original(root, world_id);
+    }
     refuse_if_played(root, world_id)?;
     let materials = Materials::load(root, world_id)?;
     let messages = prompts::bible_messages(&materials.source(), lang);
     let bible = call_parsed(caller, messages, prompts::parse_bible_reply).await?;
     install(root, world_id, &materials.cast(), None, |_| Ok(bible))
+}
+
+/// 恢復卡內原版：走同一支套用函式（鎖內重驗未遊玩，聖經、狀態初值、機制規則、快照一起同步）。
+pub(crate) fn restore_original(root: &Path, world_id: &str) -> Result<(), String> {
+    let original = vn::read_vn(root, world_id)
+        .map_err(text)?
+        .card
+        .and_then(|card| card.original_bible)
+        .ok_or(NO_BIBLE)?;
+    let cast = Materials::load(root, world_id)?.cast();
+    install(root, world_id, &cast, None, |_| Ok(original))
 }
 
 /// 角色秘密重骰：只換這個角色的私設與 holder 是他的秘密，聖經其餘不動（鎖內以最新的聖經合併）。
@@ -153,8 +175,8 @@ pub(crate) async fn reroll_secrets(
 /// 套用聖經（整份生成、整份重骰、角色秘密重骰共用）：同一把短提交鎖內依序做——重驗未遊玩 → state.json
 /// （規則、`flags`／`revealed` 子樹、incremental）→ 私設 → vn.json（bible、frozen）。state.json 先寫：中途失敗
 /// 只會剩「有規則沒聖經」，下次套用整批換掉；反過來會剩聖經在、規則缺，補種只補樹不補規則，合法值檢查就失效。
-/// `build` 拿鎖內重讀的最新聖經產生要套用的那份（之後統一正規化）。
-fn install(
+/// `build` 拿鎖內重讀的最新聖經產生要套用的那份（之後統一正規化）。VN 卡匯入建桌在新桌獨占內也走這支。
+pub(crate) fn install(
     root: &Path,
     world_id: &str,
     cast: &[(String, String)],
@@ -233,21 +255,27 @@ fn chapter_of(tree: &BTreeMap<String, StateNode>) -> u32 {
     }
 }
 
-/// GM 回合的聖經輸入：注入用的凍結副本，與補種用的初值表（照目前的聖經，跟規則同一份）。
+/// GM 回合的 VN 輸入：注入用的凍結聖經、補種用的初值表（照目前的聖經，跟規則同一份）、VN 卡原件。
+#[derive(Default)]
+pub(crate) struct TurnInputs {
+    pub frozen: Option<Frozen>,
+    pub seeds: Vec<(Vec<String>, String)>,
+    pub card: Option<vn::CardOrigin>,
+}
+
 /// 凍結副本沒有或幕號不符就把當前聖經與章號抄進去寫回（鎖內重讀，與劇本分頁存檔互斥）——幕中改聖經
 /// 不動 system，下一幕生效。讀寫失敗當沒有聖經，不擋回合。
-pub(crate) fn turn_inputs(
-    root: &Path,
-    world_id: &str,
-    state: &data::WorldState,
-) -> (Option<Frozen>, Vec<(Vec<String>, String)>) {
+pub(crate) fn turn_inputs(root: &Path, world_id: &str, state: &data::WorldState) -> TurnInputs {
     if state.table_kind != data::TableKind::Vn {
-        return (None, Vec::new());
+        return TurnInputs::default();
     }
     let result = data::state_commit::with_commit(root, world_id, |tx| {
         let file = vn::read_vn(root, world_id)?;
         let Some(bible) = file.bible else {
-            return Ok((None, Vec::new()));
+            return Ok(TurnInputs {
+                card: file.card,
+                ..TurnInputs::default()
+            });
         };
         let seeds = bible.seeds();
         let frozen = match file.frozen {
@@ -262,19 +290,29 @@ pub(crate) fn turn_inputs(
                 frozen
             }
         };
-        data::DataResult::Ok((Some(frozen), seeds))
+        data::DataResult::Ok(TurnInputs {
+            frozen: Some(frozen),
+            seeds,
+            card: file.card,
+        })
     });
     result.unwrap_or_else(|error| {
         log::warn!("VN 聖經讀寫失敗，這一輪不注入：{error}");
-        (None, Vec::new())
+        TurnInputs::default()
     })
 }
 
 /// GM system 附加段：常駐段＋當章包（章號取凍結時的章）。
-pub(crate) fn injection(lang: &str, frozen: &Frozen, cards: &[data::CharacterCard]) -> String {
+pub(crate) fn injection(
+    lang: &str,
+    frozen: &Frozen,
+    cards: &[data::CharacterCard],
+    player: Option<&data::CharacterCard>,
+) -> String {
     let names = |id: &str| {
         cards
             .iter()
+            .chain(player)
             .find(|card| card.id == id)
             .map_or_else(|| id.to_owned(), |card| card.name.clone())
     };
@@ -292,6 +330,10 @@ pub(crate) fn save(root: &Path, world_id: &str, edited: Bible) -> Result<(), Str
             .map_err(text)?
             .bible
             .ok_or(NO_BIBLE)?;
+        // 章數鎖以鎖內讀到的檔為準；請求帶的 chapter_lock 一律不收
+        if bible.chapter_lock && edited.chapter_max != bible.chapter_max {
+            return Err(CHAPTER_LOCKED.to_owned());
+        }
         let old_max = bible.chapter_max;
         bible.logline = edited.logline;
         bible.style = edited.style;

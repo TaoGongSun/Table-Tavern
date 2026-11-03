@@ -3,6 +3,7 @@
 use super::gm_reply::partial_display;
 use crate::{data, transport};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// 每則事件最多幾個演出指令（超出的清掉，只在落檔版套）
 const DIRECTIVE_CAP: usize = 2;
@@ -74,27 +75,58 @@ pub(crate) enum VnSource {
 }
 
 /// 解析用的名單：角色 (id, 名字) 與玩家名。用「現在的名單」對名字（改名後舊對白對不到 id，已知限制）。
+/// VN 卡桌另帶每角色宣告的額外表情鍵與卡內地點（plans/vn-mode-pkg9b.md §2.3、§2.5）。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct VnRoster {
     pub characters: Vec<(String, String)>,
     pub player: Option<String>,
+    /// 角色 id → 卡宣告的額外表情鍵
+    pub expressions: BTreeMap<String, Vec<String>>,
+    pub places: crate::vn_backgrounds::Places,
 }
 
 impl VnRoster {
-    pub(crate) fn new(metas: &[data::CharacterMeta], player: Option<&data::CharacterCard>) -> Self {
+    pub(crate) fn new(
+        metas: &[data::CharacterMeta],
+        player: Option<&data::CharacterCard>,
+        card: Option<&data::vn::CardOrigin>,
+    ) -> Self {
         Self {
             characters: metas
                 .iter()
                 .map(|meta| (meta.id.clone(), meta.name.clone()))
                 .collect(),
             player: player.map(|card| card.name.clone()),
+            expressions: card
+                .map(|card| {
+                    card.cast
+                        .iter()
+                        .map(|(id, cast)| (id.clone(), cast.art.expression_keys()))
+                        .filter(|(_, keys)| !keys.is_empty())
+                        .collect()
+                })
+                .unwrap_or_default(),
+            places: crate::vn_backgrounds::Places::of(card),
         }
     }
 
-    pub(crate) fn load(root: &std::path::Path, world_id: &str) -> Result<Self, String> {
+    /// `card`＝呼叫端已讀的 VN 卡原件（沒讀過就給 `data::vn::read_card`）
+    pub(crate) fn load(
+        root: &std::path::Path,
+        world_id: &str,
+        card: Option<&data::vn::CardOrigin>,
+    ) -> Result<Self, String> {
         let metas = data::list_characters(root, world_id).map_err(|error| error.to_string())?;
         let player = data::read_player_card(root, world_id).map_err(|error| error.to_string())?;
-        Ok(Self::new(&metas, player.as_ref()))
+        Ok(Self::new(&metas, player.as_ref(), card))
+    }
+
+    /// 固定五鍵，或說話者卡上宣告的額外鍵
+    fn knows_expression(&self, speaker: Option<&str>, expression: &str) -> bool {
+        transport::VN_EXPRESSIONS.contains(&expression)
+            || speaker
+                .and_then(|id| self.expressions.get(id))
+                .is_some_and(|keys| keys.iter().any(|key| key == expression))
     }
 
     fn id_of(&self, name: &str) -> Option<String> {
@@ -248,14 +280,14 @@ fn dialogue(line: &str, roster: &VnRoster) -> Option<VnCell> {
     };
     // 括號第一格就是指令（`(closeup)`）也收
     let directive = directive(expression).or_else(|| parts.find_map(directive));
-    let expression = expression.trim().to_ascii_lowercase();
+    let expression = match expression.trim().to_ascii_lowercase() {
+        expression if roster.knows_expression(speaker_id.as_deref(), &expression) => expression,
+        _ => "neutral".to_owned(),
+    };
     Some(VnCell::Dialogue {
         speaker_id,
         speaker_name: name.to_owned(),
-        expression: match transport::VN_EXPRESSIONS.contains(&expression.as_str()) {
-            true => expression,
-            false => "neutral".to_owned(),
-        },
+        expression,
         variant: variant
             .filter(|variant| !variant.is_empty())
             .map(str::to_owned),
@@ -302,15 +334,16 @@ fn parse_cells(text: &str, source: &VnSource, roster: &VnRoster) -> Vec<VnCell> 
         if let Some(marker) = marker(line) {
             flush(&mut narration, &mut cells);
             match marker {
-                Marker::Bg { location, time } => cells.push(VnCell::Bg {
-                    slug: crate::vn_backgrounds::slug_of(&location),
-                    period: time
-                        .as_deref()
-                        .and_then(crate::vn_backgrounds::period_of)
-                        .map(str::to_owned),
-                    location,
-                    time,
-                }),
+                Marker::Bg { location, time } => {
+                    // 卡地點換成卡上的名稱與 slug；時段只認明寫且在該地點清單內的（沿用由 resolve_scene 補）
+                    let located = roster.places.locate(&location);
+                    cells.push(VnCell::Bg {
+                        period: time.as_deref().and_then(|time| located.period_for(time)),
+                        slug: located.slug,
+                        location: located.name,
+                        time,
+                    })
+                }
                 Marker::Choices => choices = Some(Vec::new()),
                 Marker::Chapter => cells.push(VnCell::Chapter),
                 Marker::Ending(id) => cells.push(VnCell::Ending { id }),
@@ -393,11 +426,10 @@ pub(crate) fn read_scene(
     world_id: &str,
     scene: u64,
 ) -> Result<(Vec<VnEventCells>, Vec<crate::vn_backgrounds::Backdrop>), String> {
-    let roster = VnRoster::load(root, world_id)?;
+    let file = data::vn::read_vn(root, world_id).ok();
+    let (bible, card) = file.map_or((None, None), |file| (file.bible, file.card));
+    let roster = VnRoster::load(root, world_id, card.as_ref())?;
     let events = data::read_transcript(root, world_id, scene).map_err(|error| error.to_string())?;
-    let bible = data::vn::read_vn(root, world_id)
-        .ok()
-        .and_then(|file| file.bible);
     let start = events
         .first()
         .and_then(|event| event.state.as_ref())
@@ -440,8 +472,11 @@ pub(crate) fn read_scene(
     let start = start
         .as_ref()
         .map(|(place, time)| (place.as_str(), time.as_deref()));
-    let used =
-        crate::vn_backgrounds::resolve_scene(cells.iter_mut().map(|event| &mut event.cells), start);
+    let used = crate::vn_backgrounds::resolve_scene(
+        cells.iter_mut().map(|event| &mut event.cells),
+        start,
+        &roster.places,
+    );
     Ok((cells, used))
 }
 

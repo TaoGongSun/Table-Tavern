@@ -226,32 +226,32 @@ pub fn materialize(
         )?;
     }
     if !expanded.opening.trim().is_empty() {
-        data::append_transcript(
-            root,
-            &world_id,
-            0,
-            &TranscriptEvent {
-                id: None,
-                message_vars: None,
-                vars_rev: None,
-                vars_epoch: None,
-                turn_key: None,
-                action_id: None,
-                raw: None,
-                ts: "2026-07-20T00:00:00+08:00".to_owned(),
-                speaker_id: String::new(),
-                speaker_name: "GM".to_owned(),
-                kind: TranscriptKind::Narration,
-                text: expanded.opening.clone(),
-                state: None,
-                truncated: false,
-                gm_only: false,
-                marker: None,
-                opening: true,
-            },
-        )?;
+        data::append_transcript(root, &world_id, 0, &opening_event(&expanded.opening))?;
     }
     Ok(world_id)
+}
+
+/// 開場旁白事件（`opening: true`）：genesis 建桌與 VN 卡匯入共用。
+pub fn opening_event(text: &str) -> TranscriptEvent {
+    TranscriptEvent {
+        id: None,
+        message_vars: None,
+        vars_rev: None,
+        vars_epoch: None,
+        turn_key: None,
+        action_id: None,
+        raw: None,
+        ts: "2026-07-20T00:00:00+08:00".to_owned(),
+        speaker_id: String::new(),
+        speaker_name: "GM".to_owned(),
+        kind: TranscriptKind::Narration,
+        text: text.to_owned(),
+        state: None,
+        truncated: false,
+        gm_only: false,
+        marker: None,
+        opening: true,
+    }
 }
 
 fn genre_line(genres: &[String]) -> String {

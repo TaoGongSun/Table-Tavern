@@ -120,11 +120,16 @@ pub(crate) async fn chat_with_character(
     // 模型照歷史格式自加的本輪「名字：」：畫面串流、落檔與 lane 預期回聲都剝掉（char-line-prefix）。
     // VN 桌不剝（空字串）：`名字: 「台詞」` 本身就是對白行，歷史也不加前綴
     let vn = chat_assembly::vn_table(&state);
+    // 立繪變體（卡宣告∪已生成）＋這位角色自己的專屬表情（角色線只列自己的）
     let variant_note = match vn {
-        true => transport::vn_variant_note(
-            &lang,
-            &crate::vn_sprites::variant_roster(&root, &world_id, &cards),
-        ),
+        true => {
+            let origin = data::vn::read_card(&root, &world_id);
+            let own =
+                crate::vn_sprites::expression_roster(std::slice::from_ref(&card), origin.as_ref());
+            let roster =
+                crate::vn_sprites::variant_roster(&root, &world_id, &cards, origin.as_ref());
+            transport::vn_variant_note(&lang, &roster) + &transport::expression_note(&lang, &own)
+        }
         false => String::new(),
     };
     let own_prefix = match vn {

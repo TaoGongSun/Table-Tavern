@@ -1,6 +1,6 @@
 //! VN 背景庫（plans/vn-mode-pkg3.md）的 Tauri 邊界：排入這幕缺的背景、讀圖、狀態、重生成。
 use crate::generated_image::png_data_url;
-use crate::vn_backgrounds::{self, Backdrop, Library};
+use crate::vn_backgrounds::{self, Backdrop, Library, Places};
 use crate::vn_sprites::queue::{self, BackgroundStatus, BgSlot};
 use crate::{chat_turn, data, data_root};
 
@@ -33,12 +33,17 @@ pub(crate) fn vn_background_read(
     slug: String,
     period: String,
 ) -> Result<Option<String>, String> {
-    let period = vn_backgrounds::known_period(&period).ok_or("VN_BACKGROUND_KEY")?;
-    if !vn_backgrounds::valid_slug(&slug) {
+    let root = data_root(&app)?;
+    // 時段要在這個 slug 對應地點的有效清單內（卡地點用卡上的時段鍵）
+    if !vn_backgrounds::valid_slug(&slug)
+        || !Places::load(&root, &world_id)
+            .periods(&slug)
+            .contains(&period)
+    {
         return Err("VN_BACKGROUND_KEY".to_owned());
     }
-    let library = Library::of(&data_root(&app)?, &world_id)?;
-    Ok(library.read(&slug, period).map(|png| png_data_url(&png)))
+    let library = Library::of(&root, &world_id)?;
+    Ok(library.read(&slug, &period).map(|png| png_data_url(&png)))
 }
 
 #[tauri::command]
@@ -54,12 +59,18 @@ pub(crate) fn vn_background_regenerate(
     location: String,
     period: String,
 ) -> Result<(), String> {
-    let period = vn_backgrounds::known_period(&period).ok_or("VN_BACKGROUND_KEY")?;
-    if location.trim().is_empty() {
+    let root = data_root(&app)?;
+    data::read_state(&root, &world_id).map_err(|error| error.to_string())?;
+    let backdrop = Backdrop::new(
+        &location,
+        None,
+        Some(&period),
+        &Places::load(&root, &world_id),
+    );
+    // 時段不在該地點的有效清單內會被換成清單第一項：當成壞鍵拒收
+    if location.trim().is_empty() || backdrop.period != period {
         return Err("VN_BACKGROUND_KEY".to_owned());
     }
-    data::read_state(&data_root(&app)?, &world_id).map_err(|error| error.to_string())?;
-    let backdrop = Backdrop::new(&location, None, Some(period));
     queue::regenerate_background(&app, BgSlot::new(&world_id, backdrop, true));
     Ok(())
 }

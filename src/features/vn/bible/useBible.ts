@@ -56,11 +56,12 @@ export function useBible(worldId: string) {
   };
 }
 
-/** 後端聖經錯誤碼 → i18n 鍵（`vn_bible.rs` 的 PLAYED／FAILED） */
+/** 後端聖經錯誤碼 → i18n 鍵（`vn_bible.rs` 的 PLAYED／FAILED／MISSING／CHAPTER_LOCKED） */
 export function bibleErrorKey(
   reason: unknown,
-): "vnBiblePlayed" | "vnBibleFailed" | "vnBibleMissing" | null {
+): "vnBiblePlayed" | "vnBibleFailed" | "vnBibleMissing" | "vnChapterLocked" | null {
   const text = String(reason);
+  if (text.includes("VN_CHAPTER_LOCKED")) return "vnChapterLocked";
   if (text.includes("VN_BIBLE_PLAYED")) return "vnBiblePlayed";
   if (text.includes("VN_BIBLE_FAILED")) return "vnBibleFailed";
   if (text.includes("VN_BIBLE_MISSING")) return "vnBibleMissing";

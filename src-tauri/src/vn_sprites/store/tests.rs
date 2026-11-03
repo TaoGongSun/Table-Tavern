@@ -52,8 +52,9 @@ const FACE: FaceBox = FaceBox {
 fn install_base_writes_meta_and_reports_missing_faces() {
     let fx = Fixture::new();
     let dir = fx.dir();
-    assert!(dir.read().is_none() && dir.missing_faces().is_empty());
-    dir.install_base(&png(100, 150), FACE, false).unwrap();
+    assert!(dir.read().is_none() && dir.missing_faces(&faces()).is_empty());
+    dir.install_base(&png(100, 150), FACE, false, &faces())
+        .unwrap();
     let Loaded { meta, size, .. } = dir.read().unwrap();
     assert_eq!(size, (100, 150));
     assert_eq!(
@@ -65,8 +66,9 @@ fn install_base_writes_meta_and_reports_missing_faces() {
     dir.write_face(None, "happy", &png(40, 40)).unwrap();
     assert_eq!(base_missing(&dir), ["sad", "angry", "surprised"]);
     // 換定稿：舊臉層全部作廢
-    dir.install_base(&png(100, 150), FACE, false).unwrap();
-    assert_eq!(dir.missing_faces().len(), 4);
+    dir.install_base(&png(100, 150), FACE, false, &faces())
+        .unwrap();
+    assert_eq!(dir.missing_faces(&faces()).len(), 4);
 }
 
 /// 寫回前重驗：改框、重骰（修訂號）、換定稿後，舊工作的結果都丟掉
@@ -74,14 +76,16 @@ fn install_base_writes_meta_and_reports_missing_faces() {
 fn stale_face_job_is_discarded() {
     let fx = Fixture::new();
     let dir = fx.dir();
-    dir.install_base(&png(100, 150), FACE, false).unwrap();
+    dir.install_base(&png(100, 150), FACE, false, &faces())
+        .unwrap();
     let (fresh, _) = dir.snapshot(None, "sad").unwrap();
     assert!(dir
         .write_face_if_current(None, "sad", &fresh, &png(40, 40))
         .unwrap());
 
     let (before_move, _) = dir.snapshot(None, "happy").unwrap();
-    dir.set_face(None, FaceBox { x: 20, ..FACE }).unwrap();
+    dir.set_face(None, FaceBox { x: 20, ..FACE }, &faces())
+        .unwrap();
     assert!(!dir
         .write_face_if_current(None, "happy", &before_move, &png(40, 40))
         .unwrap());
@@ -94,7 +98,8 @@ fn stale_face_job_is_discarded() {
         .unwrap());
 
     let (before_upload, _) = dir.snapshot(None, "surprised").unwrap();
-    dir.install_base(&png(100, 150), FACE, false).unwrap();
+    dir.install_base(&png(100, 150), FACE, false, &faces())
+        .unwrap();
     assert!(!dir
         .write_face_if_current(None, "surprised", &before_upload, &png(40, 40))
         .unwrap());
@@ -105,9 +110,13 @@ fn stale_face_job_is_discarded() {
 fn set_face_rejects_out_of_range() {
     let fx = Fixture::new();
     let dir = fx.dir();
-    dir.install_base(&png(100, 150), FACE, true).unwrap();
-    assert!(dir.set_face(None, FaceBox { x: 80, ..FACE }).is_err());
-    dir.set_face(None, FaceBox { x: 60, ..FACE }).unwrap();
+    dir.install_base(&png(100, 150), FACE, true, &faces())
+        .unwrap();
+    assert!(dir
+        .set_face(None, FaceBox { x: 80, ..FACE }, &faces())
+        .is_err());
+    dir.set_face(None, FaceBox { x: 60, ..FACE }, &faces())
+        .unwrap();
     assert!(!dir.read().unwrap().meta.face_fallback);
 }
 
@@ -116,7 +125,8 @@ fn set_face_rejects_out_of_range() {
 fn loaded_meta_is_validated() {
     let fx = Fixture::new();
     let dir = fx.dir();
-    dir.install_base(&png(100, 150), FACE, false).unwrap();
+    dir.install_base(&png(100, 150), FACE, false, &faces())
+        .unwrap();
     let raw = serde_json::json!({
         "version": 1,
         "face": {"x": 90, "y": 0, "w": 40, "h": 40},
@@ -153,8 +163,12 @@ fn candidates_are_capped_and_names_checked() {
     assert!(dir.candidate_bytes("../sprite.json").is_err());
 }
 
-fn base_missing(dir: &SpriteDir) -> Vec<&'static str> {
-    dir.missing_faces()
+fn faces() -> Vec<String> {
+    face_keys(&[])
+}
+
+fn base_missing(dir: &SpriteDir) -> Vec<String> {
+    dir.missing_faces(&faces())
         .into_iter()
         .map(|(set, expression)| {
             assert!(set.is_none());
@@ -168,17 +182,18 @@ fn base_missing(dir: &SpriteDir) -> Vec<&'static str> {
 fn variants_track_their_own_face_sets() {
     let fx = Fixture::new();
     let dir = fx.dir();
-    dir.install_base(&png(100, 150), FACE, false).unwrap();
-    dir.install_variant("v1", "Armor", &png(100, 150), None)
+    dir.install_base(&png(100, 150), FACE, false, &faces())
         .unwrap();
-    dir.install_variant("v2", "泳裝", &png(80, 160), Some(FACE))
+    dir.install_variant("v1", "Armor", &png(100, 150), None, &faces())
+        .unwrap();
+    dir.install_variant("v2", "泳裝", &png(80, 160), Some(FACE), &faces())
         .unwrap();
     assert!(dir
-        .install_variant("base", "x", &png(10, 10), None)
+        .install_variant("base", "x", &png(10, 10), None, &faces())
         .is_err());
     assert_eq!(dir.variant_labels(), ["Armor", "泳裝"]);
     let own: Vec<_> = dir
-        .missing_faces()
+        .missing_faces(&faces())
         .into_iter()
         .filter(|(set, _)| set.is_some())
         .collect();
@@ -193,18 +208,23 @@ fn variants_track_their_own_face_sets() {
     dir.write_face(Some("v2"), "sad", &png(40, 40)).unwrap();
     assert!(dir.face_path(Some("v2"), "sad").is_file() && !dir.face_path(None, "sad").exists());
     assert!(
-        dir.set_face(Some("v2"), FaceBox { x: 60, ..FACE }).is_err(),
+        dir.set_face(Some("v2"), FaceBox { x: 60, ..FACE }, &faces())
+            .is_err(),
         "框超出變體圖"
     );
-    dir.set_face(Some("v2"), FaceBox { x: 10, ..FACE }).unwrap();
+    dir.set_face(Some("v2"), FaceBox { x: 10, ..FACE }, &faces())
+        .unwrap();
     assert!(!dir.face_path(Some("v2"), "sad").exists());
     assert!(!dir
         .write_face_if_current(Some("v2"), "sad", &started, &png(40, 40))
         .unwrap());
-    dir.remove_variant("v2").unwrap();
+    dir.remove_variant("v2", &faces()).unwrap();
     assert_eq!(dir.variant_labels(), ["Armor"]);
-    assert!(dir.missing_faces().iter().all(|(set, _)| set.is_none()));
-    assert_eq!(dir.read().unwrap().meta.next_variant_key(), "v2");
+    assert!(dir
+        .missing_faces(&faces())
+        .iter()
+        .all(|(set, _)| set.is_none()));
+    assert_eq!(dir.read().unwrap().meta.next_variant_key(&[]), "v2");
 }
 
 /// 鍵帶 `../` 時路徑不得跳出立繪資料夾：拒收，外面的檔不會被刪
@@ -212,15 +232,18 @@ fn variants_track_their_own_face_sets() {
 fn traversal_keys_never_leave_the_sprite_folder() {
     let fx = Fixture::new();
     let dir = fx.dir();
-    dir.install_base(&png(100, 150), FACE, false).unwrap();
+    dir.install_base(&png(100, 150), FACE, false, &faces())
+        .unwrap();
     let outside = fx.root.join("outside.png");
     std::fs::write(&outside, b"keep").unwrap();
     for key in ["../../../outside", "../x", "a/../../b"] {
         assert!(dir.drop_face(Some(key), "sad").is_err());
-        assert!(dir.set_face(Some(key), FACE).is_err());
+        assert!(dir.set_face(Some(key), FACE, &faces()).is_err());
         assert!(dir.write_face(Some(key), "sad", &png(4, 4)).is_err());
-        assert!(dir.install_variant(key, "x", &png(4, 4), None).is_err());
-        assert!(dir.remove_variant(key).is_err());
+        assert!(dir
+            .install_variant(key, "x", &png(4, 4), None, &faces())
+            .is_err());
+        assert!(dir.remove_variant(key, &faces()).is_err());
         assert!(dir.face_path(Some(key), "sad").starts_with(&dir.0));
         assert!(dir.variant_body(key).is_none());
     }
@@ -232,8 +255,9 @@ fn traversal_keys_never_leave_the_sprite_folder() {
 fn base_change_detaches_shared_variants() {
     let fx = Fixture::new();
     let dir = fx.dir();
-    dir.install_base(&png(100, 150), FACE, false).unwrap();
-    dir.install_variant("v1", "Armor", &png(100, 150), None)
+    dir.install_base(&png(100, 150), FACE, false, &faces())
+        .unwrap();
+    dir.install_variant("v1", "Armor", &png(100, 150), None, &faces())
         .unwrap();
     dir.write_face(None, "happy", &png(40, 40)).unwrap();
     let moved = FaceBox {
@@ -242,7 +266,8 @@ fn base_change_detaches_shared_variants() {
         w: 30,
         h: 30,
     };
-    dir.install_base(&png(80, 200), moved, false).unwrap();
+    dir.install_base(&png(80, 200), moved, false, &faces())
+        .unwrap();
     let meta = dir.read().unwrap().meta;
     assert_eq!(
         (meta.face, meta.variant("v1").unwrap().face),
@@ -252,9 +277,45 @@ fn base_change_detaches_shared_variants() {
     let (snapshot, body) = dir.snapshot(Some("v1"), "sad").unwrap();
     assert_eq!((snapshot.face(), png_size(&body)), (FACE, Some((100, 150))));
     let own: Vec<_> = dir
-        .missing_faces()
+        .missing_faces(&faces())
         .into_iter()
         .filter(|(set, _)| set.is_some())
         .collect();
     assert_eq!(own.len(), 3);
+}
+
+/// 卡宣告的額外表情跟固定鍵一起補（每組固定鍵先）；新變體鍵避開卡宣告的保留鍵
+#[test]
+fn extra_expressions_follow_fixed_ones_and_reserved_keys_are_skipped() {
+    let fx = Fixture::new();
+    let dir = fx.dir();
+    let faces = face_keys(&["tender".to_owned()]);
+    dir.install_base(&png(100, 150), FACE, false, &faces)
+        .unwrap();
+    dir.install_variant("v2", "泳裝", &png(100, 150), Some(FACE), &faces)
+        .unwrap();
+    let missing: Vec<(Option<String>, String)> = dir.missing_faces(&faces);
+    let expressions: Vec<&str> = missing
+        .iter()
+        .map(|(_, expression)| expression.as_str())
+        .collect();
+    assert_eq!(
+        expressions,
+        [
+            "happy",
+            "sad",
+            "angry",
+            "surprised",
+            "tender",
+            "happy",
+            "sad",
+            "angry",
+            "surprised",
+            "tender"
+        ]
+    );
+    assert_eq!(missing[5].0.as_deref(), Some("v2"));
+    let meta = dir.read().unwrap().meta;
+    assert_eq!(meta.next_variant_key(&["v1".to_owned()]), "v3");
+    assert!(!dir.face_path(None, "../x").starts_with(dir.0.join("..")));
 }

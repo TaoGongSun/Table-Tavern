@@ -271,7 +271,7 @@ fn character_book(entries: &[Value], notes: &str, name: &str) -> Option<Value> {
 /// 欄位改名、位置數字轉字串（0→before_char、其他→after_char，原數字留在 extensions.position）、
 /// 大小寫優先用原卡的 snake_case 值；匯入時強制停用的鷹架條目還原原卡啟停；table_tavern 只留
 /// 明寫的 gm／public 可見度（角色名單、來源卡、停用標記都拿掉，下一桌重新套預設）。
-fn v2_entry(raw: &Value) -> Value {
+pub(super) fn v2_entry(raw: &Value) -> Value {
     let mut entry = raw.as_object().cloned().unwrap_or_default();
     if let Some(uid) = entry.remove("uid") {
         entry.insert("id".to_owned(), uid);
@@ -385,7 +385,7 @@ fn export_base_png(root: &Path, world_id: &str, character_id: &str) -> DataResul
 
 /// 把角色卡 JSON 寫成 tEXt chara chunk 放進 IEND 前；底圖原有的卡片 chunk（含 V3 的 ccv3）
 /// 先清掉，不然 ST 會讀到匯入當下那份舊資料
-fn embed_chara_chunk(base: &[u8], json: &[u8]) -> DataResult<Vec<u8>> {
+pub(super) fn embed_chara_chunk(base: &[u8], json: &[u8]) -> DataResult<Vec<u8>> {
     if !base.starts_with(PNG_MAGIC) {
         return Err(UiMsg::ImageNotPng.into_error());
     }

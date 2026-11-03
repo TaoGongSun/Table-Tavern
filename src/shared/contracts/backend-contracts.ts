@@ -200,6 +200,8 @@ export interface Bible {
   branching: "none" | "light" | "full";
   chapter_max: number;
   chapter_reason: string;
+  /** VN 卡作者鎖住章數：章數欄唯讀 */
+  chapter_lock: boolean;
   chapters: BibleChapter[];
   secrets: BibleSecret[];
   flags: BibleFlag[];
@@ -214,8 +216,43 @@ export interface BibleView {
   flagValues: Record<string, string>;
   revealed: { id: string; chapter: number | null }[];
   played: boolean;
-  /** 角色 id → 名字 */
+  /** 角色 id → 名字（含卡定主角） */
   names: Record<string, string>;
+  /** VN 卡建的桌才有：卡原件（只列前端用到的欄位） */
+  card?: { protagonist_fixed: boolean; original_bible: Bible | null } | null;
+  /** VN 卡匯入時存了封面 */
+  cover: boolean;
+}
+
+// 初始 VN 卡（Rust `import::vn_card`，plans/vn-mode-pkg9.md）
+export interface VnCardRating {
+  level: "general" | "teen" | "adult";
+  warnings: string[];
+}
+
+/** `probe_import` 的 `vn_card`：分級確認框要的摘要；supported＝版本認得 */
+export interface VnCardProbe {
+  supported: boolean;
+  title: string;
+  rating: VnCardRating;
+  cast: string[];
+}
+
+export type VnCardNoticeKind =
+  | "clipped"
+  | "cast_over"
+  | "cast_dropped"
+  | "color_reset"
+  | "protagonist_missing"
+  | "holder_dropped"
+  | "visibility_dropped"
+  | "extras_dropped"
+  | "art_dropped";
+
+/** `import_vn_card`：新 VN 桌與夾斷提示 */
+export interface VnCardImport {
+  world_id: string;
+  notices: { kind: VnCardNoticeKind; target: string }[];
 }
 
 // VN 立繪（Rust `vn_sprites`，plans/vn-mode-pkg7.md §3）
@@ -245,6 +282,12 @@ export interface SpriteView {
   faces: Record<string, string>;
   /** 變體鍵 → 身體圖（共用組已縮成定稿尺寸）與獨立表情組的臉層 */
   variant_layers: Record<string, { body: string; width: number; height: number; faces: Record<string, string> }>;
+  /** VN 卡宣告的額外表情（臉層照 faces 的鍵） */
+  expressions: { key: string; label: string }[];
+  /** VN 卡宣告的變體：還沒生成的在立繪分頁顯示成空格 */
+  declared_variants: { key: string; label: string }[];
+  /** 舞台身高比例（名單中有填身高的最高者＝1）；null＝照統一比例 */
+  scale: number | null;
 }
 
 export interface SpriteState {

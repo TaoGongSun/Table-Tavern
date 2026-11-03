@@ -133,6 +133,8 @@ pub struct ImportProbe {
     /// 備用開場白數：一張卡備了好幾個開局＝這是一座舞台不是一個人。
     /// 不看 first_mes——每張角色卡都有，零鑑別力（TestCards 22 檔實測 18／18 有值）。
     pub alternate_greetings: usize,
+    /// VN 卡（`data.extensions.table_tavern.vn`）的摘要：前端先跳分級確認框，版本不認得退普通卡
+    pub vn_card: Option<super::vn_card::VnCardProbe>,
 }
 
 /// 匯入前只提示可能無法保留的內容；真正的格式錯誤仍交給匯入處理。
@@ -194,6 +196,7 @@ pub fn probe_import(bytes: &[u8]) -> ImportProbe {
     // 角色卡的 entries 只會在 character_book 底下，頂層有 entries＝這包是世界書，別當角色卡。
     probe.book_shaped =
         card_data.get("character_book").is_none() && card_data.get("entries").is_some();
+    probe.vn_card = super::vn_card::probe(card_data, probe.name.as_deref().unwrap_or_default());
     probe
 }
 
@@ -237,13 +240,13 @@ pub(crate) fn book_entry_values(entries: &Value) -> Vec<&Value> {
 
 /// 角色卡檔解得開、有合法名字：回（卡 JSON、原檔副檔名、名字）。匯入在動任何資料前先過這關。
 /// 卡檔解析結果：卡 JSON（PNG 卡是 tEXt 解出來的那份）、解析後的值、卡名。
-struct ParsedCard {
-    json_bytes: Vec<u8>,
-    value: Value,
-    name: String,
+pub(super) struct ParsedCard {
+    pub json_bytes: Vec<u8>,
+    pub value: Value,
+    pub name: String,
 }
 
-fn parse_character(bytes: &[u8]) -> DataResult<ParsedCard> {
+pub(super) fn parse_character(bytes: &[u8]) -> DataResult<ParsedCard> {
     let json_bytes = if bytes.starts_with(PNG_MAGIC) {
         decode_png_character(bytes)?
     } else {
@@ -479,9 +482,7 @@ fn store_card_source(md_path: &Path, bytes: &[u8], json_bytes: &[u8]) -> DataRes
         validate_png_image(png, STORED_IMAGE_LIMITS).is_ok()
             && decode_png_character(png).is_ok_and(|decoded| decoded == json_bytes)
     });
-    let display = image
-        .and_then(|png| png_clean::strip_card_text(&png).ok())
-        .filter(|png| validate_png_image(png, STORED_IMAGE_LIMITS).is_ok());
+    let display = display_of(image);
     match card {
         Some(png) => data::commit_world_write_atomic(&md_path.with_extension("card.png"), &png)?,
         None => {
@@ -495,6 +496,23 @@ fn store_card_source(md_path: &Path, bytes: &[u8], json_bytes: &[u8]) -> DataRes
         }
         None => Ok(true),
     }
+}
+
+/// 救回的圖剝掉卡片文字、過嚴驗才當顯示圖。
+fn display_of(image: Option<Vec<u8>>) -> Option<Vec<u8>> {
+    image
+        .and_then(|png| png_clean::strip_card_text(&png).ok())
+        .filter(|png| validate_png_image(png, STORED_IMAGE_LIMITS).is_ok())
+}
+
+/// PNG（卡或一般圖）的顯示圖：救圖、剝卡片文字、嚴驗；救不回回 None。VN 卡封面與匯出封面用。
+pub(super) fn display_png(bytes: &[u8]) -> Option<Vec<u8>> {
+    display_of(
+        png_clean::salvage_stored_png(bytes).map(|stored| match stored {
+            Stored::AsIs => bytes.to_vec(),
+            Stored::Rewritten(png) | Stored::Reencoded(png) => png,
+        }),
+    )
 }
 
 /// 世界書卡不會先建成角色，仍要直接從匯入檔取得所有可選開場白。

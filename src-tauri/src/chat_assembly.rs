@@ -37,6 +37,8 @@ pub(crate) struct GmMaterials {
     /// VN 桌的聖經凍結副本與補種初值（`vn_bible::turn_inputs`）；沒有聖經為空
     pub vn_bible: Option<data::vn::Frozen>,
     pub vn_seeds: Vec<(Vec<String>, String)>,
+    /// VN 卡建的桌才有：卡原件（卡定主角、旁白人稱、出場限制）
+    pub vn_card: Option<data::vn::CardOrigin>,
 }
 
 /// 多人房間的真人玩家（multiplayer-room 包 3，來源 `WorldState::player_card_ids`／`absent_card_ids`）：
@@ -202,9 +204,9 @@ pub(crate) fn gm_materials(root: &std::path::Path, world_id: &str) -> Result<GmM
     let mut greeting = greeting::policy(root, world_id, &state, &events, takeover);
     let regex = prompt_regex(root, world_id);
     let cards = active_cards_with(root, world_id, greeting.strip_cards)?;
-    let (vn_bible, vn_seeds) = crate::vn_bible::turn_inputs(root, world_id, &state);
+    let vn_inputs = crate::vn_bible::turn_inputs(root, world_id, &state);
     let vn_variants = match vn_table(&state) {
-        true => crate::vn_sprites::variant_roster(root, world_id, &cards),
+        true => crate::vn_sprites::variant_roster(root, world_id, &cards, vn_inputs.card.as_ref()),
         false => Vec::new(),
     };
     greeting.gm.example = greeting
@@ -218,8 +220,9 @@ pub(crate) fn gm_materials(root: &std::path::Path, world_id: &str) -> Result<GmM
         events,
         cards,
         vn_variants,
-        vn_bible,
-        vn_seeds,
+        vn_bible: vn_inputs.frozen,
+        vn_seeds: vn_inputs.seeds,
+        vn_card: vn_inputs.card,
         strip_greetings: greeting.strip_cards,
         opening: greeting.gm,
         prompt_regex: regex,
@@ -503,7 +506,13 @@ pub(crate) fn gm_turn_instruction(
         transport::GmTurnFormat::VnScript => {
             let updates = materials.state.mechanism.incremental;
             (
-                transport::vn_narrate_instruction(lang, roster, player_name, updates),
+                transport::vn_narrate_instruction(
+                    lang,
+                    roster,
+                    player_name,
+                    updates,
+                    &vn_direction(materials),
+                ),
                 transport::vn_closing(!roster.is_empty(), updates, lang),
             )
         }
@@ -567,7 +576,7 @@ pub(crate) fn gm_lane_parts(
         scan,
         &materials.state.mechanism,
         lang,
-        materials.takeover,
+        gm_voice(materials),
         &materials.opening,
     );
     if vn_table(&materials.state) {
@@ -602,7 +611,7 @@ pub(crate) fn gm_messages(
         &materials.state.mechanism,
         scope,
         lang,
-        materials.takeover,
+        gm_voice(materials),
         &materials.opening,
         &materials.prompt_regex,
         vn_table(&materials.state),
@@ -616,12 +625,59 @@ pub(crate) fn gm_messages(
 
 /// VN 桌 GM system 的附加段：劇本格式、立繪變體、聖經（常駐段＋當章包）。
 fn vn_system(materials: &GmMaterials, lang: &str) -> String {
-    let mut text = transport::vn_format_rules(lang);
+    let card = materials.vn_card.as_ref();
+    let expressions = crate::vn_sprites::expression_roster(&materials.cards, card);
+    let places = card.map_or(&[][..], |card| card.locations.as_slice());
+    let mut text = transport::vn_format_rules(lang, !expressions.is_empty(), !places.is_empty());
+    text.push_str(&transport::vn_card_note(lang, &expressions, places));
     text.push_str(&transport::vn_variant_note(lang, &materials.vn_variants));
     if let Some(frozen) = &materials.vn_bible {
-        text.push_str(&crate::vn_bible::injection(lang, frozen, &materials.cards));
+        text.push_str(&crate::vn_bible::injection(
+            lang,
+            frozen,
+            &materials.cards,
+            materials.player.as_ref(),
+        ));
+    }
+    if let Some(card) = &materials.vn_card {
+        text.push_str(&transport::vn_bible_prompts::cast_limits(
+            lang,
+            card,
+            &materials.cards,
+        ));
     }
     text
+}
+
+/// 卡定主角：VN 卡標了固定主角、主角（玩家卡槽位）還在，才換掉總則、玩家段與導演指示（pkg9 §2.5）。
+fn vn_protagonist(materials: &GmMaterials) -> Option<&data::CharacterCard> {
+    let fixed = vn_table(&materials.state)
+        && materials
+            .vn_card
+            .as_ref()
+            .is_some_and(|card| card.protagonist_fixed);
+    materials.player.as_ref().filter(|_| fixed)
+}
+
+/// GM system 的敘事分工：介面接管桌優先，其次 VN 卡定主角。
+pub(crate) fn gm_voice(materials: &GmMaterials) -> transport::GmVoice {
+    match (materials.takeover, vn_protagonist(materials)) {
+        (true, _) => transport::GmVoice::Sole,
+        (false, Some(_)) => transport::GmVoice::Protagonist,
+        (false, None) => transport::GmVoice::Shared,
+    }
+}
+
+/// VN 導演指示的可變部分：凍結聖經的 `branching`、卡給的旁白人稱、卡定主角名。
+fn vn_direction(materials: &GmMaterials) -> transport::VnDirection {
+    transport::VnDirection {
+        branching: materials
+            .vn_bible
+            .as_ref()
+            .map(|frozen| frozen.bible.branching),
+        pov: materials.vn_card.as_ref().and_then(|card| card.pov),
+        protagonist: vn_protagonist(materials).map(|card| card.name.clone()),
+    }
 }
 
 /// VN 桌（vn-mode）：GM 指示、system 附加段與送模型的歷史前綴都看這個。

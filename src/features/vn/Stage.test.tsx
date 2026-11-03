@@ -31,6 +31,9 @@ const sprite: SpriteView = {
     v1: { body: "data:armor", width: 1000, height: 1500, faces: {} },
     v2: { body: "data:swim", width: 500, height: 800, faces: { sad: "data:swim-sad" } },
   },
+  expressions: [{ key: "tender", label: "溫柔" }],
+  declared_variants: [],
+  scale: 0.5,
 };
 
 function render(expressions: Record<string, string>) {
@@ -63,6 +66,15 @@ describe("Stage fallback chain", () => {
     expect(face.style.height).toBe("20%");
     expect(host.querySelector(".vn-slot-1 img")!.getAttribute("src")).toBe("data:card");
     expect(host.querySelector(".vn-slot-2 .vn-silhouette")).not.toBeNull();
+  });
+
+  it("card-declared expression keys use their face layer; height scale sets the slot ratio", () => {
+    const host = render({ a: "tender" });
+    expect(host.querySelector(".vn-slot-0 img")!.getAttribute("src")).toBe("data:body");
+    const tender = { ...sprite, faces: { tender: "data:tender" } };
+    expect(spriteLayers(tender, undefined, "tender").face).toBe("data:tender");
+    expect(host.querySelector<HTMLElement>(".vn-slot-0")!.style.getPropertyValue("--vn-scale")).toBe("0.5");
+    expect(host.querySelector<HTMLElement>(".vn-slot-1")!.style.getPropertyValue("--vn-scale")).toBe("");
   });
 
   it("shows only the body when that expression has no face layer yet", () => {

@@ -58,6 +58,7 @@ function Harness() {
     focusSpeaker: (id) => focused.push(id),
     openTableForImport: async () => null,
     onVnTableImported: () => {},
+    openVnCardTable: async () => null,
     openWebSaveTable: async (data) => {
       opened.push(data);
       return result;

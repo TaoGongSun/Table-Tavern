@@ -135,7 +135,7 @@ fn gm_texts(root: &Path, world_id: &str) -> [String; 2] {
         &materials.state.mechanism,
         &scope,
         LANG,
-        materials.takeover,
+        crate::chat_assembly::gm_voice(&materials),
         &Default::default(),
         &Default::default(),
         false,

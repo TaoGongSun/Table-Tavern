@@ -1,6 +1,6 @@
 // VN 開桌精靈骨架：① 起點、② 展開重用一句話開桌（GenerateTableDialog＋genesis，建出 vn 桌）；
 // ① 也可以改選「我有角色卡」：交給匯入流程開 VN 桌，匯完回到這裡的 ②。
-// 從匯入來的桌角色與世界書已就位，直接從 ② 起。② 生成劇本聖經（VnBibleStep，帶 ① 選的劇透鎖）、③ 立繪挑定稿（VnSpriteStep），
+// 從匯入來的桌角色與世界書已就位，直接從 ② 起；VN 卡建的桌連聖經都在卡上，從 ③ 起。② 生成劇本聖經（VnBibleStep，帶 ① 選的劇透鎖）、③ 立繪挑定稿（VnSpriteStep），
 // ④ 開演（VnStartStep：一進來就預生首幕背景）＝進桌，進桌後背景補表情。
 // 精靈結束＝進那張 vn 桌；中途關掉時桌已建好、留在大廳清單裡。
 import { invoke } from "@tauri-apps/api/core";
@@ -17,6 +17,8 @@ export interface VnWizardStart {
   worldId: string | null;
   /** ① 的「讓劇情給我驚喜」；匯入路由框直接進 ② 的沒有 ①，照預設鎖 */
   spoilerLock?: boolean;
+  /** VN 卡建的桌：聖經、角色已在卡上，從 ③ 立繪起 */
+  fromCard?: boolean;
 }
 
 type PlaceholderStep = "expand" | "sprites" | "start";
@@ -46,7 +48,7 @@ export function VnWizard({
   onClose: () => void;
 }) {
   const [step, setStep] = useState<"genesis" | PlaceholderStep>(
-    start.worldId === null ? "genesis" : "expand",
+    start.worldId === null ? "genesis" : start.fromCard ? "sprites" : "expand",
   );
   // GenerateTableDialog 建好桌後會接著呼叫 onClose：用 ref 同步記下，別讓那一下把整個精靈關掉
   const worldId = useRef(start.worldId);

@@ -7,6 +7,7 @@ fn roster() -> VnRoster {
             ("fox".to_owned(), "狐狸".to_owned()),
         ],
         player: Some("阿誠".to_owned()),
+        ..Default::default()
     }
 }
 
@@ -299,6 +300,7 @@ fn names_match_without_the_trailing_note_only_when_unique() {
             ("b".to_owned(), "米雅(學妹)".to_owned()),
         ],
         player: None,
+        ..Default::default()
     };
     assert_eq!(roster.id_of("雷恩").as_deref(), Some("leon"));
     assert_eq!(roster.id_of("雷恩（花豹）").as_deref(), Some("leon"));
@@ -326,5 +328,55 @@ fn narrator_prefixes_are_stripped_into_narration() {
             line(Some("fox"), "狐狸", "neutral", "嗨"),
             narration("風停了。"),
         ]
+    );
+}
+
+/// VN 卡額外表情只認說話者自己宣告的（別人的退 neutral）；卡地點換成卡上的名稱與 slug
+#[test]
+fn card_expressions_and_places_from_the_card() {
+    use crate::data::vn::{CardOrigin, CastOrigin};
+    use crate::data::vn_art::{ArtEntry, CardLocation, CastArt};
+    let mut card = CardOrigin::default();
+    card.cast.insert(
+        "irene".to_owned(),
+        CastOrigin {
+            art: CastArt {
+                expressions: vec![ArtEntry {
+                    key: "tender".to_owned(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    );
+    card.locations.push(CardLocation {
+        key: "workshop".to_owned(),
+        name: "拉克的工房".to_owned(),
+        times: vec!["day".to_owned(), "dusk".to_owned()],
+        ..Default::default()
+    });
+    let roster = VnRoster {
+        characters: roster().characters,
+        ..VnRoster::new(&[], None, Some(&card))
+    };
+    let cells = parse_event(
+        "[bg: workshop | 黃昏]\n\n艾琳 (tender): 「嗯」\n\n狐狸 (tender): 「哼」",
+        &VnSource::Gm,
+        &roster,
+    );
+    let expressions: Vec<&str> = cells
+        .iter()
+        .filter_map(|cell| match cell {
+            VnCell::Dialogue { expression, .. } => Some(expression.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(expressions, ["tender", "neutral"]);
+    assert!(
+        matches!(&cells[0], VnCell::Bg { location, period, slug, .. }
+        if location == "拉克的工房"
+            && period.as_deref() == Some("dusk")
+            && *slug != crate::vn_backgrounds::slug_of("workshop"))
     );
 }

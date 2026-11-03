@@ -60,6 +60,7 @@ function Harness() {
       return "W2";
     },
     onVnTableImported: (worldId) => vnImported.push(worldId),
+    openVnCardTable: async () => null,
     openWebSaveTable: async () => null,
     runTableOp: async (fn) => fn(),
     resetChatted: () => {},

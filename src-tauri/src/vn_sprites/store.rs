@@ -11,15 +11,15 @@ use std::path::PathBuf;
 /// 候選最多留幾張（每張約 2 MB），新的進來就刪最舊的
 const MAX_CANDIDATES: usize = 6;
 
-/// 要生臉層的表情：neutral 不存，就是定稿本身
-pub(crate) fn face_expressions() -> impl Iterator<Item = &'static str> {
+/// 一位角色要生臉層的表情：固定四鍵（neutral 不存，就是定稿本身）在前，卡宣告的額外鍵在後。
+/// 下面收 `faces: &[String]` 的方法都吃這份清單（由呼叫端從 vn.json 取，見 `vn_sprites::face_list`）
+pub(crate) fn face_keys(extra: &[String]) -> Vec<String> {
     VN_EXPRESSIONS
         .into_iter()
         .filter(|expression| *expression != "neutral")
-}
-
-pub(crate) fn is_face_expression(value: &str) -> bool {
-    face_expressions().any(|expression| expression == value)
+        .map(str::to_owned)
+        .chain(extra.iter().cloned())
+        .collect()
 }
 
 /// 臉框（定稿像素座標）
@@ -117,8 +117,8 @@ impl SpriteMeta {
         *self.revs.entry(slot.to_owned()).or_default() += 1;
     }
 
-    fn bump_faces(&mut self, set: Option<&str>) {
-        for expression in face_expressions() {
+    fn bump_faces(&mut self, set: Option<&str>, faces: &[String]) {
+        for expression in faces {
             self.bump(&face_slot(set, expression));
         }
     }
@@ -127,11 +127,11 @@ impl SpriteMeta {
         self.variants.iter().find(|variant| variant.key == key)
     }
 
-    /// 新變體鍵：v1、v2…取第一個沒用過的
-    pub(crate) fn next_variant_key(&self) -> String {
+    /// 新變體鍵：v1、v2…取第一個沒用過、也不是卡宣告保留鍵的
+    pub(crate) fn next_variant_key(&self, reserved: &[String]) -> String {
         (1..)
             .map(|index| format!("v{index}"))
-            .find(|key| self.variant(key).is_none())
+            .find(|key| self.variant(key).is_none() && !reserved.contains(key))
             .unwrap_or_default()
     }
 }
@@ -201,7 +201,12 @@ impl SpriteDir {
         }
     }
 
+    /// 表情鍵已驗（固定鍵或卡宣告鍵）；不合格的換成不可能是真表情的名字，路徑永遠留在立繪資料夾內
     pub(crate) fn face_path(&self, set: Option<&str>, expression: &str) -> PathBuf {
+        let expression = match data::vn_art::valid_art_key(expression) {
+            true => expression,
+            false => "!",
+        };
         self.face_dir(set).join(format!("{expression}.png"))
     }
 
@@ -319,6 +324,7 @@ impl SpriteDir {
         png: &[u8],
         face: FaceBox,
         face_fallback: bool,
+        faces: &[String],
     ) -> Result<(), String> {
         let mut meta = self.read().map(|loaded| loaded.meta).unwrap_or(SpriteMeta {
             version: 1,
@@ -328,25 +334,29 @@ impl SpriteDir {
             default: base_key(),
             revs: BTreeMap::new(),
         });
-        self.detach_shared_variants(&mut meta)?;
+        self.detach_shared_variants(&mut meta, faces)?;
         meta.face = face;
         meta.face_fallback = face_fallback;
         meta.bump("base");
-        meta.bump_faces(None);
+        meta.bump_faces(None, faces);
         data::commit_world_write(&self.body_path(), png).map_err(|error| error.to_string())?;
         remove(&self.0.join("face"))?;
         self.write_meta(&meta)
     }
 
     /// 換定稿前：共用組變體的身體是照舊定稿對齊的，轉成獨立組——存舊臉框、複製現有臉層，缺的格交給佇列補
-    fn detach_shared_variants(&self, meta: &mut SpriteMeta) -> Result<(), String> {
+    fn detach_shared_variants(
+        &self,
+        meta: &mut SpriteMeta,
+        faces: &[String],
+    ) -> Result<(), String> {
         let old_face = meta.face;
         for variant in meta
             .variants
             .iter_mut()
             .filter(|variant| variant.face.is_none())
         {
-            for expression in face_expressions() {
+            for expression in faces {
                 if let Ok(png) = std::fs::read(self.face_path(None, expression)) {
                     data::commit_world_write(&self.face_path(Some(&variant.key), expression), &png)
                         .map_err(|error| error.to_string())?;
@@ -358,7 +368,12 @@ impl SpriteDir {
     }
 
     /// 玩家改框：框要在該組身體圖範圍內；該組臉層全部失效重生。呼叫端持桌寫入許可
-    pub(crate) fn set_face(&self, set: Option<&str>, face: FaceBox) -> Result<(), String> {
+    pub(crate) fn set_face(
+        &self,
+        set: Option<&str>,
+        face: FaceBox,
+        faces: &[String],
+    ) -> Result<(), String> {
         let loaded = self.read().ok_or("VN_SPRITE_MISSING")?;
         Self::own_set(&loaded.meta, set)?;
         let size = match set {
@@ -382,7 +397,7 @@ impl SpriteDir {
                 }
             }
         }
-        meta.bump_faces(set);
+        meta.bump_faces(set, faces);
         remove(&self.face_dir(set))?;
         self.write_meta(&meta)
     }
@@ -394,6 +409,7 @@ impl SpriteDir {
         label: &str,
         png: &[u8],
         face: Option<FaceBox>,
+        faces: &[String],
     ) -> Result<(), String> {
         if !valid_variant_key(key) {
             return Err("VN_SPRITE_VARIANT".to_owned());
@@ -409,7 +425,7 @@ impl SpriteDir {
             None => meta.variants.push(entry),
         }
         meta.bump(&format!("body/{key}"));
-        meta.bump_faces(Some(key));
+        meta.bump_faces(Some(key), faces);
         data::commit_world_write(&self.variant_path(key), png)
             .map_err(|error| error.to_string())?;
         remove(&self.face_dir(Some(key)))?;
@@ -417,7 +433,7 @@ impl SpriteDir {
     }
 
     /// 刪變體：身體圖、獨立組臉層與 sprite.json 那筆。呼叫端持桌寫入許可
-    pub(crate) fn remove_variant(&self, key: &str) -> Result<(), String> {
+    pub(crate) fn remove_variant(&self, key: &str, faces: &[String]) -> Result<(), String> {
         let mut meta = self.read().ok_or("VN_SPRITE_MISSING")?.meta;
         meta.variant(key).ok_or("VN_SPRITE_MISSING")?;
         meta.variants.retain(|variant| variant.key != key);
@@ -425,7 +441,7 @@ impl SpriteDir {
             meta.default = base_key();
         }
         meta.bump(&format!("body/{key}"));
-        meta.bump_faces(Some(key));
+        meta.bump_faces(Some(key), faces);
         remove(&self.variant_path(key))?;
         remove(&self.face_dir(Some(key)))?;
         self.write_meta(&meta)
@@ -445,8 +461,8 @@ impl SpriteDir {
         remove(&self.0)
     }
 
-    /// 有定稿但缺的臉層：共用組，加上有身體圖的獨立組
-    pub(crate) fn missing_faces(&self) -> Vec<(Option<String>, &'static str)> {
+    /// 有定稿但缺的臉層：共用組，加上有身體圖的獨立組；每組照 `faces` 的順序（固定鍵先）
+    pub(crate) fn missing_faces(&self, faces: &[String]) -> Vec<(Option<String>, String)> {
         let Some(loaded) = self.read() else {
             return Vec::new();
         };
@@ -458,7 +474,11 @@ impl SpriteDir {
             .map(|variant| Some(variant.key.clone()));
         std::iter::once(None)
             .chain(own_sets)
-            .flat_map(|set| face_expressions().map(move |expression| (set.clone(), expression)))
+            .flat_map(|set| {
+                faces
+                    .iter()
+                    .map(move |expression| (set.clone(), expression.clone()))
+            })
             .filter(|(set, expression)| !self.face_path(set.as_deref(), expression).is_file())
             .collect()
     }

@@ -2,6 +2,7 @@
 //! 補種與狀態樹規則。讀改寫一律在短提交鎖內（`edit_vn` 收 `CommitTx`），只改這次負責的欄位。
 use super::paths::world_dir;
 use super::state_commit::CommitTx;
+use super::vn_art::{CardArt, CardLocation, CastArt};
 use super::{Condition, DataResult, FieldKind, FieldRule, InjectLevel, StateNode, UpdateMode};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -31,6 +32,9 @@ pub struct VnFile {
     /// 注入用的凍結副本：幕中改聖經不動 system，換幕才重抄（§2.4）。
     #[serde(default)]
     pub frozen: Option<Frozen>,
+    /// 從 VN 卡建的桌才有：卡原件（plans/vn-mode-pkg9.md §2.4）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub card: Option<CardOrigin>,
 }
 
 fn version() -> u32 {
@@ -48,6 +52,7 @@ impl Default for VnFile {
             spoiler_lock: true,
             bible: None,
             frozen: None,
+            card: None,
         }
     }
 }
@@ -76,6 +81,8 @@ pub struct Bible {
     pub branching: Branching,
     pub chapter_max: u32,
     pub chapter_reason: String,
+    /// VN 卡作者鎖住章數：劇本分頁與精靈的章數欄唯讀，存檔拒收章數變更〔作者裁決 2026-11-01 拍板 17〕
+    pub chapter_lock: bool,
     pub chapters: Vec<Chapter>,
     pub secrets: Vec<Secret>,
     pub flags: Vec<Flag>,
@@ -165,6 +172,67 @@ pub struct Ending {
     pub when: Vec<Condition>,
 }
 
+/// VN 卡原件：卡頂層的分級、旁白人稱、主角模式、匯入時的聖經與美術欄位（匯出帶回）。
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CardOrigin {
+    pub lang: String,
+    pub rating: Rating,
+    pub pov: Option<Pov>,
+    pub protagonist_fixed: bool,
+    /// 匯入時正規化後的聖經（「恢復卡內原版」用）
+    pub original_bible: Option<Bible>,
+    /// 桌內角色 id → 逐角色欄位；角色刪掉後匯出略過
+    pub cast: BTreeMap<String, CastOrigin>,
+    /// 卡層級畫風；卡上沒寫＝None
+    pub art: Option<CardArt>,
+    pub locations: Vec<CardLocation>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Rating {
+    pub level: RatingLevel,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RatingLevel {
+    #[default]
+    General,
+    Teen,
+    Adult,
+}
+
+/// 旁白人稱
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Pov {
+    First,
+    Second,
+    Third,
+}
+
+/// 出場性質；沒填＝一般登場
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CastRole {
+    Main,
+    Support,
+    Memory,
+    Deity,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CastOrigin {
+    pub role: Option<CastRole>,
+    /// 出場限制白話（如「只在夢境出現」）
+    pub appears: String,
+    pub art: CastArt,
+}
+
 /// 字串、數字、布林都收成文字：模型寫 `"initial": false` 或 `0` 都對得上。
 fn loose_text<'de, D: Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
     Ok(text_of(&serde_json::Value::deserialize(deserializer)?).unwrap_or_default())
@@ -208,6 +276,7 @@ pub fn parse_bible(value: &serde_json::Value) -> Option<Bible> {
             .parse::<f64>()
             .map_or(0, |max| max as u32),
         chapter_reason: text("chapter_reason"),
+        chapter_lock: false,
         chapters: items(value, "chapters"),
         secrets: items(value, "secrets"),
         flags: items(value, "flags"),
@@ -518,6 +587,11 @@ fn vn_path(root: &Path, world_id: &str) -> DataResult<PathBuf> {
     Ok(world_dir(root, world_id)?.join("vn").join("vn.json"))
 }
 
+/// VN 卡匯入時存的封面（`worlds/<id>/vn/cover.png`）。
+pub fn cover_path(root: &Path, world_id: &str) -> DataResult<PathBuf> {
+    Ok(world_dir(root, world_id)?.join("vn").join("cover.png"))
+}
+
 /// 讀 vn.json；沒有檔＝預設（鎖住、沒有聖經）。檔壞了回錯，不拿預設蓋掉。
 pub fn read_vn(root: &Path, world_id: &str) -> DataResult<VnFile> {
     match std::fs::read(vn_path(root, world_id)?) {
@@ -525,6 +599,11 @@ pub fn read_vn(root: &Path, world_id: &str) -> DataResult<VnFile> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(VnFile::default()),
         Err(error) => Err(error.into()),
     }
+}
+
+/// 卡原件（生圖管線讀美術欄位用）；不是卡桌或讀不到＝None
+pub fn read_card(root: &Path, world_id: &str) -> Option<CardOrigin> {
+    read_vn(root, world_id).ok()?.card
 }
 
 /// 精靈 ② 一進來就建檔（帶 ① 選的劇透鎖；沒給＝預設鎖）；已有檔不動。

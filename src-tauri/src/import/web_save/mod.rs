@@ -63,16 +63,17 @@ pub(super) fn import_with(
     } else {
         name.as_str()
     };
-    let (world_id, held) = data::create_world_exclusive(root, table_name).map_err(|failed| {
-        cleanup_error(
-            failed.error,
-            failed
-                .leftover
-                .map(|id| format!("world:{id}"))
-                .into_iter()
-                .collect(),
-        )
-    })?;
+    let (world_id, held) = data::create_world_exclusive(root, table_name, data::TableKind::Chat)
+        .map_err(|failed| {
+            cleanup_error(
+                failed.error,
+                failed
+                    .leftover
+                    .map(|id| format!("world:{id}"))
+                    .into_iter()
+                    .collect(),
+            )
+        })?;
     let mut journal = Vec::new();
     let result = pending::write(root, &world_id, &[]).and_then(|()| {
         build(

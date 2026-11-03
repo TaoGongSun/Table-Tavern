@@ -20,7 +20,14 @@ pub(crate) fn parse_vn_text(
     source: VnSource,
     text: String,
 ) -> Result<VnText, String> {
-    let roster = VnRoster::load(&data_root(&app)?, &world_id)?;
+    let roster = {
+        let root = data_root(&app)?;
+        VnRoster::load(
+            &root,
+            &world_id,
+            data::vn::read_card(&root, &world_id).as_ref(),
+        )?
+    };
     Ok(chat_turn::parse_text(&text, &source, &roster))
 }
 

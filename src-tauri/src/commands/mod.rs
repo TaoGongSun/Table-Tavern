@@ -16,6 +16,7 @@ pub(crate) mod versions;
 pub(crate) mod vn;
 pub(crate) mod vn_backgrounds;
 pub(crate) mod vn_bible;
+pub(crate) mod vn_card;
 pub(crate) mod vn_sprites;
 pub(crate) mod world;
 

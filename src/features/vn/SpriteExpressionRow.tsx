@@ -6,8 +6,10 @@ import { SpriteFigure, percentBox, spriteLayers } from "./SpriteFigure";
 import { spriteError } from "./useSpriteSlot";
 
 export const FACES = ["happy", "sad", "angry", "surprised"] as const;
-const EXPRESSIONS = ["neutral", ...FACES] as const;
 const MIN_FACE = 16;
+
+/** 這位角色要生臉層的表情：固定四鍵在前，VN 卡宣告的額外鍵在後 */
+export const faceKeys = (sprite: SpriteView): string[] => [...FACES, ...sprite.expressions.map((entry) => entry.key)];
 
 /** 狀態事件的鍵：組（空字串＝共用組）＋表情 */
 export const statusKey = (variant: string | null | undefined, expression: string) => `${variant ?? ""}/${expression}`;
@@ -30,7 +32,7 @@ export function ExpressionRow({
 }) {
   return (
     <div className="vn-expr-row">
-      {EXPRESSIONS.map((expression) => (
+      {["neutral", ...faceKeys(sprite)].map((expression) => (
         <ExpressionCell
           key={expression}
           sprite={sprite}
@@ -92,7 +94,8 @@ function ExpressionCell({
         </div>
       </div>
       <figcaption>
-        {t(`vnExpression_${expression}` as "vnExpression_neutral")}
+        {sprite.expressions.find((entry) => entry.key === expression)?.label ??
+          t(`vnExpression_${expression}` as "vnExpression_neutral")}
         {state !== "done" && <span className={`vn-expr-state vn-expr-${state}`}>{t(`vnSpriteState_${state}`)}</span>}
       </figcaption>
       {state === "failed" && status?.reason && <p className="field-warn">{spriteError(status.reason)}</p>}

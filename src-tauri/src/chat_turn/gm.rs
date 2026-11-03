@@ -394,7 +394,11 @@ pub(crate) async fn gm_narrate(
     // VN 桌：選項／章末／結局任一出現就停接力（不點名、不寫點名列）
     let (next, vn_stop) = match chat_assembly::vn_table(&materials.state) {
         true => {
-            let roster = vn_script::VnRoster::new(&materials.metas, materials.player.as_ref());
+            let roster = vn_script::VnRoster::new(
+                &materials.metas,
+                materials.player.as_ref(),
+                materials.vn_card.as_ref(),
+            );
             vn_script::gm_stop(&display, &roster, next)
         }
         false => (next, None),

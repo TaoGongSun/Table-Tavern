@@ -45,7 +45,7 @@ fn dump_gm_lane_prompt() {
         &scan,
         &materials.state.mechanism,
         lang,
-        materials.takeover,
+        crate::chat_assembly::gm_voice(&materials),
         &Default::default(),
     );
     let instruction = format!("{}\n{closing}", instruction_message.content);
@@ -96,7 +96,7 @@ fn gm_turn_uses_one_numeric_policy_for_prompt_and_commit() {
             &scan,
             &materials.state.mechanism,
             "zh-TW",
-            materials.takeover,
+            crate::chat_assembly::gm_voice(&materials),
             &Default::default(),
         );
         assert!(system.contains(prompt), "{system}");
@@ -172,7 +172,7 @@ fn full_gm_prompt_with_card_format_and_upstream_protocol_is_consistent() {
             &scan,
             &materials.state.mechanism,
             lang,
-            materials.takeover,
+            crate::chat_assembly::gm_voice(&materials),
             &Default::default(),
         );
         let prompt = format!("{system}\n{}\n{closing}", instruction.content);

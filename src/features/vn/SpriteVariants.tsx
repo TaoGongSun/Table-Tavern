@@ -1,5 +1,5 @@
 // 立繪分頁的變體列：每個變體的身體預覽與重骰／上傳替換／刪除；獨立表情組多一個臉框與表情列。
-// 新增變體：填服裝或姿態（同時是劇本 `@變體` 用的名字），生成或上傳。
+// VN 卡宣告但還沒生成的變體是空格（生成或上傳，不自動生）。新增變體：填服裝或姿態（同時是劇本 `@變體` 用的名字），生成或上傳。
 import { invoke } from "@tauri-apps/api/core";
 import { useRef, useState } from "react";
 import { t } from "../../i18n";
@@ -49,6 +49,17 @@ export function SpriteVariants({
           onUploadFace={(file, expression) => void slot.upload(file, expression, variant.key)}
         />
       ))}
+      {sprite.declared_variants
+        .filter((declared) => !sprite.meta.variants.some((variant) => variant.key === declared.key))
+        .map((declared) => (
+          <DeclaredRow
+            key={declared.key}
+            label={declared.label}
+            disabled={disabled}
+            onGenerate={() => void generate(declared.key, declared.label)}
+            onUpload={(file) => void upload(declared.key, declared.label, file)}
+          />
+        ))}
       <div className="vn-picker-actions">
         <input
           className="input"
@@ -66,6 +77,36 @@ export function SpriteVariants({
         <FileInput input={input} onFile={(file) => void upload(null, label, file)} />
       </div>
     </section>
+  );
+}
+
+/** 卡宣告、還沒生成的變體：只有名字與生成／上傳 */
+function DeclaredRow({
+  label,
+  disabled,
+  onGenerate,
+  onUpload,
+}: {
+  label: string;
+  disabled: boolean;
+  onGenerate: () => void;
+  onUpload: (file: File) => void;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  return (
+    <div className="vn-variant">
+      <div className="vn-picker-actions">
+        <strong>{label}</strong>
+        <span className="field-note">{t("vnSpriteVariantDeclared")}</span>
+        <button type="button" className="btn btn-sm" disabled={disabled} onClick={onGenerate}>
+          {t("vnSpriteVariantGenerate")}
+        </button>
+        <button type="button" className="btn btn-sm" disabled={disabled} onClick={() => input.current?.click()}>
+          {t("vnSpriteVariantUpload")}
+        </button>
+        <FileInput input={input} onFile={onUpload} />
+      </div>
+    </div>
   );
 }
 

@@ -173,6 +173,7 @@ fn write_new_world_or_clean(
 pub(crate) fn create_world_exclusive(
     root: &Path,
     name: &str,
+    kind: TableKind,
 ) -> Result<(String, super::world_lock::WorldExclusive), NewWorldFailed> {
     let fail = |error| NewWorldFailed {
         error,
@@ -182,7 +183,7 @@ pub(crate) fn create_world_exclusive(
     let id = new_id();
     let held = super::world_lock::try_world_exclusive(&id)
         .ok_or_else(|| fail(UiMsg::WorldBusy.into_error()))?;
-    write_new_world_or_clean(root, &id, name, TableKind::Chat)?;
+    write_new_world_or_clean(root, &id, name, kind)?;
     Ok((id, held))
 }
 

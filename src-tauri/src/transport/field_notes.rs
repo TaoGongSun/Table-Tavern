@@ -48,7 +48,7 @@ mod tests {
             &[],
             mechanism,
             "zh-TW",
-            false,
+            crate::transport::GmVoice::Shared,
             &Default::default(),
         )
     }

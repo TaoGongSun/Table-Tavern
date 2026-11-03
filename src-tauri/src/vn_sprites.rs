@@ -6,8 +6,10 @@ pub(crate) mod matting;
 pub(crate) mod queue;
 pub(crate) mod store;
 
+use crate::data::vn_art::CastArt;
 use crate::generated_image::{self, cli_fetch, png_data_url, GeneratedImage};
-use crate::transport::{self, vn_sprite_prompts as prompts};
+use crate::transport;
+use crate::transport::vn_sprite_prompts::{self as prompts, SpriteReference};
 use crate::{config_root, data, data_root};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -78,7 +80,52 @@ pub(crate) fn character_exists(root: &std::path::Path, world: &str, character: &
     data::character_path(root, world, character).is_ok_and(|path| path.is_file())
 }
 
-/// 生一張定稿候選：角色名＋公開設定，有卡圖就當外觀參考。回候選檔名
+/// 這位角色在 VN 卡上的美術欄位（卡外桌或沒寫＝空）。每次需要時讀 vn.json 一次（卡欄位的單一來源）
+pub(crate) fn cast_art(root: &std::path::Path, world: &str, character: &str) -> CastArt {
+    data::vn::read_card(root, world)
+        .and_then(|mut card| card.cast.remove(character))
+        .map(|cast| cast.art)
+        .unwrap_or_default()
+}
+
+/// 這位角色要生臉層的表情：固定四鍵＋卡宣告的額外鍵
+pub(crate) fn face_list(art: &CastArt) -> Vec<String> {
+    store::face_keys(&art.expression_keys())
+}
+
+pub(crate) fn faces_of(root: &std::path::Path, world: &str, character: &str) -> Vec<String> {
+    face_list(&cast_art(root, world, character))
+}
+
+/// 身高比例（plans/vn-mode-pkg9b.md §2.7）：基準是名單中有填 `height_cm` 的最高者，每角色比例固定
+pub(crate) fn height_scale(card: Option<&data::vn::CardOrigin>, character: &str) -> Option<f64> {
+    let card = card?;
+    let tallest = card
+        .cast
+        .values()
+        .filter_map(|cast| cast.art.height_cm)
+        .max()?;
+    let height = card.cast.get(character)?.art.height_cm?;
+    Some(f64::from(height) / f64::from(tallest))
+}
+
+/// 封面當畫風參考（卡開了 `cover_as_style_ref`、桌上有封面；API 來源不帶）
+pub(crate) fn cover_reference(
+    root: &std::path::Path,
+    world: &str,
+    card: Option<&data::vn::CardOrigin>,
+    source: &str,
+) -> Option<Vec<u8>> {
+    let wanted = card
+        .and_then(|card| card.art.as_ref())
+        .is_some_and(|art| art.cover_as_style_ref);
+    if !wanted || source == "api" {
+        return None;
+    }
+    std::fs::read(data::vn::cover_path(root, world).ok()?).ok()
+}
+
+/// 生一張定稿候選：角色名＋外觀規格（沒有＝公開設定）＋卡畫風；有卡圖就當外觀參考，沒有而卡開了封面參考就以封面取畫風。回候選檔名
 pub(crate) async fn generate_candidate(
     app: &tauri::AppHandle,
     world: &str,
@@ -87,14 +134,28 @@ pub(crate) async fn generate_candidate(
     let root = data_root(app)?;
     let config = read_config(app)?;
     let card = data::read_character(&root, world, character).map_err(|error| error.to_string())?;
-    let reference = data::character_path(&root, world, character)
+    let origin = data::vn::read_card(&root, world);
+    let appearance = origin
+        .as_ref()
+        .and_then(|origin| origin.cast.get(character))
+        .and_then(|cast| cast.art.appearance.as_ref());
+    let source = sprite_source(&config);
+    let card_art = data::character_path(&root, world, character)
         .ok()
         .and_then(|path| std::fs::read(path.with_extension("png")).ok());
-    let source = sprite_source(&config);
+    let (kind, reference) = match card_art {
+        Some(png) => (SpriteReference::CardArt, Some(png)),
+        None => match cover_reference(&root, world, origin.as_ref(), source) {
+            Some(png) => (SpriteReference::CoverStyle, Some(png)),
+            None => (SpriteReference::None, None),
+        },
+    };
     let prompt = prompts::base_prompt(
         &card.name,
         &card.public_md,
-        reference.is_some(),
+        appearance,
+        origin.as_ref().and_then(|origin| origin.art.as_ref()),
+        kind,
         transparent(source),
     );
     let png = generate_png(app, &config, world, &prompt, reference.as_deref(), "2:3").await?;
@@ -210,7 +271,8 @@ pub(crate) async fn install_base(
     if !character_exists(&root, world, character) {
         return Err("VN_SPRITE_CHARACTER_GONE".to_owned());
     }
-    SpriteDir::of(&root, world, character)?.install_base(&png, face, fallback)?;
+    let faces = faces_of(&root, world, character);
+    SpriteDir::of(&root, world, character)?.install_base(&png, face, fallback, &faces)?;
     queue::forget(world, character);
     Ok(())
 }
@@ -232,7 +294,15 @@ pub(crate) async fn face_job(
     let Some((snapshot, body)) = dir.snapshot(set, expression) else {
         return Ok(false);
     };
-    match render_face(app, world, expression, snapshot.face(), &body).await {
+    let change = match prompts::expression_text(expression) {
+        Some(text) => text.to_owned(),
+        None => {
+            let art = cast_art(&root, world, character);
+            let entry = art.expression(expression).ok_or("VN_SPRITE_EXPRESSION")?;
+            prompts::extra_expression_text(&entry.key, entry.description())
+        }
+    };
+    match render_face(app, world, &change, snapshot.face(), &body).await {
         Ok(layer) => {
             let _permit = data::world_write_permit_async(world).await?;
             if !character_exists(&root, world, character) {
@@ -260,17 +330,17 @@ fn stale_or_failed(
     }
 }
 
+/// `change`＝表情描述（固定鍵的定句或卡宣告的描述）
 async fn render_face(
     app: &tauri::AppHandle,
     world: &str,
-    expression: &str,
+    change: &str,
     face: FaceBox,
     body: &[u8],
 ) -> Result<Vec<u8>, String> {
     let config = read_config(app)?;
     let transparent = transparent(sprite_source(&config));
-    let prompt =
-        prompts::expression_prompt(expression, transparent).ok_or("VN_SPRITE_EXPRESSION")?;
+    let prompt = prompts::expression_prompt(change, transparent);
     let base = compose::decode(body)?;
     let crop = compose::Crop::around(face);
     let inner = crop.inner(face);
@@ -316,7 +386,8 @@ pub(crate) fn valid_label(label: &str) -> bool {
         && !label.contains(['@', '(', ')', '（', '）', ',', '，', ':', '：', '\n'])
 }
 
-/// 新增或重骰變體（`key` 有值＝重骰那個）：以定稿為參考圖，變體名就是服裝／姿態描述
+/// 新增或重骰變體（`key` 有值＝重骰那個，或生成卡宣告的變體）：以定稿為參考圖。描述＝卡宣告的 prompt，
+/// 玩家自建的變體名就是服裝／姿態描述
 pub(crate) async fn generate_variant(
     app: &tauri::AppHandle,
     world: &str,
@@ -324,11 +395,18 @@ pub(crate) async fn generate_variant(
     key: Option<String>,
     label: String,
 ) -> Result<(), String> {
+    let root = data_root(app)?;
     let config = read_config(app)?;
-    let dir = SpriteDir::of(&data_root(app)?, world, character)?;
+    let dir = SpriteDir::of(&root, world, character)?;
     let body = dir.read().ok_or("VN_SPRITE_MISSING")?.body;
-    let prompt = prompts::variant_prompt(&label, transparent(sprite_source(&config)));
-    let epochs = start_variant(&dir, world, character, key, &label)?;
+    let art = cast_art(&root, world, character);
+    let declared = key.as_deref().and_then(|key| art.variant(key));
+    let label = declared.map_or(label, |entry| entry.label.clone());
+    let change = declared.map_or(label.as_str(), |entry| entry.description());
+    let origin = data::vn::read_card(&root, world);
+    let card_style = origin.as_ref().and_then(|origin| origin.art.as_ref());
+    let prompt = prompts::variant_prompt(change, transparent(sprite_source(&config)), card_style);
+    let epochs = start_variant(&dir, world, character, key, &label, &art)?;
     let png = generate_png(app, &config, world, &prompt, Some(&body), "2:3").await?;
     place_variant(app, world, character, epochs, label, png, true).await
 }
@@ -342,28 +420,39 @@ pub(crate) async fn upload_variant(
     label: String,
     png: Vec<u8>,
 ) -> Result<(), String> {
-    let dir = SpriteDir::of(&data_root(app)?, world, character)?;
-    let epochs = start_variant(&dir, world, character, key, &label)?;
+    let root = data_root(app)?;
+    let dir = SpriteDir::of(&root, world, character)?;
+    let art = cast_art(&root, world, character);
+    let label = match key.as_deref().and_then(|key| art.variant(key)) {
+        Some(entry) => entry.label.clone(),
+        None => label,
+    };
+    let epochs = start_variant(&dir, world, character, key, &label, &art)?;
     place_variant(app, world, character, epochs, label, png, false).await
 }
 
-/// 開工：驗名稱、定鍵、記下定稿世代並作廢同一變體的在途工作
+/// 開工：驗名稱、定鍵（指名的鍵要已生成或卡已宣告；新鍵避開卡宣告的保留鍵）、記下定稿世代並作廢同一變體的在途工作
 fn start_variant(
     dir: &SpriteDir,
     world: &str,
     character: &str,
     key: Option<String>,
     label: &str,
+    art: &CastArt,
 ) -> Result<(String, u64, u64), String> {
     let meta = dir.read().ok_or("VN_SPRITE_MISSING")?.meta;
     let taken = meta
         .variants
         .iter()
         .any(|variant| variant.label == label && Some(&variant.key) != key.as_ref());
-    if !valid_label(label) || taken || key.as_ref().is_some_and(|key| meta.variant(key).is_none()) {
+    let unknown = key
+        .as_ref()
+        .is_some_and(|key| meta.variant(key).is_none() && art.variant(key).is_none());
+    if !valid_label(label) || taken || unknown {
         return Err("VN_SPRITE_VARIANT".to_owned());
     }
-    let key = key.unwrap_or_else(|| meta.next_variant_key());
+    let reserved: Vec<String> = art.variants.iter().map(|entry| entry.key.clone()).collect();
+    let key = key.unwrap_or_else(|| meta.next_variant_key(&reserved));
     let epoch = supersede_base(world, &variant_epoch_key(character, &key));
     Ok((key, epoch_of(world, character), epoch))
 }
@@ -408,7 +497,7 @@ async fn place_variant(
     if !character_exists(&root, world, character) {
         return Err("VN_SPRITE_CHARACTER_GONE".to_owned());
     }
-    dir.install_variant(&key, &label, &png, face)?;
+    dir.install_variant(&key, &label, &png, face, &faces_of(&root, world, character))?;
     queue::forget(world, character);
     Ok(())
 }
@@ -421,22 +510,63 @@ pub(crate) fn delete_variant(
     key: &str,
 ) -> Result<(), String> {
     supersede_base(world, &variant_epoch_key(character, key));
-    SpriteDir::of(root, world, character)?.remove_variant(key)?;
+    SpriteDir::of(root, world, character)?
+        .remove_variant(key, &faces_of(root, world, character))?;
     queue::forget(world, character);
     Ok(())
 }
 
-/// 提示詞用：送進提示詞的各角色可用變體名（只列有身體圖的）
+/// 提示詞用：各角色可用變體名＝卡宣告的（開桌就在，system 前綴穩定）∪ 已生成的（只列有身體圖的）
 pub(crate) fn variant_roster(
     root: &std::path::Path,
     world: &str,
     cards: &[data::CharacterCard],
+    card: Option<&data::vn::CardOrigin>,
 ) -> Vec<(String, Vec<String>)> {
     cards
         .iter()
-        .filter_map(|card| {
-            let labels = SpriteDir::of(root, world, &card.id).ok()?.variant_labels();
-            (!labels.is_empty()).then(|| (card.name.clone(), labels))
+        .filter_map(|character| {
+            let mut labels: Vec<String> = card
+                .and_then(|card| card.cast.get(&character.id))
+                .map(|cast| {
+                    cast.art
+                        .variants
+                        .iter()
+                        .map(|entry| entry.label.clone())
+                        .collect()
+                })
+                .unwrap_or_default();
+            let generated = SpriteDir::of(root, world, &character.id)
+                .map(|dir| dir.variant_labels())
+                .unwrap_or_default();
+            for label in generated {
+                if !labels.contains(&label) {
+                    labels.push(label);
+                }
+            }
+            (!labels.is_empty()).then(|| (character.name.clone(), labels))
+        })
+        .collect()
+}
+
+/// 提示詞用：各角色卡宣告的額外表情（鍵、顯示名）；沒宣告的角色不列
+pub(crate) fn expression_roster(
+    cards: &[data::CharacterCard],
+    card: Option<&data::vn::CardOrigin>,
+) -> Vec<(String, Vec<(String, String)>)> {
+    let Some(card) = card else {
+        return Vec::new();
+    };
+    cards
+        .iter()
+        .filter_map(|character| {
+            let art = &card.cast.get(&character.id)?.art;
+            let entries: Vec<(String, String)> = art
+                .expressions
+                .iter()
+                .map(|entry| (entry.key.clone(), entry.label.clone()))
+                .collect();
+            (!entries.is_empty()).then(|| (character.name.clone(), entries))
         })
         .collect()
 }

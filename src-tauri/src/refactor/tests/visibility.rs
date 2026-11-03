@@ -167,7 +167,7 @@ fn gm_sent(root: &Path, world_id: &str, said: &str) -> String {
         &state.mechanism,
         &crate::transport::StateScope::default(),
         LANG,
-        false,
+        crate::transport::GmVoice::Shared,
         &Default::default(),
         &Default::default(),
         false,

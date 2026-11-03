@@ -47,6 +47,7 @@ function Harness() {
     focusSpeaker: () => {},
     openTableForImport: async () => null,
     onVnTableImported: () => {},
+    openVnCardTable: async () => null,
     openWebSaveTable: async () => null,
     runTableOp: async (fn) => fn(),
     resetChatted: () => {},

@@ -10,6 +10,7 @@ mod mechanism;
 pub(crate) mod png_clean;
 pub(crate) mod png_image;
 mod source;
+mod vn_card;
 mod web_save;
 
 #[cfg(test)]
@@ -41,6 +42,7 @@ pub use interface::{
 };
 pub use mechanism::{import_card_extension, import_mechanism, is_field_rule_table};
 pub use source::{chosen_opening, opening_blocks_for};
+pub use vn_card::{export_vn_card, import_vn_card, VnCardImported};
 pub use web_save::{
     confirm_web_save_import, discard_web_save_import, import_web_save, WebSaveImported,
 };

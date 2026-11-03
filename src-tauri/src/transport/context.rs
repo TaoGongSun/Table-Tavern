@@ -71,10 +71,20 @@ pub fn gm_prompt_full_entries<'a>(
     entries
 }
 
+/// GM 的敘事分工：一般桌（名單角色與玩家各有扮演者）、介面接管桌（GM 唯一敘事者）、
+/// VN 卡定主角桌（玩家卡槽位＝主角，台詞與獨白由 GM 寫，玩家只在選項點做決定；plans/vn-mode-pkg9.md §2.5）。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum GmVoice {
+    #[default]
+    Shared,
+    Sole,
+    Protagonist,
+}
+
 /// GM 的 system prompt 本體：GM 指示＋world.md＋穩定的前組世界書＋全卡（含私設）＋玩家卡＋穩定的後組世界書。
 /// assemble_gm_messages（單發）與 gm_lane_system（resume 續聊凍結快照）共用。文字都是 `prepare` 代換好的。
-/// constant 人物條目改走名冊行，不進全文（包 4a）。`takeover`：介面接管桌（`data::is_interface_takeover`），
-/// 開頭換成唯一敘事者版（名單上的角色也由 GM 演、不點名）。`opening` 的範例段接在登場角色之後（見 `GmOpening`）。
+/// constant 人物條目改走名冊行，不進全文（包 4a）。`voice`：介面接管桌（`data::is_interface_takeover`）
+/// 開頭換成唯一敘事者版（名單上的角色也由 GM 演、不點名）；VN 卡定主角桌換掉總則與玩家段。`opening` 的範例段接在登場角色之後（見 `GmOpening`）。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn gm_system_prompt(
     texts: &PromptTexts,
@@ -84,13 +94,13 @@ pub(super) fn gm_system_prompt(
     back: &[&Placed],
     mechanism: &Mechanism,
     lang: &str,
-    takeover: bool,
+    voice: GmVoice,
     opening: &GmOpening,
 ) -> String {
     let en = scaffold_en(lang);
-    let intro = match (en, takeover) {
+    let intro = match (en, voice) {
         // 介面接管桌只走 GM 一條敘事線（作者裁決 2026-10-27）：名單上的角色也由 GM 演，不點名
-        (true, true) => {
+        (true, GmVoice::Sole) => {
             "You are the GM (director and narrator) of this tabletop RPG session, and its only narrator. You describe \
              scenes and how the world responds, drive the pacing of the story, and keep it from stalling or repeating. \
              Narration is public: everyone hears it. You play every character — supporting characters without a \
@@ -99,14 +109,32 @@ pub(super) fn gm_system_prompt(
              know the full world setting and the characters' private profiles; do not reveal anything the story has \
              not uncovered yet."
         }
-        (false, true) => {
+        (false, GmVoice::Sole) => {
             "你是這場桌上角色扮演的 GM（導演兼旁白），也是唯一的敘事者。你負責描述場景與世界反應、\
              推進劇情節奏，並防止劇情停滯或重複。\
              旁白是所有人都聽得到的公開敘事。所有角色——沒有角色卡的配角與「登場角色」名單上的角色——\
              都由你扮演，可自由出場、說話、行動；只有玩家由玩家自己扮演，不要替玩家說話或行動。\
              世界設定與角色私有設定只有你知道全貌，劇情尚未揭露的內容不要說破。"
         }
-        (true, false) => {
+        (true, GmVoice::Protagonist) => {
+            "You are the GM (director and narrator) of this tabletop RPG session. You describe scenes and how the \
+             world responds, drive the pacing of the story, decide who speaks next, and keep the conversation from \
+             stalling or repeating. Narration is public: everyone hears it. You fully play supporting characters who \
+             have no character card and may bring them in, have them speak, and act freely; the characters on the \
+             \"Characters\" list each have their own players, so do not speak for them. You write the protagonist's \
+             lines, actions, and inner monologue; the player only makes the protagonist's decisions at choice points. \
+             Only you know the full world setting and the characters' private profiles; do not reveal anything the \
+             story has not uncovered yet."
+        }
+        (false, GmVoice::Protagonist) => {
+            "你是這場桌上角色扮演的 GM（導演兼旁白）。你負責描述場景與世界反應、\
+             推進劇情節奏、決定下一位發言者，並防止對話停滯或重複。\
+             旁白是所有人都聽得到的公開敘事。沒有角色卡的配角（路人、店主、反派等）\
+             由你全權扮演，可自由出場、說話、行動；「登場角色」名單上的角色各有扮演者，不要替他們代言。\
+             主角由你寫台詞、行動與內心獨白，玩家只在選項點替主角做決定。\
+             世界設定與角色私有設定只有你知道全貌，劇情尚未揭露的內容不要說破。"
+        }
+        (true, GmVoice::Shared) => {
             "You are the GM (director and narrator) of this multiplayer tabletop RPG session. You describe scenes and \
              how the world responds, drive the pacing of the story, decide who speaks next, and keep the conversation \
              from stalling or repeating. Narration is public: everyone hears it. You fully play supporting characters \
@@ -115,7 +143,7 @@ pub(super) fn gm_system_prompt(
              players, so do not speak for them. Only you know the full world setting and the characters' private \
              profiles; do not reveal anything the story has not uncovered yet."
         }
-        (false, false) => {
+        (false, GmVoice::Shared) => {
             "你是這場多人桌上角色扮演的 GM（導演兼旁白）。你負責描述場景與世界反應、\
              推進劇情節奏、決定下一位發言者，並防止對話停滯或重複。\
              旁白是所有人都聽得到的公開敘事。沒有角色卡的配角（路人、店主、反派等）\
@@ -182,9 +210,13 @@ pub(super) fn gm_system_prompt(
     }
     system.push_str(&example_section(opening, lang));
     if let Some(player) = player {
-        system.push_str(&player_heading(&player.name, lang));
-        if !texts.player.public.trim().is_empty() {
-            system.push_str(&format!("\n{}\n", texts.player.public.trim()));
+        if voice == GmVoice::Protagonist {
+            system.push_str(&protagonist_section(player, &texts.player.public, lang));
+        } else {
+            system.push_str(&player_heading(&player.name, lang));
+            if !texts.player.public.trim().is_empty() {
+                system.push_str(&format!("\n{}\n", texts.player.public.trim()));
+            }
         }
     }
     let back = section_body(back, lang);
@@ -249,6 +281,29 @@ pub(super) fn worldbook_heading(lang: &str) -> &'static str {
 }
 
 /// 玩家卡段標（GM 與 chars 兩條 system 共用），開頭帶換行、結尾不帶。
+/// 卡定主角桌的玩家段：主角由 GM 寫，附公開與私設（主角沒有自己的角色線，私設只給 GM）。
+fn protagonist_section(player: &CharacterCard, public: &str, lang: &str) -> String {
+    let name = &player.name;
+    let (heading, private_label) = match scaffold_en(lang) {
+        true => (
+            format!("\n## Protagonist: {name} (you write their lines and inner monologue; the player only makes their decisions at choice points)"),
+            "Private profile (known only to you):",
+        ),
+        false => (
+            format!("\n## 主角：{name}（由你寫台詞與內心獨白；玩家只在選項點替主角做決定）"),
+            "私有設定（只有你知道）：",
+        ),
+    };
+    let mut text = heading;
+    if !public.trim().is_empty() {
+        text.push_str(&format!("\n{}\n", public.trim()));
+    }
+    if !player.private_md.trim().is_empty() {
+        text.push_str(&format!("{private_label}\n{}\n", player.private_md.trim()));
+    }
+    text
+}
+
 pub(super) fn player_heading(name: &str, lang: &str) -> String {
     match scaffold_en(lang) {
         true => format!(

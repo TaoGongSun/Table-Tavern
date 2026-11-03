@@ -34,7 +34,11 @@ fn request(
     if !chat_assembly::vn_table(&materials.state) {
         return Err("VN_REROLL_UNAVAILABLE: not a VN table".to_owned());
     }
-    let roster = VnRoster::new(&materials.metas, materials.player.as_ref());
+    let roster = VnRoster::new(
+        &materials.metas,
+        materials.player.as_ref(),
+        materials.vn_card.as_ref(),
+    );
     let target = materials
         .events
         .iter()

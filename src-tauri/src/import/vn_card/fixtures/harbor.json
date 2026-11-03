@@ -1,0 +1,61 @@
+{
+  "spec": "chara_card_v2",
+  "spec_version": "2.0",
+  "data": {
+    "name": "港口的燈",
+    "description": "濱海小鎮的燈塔與港口。",
+    "first_mes": "海風吹過碼頭。",
+    "creator_notes": "分級：一般。在 Table Tavern 以 VN 模式遊玩。",
+    "character_book": {
+      "entries": [
+        { "keys": ["燈塔"], "content": "燈塔每晚九點亮燈。", "comment": "燈塔", "extensions": { "table_tavern": { "visibility": "public" } } },
+        { "keys": ["信"], "content": "米拉藏著父親的信。", "comment": "米拉的信", "extensions": { "table_tavern": { "visibility": { "characters": ["mira"] } } } }
+      ]
+    },
+    "extensions": {
+      "table_tavern": {
+        "vn": {
+          "format": "tt-vn-card",
+          "version": 1,
+          "lang": "zh-TW",
+          "rating": { "level": "teen", "warnings": ["grief"] },
+          "protagonist": { "mode": "fixed", "id": "kai" },
+          "pov": "first",
+          "world": "濱海小鎮，燈塔守著港口。",
+          "opening": "[bg: 碼頭 | 黃昏]\n海風吹過碼頭。\n\n[choices]\n- 走向燈塔\n- 回家",
+          "unknown_field": { "ignored": true },
+          "art": { "style": "watercolor" },
+          "locations": [{ "slug": "pier", "name": "碼頭" }],
+          "cast": [
+            { "id": "kai", "name": "凱", "color": "#3d84a8", "emoji": "🧭", "role": "main", "public": "回鄉的青年。", "private": "他不知道父親還活著。", "height_cm": 180 },
+            { "id": "mira", "name": "米拉", "color": "#c76b8e", "role": "memory", "appears": "只在回憶中出現", "public": "燈塔守的女兒。", "private": "她知道凱的父親的下落。", "appearance": { "spec": "young woman, lighthouse keeper" }, "expressions_extra": [{ "key": "wistful", "label": "惆悵", "prompt": "wistful" }] }
+          ],
+          "bible": {
+            "logline": "凱回到故鄉，在燈塔找回父親的下落。",
+            "style": "安靜、留白。",
+            "branching": "none",
+            "chapter_max": 3,
+            "chapter_lock": true,
+            "chapter_reason": "三章收束。",
+            "chapters": [
+              { "title": "歸港", "goal": "凱回到小鎮", "beats": "下船；見到燈塔", "end_condition": "凱踏上碼頭", "anchors": ["燈還亮著。"] },
+              { "title": "燈塔", "goal": "遇見米拉", "beats": "上燈塔", "end_condition": "米拉提到信" },
+              { "title": "信", "goal": "讀信", "beats": "讀信", "end_condition": "凱讀完信" }
+            ],
+            "secrets": [
+              { "id": "letter", "holder": "mira", "title": "父親的信", "text": "米拉收著凱父親的信", "reveal": { "chapter": 3 }, "hint": "她常摸口袋" },
+              { "id": "father", "holder": "kai", "title": "父親還活著", "text": "凱的父親還活著", "reveal": { "flag": "read_letter" } }
+            ],
+            "flags": [
+              { "id": "trust", "label": "信任", "type": "counter", "initial": 0, "min": 0, "max": 5, "trigger": "坦白 +1" },
+              { "id": "read_letter", "label": "讀了信", "type": "bool", "initial": false, "trigger": "凱讀完信" }
+            ],
+            "endings": [
+              { "id": "home", "title": "回家", "when": [{ "kind": "flag", "path": "flags.read_letter", "expect": true }] }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

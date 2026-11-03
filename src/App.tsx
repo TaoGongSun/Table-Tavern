@@ -23,6 +23,7 @@ import {
   SceneLabel,
   TableKind,
   TranscriptEvent,
+  VnCardImport,
   WorldMeta,
   WorldState,
 } from "./shared/contracts/backend-contracts";
@@ -64,6 +65,7 @@ import {
 import { AppDialogs } from "./views/AppDialogs";
 import { VnPlayer } from "./features/vn/VnPlayer";
 import { VnWizard, type VnWizardStart } from "./features/vn/VnWizard";
+import { openVnCardTable as openVnCardTableFlow } from "./features/vn/card/vn-card";
 import type { SettingsTab } from "./features/settings/SettingsWindow";
 import { AppWorkspace, type EditingTableName } from "./views/AppWorkspace";
 import { aiReady, Onboarding } from "./features/ai-connection/Onboarding";
@@ -422,6 +424,25 @@ function App() {
     [config, chat.busy, refreshWorlds],
   );
 
+  // 匯入 VN 卡：後端整桌建好（失敗不留半桌）再照開新桌的流程進去；前置條件與 openTableForImport 相同
+  const openVnCardTable = useCallback(
+    async (data: number[], spoilerLock: boolean) => {
+      if (!config || chat.busy) return null;
+      if (!(await canLeaveRef.current())) return null;
+      return openVnCardTableFlow(
+        {
+          importCard: (card, lock) =>
+            invoke<VnCardImport>("import_vn_card", { data: card, spoilerLock: lock }),
+          refreshWorlds,
+          enterTable,
+        },
+        data,
+        spoilerLock,
+      );
+    },
+    [config, chat.busy, refreshWorlds],
+  );
+
   const resetChatted = useCallback((worldId: string) => {
     localStorage.removeItem(chattedKey(worldId));
     setChattedSinceImport(false);
@@ -441,10 +462,11 @@ function App() {
     adoptTableName: adoptImportName,
     focusSpeaker,
     openTableForImport,
-    onVnTableImported: (worldId) => {
-      setVnWizard({ worldId, spoilerLock: vnSpoilerLock.current });
+    onVnTableImported: (worldId, fromCard) => {
+      setVnWizard({ worldId, spoilerLock: vnSpoilerLock.current, fromCard });
       vnSpoilerLock.current = true;
     },
+    openVnCardTable,
     openWebSaveTable,
     runTableOp,
     resetChatted,
@@ -1148,7 +1170,7 @@ function App() {
               onImportCard={(file, spoilerLock) => {
                 vnSpoilerLock.current = spoilerLock;
                 setVnWizard(null);
-                void imports.importFileToVnTable(file);
+                void imports.importFileToVnTable(file, spoilerLock);
               }}
               onFinish={finishVnWizard}
               onClose={() => setVnWizard(null)}

@@ -2,7 +2,8 @@
 //! 以及注入 GM 線的常駐段與當章包。生成提示詞一份英文（欄位名英文、內容用內容語言）；注入段 zh／en 照
 //! `scaffold_en` 分流。
 use super::messages::{scaffold_en, ChatMessage};
-use crate::data::vn::{Bible, Branching, Chapter, FlagKind, Reveal, Secret};
+use crate::data::vn::{Bible, Branching, CardOrigin, CastRole, Chapter, FlagKind, Reveal, Secret};
+use crate::data::CharacterCard;
 use crate::data::Condition;
 
 /// 生成與重骰共用的素材：world.md、角色（id、名字、公開、私設）、GM-only 世界書條目（標題、內文）。
@@ -287,3 +288,44 @@ pub fn bible_chapter(lang: &str, bible: &Bible, chapter: u32) -> String {
 #[cfg(test)]
 #[path = "vn_bible_prompts_tests.rs"]
 mod tests;
+
+/// 登場者出場限制（VN 卡的 `role: memory／deity` 與 `appears`，pkg9 §2.6）：GM 常駐段一行一人，只列有填的；
+/// 都沒填回空字串。`cards`＝桌上角色（限制以桌內 id 對到名字，角色刪掉就不列）。
+pub fn cast_limits(lang: &str, card: &CardOrigin, cards: &[CharacterCard]) -> String {
+    let en = scaffold_en(lang);
+    let lines: Vec<String> = cards
+        .iter()
+        .filter_map(|character| {
+            let origin = card.cast.get(&character.id)?;
+            let role = match (en, origin.role) {
+                (true, Some(CastRole::Memory)) => "appears only in memories",
+                (true, Some(CastRole::Deity)) => "a deity who manifests only on special occasions",
+                (false, Some(CastRole::Memory)) => "只在回憶中出場",
+                (false, Some(CastRole::Deity)) => "神祇，只在特定場合顯現",
+                _ => "",
+            };
+            let parts: Vec<&str> = [role, origin.appears.trim()]
+                .into_iter()
+                .filter(|part| !part.is_empty())
+                .collect();
+            (!parts.is_empty()).then(|| {
+                format!(
+                    "- {}: {}",
+                    character.name,
+                    parts.join(match en {
+                        true => "; ",
+                        false => "；",
+                    })
+                )
+            })
+        })
+        .collect();
+    if lines.is_empty() {
+        return String::new();
+    }
+    let heading = match en {
+        true => "## Appearance limits (keep these characters within them)",
+        false => "## 登場者出場限制（照這些限制安排出場）",
+    };
+    format!("\n{heading}\n{}\n", lines.join("\n"))
+}

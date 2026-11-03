@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { t } from "../../i18n";
 import type { SpriteSlotStatus } from "../../shared/contracts/backend-contracts";
 import { SpriteBasePicker } from "./SpriteBasePicker";
-import { ExpressionRow, FACES, FaceBoxEditor, statusKey } from "./SpriteExpressionRow";
+import { ExpressionRow, FaceBoxEditor, faceKeys, statusKey } from "./SpriteExpressionRow";
 import { SpriteVariants } from "./SpriteVariants";
 import { onSpriteStatus } from "./useSprites";
 import { useSpriteSlot } from "./useSpriteSlot";
@@ -52,7 +52,7 @@ export function SpriteTab({ worldId, characterId, name }: { worldId: string; cha
   return (
     <div className="vn-sprite-tab">
       <div className="vn-sprite-tab-actions">
-        <button type="button" className="btn btn-sm" disabled={slot.busy !== null} onClick={() => void regenerate(null, FACES)}>
+        <button type="button" className="btn btn-sm" disabled={slot.busy !== null} onClick={() => void regenerate(null, faceKeys(sprite))}>
           {t("vnSpriteRegenerateAll")}
         </button>
         <button

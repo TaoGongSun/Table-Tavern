@@ -6,6 +6,8 @@ import { t, type MsgKey } from "../../i18n";
 import type { ChatController } from "../play/chat/useChatController";
 import { backendText } from "../../shared/ui/backend-text";
 import { IconHome, IconStop } from "../../shared/ui/icons";
+import { MoreMenu } from "../../shared/ui/MoreMenu";
+import { exportVnCard } from "./card/vn-card";
 import { Backlog } from "./Backlog";
 import { ChoicePanel } from "./ChoicePanel";
 import { DialogueBox } from "./DialogueBox";
@@ -236,6 +238,18 @@ export function VnPlayer({
         <button type="button" className="btn btn-ghost" onClick={onShowChat}>
           {t("vnShowChat")}
         </button>
+        <MoreMenu
+          label={t("moreActions")}
+          disabled={busy}
+          items={[
+            {
+              key: "export-card",
+              label: t("vnCardExport"),
+              onSelect: () =>
+                void exportVnCard(worldId, tableName).catch((reason) => onError(backendText(reason))),
+            },
+          ]}
+        />
       </header>
       {notice}
       <Stage

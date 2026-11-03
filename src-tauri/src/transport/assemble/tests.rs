@@ -1312,7 +1312,7 @@ fn vn_tables_send_dialogue_without_name_prefix() {
             &Mechanism::default(),
             &StateScope::default(),
             lang,
-            false,
+            crate::transport::GmVoice::Shared,
             &Default::default(),
             &Default::default(),
             vn,

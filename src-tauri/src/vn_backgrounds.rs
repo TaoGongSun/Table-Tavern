@@ -1,15 +1,18 @@
-//! VN 背景庫（plans/vn-mode-pkg3.md §2）：`[bg: 地點 | 時段]` → 鍵（地點雜湊 slug＋固定四時段）→
-//! `worlds/<id>/vn/backgrounds/<slug>-<時段>.png`。路徑只由雜湊與列舉組成，模型文字不進路徑；
-//! `backgrounds.json` 記 slug → 原地點文字。生圖走立繪同一個一次一張的佇列（`vn_sprites::queue`）。
-use crate::transport::vn_background_prompts as prompts;
+//! VN 背景庫（plans/vn-mode-pkg3.md §2）：`[bg: 地點 | 時段]` → 鍵（地點雜湊 slug＋時段鍵）→
+//! `worlds/<id>/vn/backgrounds/<slug>-<時段>.png`。路徑只由雜湊與驗過的鍵組成，模型文字不進路徑；
+//! `backgrounds.json` 記 slug → 地點顯示名。生圖走立繪同一個一次一張的佇列（`vn_sprites::queue`）。
+//! VN 卡宣告的地點（plans/vn-mode-pkg9b.md §2.5）先比對：slug 取 `card:<鍵>` 的雜湊、時段用該地點自己的清單。
+use crate::data::vn::CardOrigin;
+use crate::data::vn_art::{valid_art_key, CardLocation};
+use crate::transport::vn_background_prompts::{self as prompts, BackgroundReference};
 use crate::vn_sprites::{self, queue::BgSlot};
 use crate::{data, data_root};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-pub(crate) const PERIODS: [&str; 4] = ["morning", "day", "dusk", "night"];
-const DEFAULT_PERIOD: &str = "day";
+/// 固定四時段（自由地點與沒宣告時段的卡地點）：第一項是預設，也是找光線參考圖的優先序
+const PERIODS: [&str; 4] = ["day", "morning", "dusk", "night"];
 const SLUG_LEN: usize = 16;
 /// 世界設定截多少字當場景風格依據
 const SETTING_CHARS: usize = 600;
@@ -85,10 +88,6 @@ fn period_at(hour: u32) -> &'static str {
     }
 }
 
-pub(crate) fn known_period(value: &str) -> Option<&'static str> {
-    PERIODS.into_iter().find(|period| *period == value)
-}
-
 /// 全形轉半形（含全形空白）、去頭尾空白、連續空白收一、轉小寫
 fn fold(text: &str) -> String {
     let halfwidth: String = text
@@ -123,23 +122,117 @@ pub(crate) fn valid_slug(slug: &str) -> bool {
             .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
 }
 
+/// 這桌 VN 卡宣告的地點（卡外桌＝空）
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Places(Vec<CardLocation>);
+
+/// 一個地點對到的背景庫位置：slug、顯示名與有效時段清單
+pub(crate) struct Located {
+    pub slug: String,
+    pub name: String,
+    periods: Vec<String>,
+}
+
+impl Places {
+    pub(crate) fn of(card: Option<&CardOrigin>) -> Self {
+        Places(card.map(|card| card.locations.clone()).unwrap_or_default())
+    }
+
+    pub(crate) fn load(root: &std::path::Path, world: &str) -> Self {
+        Self::of(data::vn::read_card(root, world).as_ref())
+    }
+
+    /// 地點文字對卡內地點：鍵或名稱（同 `fold` 正規化）；對不到＝自由地點
+    pub(crate) fn locate(&self, location: &str) -> Located {
+        let folded = fold(location);
+        match self
+            .0
+            .iter()
+            .find(|place| fold(&place.key) == folded || fold(&place.name) == folded)
+        {
+            Some(place) => Located {
+                slug: card_slug(&place.key),
+                name: place.name.clone(),
+                periods: periods_of(Some(place)),
+            },
+            None => Located {
+                slug: slug_of(location),
+                name: location.trim().to_owned(),
+                periods: periods_of(None),
+            },
+        }
+    }
+
+    pub(crate) fn by_slug(&self, slug: &str) -> Option<&CardLocation> {
+        self.0.iter().find(|place| card_slug(&place.key) == slug)
+    }
+
+    /// 這個背景 slug 的有效時段清單
+    pub(crate) fn periods(&self, slug: &str) -> Vec<String> {
+        periods_of(self.by_slug(slug))
+    }
+}
+
+/// 卡地點宣告了時段就是那幾個鍵，否則固定四時段
+fn periods_of(place: Option<&CardLocation>) -> Vec<String> {
+    match place.filter(|place| !place.times.is_empty()) {
+        Some(place) => place.times.clone(),
+        None => PERIODS.map(str::to_owned).to_vec(),
+    }
+}
+
+/// 卡地點的 slug：`card:<鍵>` 的雜湊（與自由地名分開，路徑仍只由雜湊組成）
+fn card_slug(key: &str) -> String {
+    slug_of(&format!("card:{key}"))
+}
+
+impl Located {
+    /// 寫明的時段：先比鍵本身，再走同義詞；結果要在這個地點的清單內，否則 None
+    pub(crate) fn period_for(&self, time: &str) -> Option<String> {
+        let folded = fold(time);
+        self.periods
+            .iter()
+            .find(|period| **period == folded)
+            .or_else(|| {
+                let synonym = period_of(time)?;
+                self.periods.iter().find(|period| *period == synonym)
+            })
+            .cloned()
+    }
+
+    /// 寫明的認得就用；否則沿用（也在清單內才算）；再不行取清單第一項
+    fn period(&self, time: Option<&str>, inherited: Option<&str>) -> String {
+        time.and_then(|time| self.period_for(time))
+            .or_else(|| {
+                inherited
+                    .filter(|inherited| self.periods.iter().any(|period| period == inherited))
+                    .map(str::to_owned)
+            })
+            .unwrap_or_else(|| self.periods[0].clone())
+    }
+}
+
 /// 一個背景鍵（已沿用好的時段）
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub(crate) struct Backdrop {
+    /// 顯示名：卡地點＝卡上的名稱，自由地點＝原文
     pub location: String,
     pub slug: String,
-    pub period: &'static str,
+    pub period: String,
 }
 
 impl Backdrop {
-    pub(crate) fn new(location: &str, time: Option<&str>, inherited: Option<&'static str>) -> Self {
+    pub(crate) fn new(
+        location: &str,
+        time: Option<&str>,
+        inherited: Option<&str>,
+        places: &Places,
+    ) -> Self {
+        let located = places.locate(location);
         Backdrop {
-            location: location.trim().to_owned(),
-            slug: slug_of(location),
-            period: time
-                .and_then(period_of)
-                .or(inherited)
-                .unwrap_or(DEFAULT_PERIOD),
+            period: located.period(time, inherited),
+            location: located.name,
+            slug: located.slug,
         }
     }
 }
@@ -156,8 +249,12 @@ impl Library {
         })
     }
 
-    /// slug 與時段都得先驗過（呼叫端從 `valid_slug`／`known_period` 來）
+    /// slug 與時段都得先驗過（`valid_slug`、該地點的時段清單）；這裡再擋一次格式，不合格的換成不可能是真鍵的名字
     fn path(&self, slug: &str, period: &str) -> PathBuf {
+        let (slug, period) = match valid_slug(slug) && valid_art_key(period) {
+            true => (slug, period),
+            false => ("!", "!"),
+        };
         self.dir.join(format!("{slug}-{period}.png"))
     }
 
@@ -167,17 +264,17 @@ impl Library {
 
     /// 這張該不該生／寫：庫裡沒有，或是重生成
     fn wants(&self, backdrop: &Backdrop, force: bool) -> bool {
-        force || !self.has(&backdrop.slug, backdrop.period)
+        force || !self.has(&backdrop.slug, &backdrop.period)
     }
 
     pub(crate) fn read(&self, slug: &str, period: &str) -> Option<Vec<u8>> {
         std::fs::read(self.path(slug, period)).ok()
     }
 
-    /// 同地點別的時段（改光線的參考圖），白天優先
-    fn reference(&self, slug: &str, period: &str) -> Option<Vec<u8>> {
-        ["day", "morning", "dusk", "night"]
-            .into_iter()
+    /// 同地點有效時段清單內別的時段（改光線的參考圖），照清單順序（固定四時段白天優先）
+    fn reference(&self, slug: &str, period: &str, periods: &[String]) -> Option<Vec<u8>> {
+        periods
+            .iter()
             .filter(|other| *other != period)
             .find_map(|other| self.read(slug, other))
     }
@@ -188,7 +285,7 @@ impl Library {
 
     /// 寫圖並記下 slug → 原地點文字（已記過的不改）。呼叫端持桌寫入許可
     fn write(&self, backdrop: &Backdrop, png: &[u8]) -> Result<(), String> {
-        data::commit_world_write_atomic(&self.path(&backdrop.slug, backdrop.period), png)
+        data::commit_world_write_atomic(&self.path(&backdrop.slug, &backdrop.period), png)
             .map_err(|error| error.to_string())?;
         let mut names: BTreeMap<String, String> = std::fs::read(self.names_path())
             .ok()
@@ -204,12 +301,13 @@ impl Library {
     }
 }
 
-/// 一幕的格補上背景：每個 Bg 格的時段照「沒寫或認不得＝沿用目前，再沒有＝day」填好；
+/// 一幕的格補上背景：每個 Bg 格的時段照「沒寫或認不得＝沿用目前（要在目的地清單內），再沒有＝清單第一項」填好；
 /// 幕首第一格不是 Bg 而 `start`（幕首事件快照的 place／time）有地點，就在最前面補一格。
 /// 回這幕用到的背景（依出現順序、去重）
 pub(crate) fn resolve_scene<'a>(
     events: impl IntoIterator<Item = &'a mut Vec<crate::chat_turn::VnCell>>,
     start: Option<(&str, Option<&str>)>,
+    places: &Places,
 ) -> Vec<Backdrop> {
     use crate::chat_turn::VnCell;
     let mut events: Vec<_> = events.into_iter().collect();
@@ -218,10 +316,11 @@ pub(crate) fn resolve_scene<'a>(
         .flat_map(|cells| cells.iter())
         .next()
         .is_some_and(|cell| matches!(cell, VnCell::Bg { .. }));
-    let mut current = start.and_then(|(_, time)| time.and_then(period_of));
+    let mut current: Option<String> =
+        start.and_then(|(place, time)| places.locate(place).period_for(time?));
     if let (Some((place, time)), Some(first), false) = (start, events.first_mut(), starts_with_bg) {
         if !place.trim().is_empty() {
-            first.insert(0, Backdrop::new(place, time, None).cell(time));
+            first.insert(0, Backdrop::new(place, time, None, places).cell(time));
         }
     }
     let mut used: Vec<Backdrop> = Vec::new();
@@ -233,10 +332,11 @@ pub(crate) fn resolve_scene<'a>(
             period,
         } = cell
         {
-            let backdrop = Backdrop::new(location, time.as_deref(), current);
+            let backdrop = Backdrop::new(location, time.as_deref(), current.as_deref(), places);
+            *location = backdrop.location.clone();
             *slug = backdrop.slug.clone();
-            *period = Some(backdrop.period.to_owned());
-            current = Some(backdrop.period);
+            *period = Some(backdrop.period.clone());
+            current = Some(backdrop.period.clone());
             if !used.iter().any(|seen| seen.key() == backdrop.key()) {
                 used.push(backdrop);
             }
@@ -251,12 +351,12 @@ impl Backdrop {
             location: self.location.clone(),
             time: time.map(str::to_owned),
             slug: self.slug.clone(),
-            period: Some(self.period.to_owned()),
+            period: Some(self.period.clone()),
         }
     }
 
     fn key(&self) -> (&str, &str) {
-        (&self.slug, self.period)
+        (&self.slug, &self.period)
     }
 }
 
@@ -265,14 +365,15 @@ pub(crate) fn fill(app: &tauri::AppHandle, world: &str, used: &[Backdrop]) -> Re
     let library = Library::of(&data_root(app)?, world)?;
     let missing: Vec<BgSlot> = used
         .iter()
-        .filter(|backdrop| !library.has(&backdrop.slug, backdrop.period))
+        .filter(|backdrop| !library.has(&backdrop.slug, &backdrop.period))
         .map(|backdrop| BgSlot::new(world, backdrop.clone(), false))
         .collect();
     vn_sprites::queue::enqueue_backgrounds(app, missing);
     Ok(())
 }
 
-/// 一張背景：庫裡同地點有別的時段就當參考圖改光線（API 來源參考圖未驗，從零生）；失敗自動重試一次。
+/// 一張背景：庫裡同地點有別的時段就當參考圖改光線，沒有而卡開了封面參考就以封面取畫風（API 來源不帶參考圖，從零生）；
+/// 卡地點用卡上的描述與尺度，卡畫風與背景規則接在提示詞後。失敗自動重試一次。
 /// 寫前重驗桌仍在、鍵仍空（重生成除外）。Ok(false)＝桌已不在或別人先寫好，結果丟掉
 pub(crate) async fn job(app: &tauri::AppHandle, slot: &BgSlot) -> Result<bool, String> {
     let root = data_root(app)?;
@@ -282,9 +383,23 @@ pub(crate) async fn job(app: &tauri::AppHandle, slot: &BgSlot) -> Result<bool, S
         return Ok(true);
     }
     let config = vn_sprites::read_config(app)?;
-    let reference = match vn_sprites::sprite_source(&config) {
+    let card = data::vn::read_card(&root, &slot.world);
+    let places = Places::of(card.as_ref());
+    let source = vn_sprites::sprite_source(&config);
+    let same_place = match source {
         "api" => None,
-        _ => library.reference(&backdrop.slug, backdrop.period),
+        _ => library.reference(
+            &backdrop.slug,
+            &backdrop.period,
+            &places.periods(&backdrop.slug),
+        ),
+    };
+    let (kind, reference) = match same_place {
+        Some(png) => (BackgroundReference::SameLocation, Some(png)),
+        None => match vn_sprites::cover_reference(&root, &slot.world, card.as_ref(), source) {
+            Some(png) => (BackgroundReference::CoverStyle, Some(png)),
+            None => (BackgroundReference::None, None),
+        },
     };
     let setting: String = data::read_world_md(&root, &slot.world)
         .unwrap_or_default()
@@ -293,9 +408,11 @@ pub(crate) async fn job(app: &tauri::AppHandle, slot: &BgSlot) -> Result<bool, S
         .collect();
     let prompt = prompts::background_prompt(
         &backdrop.location,
-        backdrop.period,
+        places.by_slug(&backdrop.slug),
+        &backdrop.period,
         &setting,
-        reference.is_some(),
+        kind,
+        card.as_ref().and_then(|card| card.art.as_ref()),
     );
     let generate = || {
         vn_sprites::generate_png(

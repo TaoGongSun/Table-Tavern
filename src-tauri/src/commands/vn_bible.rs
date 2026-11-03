@@ -15,8 +15,10 @@ pub(crate) struct BibleView {
     flag_values: BTreeMap<String, String>,
     revealed: Vec<Revealed>,
     played: bool,
-    /// 角色 id → 名字（秘密持有者顯示用）
+    /// 角色 id → 名字（秘密持有者顯示用；含玩家卡＝卡定主角）
     names: BTreeMap<String, String>,
+    /// VN 卡匯入時存了封面（匯出成卡時不必再挑）
+    cover: bool,
 }
 
 #[tauri::command]
@@ -46,7 +48,15 @@ pub(crate) fn vn_bible_read(app: tauri::AppHandle, world_id: String) -> Result<B
             .map_err(|error| error.to_string())?
             .into_iter()
             .map(|meta| (meta.id, meta.name))
+            .chain(
+                data::read_player_card(&root, &world_id)
+                    .map_err(|error| error.to_string())?
+                    .map(|card| (card.id, card.name)),
+            )
             .collect(),
+        cover: data::vn::cover_path(&root, &world_id)
+            .map_err(|error| error.to_string())?
+            .is_file(),
     })
 }
 

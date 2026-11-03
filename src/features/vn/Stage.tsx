@@ -1,4 +1,4 @@
-// 舞台：背景層、三個槽位的立繪、說話者亮其他壓暗、特寫與震動、地點字卡。
+// 舞台：背景層、三個槽位的立繪（VN 卡給了身高就照比例縮、下緣對齊）、說話者亮其他壓暗、特寫與震動、地點字卡。
 // 退路鏈：該變體該表情臉層 → 該變體 neutral → 預設變體＋共用臉層（SpriteFigure）→ 角色卡原圖 → 剪影＋名牌。
 import type { SpriteView } from "../../shared/contracts/backend-contracts";
 import { SpriteFigure } from "./SpriteFigure";
@@ -48,7 +48,11 @@ export function Stage({
                 ? "speaking"
                 : "dim";
           return (
-            <figure key={id} className={`vn-sprite vn-slot-${slot} vn-${state}`}>
+            <figure
+              key={id}
+              className={`vn-sprite vn-slot-${slot} vn-${state}`}
+              style={sprites[id]?.scale ? { ["--vn-scale" as string]: sprites[id].scale } : undefined}
+            >
               {sprites[id] ? (
                 <SpriteFigure
                   sprite={sprites[id]}

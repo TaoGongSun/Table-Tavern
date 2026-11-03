@@ -8,7 +8,13 @@ import { Lang, t } from "../../i18n";
 import { decideImportRoute, type ImportReceiptKind, type ImportRouteAnswer } from "./import-routing";
 import { hasRefactorCardChunk } from "../refactor/refactor-card";
 import { useTurnWait } from "../play/useTurnWait";
-import { type TableKind, type WorldbookEntry } from "../../shared/contracts/backend-contracts";
+import {
+  type TableKind,
+  type VnCardImport,
+  type VnCardProbe,
+  type WorldbookEntry,
+} from "../../shared/contracts/backend-contracts";
+import { confirmVnCard, vnCardErrorText, vnCardNoticeText } from "../vn/card/vn-card";
 import { PALETTE, type CharacterMeta } from "../characters/card-model";
 import { cardCarriesPage, type CardInterface } from "../card-interface/interface-card";
 import { looksLikeWebSave } from "../../shared/contracts/web-save/web-save";
@@ -38,6 +44,8 @@ interface ImportProbe {
   book_shaped: boolean;
   /** 備用開場白數：備了好幾個開局＝這是一座舞台不是一個人（first_mes 每張卡都有，不看） */
   alternate_greetings: number;
+  /** VN 卡摘要（舊後端沒有這欄） */
+  vn_card?: VnCardProbe | null;
 }
 
 /** 身分框主按鈕指向世界書的條件。判準只決定哪顆是主按鈕與文案講哪一種，
@@ -181,8 +189,8 @@ export interface ImportController {
   refreshReceipts: (worldId: string) => Promise<void>;
   /** 陣容欄「匯入卡」選了檔：探測身分後分流 */
   importFile: (file: File) => Promise<void>;
-  /** VN 精靈 ①「我有角色卡」：探測身分後開新 VN 桌並匯入（不問身分、不過路由框） */
-  importFileToVnTable: (file: File) => Promise<void>;
+  /** VN 精靈 ①「我有角色卡」：探測身分後開新 VN 桌並匯入（不問身分、不過路由框）；VN 卡帶 ① 的劇透鎖 */
+  importFileToVnTable: (file: File, spoilerLock: boolean) => Promise<void>;
   answerChoice: (choice: "character" | "worldbook" | "cancel") => Promise<void>;
   /** 身分框或路由框答完、那張卡還在匯（路由判定、寫檔）：框已收但還沒結束 */
   answering: boolean;
@@ -223,8 +231,10 @@ export function useImportController(input: {
   focusSpeaker: (characterId: string | null) => void;
   /** 開一張新桌並進去，回傳新桌 id；null＝現在開不了（沒 config、正在生成、或新桌進不去／不可寫） */
   openTableForImport: (label: string, kind: TableKind) => Promise<string | null>;
-  /** 開新 VN 桌並匯完：進 VN 開桌精靈第 ② 步 */
-  onVnTableImported: (worldId: string) => void;
+  /** 開新 VN 桌並匯完：進 VN 開桌精靈第 ② 步；VN 卡建的桌（fromCard）聖經已在卡上，從 ③ 起 */
+  onVnTableImported: (worldId: string, fromCard?: boolean) => void;
+  /** VN 卡整桌建好並進去；null＝現在開不了或新桌進不去（同 openTableForImport） */
+  openVnCardTable: (data: number[], spoilerLock: boolean) => Promise<VnCardImport | null>;
   /** 照網頁存檔建一張新桌並進去；null＝現在開不了或新桌進不去（同 openTableForImport） */
   openWebSaveTable: (data: number[]) => Promise<WebSaveImport | null>;
   /** 進出桌互斥：匯入現桌與開新桌並匯入整段要拿到鎖；等玩家在身分框／路由框作答時不持鎖 */
@@ -253,6 +263,7 @@ export function useImportController(input: {
     focusSpeaker,
     openTableForImport,
     onVnTableImported,
+    openVnCardTable,
     openWebSaveTable,
     runTableOp,
     resetChatted,
@@ -560,6 +571,36 @@ export function useImportController(input: {
     [runTableOp, openWebSaveTable, refreshCharacters, focusSpeaker, refreshStateOf, tellAboutInterface],
   );
 
+  // VN 卡：認得的版本跳分級確認框、一律開新 VN 桌（不問身分、不匯進這桌）；回 false＝版本不認得，提示後照普通卡走
+  const importVnCard = useCallback(
+    async (card: VnCardProbe, data: number[], spoilerLock: boolean): Promise<boolean> => {
+      if (!card.supported) {
+        await showMessage(t("vnCardUnsupported"), { title: t("importCard"), okLabel: t("dialogAck") });
+        return false;
+      }
+      if (!(await confirmVnCard(card))) return true;
+      try {
+        await runTableOp(async () => {
+          const imported = await openVnCardTable(data, spoilerLock);
+          if (imported === null) return;
+          await refreshCharacters(imported.world_id);
+          await refreshStateOf(imported.world_id);
+          if (imported.notices.length > 0) {
+            await showMessage(vnCardNoticeText(imported.notices), {
+              title: t("vnCardNoticesTitle"),
+              okLabel: t("dialogAck"),
+            });
+          }
+          onVnTableImported(imported.world_id, true);
+        });
+      } catch (reason) {
+        onError(vnCardErrorText(reason) ?? String(reason));
+      }
+      return true;
+    },
+    [runTableOp, openVnCardTable, refreshCharacters, refreshStateOf, onVnTableImported, onError],
+  );
+
   // 匯入 SillyTavern 角色卡（V2 PNG 或 JSON）：讀 bytes 交後端探測，依探測結果分流——
   // 純世界書、純角色卡都零詢問直接判定身分（還要再過第二張卡路由）；
   // 角色與世界書兩種身分都有料才彈三鍵對話框問玩家要哪個，答完一樣過路由。
@@ -580,6 +621,7 @@ export function useImportController(input: {
         const data = Array.from(bytes);
         const probe = await probeImport(data);
         if (worldRef.current !== worldId) return;
+        if (probe.vn_card && (await importVnCard(probe.vn_card, data, true))) return;
         if (probe.parsed && (!probe.name || probe.book_shaped)) {
           // 純世界書檔（含自帶書名的 V2 獨立書）：沒有角色可建，「匯入成角色卡」是假選項，不問
           await routeImport("worldbook", data, probe.name ?? file.name.replace(/\.[^.]+$/, ""));
@@ -596,16 +638,17 @@ export function useImportController(input: {
         onError(String(reason));
       }
     },
-    [routeImport, importAsCharacter, importWebSave, runTableOp, worldId, onError, onRefactorCard],
+    [routeImport, importAsCharacter, importWebSave, importVnCard, runTableOp, worldId, onError, onRefactorCard],
   );
 
   // VN 精靈 ①：純世界書檔照探測走世界書，其餘（含帶書的角色卡）當角色卡匯，卡內書跟著進
   const importFileToVnTable = useCallback(
-    async (file: File) => {
+    async (file: File, spoilerLock: boolean) => {
       onError("");
       try {
         const data = Array.from(new Uint8Array(await file.arrayBuffer()));
         const probe = await probeImport(data);
+        if (probe.vn_card && (await importVnCard(probe.vn_card, data, spoilerLock))) return;
         const book = probe.parsed && (!probe.name || probe.book_shaped);
         const label = probe.name ?? file.name.replace(/\.[^.]+$/, "");
         await openNewTableAndImport(
@@ -616,7 +659,7 @@ export function useImportController(input: {
         onError(String(reason));
       }
     },
-    [openNewTableAndImport, onError],
+    [openNewTableAndImport, importVnCard, onError],
   );
 
   // 三鍵對話框的作答：取消什麼都不做，另外兩個選項答出身分後都要過第二張卡路由

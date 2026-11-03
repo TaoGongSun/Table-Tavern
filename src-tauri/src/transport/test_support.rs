@@ -264,7 +264,7 @@ pub(crate) mod legacy {
             &scan,
             mechanism,
             lang,
-            false,
+            crate::transport::GmVoice::Shared,
             &Default::default(),
         )
     }
@@ -347,7 +347,7 @@ pub(crate) mod legacy {
             mechanism,
             scope,
             lang,
-            false,
+            crate::transport::GmVoice::Shared,
             &Default::default(),
             &Default::default(),
             false,

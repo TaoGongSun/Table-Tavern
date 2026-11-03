@@ -1,4 +1,6 @@
 //! VN 立繪（plans/vn-mode-pkg7.md）的 Tauri 邊界：讀立繪、生候選、挑定、改框、重骰、上傳、背景補表情。
+use crate::data::vn::CardOrigin;
+use crate::data::vn_art::ArtEntry;
 use crate::generated_image::{self, png_data_url, GeneratedImage};
 use crate::vn_sprites::queue::{self, SlotStatus};
 use crate::vn_sprites::store::{self, FaceBox, SpriteDir, SpriteMeta};
@@ -17,6 +19,28 @@ pub(crate) struct SpriteView {
     faces: BTreeMap<String, String>,
     /// 變體鍵 → 身體圖與獨立表情組的臉層
     variant_layers: BTreeMap<String, VariantLayers>,
+    /// VN 卡宣告的額外表情，依卡上順序（臉層照 faces 的鍵）
+    expressions: Vec<ArtLabel>,
+    /// VN 卡宣告的變體（還沒生成的立繪分頁顯示成空格）
+    declared_variants: Vec<ArtLabel>,
+    /// 舞台身高比例＝本角色 height_cm ÷ 名單中有填者的最高值；沒填＝None（照統一比例）
+    scale: Option<f64>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct ArtLabel {
+    key: String,
+    label: String,
+}
+
+fn labels(entries: &[ArtEntry]) -> Vec<ArtLabel> {
+    entries
+        .iter()
+        .map(|entry| ArtLabel {
+            key: entry.key.clone(),
+            label: entry.label.clone(),
+        })
+        .collect()
 }
 
 #[derive(Serialize)]
@@ -27,8 +51,8 @@ pub(crate) struct VariantLayers {
     faces: BTreeMap<String, String>,
 }
 
-fn faces(dir: &SpriteDir, set: Option<&str>) -> BTreeMap<String, String> {
-    store::face_expressions()
+fn faces(dir: &SpriteDir, set: Option<&str>, keys: &[String]) -> BTreeMap<String, String> {
+    keys.iter()
         .filter_map(|expression| {
             let png = std::fs::read(dir.face_path(set, expression)).ok()?;
             Some((expression.to_owned(), png_data_url(&png)))
@@ -36,7 +60,13 @@ fn faces(dir: &SpriteDir, set: Option<&str>) -> BTreeMap<String, String> {
         .collect()
 }
 
-fn read_view(dir: &SpriteDir) -> Option<SpriteView> {
+/// `card`＝這桌的 VN 卡原件（呼叫端讀一次）：表情清單、卡宣告變體與身高比例都從它取
+fn read_view(dir: &SpriteDir, card: Option<&CardOrigin>, character: &str) -> Option<SpriteView> {
+    let art = card
+        .and_then(|card| card.cast.get(character))
+        .map(|cast| cast.art.clone())
+        .unwrap_or_default();
+    let keys = &vn_sprites::face_list(&art);
     let store::Loaded {
         meta,
         size: (width, height),
@@ -48,7 +78,9 @@ fn read_view(dir: &SpriteDir) -> Option<SpriteView> {
         .filter_map(|variant| {
             let (body, (width, height)) = dir.variant_body(&variant.key)?;
             let set = variant.face.is_some().then_some(variant.key.as_str());
-            let faces = set.map(|set| faces(dir, Some(set))).unwrap_or_default();
+            let faces = set
+                .map(|set| faces(dir, Some(set), keys))
+                .unwrap_or_default();
             let body = png_data_url(&body);
             Some((
                 variant.key.clone(),
@@ -62,13 +94,20 @@ fn read_view(dir: &SpriteDir) -> Option<SpriteView> {
         })
         .collect();
     Some(SpriteView {
-        faces: faces(dir, None),
+        faces: faces(dir, None, keys),
         meta,
         width,
         height,
         body: png_data_url(&body),
         variant_layers,
+        expressions: labels(&art.expressions),
+        declared_variants: labels(&art.variants),
+        scale: vn_sprites::height_scale(card, character),
     })
+}
+
+fn faces_of(app: &tauri::AppHandle, world: &str, character: &str) -> Result<Vec<String>, String> {
+    Ok(vn_sprites::faces_of(&data_root(app)?, world, character))
 }
 
 /// 前端傳來的變體鍵先驗格式（路徑由鍵組成）
@@ -94,10 +133,15 @@ pub(crate) fn vn_sprites_read_all(
     world_id: String,
 ) -> Result<BTreeMap<String, SpriteView>, String> {
     let root = data_root(&app)?;
+    let card = data::vn::read_card(&root, &world_id);
     Ok(character_ids(&root, &world_id)?
         .into_iter()
         .filter_map(|id| {
-            let view = read_view(&SpriteDir::of(&root, &world_id, &id).ok()?)?;
+            let view = read_view(
+                &SpriteDir::of(&root, &world_id, &id).ok()?,
+                card.as_ref(),
+                &id,
+            )?;
             Some((id, view))
         })
         .collect())
@@ -116,9 +160,11 @@ pub(crate) fn vn_sprite_read(
     world_id: String,
     character_id: String,
 ) -> Result<SpriteState, String> {
-    let dir = SpriteDir::of(&data_root(&app)?, &world_id, &character_id)?;
+    let root = data_root(&app)?;
+    let dir = SpriteDir::of(&root, &world_id, &character_id)?;
+    let card = data::vn::read_card(&root, &world_id);
     Ok(SpriteState {
-        sprite: read_view(&dir),
+        sprite: read_view(&dir, card.as_ref(), &character_id),
         candidates: dir.candidates(),
     })
 }
@@ -169,7 +215,7 @@ pub(crate) async fn vn_sprite_upload(
     let png = generated_image::normalize(GeneratedImage::Bytes(data)).await?;
     match expression {
         None => vn_sprites::install_base(&app, &world_id, &character_id, png).await,
-        Some(expression) if store::is_face_expression(&expression) => {
+        Some(expression) if faces_of(&app, &world_id, &character_id)?.contains(&expression) => {
             let _permit = data::world_write_permit_async(&world_id).await?;
             vn_sprites::upload_face(
                 &data_root(&app)?,
@@ -194,8 +240,12 @@ pub(crate) fn vn_sprite_set_face(
 ) -> Result<(), String> {
     checked_key(variant.as_deref())?;
     let _permit = data::world_write_permit(&world_id)?;
-    SpriteDir::of(&data_root(&app)?, &world_id, &character_id)?
-        .set_face(variant.as_deref(), face)?;
+    let faces = faces_of(&app, &world_id, &character_id)?;
+    SpriteDir::of(&data_root(&app)?, &world_id, &character_id)?.set_face(
+        variant.as_deref(),
+        face,
+        &faces,
+    )?;
     queue::forget(&world_id, &character_id);
     Ok(())
 }
@@ -209,7 +259,7 @@ pub(crate) fn vn_sprite_reroll(
     variant: Option<String>,
     expression: String,
 ) -> Result<(), String> {
-    if !store::is_face_expression(&expression) {
+    if !faces_of(&app, &world_id, &character_id)?.contains(&expression) {
         return Err("VN_SPRITE_EXPRESSION".to_owned());
     }
     let set = variant.as_deref();

@@ -581,7 +581,7 @@ fn render_worldbook_placement(out: &mut String, f: &Fixture, branch: &[String], 
             &gm,
             &plain,
             lang,
-            false,
+            crate::transport::GmVoice::Shared,
             &Default::default(),
         ),
     );

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { t } from "../../../i18n";
 import type { Bible } from "../../../shared/contracts/backend-contracts";
 import { backendText } from "../../../shared/ui/backend-text";
+import { restoresCardBible } from "../card/vn-card";
 import { BibleFields } from "./BibleFields";
 import { SpoilerMask } from "./SpoilerMask";
 import { bibleErrorKey, useBible } from "./useBible";
@@ -46,11 +47,14 @@ export function BibleTab({
   }
   const regenerate = () =>
     view?.played ? Promise.reject(new Error("VN_BIBLE_PLAYED")) : bible.generate();
+  // VN 卡建的桌：重骰改成恢復卡內原版（後端 vn_bible_generate 同一支，不呼叫模型）
+  const restore = restoresCardBible(view);
   async function confirmRegenerate() {
-    const ok = await confirm(t("vnBibleRegenerateConfirm"), {
-      title: t("vnBibleRegenerate"),
+    const label = t(restore ? "vnBibleRestore" : "vnBibleRegenerate");
+    const ok = await confirm(t(restore ? "vnBibleRestoreConfirm" : "vnBibleRegenerateConfirm"), {
+      title: label,
       kind: "warning",
-      okLabel: t("vnBibleRegenerate"),
+      okLabel: label,
       cancelLabel: t("dialogCancel"),
     });
     if (ok) await act(regenerate);
@@ -91,12 +95,15 @@ export function BibleTab({
           type="number"
           min={3}
           max={30}
+          readOnly={draft.chapter_lock}
           value={draft.chapter_max}
           onChange={(event) =>
+            !draft.chapter_lock &&
             setDraft({ ...draft, chapter_max: Math.min(30, Math.max(3, Number(event.currentTarget.value) || 3)) })
           }
         />
       </label>
+      {draft.chapter_lock && <p className="vn-bible-note">{t("vnChapterLocked")}</p>}
       {!bible.locked && draft.chapter_reason && <p className="vn-bible-note">{draft.chapter_reason}</p>}
       {view.revealed.length > 0 && (
         <div className="vn-bible-list">
@@ -111,7 +118,7 @@ export function BibleTab({
           </ul>
         </div>
       )}
-      <SpoilerMask worldId={worldId} onReroll={regenerate}>
+      <SpoilerMask worldId={worldId} onReroll={restore ? undefined : regenerate}>
         <div className="vn-bible-list">
           <h3>{t("vnFlagValues")}</h3>
           <ul>
@@ -124,7 +131,7 @@ export function BibleTab({
         </div>
         <BibleFields draft={draft} names={view.names} onChange={setDraft} />
         <button type="button" className="btn" disabled={busy} onClick={() => void confirmRegenerate()}>
-          {t("vnBibleRegenerate")}
+          {t(restore ? "vnBibleRestore" : "vnBibleRegenerate")}
         </button>
       </SpoilerMask>
     </section>

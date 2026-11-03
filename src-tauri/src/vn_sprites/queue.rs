@@ -19,7 +19,7 @@ struct Slot {
     character: String,
     /// None＝共用表情組；變體鍵＝該變體的獨立組
     variant: Option<String>,
-    expression: &'static str,
+    expression: String,
 }
 
 /// 背景工作：身分＝（桌、slug、時段）；地點文字與「重生成」旗標不算身分
@@ -41,7 +41,7 @@ impl BgSlot {
     }
 
     fn id(&self) -> (&str, &str, &str) {
-        (&self.world, &self.backdrop.slug, self.backdrop.period)
+        (&self.world, &self.backdrop.slug, &self.backdrop.period)
     }
 }
 
@@ -120,7 +120,7 @@ fn status(slot: &Slot, state: &'static str, reason: Option<String>) -> SlotStatu
         world_id: slot.world.clone(),
         character_id: slot.character.clone(),
         variant: slot.variant.clone(),
-        expression: slot.expression.to_owned(),
+        expression: slot.expression.clone(),
         state,
         reason,
     }
@@ -131,7 +131,7 @@ fn status(slot: &Slot, state: &'static str, reason: Option<String>) -> SlotStatu
 pub(crate) struct BackgroundStatus {
     pub world_id: String,
     pub slug: String,
-    pub period: &'static str,
+    pub period: String,
     /// queued／running／done／failed
     pub state: &'static str,
     pub reason: Option<String>,
@@ -141,7 +141,7 @@ fn bg_status(slot: &BgSlot, state: &'static str, reason: Option<String>) -> Back
     BackgroundStatus {
         world_id: slot.world.clone(),
         slug: slot.backdrop.slug.clone(),
-        period: slot.backdrop.period,
+        period: slot.backdrop.period.clone(),
         state,
         reason,
     }
@@ -243,7 +243,8 @@ pub(crate) fn fill(app: &tauri::AppHandle, world: &str, characters: &[String]) {
             let Ok(dir) = SpriteDir::of(&root, world, character) else {
                 continue;
             };
-            for (variant, expression) in dir.missing_faces() {
+            let faces = super::faces_of(&root, world, character);
+            for (variant, expression) in dir.missing_faces(&faces) {
                 let job = Job::Face(Slot {
                     world: world.to_owned(),
                     character: character.clone(),
@@ -334,7 +335,7 @@ async fn run_face(app: &tauri::AppHandle, slot: &Slot) {
         &slot.world,
         &slot.character,
         slot.variant.as_deref(),
-        slot.expression,
+        &slot.expression,
     )
     .await;
     let mut requeue = false;
@@ -359,8 +360,9 @@ async fn run_face(app: &tauri::AppHandle, slot: &Slot) {
         && data_root(app).ok().is_some_and(|root| {
             super::character_exists(&root, &slot.world, &slot.character)
                 && SpriteDir::of(&root, &slot.world, &slot.character).is_ok_and(|dir| {
-                    dir.missing_faces()
-                        .contains(&(slot.variant.clone(), slot.expression))
+                    let faces = super::faces_of(&root, &slot.world, &slot.character);
+                    dir.missing_faces(&faces)
+                        .contains(&(slot.variant.clone(), slot.expression.clone()))
                 })
         });
     if still_missing {
@@ -375,17 +377,21 @@ async fn run_face(app: &tauri::AppHandle, slot: &Slot) {
 mod tests {
     use super::*;
 
-    fn face(expression: &'static str) -> Job {
+    fn face(expression: &str) -> Job {
         Job::Face(Slot {
             world: "w".to_owned(),
             character: "c".to_owned(),
             variant: None,
-            expression,
+            expression: expression.to_owned(),
         })
     }
 
     fn bg(location: &str, force: bool) -> Job {
-        Job::Background(BgSlot::new("w", Backdrop::new(location, None, None), force))
+        Job::Background(BgSlot::new(
+            "w",
+            Backdrop::new(location, None, None, &Default::default()),
+            force,
+        ))
     }
 
     #[test]

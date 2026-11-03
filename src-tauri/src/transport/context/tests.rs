@@ -52,7 +52,7 @@ fn takeover_gm_intro_drops_roll_call_and_keeps_secrecy() {
             &[],
             &mechanism,
             lang,
-            false,
+            crate::transport::GmVoice::Shared,
             &Default::default(),
         );
         let takeover = super::gm_system_prompt(
@@ -63,7 +63,7 @@ fn takeover_gm_intro_drops_roll_call_and_keeps_secrecy() {
             &[],
             &mechanism,
             lang,
-            true,
+            crate::transport::GmVoice::Sole,
             &Default::default(),
         );
         assert!(normal.contains(call) && !normal.contains(sole), "{lang}");

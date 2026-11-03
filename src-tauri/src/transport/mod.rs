@@ -55,7 +55,7 @@ pub use client::{
     SseParser, StreamChatResult, TierModel, DEFAULT_BASE_URL,
 };
 pub(crate) use client::{describe, http_error};
-pub use context::{gm_prompt_full_entries, PromptEntry};
+pub use context::{gm_prompt_full_entries, GmVoice, PromptEntry};
 pub use gm_opening::GmOpening;
 #[cfg(test)]
 pub(crate) use messages::language_rule;
@@ -87,6 +87,7 @@ pub use turns::{
     summary_lines, summary_messages, system_worldbook, Hoist, LaneTurn, SEGMENT_SUMMARY_CHARS,
 };
 pub use vn_format::{
-    vn_character_rules, vn_closing, vn_format_rules, vn_narrate_instruction, vn_reroll_closing,
-    vn_reroll_instruction, vn_variant_note, VN_EXPRESSIONS,
+    expression_note, vn_card_note, vn_character_rules, vn_closing, vn_format_rules,
+    vn_narrate_instruction, vn_reroll_closing, vn_reroll_instruction, vn_variant_note, VnDirection,
+    VN_EXPRESSIONS,
 };

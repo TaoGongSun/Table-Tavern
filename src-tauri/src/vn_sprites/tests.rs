@@ -77,6 +77,7 @@ fn stale_face_job_failure_is_not_recorded() {
             h: 40,
         },
         false,
+        &super::face_list(&Default::default()),
     )
     .unwrap();
     let (started, _) = dir.snapshot(None, "sad").unwrap();
@@ -93,6 +94,7 @@ fn stale_face_job_failure_is_not_recorded() {
             w: 40,
             h: 40,
         },
+        &super::face_list(&Default::default()),
     )
     .unwrap();
     assert_eq!(stale_or_failed("X".into(), &started, now()), Ok(false));
@@ -121,4 +123,195 @@ fn variant_labels_and_prompt_note() {
     );
     assert!(crate::transport::vn_variant_note("en", &roster).contains("@variant"));
     assert_eq!(crate::transport::vn_variant_note("en", &roster[1..]), "");
+}
+
+fn card_with_lak() -> crate::data::vn::CardOrigin {
+    use crate::data::vn::{CardOrigin, CastOrigin};
+    use crate::data::vn_art::{ArtEntry, CastArt};
+    let entry = |key: &str, label: &str| ArtEntry {
+        key: key.to_owned(),
+        label: label.to_owned(),
+        prompt: format!("{key} prompt"),
+    };
+    let mut card = CardOrigin::default();
+    for (id, height, art) in [
+        (
+            "lak",
+            Some(355),
+            CastArt {
+                expressions: vec![entry("tender", "溫柔")],
+                variants: vec![entry("festival", "祭典裝")],
+                ..Default::default()
+            },
+        ),
+        ("grandma", Some(130), CastArt::default()),
+        ("kazuya", None, CastArt::default()),
+    ] {
+        card.cast.insert(
+            id.to_owned(),
+            CastOrigin {
+                art: CastArt {
+                    height_cm: height,
+                    ..art
+                },
+                ..Default::default()
+            },
+        );
+    }
+    card
+}
+
+/// 身高比例：名單中有填者的最高為 1；沒填＝None；名單都沒填或卡外桌＝None
+#[test]
+fn height_scale_uses_the_tallest_on_the_roster() {
+    let card = card_with_lak();
+    assert_eq!(super::height_scale(Some(&card), "lak"), Some(1.0));
+    let grandma = super::height_scale(Some(&card), "grandma").unwrap();
+    assert!((grandma - 130.0 / 355.0).abs() < 1e-9);
+    assert_eq!(super::height_scale(Some(&card), "kazuya"), None);
+    assert_eq!(super::height_scale(None, "lak"), None);
+    let mut none = card.clone();
+    none.cast
+        .values_mut()
+        .for_each(|cast| cast.art.height_cm = None);
+    assert_eq!(super::height_scale(Some(&none), "lak"), None);
+}
+
+/// 卡宣告的變體：可指名生成（還沒進 sprite.json）、玩家新增避開保留鍵、對不到的鍵照舊拒收；
+/// 提示詞名單＝卡宣告∪已生成，專屬表情只列有宣告的角色
+#[test]
+fn declared_variants_are_reserved_and_listed() {
+    use crate::commands::NEXT_TEMP_ID;
+    use crate::data;
+    let root = std::env::temp_dir().join(format!(
+        "table-tavern-declared-{}-{}",
+        std::process::id(),
+        NEXT_TEMP_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
+    let world = data::create_world(&root, "宣告").unwrap();
+    let lak = data::new_id();
+    let mut card = card_with_lak();
+    let moved = card.cast.remove("lak").unwrap();
+    card.cast.insert(lak.clone(), moved);
+    let art = card.cast[&lak].art.clone();
+    let dir = super::SpriteDir::of(&root, &world, &lak).unwrap();
+    let mut png = Vec::new();
+    image::RgbaImage::new(100, 150)
+        .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+        .unwrap();
+    let faces = super::face_list(&art);
+    let face = FaceBox {
+        x: 30,
+        y: 10,
+        w: 40,
+        h: 40,
+    };
+    dir.install_base(&png, face, false, &faces).unwrap();
+    let (key, ..) = super::start_variant(
+        &dir,
+        &world,
+        &lak,
+        Some("festival".to_owned()),
+        "祭典裝",
+        &art,
+    )
+    .unwrap();
+    assert_eq!(key, "festival");
+    let unreserved = art.clone();
+    let reserved_art = crate::data::vn_art::CastArt {
+        variants: vec![crate::data::vn_art::ArtEntry {
+            key: "v1".to_owned(),
+            label: "附身".to_owned(),
+            prompt: String::new(),
+        }],
+        ..unreserved
+    };
+    let (fresh, ..) =
+        super::start_variant(&dir, &world, &lak, None, "泳裝", &reserved_art).unwrap();
+    assert_eq!(fresh, "v2");
+    assert!(super::start_variant(&dir, &world, &lak, Some("nope".to_owned()), "x", &art).is_err());
+    dir.install_variant("v2", "泳裝", &png, None, &faces)
+        .unwrap();
+
+    let card_of = |id: &str, name: &str| data::CharacterCard {
+        id: id.to_owned(),
+        name: name.to_owned(),
+        color: String::new(),
+        avatar: String::new(),
+        tier: data::Tier::Balanced,
+        show_image: true,
+        archived: false,
+        gen_prompt: String::new(),
+        public_md: String::new(),
+        private_md: String::new(),
+        stage: false,
+    };
+    let cards = vec![card_of(&lak, "拉克"), card_of("grandma", "老婆婆")];
+    let roster = super::variant_roster(&root, &world, &cards, Some(&card));
+    assert_eq!(
+        roster,
+        [(
+            "拉克".to_owned(),
+            vec!["祭典裝".to_owned(), "泳裝".to_owned()]
+        )]
+    );
+    let expressions = super::expression_roster(&cards, Some(&card));
+    let note = crate::transport::vn_card_note("zh-TW", &expressions, &[]);
+    assert!(note.contains("- 拉克: tender（溫柔）") && !note.contains("老婆婆"));
+    assert_eq!(crate::transport::vn_card_note("en", &[], &[]), "");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// 定稿提示詞：外觀規格取代公開設定、卡畫風取代通用句、避免項、封面只取畫風；表情與變體不帶卡畫風
+#[test]
+fn sprite_prompts_use_card_art() {
+    use crate::data::vn_art::{Appearance, CardArt};
+    use crate::transport::vn_sprite_prompts::{base_prompt, variant_prompt, SpriteReference};
+    let art = CardArt {
+        style: "kemono anime".to_owned(),
+        negative: "photorealistic".to_owned(),
+        ..Default::default()
+    };
+    let look = Appearance {
+        spec: "red tiger, 355cm".to_owned(),
+        notes: "bigger than others".to_owned(),
+    };
+    let prompt = base_prompt(
+        "拉克",
+        "公開設定",
+        Some(&look),
+        Some(&art),
+        SpriteReference::CoverStyle,
+        true,
+    );
+    for part in [
+        "red tiger, 355cm",
+        "bigger than others",
+        "kemono anime",
+        "Avoid (provided",
+        "cover art",
+        "seven-tenths",
+    ] {
+        assert!(prompt.contains(part), "{part}");
+    }
+    assert!(!prompt.contains("公開設定") && !prompt.contains("Clean anime"));
+    let plain = base_prompt(
+        "拉克",
+        "公開設定",
+        None,
+        None,
+        SpriteReference::CardArt,
+        false,
+    );
+    assert!(
+        plain.contains("公開設定")
+            && plain.contains("Clean anime")
+            && plain.contains("existing card art")
+    );
+    let variant = variant_prompt("festival prompt", true, Some(&art));
+    assert!(
+        variant.contains("festival prompt")
+            && variant.contains("photorealistic")
+            && !variant.contains("kemono")
+    );
 }

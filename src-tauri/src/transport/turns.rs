@@ -8,7 +8,7 @@ use super::messages::{
 
 use super::arrivals::{prompt_speaker, prompt_text, Side};
 
-use super::context::{gm_system_prompt, gm_worldbook, player_heading, worldbook_heading};
+use super::context::{gm_system_prompt, gm_worldbook, player_heading, worldbook_heading, GmVoice};
 use super::gm_opening::GmOpening;
 use super::worldbook::section_body;
 
@@ -428,7 +428,7 @@ pub fn gm_lane_system_with(
     scan: &WorldScan,
     mechanism: &Mechanism,
     lang: &str,
-    takeover: bool,
+    voice: GmVoice,
     opening: &GmOpening,
 ) -> String {
     let split = gm_worldbook(scan);
@@ -440,7 +440,7 @@ pub fn gm_lane_system_with(
         &split.system_back,
         mechanism,
         lang,
-        takeover,
+        voice,
         opening,
     )
 }

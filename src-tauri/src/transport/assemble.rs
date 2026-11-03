@@ -6,7 +6,7 @@ use super::messages::{
     ChatMessage,
 };
 
-use super::context::{gm_system_prompt, gm_worldbook};
+use super::context::{gm_system_prompt, gm_worldbook, GmVoice};
 use super::gm_opening::GmOpening;
 use super::prompt_regex::PromptRegex;
 use super::worldbook::section_body;
@@ -127,7 +127,7 @@ pub fn assemble_gm_messages_with(
     mechanism: &Mechanism,
     scope: &StateScope,
     lang: &str,
-    takeover: bool,
+    voice: GmVoice,
     opening: &GmOpening,
     regex: &PromptRegex,
     vn: bool,
@@ -145,7 +145,7 @@ pub fn assemble_gm_messages_with(
         &split.system_back,
         mechanism,
         lang,
-        takeover,
+        voice,
         opening,
     );
 
