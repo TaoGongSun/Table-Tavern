@@ -56,6 +56,7 @@ pub(crate) fn append_player_event(
     crate::room::refuse_if_active(&world_id)?;
     let _permit = data::world_write_permit(&world_id)?;
     let root = data_root(&app)?;
+    data::vn::refuse_if_ended(&root, &world_id)?;
     // 換幕容量鎖：玩家句落檔前就擋，被擋時不留孤立玩家句（卡片介面 /send 也走這裡）
     crate::scene_budget::check_capacity(
         &config_root(&app)?,
@@ -386,6 +387,7 @@ pub(crate) async fn advance_scene(
     app: tauri::AppHandle,
     world_id: String,
     turn_id: Option<String>,
+    chapter_end: Option<bool>,
 ) -> Result<u64, String> {
     let root = data_root(&app)?;
     let config_root = config_root(&app)?;
@@ -401,8 +403,14 @@ pub(crate) async fn advance_scene(
         summary_caller(&app, &config, &world_id),
         cancel,
     );
-    let scene =
-        crate::scene_budget::summarize::advance_locked(&root, &world_id, &cap, &mut caller).await?;
+    let scene = crate::scene_budget::summarize::advance_locked(
+        &root,
+        &world_id,
+        &cap,
+        &mut caller,
+        chapter_end.unwrap_or(false),
+    )
+    .await?;
     // 上一輪 outlet 不跨幕（ST 換聊天也清空）
     crate::world_scan::macros::forget_outlets(&world_id);
     Ok(scene)

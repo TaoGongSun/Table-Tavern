@@ -38,7 +38,7 @@ pub use turn::{
     PART_MAIN, PART_OPENING,
 };
 pub use write::{
-    apply_gm_block, begin_turn, card_write, drop_scene_seed, edit_effective_tree,
+    apply_gm_block_then, begin_turn, card_write, drop_scene_seed, edit_effective_tree,
     edit_tree_if_events, finish_turn, has_unlanded_reply, mark_turn_appended, opening_stat,
     opening_table, prepare_turn_append, publish_imported_seed, publish_scene_seed,
     refuse_during_turn, scene_epoch, scene_seed_for_fork, scene_seed_for_next,
@@ -54,6 +54,8 @@ use mode::eligible_char;
 use source::current_source;
 #[cfg(test)]
 use turn::{phases, Phase};
+#[cfg(test)]
+pub use write::apply_gm_block;
 
 /// 事件上存的表：原始 JSON 文字照存（鍵順序、數字寫法都不動），讀逐字稿不必展開整棵表。
 #[derive(Debug, Clone)]

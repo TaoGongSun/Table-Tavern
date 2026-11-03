@@ -1081,11 +1081,16 @@ function App() {
           tableName={tableName}
           chat={lockedChat}
           images={characters.images}
-          notice={error && <ErrorNote text={error} transport={transport} />}
+          error={error}
+          transport={transport}
           busy={tableOp.busy || chat.busy}
           onError={setError}
+          onAdvanceScene={sceneActions.advanceVn}
+          onReenter={sceneActions.reenterVn}
           onShowChat={() => setVnView(false)}
           onGoLobby={() => void goLobby()}
+          onReplayChapter={sceneActions.replayChapter}
+          onEnterTable={(id) => void switchTable(id)}
           flagHints={config.preferences["vn_flag_hints"] !== false}
           onFlagHints={(on) => void changePreference("vn_flag_hints", on)}
         />

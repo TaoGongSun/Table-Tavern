@@ -88,6 +88,6 @@ pub use turns::{
 };
 pub use vn_format::{
     expression_note, vn_card_note, vn_character_rules, vn_closing, vn_format_rules,
-    vn_narrate_instruction, vn_reroll_closing, vn_reroll_instruction, vn_variant_note, VnDirection,
-    VN_EXPRESSIONS,
+    vn_narrate_instruction, vn_reroll_closing, vn_reroll_instruction, vn_variant_note, ChapterCue,
+    VnDirection, VN_EXPRESSIONS,
 };

@@ -144,3 +144,30 @@ fn seeds_fill_only_missing_and_rules_carry_allowed() {
     assert_eq!(rules["revealed.s1"].allowed, ["true", "false"]);
     assert_eq!(rules["chapter"].update, UpdateMode::Reject);
 }
+
+/// 引擎三鍵（包 5 §2.1）：沒聖經的桌補規則與受保護根一次就好；聖經的種子與規則也帶這三鍵；
+/// 結局 id 不得是 `none`（`ended` 的未完結值）
+#[test]
+fn engine_keys_seed_rule_and_reserve_none() {
+    let mut mechanism = super::super::Mechanism::default();
+    assert!(ensure_engine_rules(&mut mechanism));
+    assert!(!ensure_engine_rules(&mut mechanism));
+    assert_eq!(mechanism.locked_roots.len(), LOCKED_ROOTS.len());
+    assert!(["chapter", "ended", "finale"]
+        .iter()
+        .all(|key| mechanism.rules[*key].update == UpdateMode::Reject));
+    let bible = parsed(json!({"endings": [{"id": "none"}, {"id": "good"}]}));
+    let ids: Vec<&str> = bible
+        .endings
+        .iter()
+        .map(|ending| ending.id.as_str())
+        .collect();
+    assert_eq!(ids, ["good", DEFAULT_ENDING]);
+    let mut tree = BTreeMap::new();
+    fill_missing(&mut tree, &bible.seeds());
+    assert_eq!(
+        (chapter_in(&tree), ended_in(&tree), finale_in(&tree)),
+        (1, None, false)
+    );
+    assert!(bible.rules().contains_key("ended"));
+}

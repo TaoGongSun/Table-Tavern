@@ -482,7 +482,8 @@ fn fork_scene_copies_history_and_relabels_through_continue_and_revert() {
             base: 0,
             version: 2,
             parent: Some(2),
-            forked: true
+            forked: true,
+            source: Some(0)
         })
     );
 
@@ -523,7 +524,8 @@ fn fork_scene_copies_history_and_relabels_through_continue_and_revert() {
             base: 1,
             version: 2,
             parent: Some(3),
-            forked: false
+            forked: false,
+            source: None
         })
     );
     assert_eq!(
@@ -553,7 +555,8 @@ fn fork_scene_copies_history_and_relabels_through_continue_and_revert() {
             base: 0,
             version: 3,
             parent: Some(3),
-            forked: true
+            forked: true,
+            source: Some(0)
         })
     );
 }
@@ -627,7 +630,8 @@ fn scene_label_falls_back_to_original_line_for_unlabeled_scene() {
             base: 5,
             version: 1,
             parent: Some(4),
-            forked: false
+            forked: false,
+            source: None
         }
     );
     // 幕 0 沒有前幕：fallback 的 parent 也要是 None，跟 revert_scene 的邊界檢查對得起來
@@ -637,7 +641,8 @@ fn scene_label_falls_back_to_original_line_for_unlabeled_scene() {
             base: 0,
             version: 1,
             parent: None,
-            forked: false
+            forked: false,
+            source: None
         }
     );
 }

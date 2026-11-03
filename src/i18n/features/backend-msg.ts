@@ -197,6 +197,8 @@ export const BACKEND_MSG_PARAMS: Record<string, Record<string, BackendParamType>
   scene_summary_failed: {},
   scene_capacity_full: {},
   scene_summary_stopped: {},
+  vn_ended: {},
+  vn_replay_no_chapter: { chapter: "number" },
   interface_table_gm_only: {},
   stage_card_no_turn: {},
   room_mode_active: {},

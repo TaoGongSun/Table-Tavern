@@ -58,6 +58,7 @@ pub use rules::{has_rule, leaf_shown, rule_for_path};
 pub(crate) use tree::canonical_path;
 #[cfg(test)]
 pub(crate) use triggers::evaluate_triggers;
+pub(crate) use triggers::holds as condition_holds;
 pub(crate) use triggers::map_state_placeholders;
 pub use types::{Outcome, Record, RecordKind};
 pub use write_guard::{write_refusal, Write};

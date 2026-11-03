@@ -136,7 +136,11 @@ fn condition_holds(tree: &BTreeMap<String, StateNode>, condition: &Condition) ->
     holds(tree, &Mechanism::default(), condition)
 }
 
-fn holds(tree: &BTreeMap<String, StateNode>, mechanism: &Mechanism, condition: &Condition) -> bool {
+pub(crate) fn holds(
+    tree: &BTreeMap<String, StateNode>,
+    mechanism: &Mechanism,
+    condition: &Condition,
+) -> bool {
     match condition {
         Condition::Range {
             path,

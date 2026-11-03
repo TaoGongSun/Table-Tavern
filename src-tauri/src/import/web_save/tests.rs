@@ -700,6 +700,7 @@ fn long_save_hits_the_capacity_lock_then_advances_and_sends() {
             &w,
             &cap,
             &mut Summary,
+            false,
         ))
         .unwrap();
     assert_eq!(scene, 1);

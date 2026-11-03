@@ -20,16 +20,22 @@ const SKIP_MS = 80;
 const reducedMotion = () =>
   typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-export type EndState = "waiting" | "choices" | "continue" | null;
+/** 結尾狀態；chapter＝停在章末格（章結束流程）、ended＝停在結局格（完結畫面） */
+export type EndState = "waiting" | "choices" | "chapter" | "ended" | "continue" | null;
+
+const TERMINAL_END: Record<string, EndState> = { choices: "choices", chapter: "chapter", ending: "ended" };
 
 export function useVnPlayback({
   cells,
   lastEventKey,
   tail,
   generating,
+  scene,
 }: {
   cells: FlatCell[];
   lastEventKey: string | null;
+  /** 正式格屬於哪一幕：變了（換幕、重玩、分岔）就丟掉舊幕的游標，照進桌位置重新定位 */
+  scene: number | null;
   tail: boolean;
   generating: boolean;
 }) {
@@ -42,6 +48,11 @@ export function useVnPlayback({
   const [skip, setSkip] = useState(false);
   // 玩家已要下一格（按了推進、選項或繼續）但還沒長出來：一長出來就移過去
   const [wantNext, setWantNext] = useState(false);
+  const [cursorScene, setCursorScene] = useState(scene);
+  if (cursorScene !== scene) {
+    setCursorScene(scene);
+    setCursor(null);
+  }
 
   // 游標鍵不見了（選項被玩家句消耗、收回、撤掉沒落檔的暫定段）退到最後一個正式可停格；還沒定位就用進桌位置
   const effective = useMemo<Cursor | null>(() => {
@@ -124,7 +135,7 @@ export function useVnPlayback({
   let end: EndState = null;
   if (!typing && !next && !tailing) {
     if (generating) end = "waiting";
-    else end = current?.cell.type === "choices" ? "choices" : "continue";
+    else end = (current && TERMINAL_END[current.cell.type]) || "continue";
   }
 
   return {

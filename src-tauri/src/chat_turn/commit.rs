@@ -153,10 +153,10 @@ impl TurnGuard {
         .await
     }
 
-    /// turn_id／幕／世代已不符回 Ok(None)；讀寫錯誤回 Err（呼叫端回報，不害玩家丟掉整段旁白）。
+    /// 正文在套完狀態後由 `main` 產生（VN 桌依判定改寫）。turn_id／幕／世代已不符回 Ok(None)；讀寫錯誤回 Err（呼叫端回報，不害玩家丟掉整段旁白）。
     pub(super) fn commit<R>(
         &self,
-        main: data::message_vars::PendingMain,
+        main: impl FnOnce(&R) -> data::message_vars::PendingMain,
         apply: impl FnOnce(
             &mut data::WorldState,
             Option<&data::message_vars::Json>,
@@ -164,7 +164,7 @@ impl TurnGuard {
         sides: impl FnOnce(&data::WorldState, &R) -> Vec<data::message_vars::TurnSide>,
     ) -> Result<Option<data::message_vars::GmCommit<R>>, String> {
         data::state_commit::with_commit(&self.root, &self.world_id, |tx| {
-            data::message_vars::apply_gm_block(tx, &self.turn_id, main, apply, sides)
+            data::message_vars::apply_gm_block_then(tx, &self.turn_id, main, apply, sides)
         })
         .map_err(|error| error.to_string())
     }

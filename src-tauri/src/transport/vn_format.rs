@@ -39,6 +39,8 @@ pub fn vn_format_rules(lang: &str, extra: bool, places: bool) -> String {
              - Staging: after the expression you may add `, closeup` or `, shake`, e.g. `Name (surprised, shake): \"line\"`; at most two per turn.\n\
              - Scene: `[bg: location | time]` on its own line, only when the location or time changes; {times}. A new location clears the stage.\n\
              - Choices: only when the story reaches a point where the player must decide, end the story text with `[choices]` followed by 2–4 lines `- option`. No choices anywhere else.\n\
+             - Chapter end: when this chapter's end condition is met, end the beat with `[chapter]` on its own line; do not give choices in the same beat.\n\
+             - Ending: only when the story truly concludes and that ending's conditions hold, write `[ending: ending id]` on the last line, using the id exactly as in the Endings list; use `default` only when the director instruction asks for it.\n\
              - Markers always stand on their own line with lowercase English keywords. No Markdown headings, bold, or lists other than option lines.\n\
              Example (the name is only illustrative):\n\
              [bg: harbor | dusk]\nSalt wind sweeps across the pier.\n\n\
@@ -54,6 +56,8 @@ pub fn vn_format_rules(lang: &str, extra: bool, places: bool) -> String {
              - 演出：表情後可加 `, closeup`（特寫）或 `, shake`（震動），例如 `名字 (surprised, shake): 「台詞」`；每回合最多兩個。\n\
              - 換場景：`[bg: 地點 | 時段]` 單獨一行，只在地點或時段改變時寫；{times}；換地點＝舞台清空。\n\
              - 選項：只在劇情走到需要玩家抉擇的分岔點時，在正文最後寫 `[choices]`，下面每行 `- 選項` 共 2–4 個；其他時候不要出選項。\n\
+             - 章末：本章結束條件達成時，在本拍最後另起一行寫 `[chapter]`；同一拍不要再出選項。\n\
+             - 結局：只在故事真正收尾、且該結局條件成立時，最後一行寫 `[ending: 結局id]`，id 照「結局」表原字；`default` 只在導演指示要求時用。\n\
              - 標記一律單獨一行、關鍵字用英文小寫；不要用 Markdown 標題、粗體或清單（選項行除外）。\n\
              範例（名字只是示意）：\n\
              [bg: 港口 | 黃昏]\n海風帶著鹹味吹過碼頭。\n\n\
@@ -155,14 +159,14 @@ pub fn vn_character_rules(lang: &str) -> String {
             "\n## Visual novel script format\n\
              This table is played as a visual novel. Write only the assigned character's own part: dialogue as `Name (expression): \"line\"` \
              (expressions: {expressions}), inner thoughts as `Name (expression) thought: text`, and actions or expressions as narration \
-             (plain lines, no `Narration:` prefix); a blank line starts the next cell. Use the name exactly as on the list. Do not write markers such as `[bg]` or `[choices]`, \
+             (plain lines, no `Narration:` prefix); a blank line starts the next cell. Use the name exactly as on the list. Do not write markers such as `[bg]`, `[choices]`, `[chapter]` or `[ending]`, \
              and do not speak for other characters or the player.\n"
         ),
         false => format!(
             "\n## 視覺小說劇本格式\n\
              這桌以視覺小說呈現。每一輪只寫被指定角色自己的部分：對白 `名字 (表情): 「台詞」`（表情限 {expressions}）、\
              內心獨白 `名字 (表情) thought: 台詞`，動作與神情寫成旁白（直接寫，不加「旁白：」），空一行換下一格。名字照名單原字。\
-             不要寫 `[bg]`、`[choices]` 這類標記，不要替其他角色或玩家說話。\n"
+             不要寫 `[bg]`、`[choices]`、`[chapter]`、`[ending]` 這類標記，不要替其他角色或玩家說話。\n"
         ),
     }
 }
@@ -189,6 +193,59 @@ pub struct VnDirection {
     pub branching: Option<Branching>,
     pub pov: Option<Pov>,
     pub protagonist: Option<String>,
+    /// 章與結局的進度提示（包 5 §2.4）；聊天桌與測試可省
+    pub chapter: Option<ChapterCue>,
+}
+
+/// 回合尾的章與結局提示（plans/vn-mode-pkg5.md §2.4）：每輪重組，不進 system。
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ChapterCue {
+    pub chapter: u32,
+    pub max: u32,
+    /// 本章結束條件（空＝章表沒寫，提示改指本章目標；沒聖經＝None：只在最後一章與強制收尾時提示）
+    pub end_condition: Option<String>,
+    pub finale: bool,
+    /// 目前條件成立的結局 id（不含 `default`；回合開始時的樹，只是提示）
+    pub holding: Vec<String>,
+}
+
+fn chapter_cue(en: bool, cue: &ChapterCue) -> String {
+    let holding = match (cue.holding.is_empty(), en) {
+        (true, true) => "none".to_owned(),
+        (true, false) => "無".to_owned(),
+        (false, true) => cue.holding.join(", "),
+        (false, false) => cue.holding.join("、"),
+    };
+    let (k, m) = (cue.chapter, cue.max);
+    if cue.finale {
+        return match en {
+            true => format!(" (Final beat) This is the last beat of the story: write the ending scene and put `[ending: ending id]` on the last line. Endings whose conditions currently hold: {holding}; if none, write `[ending: default]`. No choices."),
+            false => format!("（強制收尾）這一拍是故事最後一拍：寫完結局場面，最後一行寫 `[ending: 結局id]`；目前條件成立的結局：{holding}；都不成立就寫 `[ending: default]`。不要出選項。"),
+        };
+    }
+    if k >= m {
+        return match en {
+            true => format!(" This is the final chapter ({k}/{m}). When it ends, do not write `[chapter]`; write `[ending: ending id]` instead. Endings whose conditions currently hold: {holding} (if none, wrap up the story and the app will handle the rest)."),
+            false => format!("這是最後一章（第 {k}／{m} 章）。本章結束時不要寫 `[chapter]`，改寫 `[ending: 結局id]`；目前條件成立的結局：{holding}（都不成立時照劇情收尾，App 會處理）。"),
+        };
+    }
+    let Some(end) = &cue.end_condition else {
+        return String::new();
+    };
+    let end = end.trim_end_matches(['。', '.']);
+    let mut text = match (en, end.is_empty()) {
+        (true, false) => format!(" Chapter {k}/{m}. This chapter ends when: {end}. Once that is met, end the beat with `[chapter]` on its own line and give no choices in that beat."),
+        (true, true) => format!(" Chapter {k}/{m}. When this chapter's goal is reached, end the beat with `[chapter]` on its own line and give no choices in that beat."),
+        (false, false) => format!("目前第 {k}／{m} 章。本章結束條件：{end}。達成時在本拍最後另起一行寫 `[chapter]`，同一拍不要再出選項。"),
+        (false, true) => format!("目前第 {k}／{m} 章。本章目標達成時在本拍最後另起一行寫 `[chapter]`，同一拍不要再出選項。"),
+    };
+    if k + 1 == m {
+        text.push_str(match en {
+            true => " Convergence mode: within this chapter, steer the story toward the nearest ending and start paying off the foreshadowing.",
+            false => "收束模式：本章內把劇情推向最接近的結局，開始收伏筆。",
+        });
+    }
+    text
 }
 
 /// VN 桌 GM 回合尾的導演指示：劇本正文→選項區塊→```state 圍欄→「下一位」行（名單非空才有）。
@@ -244,6 +301,9 @@ pub fn vn_narrate_instruction(
             (false, Pov::Third) => "旁白用第三人稱。",
         });
     }
+    if let Some(cue) = &direction.chapter {
+        instruction.push_str(&chapter_cue(en, cue));
+    }
     if updates {
         instruction.push_str(narration_update_note(lang));
     }
@@ -295,3 +355,7 @@ pub fn vn_reroll_closing(lang: &str) -> &'static str {
         false => "現在請只輸出新的 [choices] 區塊。",
     }
 }
+
+#[cfg(test)]
+#[path = "vn_format_tests.rs"]
+mod tests;

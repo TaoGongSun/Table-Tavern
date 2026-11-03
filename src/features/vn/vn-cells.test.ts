@@ -69,6 +69,18 @@ describe("flatten / playable / entry", () => {
     const pending = pendingCells(1, [n("a"), n("b")]);
     expect(entryKey(pending, pending)).toBe("pending:1#0");
   });
+
+  it("never plays or enters at the scene recap; it stays in the log only", () => {
+    const recap = flatten([{ ...ev("s0", "narration", [n("前情")]), recap: true }]);
+    expect(recap.filter((cell) => isPlayable(cell, "s0"))).toEqual([]);
+    expect(entryKey(recap, [])).toBeNull();
+    const withBeat = flatten([
+      { ...ev("s0", "narration", [n("前情")]), recap: true },
+      ev("g1", "narration", [n("a")]),
+    ]);
+    const playable = withBeat.filter((cell) => isPlayable(cell, "g1"));
+    expect(entryKey(withBeat, playable)).toBe("g1#0");
+  });
 });
 
 describe("realignCursor", () => {

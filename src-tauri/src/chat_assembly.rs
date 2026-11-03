@@ -677,6 +677,48 @@ fn vn_direction(materials: &GmMaterials) -> transport::VnDirection {
             .map(|frozen| frozen.bible.branching),
         pov: materials.vn_card.as_ref().and_then(|card| card.pov),
         protagonist: vn_protagonist(materials).map(|card| card.name.clone()),
+        chapter: Some(vn_chapter_cue(materials)),
+    }
+}
+
+/// 回合尾的章與結局提示（包 5 §2.4）：章號與收尾狀態讀本回合開始時的樹，結局條件同一份樹求值。
+fn vn_chapter_cue(materials: &GmMaterials) -> transport::ChapterCue {
+    let tree = &materials.state.state.tree;
+    let chapter = data::vn::chapter_in(tree);
+    let bible = materials.vn_bible.as_ref().map(|frozen| &frozen.bible);
+    transport::ChapterCue {
+        chapter,
+        max: bible.map_or(data::vn::CHAPTER_FALLBACK, |bible| bible.chapter_max),
+        end_condition: bible.map(|bible| {
+            (chapter as usize)
+                .checked_sub(1)
+                .and_then(|index| bible.chapters.get(index))
+                .map(|pack| match pack.end_condition.trim().is_empty() {
+                    true => pack.goal.trim().to_owned(),
+                    false => pack.end_condition.trim().to_owned(),
+                })
+                .unwrap_or_default()
+        }),
+        finale: data::vn::finale_in(tree),
+        holding: bible
+            .map(|bible| {
+                bible
+                    .endings
+                    .iter()
+                    .filter(|ending| ending.id != data::vn::DEFAULT_ENDING)
+                    .filter(|ending| {
+                        ending.when.iter().all(|condition| {
+                            crate::mechanism::condition_holds(
+                                tree,
+                                &materials.state.mechanism,
+                                condition,
+                            )
+                        })
+                    })
+                    .map(|ending| ending.id.clone())
+                    .collect()
+            })
+            .unwrap_or_default(),
     }
 }
 

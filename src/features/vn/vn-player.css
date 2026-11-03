@@ -172,6 +172,8 @@
   position: relative;
   width: min(56rem, 100%);
   min-height: 8.5rem;
+  /* 長段落（GM 一格寫很長）在框內捲動，不撐出畫面 */
+  max-height: 38vh;
   padding: 1.4rem 1.6rem 1rem;
   border: 1px solid var(--vn-box-line);
   border-radius: var(--radius-l);
@@ -201,6 +203,8 @@
   font-weight: 600;
 }
 .vn-text {
+  min-height: 0;
+  overflow-y: auto;
   white-space: pre-wrap;
 }
 .vn-thought {

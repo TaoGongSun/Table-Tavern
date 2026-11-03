@@ -44,6 +44,8 @@ export function useVnCells({
   onError: (message: string) => void;
 }) {
   const [formal, setFormal] = useState<VnEventCells[]>([]);
+  /** 正式格屬於哪一幕（換幕清空後、新幕格到之前是 null）：播放器靠它在換幕時重新定位 */
+  const [formalScene, setFormalScene] = useState<number | null>(null);
   const [streams, setStreams] = useState<Streams>({ frozen: [], live: null });
   const formalRef = useRef(formal);
   const streamsRef = useRef(streams);
@@ -63,7 +65,7 @@ export function useVnCells({
     const known = new Set(formalRef.current.map(eventKeyOf));
     const fresh = result
       .map((event, position) => ({ event, key: eventKeyOf(event, position) }))
-      .filter(({ event, key }) => event.kind !== "player" && !known.has(key));
+      .filter(({ event, key }) => event.kind !== "player" && !event.recap && !known.has(key));
     formalRef.current = result;
     setFormal(result);
     const { frozen, live } = streamsRef.current;
@@ -88,6 +90,7 @@ export function useVnCells({
         const result = await invoke<VnEventCells[] | null>("read_vn_cells", { worldId, scene });
         if (mine !== fetchGen.current) return latest.current;
         apply(result ?? []);
+        setFormalScene(scene);
       } catch (reason) {
         if (mine === fetchGen.current) callbacks.current.onError(String(reason));
       }
@@ -99,6 +102,7 @@ export function useVnCells({
   useEffect(() => {
     formalRef.current = [];
     setFormal([]);
+    setFormalScene(null);
     putStreams({ frozen: [], live: null });
   }, [worldId, scene]);
 
@@ -169,6 +173,7 @@ export function useVnCells({
   return {
     cells,
     lastEventKey: last >= 0 ? eventKeyOf(formal[last], last) : null,
+    formalScene,
     tail: streams.live?.tail ?? false,
     /** 目前這段串流已解析出暫定格 */
     streaming: streams.live !== null,

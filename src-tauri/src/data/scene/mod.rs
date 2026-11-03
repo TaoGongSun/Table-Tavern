@@ -4,14 +4,18 @@ mod import;
 mod lifecycle;
 mod marker;
 mod presence;
+mod replay;
 mod transcript;
 mod visibility;
 
 pub use export::{export_scene_markdown, export_transcript_markdown};
 pub(crate) use glyph::{fold_glyphs, glyph_equal};
 pub use import::{write_imported_scene, ImportedEvent, ImportedScene};
+#[cfg(test)]
+pub use lifecycle::{begin_next_scene, fail_publish};
 pub use lifecycle::{
-    begin_next_scene, branch_opening, fork_scene, replace_scene_summary, revert_scene, scene_label,
+    begin_next_scene_as, branch_opening, fork_scene, replace_scene_summary, revert_scene,
+    scene_label,
 };
 pub use marker::{
     appeared_card_names, appeared_person_titles, event_full_text, marker_heading, prompt_lang,
@@ -19,6 +23,7 @@ pub use marker::{
 };
 pub(crate) use marker::{lang_key, player_fallback_name};
 pub(crate) use presence::{match_present, match_present_with, name_matches, split_present_names};
+pub use replay::replay_chapter;
 #[cfg(test)]
 pub use transcript::pop_transcript;
 pub use transcript::{

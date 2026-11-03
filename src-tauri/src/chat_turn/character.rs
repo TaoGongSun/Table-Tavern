@@ -56,6 +56,7 @@ pub(crate) async fn chat_with_character(
     chat_assembly::reject_character_turn_on_takeover(&root, &world_id)?;
     // 舞台卡不發言：同樣擋在任何副作用之前
     chat_assembly::reject_stage_character_turn(&root, &world_id, &character_id)?;
+    data::vn::refuse_if_ended(&root, &world_id)?;
     // 換幕容量鎖：排在代落上一回合待落正文之前（待落的已算進本幕），擋下就什麼都不寫。
     // 同一動作已在落玩家句時通過就不重扣（scene_budget::gate）
     crate::scene_budget::check_capacity(

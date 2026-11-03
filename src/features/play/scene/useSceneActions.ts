@@ -48,6 +48,17 @@ async function reportSceneError(worldId: string, reason: unknown, onError: (mess
   onError(String(reason));
 }
 
+/**
+ * VN 視圖的換幕結果（vn-mode 包 5 §2.3）：分階段回報，呼叫端據此決定重試哪一段。
+ * - failed：換幕沒提交（摘要失敗、停止、忙碌、已完結）；章號與幕都沒動，`message` 是後端原文（停止或忙碌為 null）
+ * - committed：換幕已提交但重進本桌失敗；只能重試重進，絕不再換一次幕
+ * - entered：換幕與重進都成了
+ */
+export type VnAdvance =
+  | { stage: "failed"; message: string | null }
+  | { stage: "committed" }
+  | { stage: "entered" };
+
 /** 卡片介面上的換幕：換幕會重進本桌（重進一律收起介面），換成而且可以接著玩才把介面打開回來 */
 export async function advanceThenReopen(advance: () => Promise<boolean>, reopen: () => void): Promise<void> {
   if (await advance()) reopen();
@@ -101,6 +112,42 @@ export function useSceneActions({
     return done === true;
   }
 
+  // VN 視圖的換幕（包 5 §2.3）：chapterEnd＝章結束入口（GM `[chapter]`、「下一章」鈕）才加章；
+  // 容量滿的換幕傳 false 只換幕。分階段回報，換幕已提交後重進失敗只重試重進
+  async function advanceVn(chapterEnd: boolean): Promise<VnAdvance> {
+    const done = await runTableOp<VnAdvance>(async () => {
+      if (!(await canLeaveEditor()) || chat.isBusy()) return { stage: "failed", message: null };
+      onError("");
+      const turnId = chat.beginNarration();
+      try {
+        await invoke<number>("advance_scene", { worldId, turnId, chapterEnd });
+      } catch (reason) {
+        const stopped = backendCode(reason) === "scene_summary_stopped";
+        if (!stopped) await reportSceneError(worldId, reason, onError);
+        return { stage: "failed", message: stopped ? null : String(reason) };
+      } finally {
+        chat.endNarration();
+      }
+      return (await reenterWritable()) ? { stage: "entered" } : { stage: "committed" };
+    });
+    return done ?? { stage: "failed", message: null };
+  }
+
+  async function reenterWritable(): Promise<boolean> {
+    try {
+      const { entered, writable } = await enterTable(worldId);
+      return entered && writable;
+    } catch (reason) {
+      onError(String(reason));
+      return false;
+    }
+  }
+
+  /** VN 換幕已提交、重進失敗後的重試：只重進本桌 */
+  async function reenterVn(): Promise<boolean> {
+    return (await runTableOp(reenterWritable)) === true;
+  }
+
   // 從前幕分岔續玩：把那一幕的紀錄複製成新的一幕，原本的歷史原封不動。
   // 整幕複製會讓下一次生成要送的內容變多，所以先跳確認框讓玩家自己決定
   async function forkScene(from: number) {
@@ -116,6 +163,20 @@ export function useSceneActions({
       try {
         await invoke<number>("fork_scene", { worldId, scene: from });
         closeMainView();
+        await enterTable(worldId);
+      } catch (reason) {
+        await reportSceneError(worldId, reason, onError);
+      }
+    });
+  }
+
+  // VN 從某一章重玩（包 5 §2.9）：章頭幕截幕首分岔成新的一幕，原本的歷史原封不動
+  async function replayChapter(chapter: number) {
+    await runTableOp(async () => {
+      if (chat.isBusy()) return;
+      onError("");
+      try {
+        await invoke<number>("vn_replay_chapter", { worldId, chapter });
         await enterTable(worldId);
       } catch (reason) {
         await reportSceneError(worldId, reason, onError);
@@ -202,7 +263,10 @@ export function useSceneActions({
   return {
     canUndoScene,
     advanceScene,
+    advanceVn,
+    reenterVn,
     forkScene,
+    replayChapter,
     revertScene,
     regenerateSummary,
     exportTranscript,

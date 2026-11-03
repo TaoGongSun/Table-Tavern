@@ -7,7 +7,7 @@ use super::super::{local_timestamp, DataResult};
 use super::marker::EventMarker;
 use super::presence::settle_card_visibility;
 use super::transcript::{
-    append_transcript_tx, parse_transcript, read_transcript, transcript_path, TranscriptEvent,
+    append_unpublished_tx, parse_transcript, read_transcript, transcript_path, TranscriptEvent,
     TranscriptKind,
 };
 use super::visibility::{record_leaving_scene, restore_scene_visibility};
@@ -24,6 +24,7 @@ pub fn scene_label(state: &WorldState, scene: u64) -> SceneLabel {
             version: 1,
             parent: scene.checked_sub(1),
             forked: false,
+            source: None,
         })
 }
 
@@ -40,21 +41,29 @@ fn next_scene_version(state: &WorldState, upto: u64, base: u64) -> u32 {
 /// 顯示編號跟隨來源幕（從分岔幕再分岔＝跟著源頭走，不是跟著內部號走），
 /// parent 記分岔當下所在的幕，退回時回到這裡而不是來源幕。
 pub fn fork_scene(root: &Path, world_id: &str, from_scene: u64) -> DataResult<u64> {
-    let forked = with_commit(root, world_id, |tx| fork_scene_tx(tx, from_scene));
+    let forked = with_commit(root, world_id, |tx| fork_scene_tx(tx, from_scene, None));
     crate::data::bump_capacity_epoch();
     forked
 }
 
 /// 發布順序（計畫 8.4）：①新幕逐字稿（事件 id 與表版本重新配發、來源幕有效 epoch 的表改成新幕 epoch）
 /// ②控制檔寫新幕種子 ③寫 current_scene。任一步失敗就停；新幕號仍是「目前幕＋1」，重試覆寫上次的殘留。
-fn fork_scene_tx(tx: &CommitTx<'_>, from_scene: u64) -> DataResult<u64> {
+/// `keep`＝只留來源幕前幾則（VN 從某一章重玩截幕首，包 5 §2.9）；截幕首可以從目前這幕分岔。
+pub(super) fn fork_scene_tx(
+    tx: &CommitTx<'_>,
+    from_scene: u64,
+    keep: Option<usize>,
+) -> DataResult<u64> {
     let (root, world_id) = (tx.root, tx.world_id);
     message_vars::refuse_during_turn(tx)?;
     let mut state = read_state(root, world_id)?;
-    if from_scene >= state.current_scene {
+    if from_scene > state.current_scene || (keep.is_none() && from_scene == state.current_scene) {
         return Err(UiMsg::SceneForkNotEarlier.into_error());
     }
     let mut events = read_transcript(root, world_id, from_scene)?;
+    if let Some(keep) = keep {
+        events.truncate(keep);
+    }
     if events.is_empty() {
         return Err(UiMsg::SceneNothingToContinue.into_error());
     }
@@ -110,6 +119,7 @@ fn fork_scene_tx(tx: &CommitTx<'_>, from_scene: u64) -> DataResult<u64> {
             version,
             parent: Some(current_scene),
             forked: true,
+            source: Some(from_scene),
         },
     );
     state.current_scene = new_scene;
@@ -119,6 +129,10 @@ fn fork_scene_tx(tx: &CommitTx<'_>, from_scene: u64) -> DataResult<u64> {
         .rev()
         .find_map(|event| event.state.clone())
         .unwrap_or_default();
+    #[cfg(test)]
+    if fail_publish::take() {
+        return Err(crate::data::invalid_data("故障注入：分岔發布失敗"));
+    }
     write_state(root, world_id, &state)?;
     message_vars::refresh_cache(tx);
     Ok(new_scene)
@@ -127,14 +141,27 @@ fn fork_scene_tx(tx: &CommitTx<'_>, from_scene: u64) -> DataResult<u64> {
 /// 換場：把摘要包成一則 GM 旁白 append 到下一場景開頭，再把 current_scene +1 並存檔。
 /// 回傳新場景號。摘要文字本身由呼叫端（單發 LLM）產生，這裡只負責落地與推進場次。
 /// title 有值就存進「舊場景」（bump 前的 current_scene）的 scene_titles，與場次 +1 同一次 write_state。
+#[cfg(test)]
 pub fn begin_next_scene(
     root: &Path,
     world_id: &str,
     summary_text: &str,
     title: Option<&str>,
 ) -> DataResult<u64> {
+    begin_next_scene_as(root, world_id, summary_text, title, false)
+}
+
+/// 同 `begin_next_scene`；`chapter_end` 為真＝VN 桌的章結束入口（GM `[chapter]`、「下一章」鈕）：
+/// 章號加一或轉強制收尾與 `current_scene` 同一次提交（包 5 §2.3）。
+pub fn begin_next_scene_as(
+    root: &Path,
+    world_id: &str,
+    summary_text: &str,
+    title: Option<&str>,
+    chapter_end: bool,
+) -> DataResult<u64> {
     let next = with_commit(root, world_id, |tx| {
-        begin_next_scene_tx(tx, summary_text, title)
+        begin_next_scene_tx(tx, summary_text, title, chapter_end)
     });
     crate::data::bump_capacity_epoch();
     next
@@ -146,22 +173,39 @@ fn begin_next_scene_tx(
     tx: &CommitTx<'_>,
     summary_text: &str,
     title: Option<&str>,
+    chapter_end: bool,
 ) -> DataResult<u64> {
     let (root, world_id) = (tx.root, tx.world_id);
     message_vars::refuse_during_turn(tx)?;
     let mut state = read_state(root, world_id)?;
+    // VN 章結束：新章號／強制收尾先寫進記憶體的樹，摘要事件明帶這份快照（補快照讀的是磁碟上的舊樹）
+    let step = crate::data::vn::chapter_step(root, world_id, &state, chapter_end)?;
+    for (path, value) in &step {
+        crate::data::set_tree_value(&mut state.state.tree, path, value);
+    }
+    // VN 桌的摘要事件明帶快照：新章號（補快照讀磁碟上的舊樹），且不帶上一回合的變動標記（否則格邊旗標提示重播）
+    let vn_snapshot = (state.table_kind == crate::data::TableKind::Vn).then(|| {
+        let mut snapshot = state.state.clone();
+        snapshot.changes.clear();
+        snapshot
+    });
     let old_scene = state.current_scene;
     let next_scene = old_scene + 1;
     // 角色卡隱藏快照在結算前拍（跟 current_scene 同一次 write_state 落地），退回／分岔回這幕時照它寫回
     record_leaving_scene(root, world_id, &mut state)?;
     state.pending_leave = None;
     // 變數模式：新幕開頭的摘要帶一份種子表，第一個 GM 回覆前卡片照樣讀得到值、補得到狀態欄占位
-    let seed = message_vars::scene_seed_for_next(tx, old_scene, next_scene)?;
+    let seed = message_vars::scene_seed_for_next(tx, old_scene, next_scene, |tree| {
+        step.iter().fold(false, |changed, (path, value)| {
+            crate::data::set_tree_value(tree, path, value) | changed
+        })
+    })?;
     // 世界書計時：舊幕 pending 先結算（GM 半截已由上面的交接代落），未到期的平移成新幕的檔（P4）
     super::super::world_info_store::carry_into_next_scene(root, world_id, old_scene, next_scene)?;
     // 上次沒發布的殘留（摘要寫了、current_scene 沒寫成）：新幕逐字稿重來
     super::super::world_file::commit_world_remove(&transcript_path(root, world_id, next_scene)?)?;
-    append_transcript_tx(
+    // 摘要事件不回寫目前狀態：新章號只在下面 current_scene 那一次 write_state 發布
+    append_unpublished_tx(
         tx,
         next_scene,
         &TranscriptEvent {
@@ -177,7 +221,7 @@ fn begin_next_scene_tx(
             speaker_name: "GM".to_owned(),
             kind: TranscriptKind::Narration,
             text: summary_text.to_owned(),
-            state: None,
+            state: vn_snapshot,
             truncated: false,
             gm_only: false,
             marker: Some(EventMarker::SceneSummary),
@@ -198,9 +242,14 @@ fn begin_next_scene_tx(
             version,
             parent: Some(old_scene),
             forked: false,
+            source: None,
         },
     );
     state.current_scene = next_scene;
+    #[cfg(test)]
+    if fail_publish::take() {
+        return Err(crate::data::invalid_data("故障注入：換幕發布失敗"));
+    }
     write_state(root, world_id, &state)?;
     let requires_present_report =
         crate::data::requires_present_report(root, world_id, state.refactor_mode.as_deref());
@@ -376,3 +425,16 @@ fn scene_opening(root: &Path, world_id: &str, scene: u64) -> DataResult<Option<T
 
 #[cfg(test)]
 mod tests;
+
+/// 測試用故障注入：下一次換幕或分岔在發布 current_scene 前失敗（新幕的檔都已寫好）。
+#[cfg(test)]
+pub mod fail_publish {
+    use std::cell::Cell;
+    thread_local!(static ARMED: Cell<bool> = const { Cell::new(false) });
+    pub fn arm() {
+        ARMED.with(|armed| armed.set(true));
+    }
+    pub(super) fn take() -> bool {
+        ARMED.with(|armed| armed.replace(false))
+    }
+}

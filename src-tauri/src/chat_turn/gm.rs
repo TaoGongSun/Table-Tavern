@@ -5,7 +5,7 @@ use super::commit::{
 };
 use super::gm_reply::{aborted_narration, gm_reply_parts, GmReplyParts};
 use super::stream::{prepare_play_lane_call, push_delta, take_abort_or_finish};
-use super::vn_script;
+use super::{vn_ending, vn_script};
 #[cfg(test)]
 use crate::chat_assembly::gm_turn_instruction;
 use crate::chat_assembly::{self, gm_materials, GmMaterials};
@@ -129,6 +129,8 @@ pub(crate) async fn gm_narrate(
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
     let root = data_root(&app)?;
+    // 完結的 VN 桌不再續寫（包 5 §2.6）
+    data::vn::refuse_if_ended(&root, &world_id)?;
     // 換幕容量鎖：開回合紀錄之前擋，擋下就什麼都不寫
     crate::scene_budget::check_capacity(
         &config_root(&app)?,
@@ -270,13 +272,19 @@ pub(crate) async fn gm_narrate(
     let user_name = player_name.unwrap_or_else(|| transport::player_fallback_name(&lang));
     // 提交（鎖內、核對 turn_id、幕與世代）：套在回合開始時固定的輸入上；變數模式時新表與正文留在回合紀錄
     // 等前端落檔。狀態沒寫成要明確回報（state_error），不吞掉
-    let main = data::message_vars::PendingMain {
-        text: display.clone(),
-        raw,
-        truncated: cut.load(std::sync::atomic::Ordering::Relaxed),
+    let truncated = cut.load(std::sync::atomic::Ordering::Relaxed);
+    // VN 桌：章末／結局標記在提交閉包內依套完的狀態驗（包 5 §2.2），正文照判定改寫
+    let vn = chat_assembly::vn_table(&materials.state);
+    let endings = vn_endings(materials.vn_bible.as_ref());
+    let pending_main = |verdict: Option<&vn_ending::Verdict>| data::message_vars::PendingMain {
+        text: verdict.map_or_else(|| display.clone(), |verdict| verdict.rewrite(&display)),
+        raw: raw
+            .as_deref()
+            .map(|raw| verdict.map_or_else(|| raw.to_owned(), |verdict| verdict.rewrite(raw))),
+        truncated,
     };
     // 變動紀錄與正文在同一次提交登記：前端沒落成時跟正文一起代落（長欄位變動靠它進歷史）
-    let sides = |state: &data::WorldState, outcome: &Option<mechanism::Outcome>| {
+    let mut sides = |state: &data::WorldState, outcome: &Option<mechanism::Outcome>| {
         if outcome.is_none() {
             return Vec::new();
         }
@@ -290,15 +298,28 @@ pub(crate) async fn gm_narrate(
                 Some(patch) => format!("{reply}\n<UpdateVariable>{patch}</UpdateVariable>"),
                 None => reply.clone(),
             };
+            // zod 引擎桌不驗結局：`[ending]` 一律剝（已知限制）
+            let verdict = vn.then(vn_ending::Verdict::unjudged);
+            let main = pending_main(verdict.as_ref());
             turn.commit_engine(zod, main, &engine_reply, &block, user_name, sides)
                 .await
+                .map(|commit| {
+                    commit.map(|commit| data::message_vars::GmCommit {
+                        state: commit.state,
+                        result: (commit.result, verdict),
+                        error: commit.error,
+                    })
+                })
         }
         None => turn.commit(
-            main,
+            |(_, verdict): &(_, Option<vn_ending::Verdict>)| pending_main(verdict.as_ref()),
             |state, stat| {
-                // VN 桌補種：表內但樹上缺的旗標、揭露、章號補成初值（只補不覆蓋、不記變動）
-                data::vn::fill_missing(&mut state.state.tree, &materials.vn_seeds);
-                gm_commit_apply(
+                if vn {
+                    // VN 桌：引擎三鍵的規則（沒聖經的桌第一次補），表內但樹上缺的旗標、揭露、章號補成初值
+                    data::vn::ensure_engine_rules(&mut state.mechanism);
+                    data::vn::fill_missing(&mut state.state.tree, &materials.vn_seeds);
+                }
+                let (outcome, typed) = gm_commit_apply(
                     state,
                     stat,
                     &block,
@@ -306,16 +327,33 @@ pub(crate) async fn gm_narrate(
                     &materials.state.mechanism,
                     materials.takeover,
                     align,
-                )
+                );
+                let verdict = vn.then(|| {
+                    let tree = &state.state.tree;
+                    let verdict = vn_ending::Judge {
+                        endings: &endings,
+                        chapter: data::vn::chapter_in(tree),
+                        max: vn_chapter_max(materials.vn_bible.as_ref()),
+                        finale: data::vn::finale_in(tree),
+                        tree,
+                        mechanism: &state.mechanism,
+                    }
+                    .judge(&display);
+                    verdict.apply(&mut state.state);
+                    verdict
+                });
+                ((outcome, verdict), typed)
             },
-            sides,
+            move |state: &data::WorldState, (outcome, _): &(_, _)| sides(state, outcome),
         ),
     };
     let mut state_error = None;
+    let mut verdict = None;
     let committed = match committed {
         Ok(Some(commit)) => {
             state_error = commit.error;
-            Some((commit.state, commit.result))
+            verdict = commit.result.1;
+            Some((commit.state, commit.result.0))
         }
         Ok(None) => None,
         Err(error) => {
@@ -323,6 +361,12 @@ pub(crate) async fn gm_narrate(
             None
         }
     };
+    let reply = verdict
+        .as_ref()
+        .map_or(reply.clone(), |verdict| verdict.rewrite(&reply));
+    let display = verdict
+        .as_ref()
+        .map_or(display.clone(), |verdict| verdict.rewrite(&display));
     if let Some((state, Some(outcome))) = committed {
         let scene = state.current_scene;
         mechanism::append_log(&root, &world_id, scene, &outcome.records);
@@ -399,7 +443,8 @@ pub(crate) async fn gm_narrate(
                 materials.player.as_ref(),
                 materials.vn_card.as_ref(),
             );
-            vn_script::gm_stop(&display, &roster, next)
+            let finale = verdict.as_ref().and_then(vn_ending::Verdict::stop);
+            vn_script::gm_stop(&display, &roster, next, finale)
         }
         false => (next, None),
     };
@@ -415,6 +460,27 @@ pub(crate) async fn gm_narrate(
         arrived_persons,
         aborted: false,
         state_error,
+    })
+}
+
+/// 結局表（凍結聖經的；沒聖經＝只有引擎的 `default`）。
+fn vn_endings(frozen: Option<&data::vn::Frozen>) -> Vec<data::vn::Ending> {
+    frozen.map_or_else(
+        || {
+            vec![data::vn::Ending {
+                id: data::vn::DEFAULT_ENDING.to_owned(),
+                title: String::new(),
+                when: Vec::new(),
+            }]
+        },
+        |frozen| frozen.bible.endings.clone(),
+    )
+}
+
+/// 章數上限 M（凍結聖經的；沒聖經＝保底值）。
+pub(super) fn vn_chapter_max(frozen: Option<&data::vn::Frozen>) -> u32 {
+    frozen.map_or(data::vn::CHAPTER_FALLBACK, |frozen| {
+        frozen.bible.chapter_max
     })
 }
 

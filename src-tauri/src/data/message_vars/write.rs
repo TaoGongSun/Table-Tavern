@@ -448,10 +448,22 @@ pub struct GmCommit<R> {
 /// 回傳的帶型別寫值照原型別合回新表）；樹模式開始的回合在這裡符合條件就
 /// 啟用變數模式（以當下樹物化種子）。新表與正文先放進回合紀錄（轉「等落檔」），再寫狀態快取；
 /// 快取寫失敗明確回報、不吞掉。turn_id、幕或世代不符、不在生成中回 None、不改狀態。
+#[cfg(test)]
 pub fn apply_gm_block<R>(
     tx: &CommitTx<'_>,
     turn_id: &str,
     main: PendingMain,
+    apply: impl FnOnce(&mut WorldState, Option<&Json>) -> (R, Option<TypedBatch>),
+    sides: impl FnOnce(&WorldState, &R) -> Vec<TurnSide>,
+) -> DataResult<Option<GmCommit<R>>> {
+    apply_gm_block_then(tx, turn_id, move |_| main, apply, sides)
+}
+
+/// 同 `apply_gm_block`，正文在 `apply` 之後才定（VN 桌依套完的狀態驗章末／結局標記、改寫正文）。
+pub fn apply_gm_block_then<R>(
+    tx: &CommitTx<'_>,
+    turn_id: &str,
+    main: impl FnOnce(&R) -> PendingMain,
     apply: impl FnOnce(&mut WorldState, Option<&Json>) -> (R, Option<TypedBatch>),
     sides: impl FnOnce(&WorldState, &R) -> Vec<TurnSide>,
 ) -> DataResult<Option<GmCommit<R>>> {
@@ -487,6 +499,7 @@ pub fn apply_gm_block<R>(
         derive_display(&mut table, stat);
         table
     });
+    let main = main(&result);
     submit(
         tx,
         turn_id,
@@ -658,20 +671,32 @@ pub fn scene_epoch(tx: &CommitTx<'_>, scene: u64) -> DataResult<Option<String>> 
         .map(|vars| vars.epoch.clone()))
 }
 
-/// 換幕 ①：新幕種子＝舊幕結束時的初始化來源（完整表）、新幕新 epoch，寫進控制檔。
-/// 還沒發布的新幕資料可以被重試覆寫；不是變數模式什麼都不做。
+/// 換幕 ①：新幕種子＝舊幕結束時的初始化來源（完整表）套上 `edit`（VN 章結束的新章號）、新幕新 epoch，
+/// 寫進控制檔。還沒發布的新幕資料可以被重試覆寫；不是變數模式什麼都不做。
 pub fn scene_seed_for_next(
     tx: &CommitTx<'_>,
     old_scene: u64,
     new_scene: u64,
+    edit: impl FnOnce(&mut Tree) -> bool,
 ) -> DataResult<Option<SceneVars>> {
     let mut control = read_control(tx.root, tx.world_id)?;
     let Some(vars) = control.active(old_scene) else {
         return Ok(None);
     };
-    let seed = init_source(tx.root, tx.world_id, old_scene, vars)?
-        .table()
-        .clone();
+    let source = init_source(tx.root, tx.world_id, old_scene, vars)?;
+    let mut seed = source.table().clone();
+    let before = source.tree();
+    let mut after = before.clone();
+    if edit(&mut after) {
+        let cache = read_state_cache(tx.root, tx.world_id)?;
+        let rules = NewValues {
+            types: &cache.mechanism.value_types,
+            keep_strings: false,
+            clean: None,
+        };
+        let stat = merge_tree_change(&stat_of(&seed), &before, &after, &rules);
+        seed.insert("stat_data", stat);
+    }
     let vars = SceneVars {
         epoch: new_token(),
         seed: VarsTable::from_json(&seed),

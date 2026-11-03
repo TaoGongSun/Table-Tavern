@@ -105,11 +105,10 @@ fn parser_follows_each_lenient_rule() {
             vec![narration("[music: 雨聲]\n雨一直下。")],
         ),
         (
-            "[chapter] 與 [ending: id]",
+            "[chapter] 與 [ending: id]：落檔文字已驗過，結局壓過章末",
             "結束了。\n[chapter]\n[Ending: true_end]",
             vec![
                 narration("結束了。"),
-                VnCell::Chapter,
                 VnCell::Ending {
                     id: "true_end".to_owned(),
                 },
@@ -127,14 +126,11 @@ fn parser_follows_each_lenient_rule() {
             vec![narration("後來。"), choices(&["丙", "丁"])],
         ),
         (
-            "包 1：[ending]＋有效 [choices] 同則時選項照留（章與結局不取得壓制資格）",
+            "包 5：[ending]＋[choices] 同則時剝選項（落檔的終止標記都已驗過，取得壓制資格）",
             "[ending: bad]\n[choices]\n- 再試一次\n- 放棄",
-            vec![
-                VnCell::Ending {
-                    id: "bad".to_owned(),
-                },
-                choices(&["再試一次", "放棄"]),
-            ],
+            vec![VnCell::Ending {
+                id: "bad".to_owned(),
+            }],
         ),
     ];
     for (label, text, expected) in cases {
@@ -187,7 +183,7 @@ fn thought_variant_and_directive_cap() {
     );
 }
 
-/// 優先序接口：取得資格的高優先者剝低優先終止格（包 5 的驗證接上後才會發生）
+/// 優先序接口：取得資格的高優先者剝低優先終止格（落檔文字的終止標記都已在提交時驗過）
 #[test]
 fn terminal_priority_strips_lower_ranks_only_when_accepted() {
     let cells = vec![
@@ -195,16 +191,14 @@ fn terminal_priority_strips_lower_ranks_only_when_accepted() {
         VnCell::Chapter,
         VnCell::Ending { id: "a".to_owned() },
     ];
-    assert_eq!(apply_terminal_priority(cells.clone(), pkg1_accepted), cells);
+    let only_choices = |cell: &VnCell| matches!(cell, VnCell::Choices { .. });
+    assert_eq!(apply_terminal_priority(cells.clone(), only_choices), cells);
     assert_eq!(
         apply_terminal_priority(cells.clone(), |_| true),
         vec![VnCell::Ending { id: "a".to_owned() }]
     );
-    assert_eq!(stop_reason(&cells, pkg1_accepted), Some(VnStop::Choices));
-    assert_eq!(
-        stop_reason(&cells[1..], pkg1_accepted),
-        Some(VnStop::Ending)
-    );
+    assert_eq!(stop_reason(&cells, only_choices), Some(VnStop::Choices));
+    assert_eq!(stop_reason(&cells[1..], only_choices), Some(VnStop::Ending));
 }
 
 /// VN 桌 GM 回合：任一終止標記＝不點名（next None）並標理由；沒有就照原點名
@@ -217,19 +211,24 @@ fn gm_stop_overrides_next_on_terminal_markers() {
         ("[ending: true_end]", VnStop::Ending),
     ] {
         assert_eq!(
-            gm_stop(text, &roster(), next()),
+            gm_stop(text, &roster(), next(), None),
             (None, Some(stop)),
             "{text}"
         );
     }
     assert_eq!(
-        gm_stop("狐狸 (happy): 「嗨」", &roster(), next()),
+        gm_stop("狐狸 (happy): 「嗨」", &roster(), next(), None),
         (next(), None)
     );
     // 只有一個選項＝沒有選項，不停
     assert_eq!(
-        gm_stop("[choices]\n- 甲", &roster(), next()),
+        gm_stop("[choices]\n- 甲", &roster(), next(), None),
         (next(), None)
+    );
+    // 第 M 章的 `[chapter]` 提交時已剝、轉收尾：沒有其他終止標記也要停
+    assert_eq!(
+        gm_stop("旅程到了盡頭。", &roster(), next(), Some(VnStop::Finale)),
+        (None, Some(VnStop::Finale))
     );
 }
 

@@ -374,7 +374,14 @@ fn advance_writes_nothing_unless_every_call_succeeds() {
         let before = snapshot(&root, &world);
         let mut fake = Fake::new(if failure.is_some() { 60_000 } else { 2_000 });
         fake.fail_at = failure;
-        let error = run(advance_with(&root, &world, &cap(Some(60_000)), &mut fake)).unwrap_err();
+        let error = run(advance_with(
+            &root,
+            &world,
+            &cap(Some(60_000)),
+            &mut fake,
+            false,
+        ))
+        .unwrap_err();
         assert!(!error.starts_with(context_overflow::CODE), "{tag}: {error}");
         assert_eq!(snapshot(&root, &world), before, "{tag}");
         std::fs::remove_dir_all(&root).unwrap();
@@ -386,7 +393,14 @@ fn advance_commits_once_everything_succeeds() {
     let events = long_scene(30, 2_000);
     let (root, world) = world_with(&events, "ok");
     let mut fake = Fake::new(60_000);
-    let scene = run(advance_with(&root, &world, &cap(Some(60_000)), &mut fake)).unwrap();
+    let scene = run(advance_with(
+        &root,
+        &world,
+        &cap(Some(60_000)),
+        &mut fake,
+        false,
+    ))
+    .unwrap();
     assert_eq!(scene, 1);
     let recap = data::read_transcript(&root, &world, 1).unwrap();
     assert_eq!(recap.len(), 1);
@@ -400,7 +414,14 @@ fn regenerate_keeps_the_old_recap_on_failure() {
     let events = long_scene(30, 2_000);
     let (root, world) = world_with(&events, "regen");
     let mut ok = Fake::new(60_000);
-    run(advance_with(&root, &world, &cap(Some(60_000)), &mut ok)).unwrap();
+    run(advance_with(
+        &root,
+        &world,
+        &cap(Some(60_000)),
+        &mut ok,
+        false,
+    ))
+    .unwrap();
     let before = data::read_transcript(&root, &world, 1).unwrap();
     let mut tiny = Fake::new(2_000);
     let error = run(regenerate_with(
@@ -508,7 +529,7 @@ fn stop_mid_summary_commits_nothing_and_releases_the_table() {
     let mut caller = Cancellable::new(fake, Some(cancel));
     let error = run(async {
         stop_after(&world, "stop-1");
-        advance_locked(&root, &world, &cap(Some(60_000)), &mut caller).await
+        advance_locked(&root, &world, &cap(Some(60_000)), &mut caller, false).await
     })
     .unwrap_err();
     assert!(error.contains("scene_summary_stopped"), "{error}");
@@ -521,7 +542,14 @@ fn stop_mid_summary_commits_nothing_and_releases_the_table() {
     // 重寫前情提要：先成功換一次幕，再在重寫途中停止，原提要不動
     let (root, world) = world_with(&events, "stop-regen");
     let mut ok = Fake::new(60_000);
-    run(advance_with(&root, &world, &cap(Some(60_000)), &mut ok)).unwrap();
+    run(advance_with(
+        &root,
+        &world,
+        &cap(Some(60_000)),
+        &mut ok,
+        false,
+    ))
+    .unwrap();
     let recap = data::read_transcript(&root, &world, 1).unwrap();
     let (_guard, cancel) = crate::inflight::register_turn(&world, "stop-2");
     let mut fake = Fake::new(60_000);
@@ -552,7 +580,14 @@ fn regenerate_writes_nothing_on_empty_or_truncated() {
     ] {
         let (root, world) = world_with(&events, &format!("regen-{tag}"));
         let mut ok = Fake::new(60_000);
-        run(advance_with(&root, &world, &cap(Some(60_000)), &mut ok)).unwrap();
+        run(advance_with(
+            &root,
+            &world,
+            &cap(Some(60_000)),
+            &mut ok,
+            false,
+        ))
+        .unwrap();
         let recap = data::read_transcript(&root, &world, 1).unwrap();
         let mut fake = Fake::new(60_000);
         fake.fail_at = Some((2, error.to_owned()));

@@ -520,6 +520,9 @@ pub struct SceneLabel {
     /// 換幕來的幕開頭一定是摘要，分岔來的不是——凡是「改寫開頭那則」的操作都得先問這一格。
     #[serde(default)]
     pub forked: bool,
+    /// 分岔幕複製的來源幕（劇情祖先鏈走這裡；`parent` 是分岔前玩家所在的幕）。換幕來的幕沒有。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<u64>,
 }
 
 /// 桌面有效狀態的投影入口（計畫 8.2）：卡片變數模式時 `tree` 換成初始化來源 stat_data 的投影，

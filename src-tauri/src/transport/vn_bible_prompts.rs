@@ -213,9 +213,17 @@ pub fn bible_resident(lang: &str, bible: &Bible, names: &dyn Fn(&str) -> String)
     text.push_str(pick("結局：\n", "Endings:\n"));
     for ending in &bible.endings {
         let when: Vec<String> = ending.when.iter().map(condition_text).collect();
-        let when = match when.is_empty() {
-            true => pick("無條件", "always").to_owned(),
-            false => when.join(pick("，且 ", " and ")),
+        let when = match (
+            ending.id == crate::data::vn::DEFAULT_ENDING,
+            when.is_empty(),
+        ) {
+            (true, _) => pick(
+                "保底結局（只在導演指示要求時用）",
+                "fallback ending (only when the director instruction asks for it)",
+            )
+            .to_owned(),
+            (false, true) => pick("無條件", "always").to_owned(),
+            (false, false) => when.join(pick("，且 ", " and ")),
         };
         text.push_str(&format!("- {} {}: {when}\n", ending.id, ending.title));
     }
@@ -237,7 +245,7 @@ fn branching_line(en: bool, branching: Branching) -> &'static str {
     }
 }
 
-fn condition_text(condition: &Condition) -> String {
+pub(crate) fn condition_text(condition: &Condition) -> String {
     match condition {
         Condition::Range { path, min, max, .. } => match (min, max) {
             (Some(min), Some(max)) => format!("{min} <= {path} <= {max}"),

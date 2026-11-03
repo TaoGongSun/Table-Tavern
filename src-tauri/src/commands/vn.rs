@@ -12,6 +12,42 @@ pub(crate) fn read_vn_cells(
     Ok(chat_turn::read_scene(&data_root(&app)?, &world_id, scene)?.0)
 }
 
+/// 結局一覽與完結畫面的已達成 x／y（包 5 §2.7）。
+#[tauri::command]
+pub(crate) fn vn_endings(
+    app: tauri::AppHandle,
+    world_id: String,
+) -> Result<crate::vn_bible::EndingsOverview, String> {
+    crate::vn_bible::endings_overview(&data_root(&app)?, &world_id)
+}
+
+/// 從某一章重玩（包 5 §2.9）：章頭幕截幕首分岔成新的一幕，回新幕號。
+#[tauri::command]
+pub(crate) fn vn_replay_chapter(
+    app: tauri::AppHandle,
+    world_id: String,
+    chapter: u32,
+) -> Result<u64, String> {
+    let _permit = data::world_write_permit(&world_id)?;
+    let root = data_root(&app)?;
+    let scene =
+        data::replay_chapter(&root, &world_id, chapter).map_err(|error| error.to_string())?;
+    crate::world_scan::macros::forget_outlets(&world_id);
+    Ok(scene)
+}
+
+/// 開新周目（包 5 §2.10）：原桌握寫入許可只讀，建好回新桌 id。
+#[tauri::command]
+pub(crate) async fn vn_new_playthrough(
+    app: tauri::AppHandle,
+    world_id: String,
+    name_template: String,
+) -> Result<String, String> {
+    let _permit = data::world_write_permit_async(&world_id).await?;
+    data::vn_playthrough::new_playthrough(&data_root(&app)?, &world_id, &name_template)
+        .map_err(|error| error.to_string())
+}
+
 /// 串流中未落檔的文字→暫定格（同一個解析器、同一份名單；不套刪格規則）。
 #[tauri::command]
 pub(crate) fn parse_vn_text(
@@ -41,6 +77,7 @@ pub(crate) async fn vn_reroll_choices(
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
     let root = data_root(&app)?;
+    data::vn::refuse_if_ended(&root, &world_id)?;
     let tier = transport::gm_tier(&config);
     let path = crate::scene_budget::path_limits(&config_root(&app)?, &root, &config, tier);
     let mut caller = GmOneshot {

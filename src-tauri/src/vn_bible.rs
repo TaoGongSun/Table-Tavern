@@ -239,7 +239,7 @@ pub(crate) fn install(
         vn::edit_vn(tx, |file| {
             file.frozen = Some(Frozen {
                 scene: state.current_scene,
-                chapter: chapter_of(&projected.state.tree),
+                chapter: vn::chapter_in(&projected.state.tree),
                 bible: bible.clone(),
             });
             file.bible = Some(bible);
@@ -248,11 +248,67 @@ pub(crate) fn install(
     })
 }
 
-fn chapter_of(tree: &BTreeMap<String, StateNode>) -> u32 {
-    match tree.get("chapter") {
-        Some(StateNode::Leaf(value)) => value.trim().parse().unwrap_or(1),
-        _ => 1,
+/// 結局一覽（包 5 §2.7）：結局表每條＋本桌任一分支是否達成過（掃各幕事件快照的 `ended`），
+/// 未達成的標題不帶（前端顯示「???」）；`current`＝目前這條分支接受的結局。
+#[derive(Debug, Serialize)]
+pub(crate) struct EndingsOverview {
+    pub endings: Vec<EndingStatus>,
+    pub current: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct EndingStatus {
+    pub id: String,
+    pub title: String,
+    pub reached: bool,
+}
+
+pub(crate) fn endings_overview(root: &Path, world_id: &str) -> Result<EndingsOverview, String> {
+    let state = data::read_state(root, world_id).map_err(text)?;
+    let endings = vn::read_vn(root, world_id)
+        .map_err(text)?
+        .bible
+        .map(|bible| bible.endings)
+        .unwrap_or_else(|| {
+            vec![vn::Ending {
+                id: vn::DEFAULT_ENDING.to_owned(),
+                title: String::new(),
+                when: Vec::new(),
+            }]
+        });
+    let last = state
+        .scene_labels
+        .keys()
+        .filter_map(|key| key.parse::<u64>().ok())
+        .chain(std::iter::once(state.current_scene))
+        .max()
+        .unwrap_or_default();
+    let mut reached = std::collections::BTreeSet::new();
+    for scene in 0..=last {
+        for event in data::read_transcript(root, world_id, scene).map_err(text)? {
+            if let Some(id) = event
+                .state
+                .as_ref()
+                .and_then(|state| vn::ended_in(&state.tree))
+            {
+                reached.insert(id.to_owned());
+            }
+        }
     }
+    Ok(EndingsOverview {
+        current: vn::ended_in(&state.state.tree).map(str::to_owned),
+        endings: endings
+            .into_iter()
+            .map(|ending| {
+                let hit = reached.contains(&ending.id);
+                EndingStatus {
+                    title: if hit { ending.title } else { String::new() },
+                    reached: hit,
+                    id: ending.id,
+                }
+            })
+            .collect(),
+    })
 }
 
 /// GM 回合的 VN 輸入：注入用的凍結聖經、補種用的初值表（照目前的聖經，跟規則同一份）、VN 卡原件。
@@ -274,6 +330,7 @@ pub(crate) fn turn_inputs(root: &Path, world_id: &str, state: &data::WorldState)
         let Some(bible) = file.bible else {
             return Ok(TurnInputs {
                 card: file.card,
+                seeds: vn::engine_seeds(),
                 ..TurnInputs::default()
             });
         };
@@ -283,7 +340,7 @@ pub(crate) fn turn_inputs(root: &Path, world_id: &str, state: &data::WorldState)
             _ => {
                 let frozen = Frozen {
                     scene: state.current_scene,
-                    chapter: chapter_of(&state.state.tree),
+                    chapter: vn::chapter_in(&state.state.tree),
                     bible,
                 };
                 vn::edit_vn(tx, |file| file.frozen = Some(frozen.clone()))?;
@@ -456,7 +513,7 @@ pub(crate) fn revealed(
             };
             for id in &ids {
                 if snapshot.changes.contains_key(&format!("revealed.{id}")) {
-                    chapters.insert((*id).clone(), chapter_of(&snapshot.tree));
+                    chapters.insert((*id).clone(), vn::chapter_in(&snapshot.tree));
                 }
             }
         }

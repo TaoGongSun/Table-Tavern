@@ -1,4 +1,5 @@
 // 對話框：名牌、打字機文字、點擊推進提示；本身是按鈕，Enter／Space 走原生。
+import { useEffect, useRef } from "react";
 import type { FlatCell } from "./vn-cells";
 import { sliceChars } from "./vn-cells";
 
@@ -21,10 +22,16 @@ export function DialogueBox({
   const speaker = content?.type === "dialogue" ? content.speaker_name : null;
   const text = content?.type === "narration" || content?.type === "dialogue" ? content.text : "";
   const thought = content?.type === "dialogue" && content.thought;
+  const textRef = useRef<HTMLSpanElement>(null);
+  // 超出框高時跟著打字機捲到最新一行
+  useEffect(() => {
+    const el = textRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [shown, cell?.key]);
   return (
     <button type="button" className="vn-dialogue" onClick={onAdvance}>
       {speaker && <span className="vn-nameplate">{speaker}</span>}
-      <span className={`vn-text${thought ? " vn-thought" : ""}`}>
+      <span ref={textRef} className={`vn-text${thought ? " vn-thought" : ""}`}>
         {sliceChars(text, shown)}
         {waiting && <span className="vn-waiting"> …</span>}
       </span>

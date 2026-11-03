@@ -10,6 +10,7 @@ import type {
   VnEventCells,
 } from "../../shared/contracts/backend-contracts";
 import type { ChatController } from "../play/chat/useChatController";
+import type { VnAdvance } from "../play/scene/useSceneActions";
 
 const backend = vi.hoisted(() => ({
   cells: [] as VnEventCells[],
@@ -18,6 +19,7 @@ const backend = vi.hoisted(() => ({
   calls: [] as string[],
   /** 讓整幕重抓晚一拍回來，跟串流解析落在同一批更新 */
   slowRead: false,
+  endings: null as unknown,
 }));
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(async (command: string, args: Record<string, unknown>) => {
@@ -29,11 +31,14 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (command === "parse_vn_text") return backend.parse(args.text as string);
     if (command === "vn_reroll_choices") return backend.reroll();
     if (command === "vn_backgrounds_status") return [];
+    if (command === "vn_endings") return backend.endings;
+    if (command === "vn_new_playthrough") return `new:${String(args.nameTemplate)}`;
     return null;
   }),
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
+vi.mock("@tauri-apps/plugin-dialog", () => ({ confirm: vi.fn(async () => true) }));
 
 import { VnPlayer } from "./VnPlayer";
 
@@ -83,6 +88,11 @@ async function settle() {
 }
 
 let flagHints = true;
+let sceneNo = 0;
+let onAdvanceScene = vi.fn(async (_chapterEnd: boolean): Promise<VnAdvance> => ({ stage: "entered" }));
+let onReenter = vi.fn(async () => true);
+const onReplayChapter = vi.fn(async (_chapter: number) => {});
+const onEnterTable = vi.fn((_id: string) => {});
 
 async function render(patch: Partial<ChatController> = {}) {
   chat = { ...chat, ...patch };
@@ -90,15 +100,19 @@ async function render(patch: Partial<ChatController> = {}) {
     root.render(
       <VnPlayer
         worldId="w1"
-        scene={0}
+        scene={sceneNo}
         tableName="Harbor"
         chat={chat}
         images={{}}
-        notice={null}
+        error=""
         busy={chat.busy}
         onError={() => {}}
+        onAdvanceScene={onAdvanceScene}
+        onReenter={onReenter}
         onShowChat={() => {}}
         onGoLobby={() => {}}
+        onReplayChapter={onReplayChapter}
+        onEnterTable={onEnterTable}
         flagHints={flagHints}
         onFlagHints={() => {}}
       />,
@@ -121,6 +135,9 @@ beforeEach(() => {
   backend.parse = () => null;
   backend.calls = [];
   backend.slowRead = false;
+  onAdvanceScene = vi.fn(async () => ({ stage: "entered" }) as VnAdvance);
+  onReenter = vi.fn(async () => true);
+  sceneNo = 0;
   window.matchMedia = (() => ({ matches: true })) as unknown as typeof window.matchMedia;
   host = document.createElement("div");
   document.body.appendChild(host);
@@ -271,5 +288,144 @@ describe("VnPlayer", () => {
       streamText: "coat\n\nshadows\n\nwhistle",
     });
     expect(text()).toBe("coat");
+  });
+
+  it("advancing onto the chapter cell ends the chapter once, then opens the next chapter's first beat", async () => {
+    backend.cells = [{ ...gm("g1", [n("we arrive"), { type: "chapter" }]), chapter: 2 }];
+    let entered = (_: VnAdvance) => {};
+    onAdvanceScene = vi.fn(() => new Promise<VnAdvance>((resolve) => (entered = resolve)));
+    await render({ events: [event("g1")] });
+    expect(text()).toBe("we arrive");
+    expect(onAdvanceScene).not.toHaveBeenCalled();
+    await advance();
+    expect(onAdvanceScene).toHaveBeenCalledWith(true);
+    expect(host.querySelector(".vn-chapter-heading")?.textContent).toBe(t("vnChapterDone", { n: 2 }));
+    await advance();
+    expect(onAdvanceScene).toHaveBeenCalledTimes(1);
+    await act(async () => entered({ stage: "entered" }));
+    await settle();
+    // 首拍等播放器換到新幕才開：同一輪的聊天控制器還綁著舊幕
+    expect(chat.gmAdvance).not.toHaveBeenCalled();
+    sceneNo = 1;
+    backend.cells = [{ ...gm("s1", [n("recap")]), chapter: 3 }];
+    await render({ events: [event("s1")] });
+    expect(chat.gmAdvance).toHaveBeenCalledTimes(1);
+    expect(host.querySelector(".vn-chapter-card")).toBeNull();
+  });
+
+  it("entering or skipping onto a chapter cell waits for the next-chapter button", async () => {
+    backend.cells = [gm("g0", [n("a")]), gm("g1", [{ type: "chapter" }])];
+    await render({ events: [event("g0"), event("g1")] });
+    expect(onAdvanceScene).not.toHaveBeenCalled();
+    const next = [...host.querySelectorAll<HTMLButtonElement>(".vn-continue")];
+    expect(next.map((b) => b.textContent)).toEqual([t("vnNextChapter")]);
+    await act(async () => next[0].click());
+    await settle();
+    expect(onAdvanceScene).toHaveBeenCalledWith(true);
+  });
+
+  it("a failed advance retries the advance; a failed re-entry retries only the re-entry", async () => {
+    backend.cells = [gm("g1", [n("end"), { type: "chapter" }])];
+    onAdvanceScene = vi
+      .fn<(chapterEnd: boolean) => Promise<VnAdvance>>()
+      .mockResolvedValueOnce({ stage: "failed", message: "boom" })
+      .mockResolvedValueOnce({ stage: "committed" });
+    onReenter = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    await render({ events: [event("g1")] });
+    await advance();
+    expect(host.querySelector(".vn-chapter-card [role=alert]")?.textContent).toBe("boom");
+    await act(async () => button(t("vnChapterRetry"))!.click());
+    await settle();
+    expect(onAdvanceScene).toHaveBeenCalledTimes(2);
+    expect(host.querySelector(".vn-chapter-card")?.textContent).toContain(t("vnReenterFailed"));
+    await act(async () => button(t("vnChapterRetry"))!.click());
+    await settle();
+    await act(async () => button(t("vnChapterRetry"))!.click());
+    await settle();
+    expect(onAdvanceScene).toHaveBeenCalledTimes(2);
+    expect(onReenter).toHaveBeenCalledTimes(2);
+    sceneNo = 1;
+    await render();
+    expect(chat.gmAdvance).toHaveBeenCalledTimes(1);
+  });
+
+  it("the capacity error's advance button only changes the act", async () => {
+    backend.cells = [gm("g1", [n("hello")])];
+    await act(async () => {
+      root.render(
+        <VnPlayer
+          worldId="w1"
+          scene={0}
+          tableName="Harbor"
+          chat={{ ...chat, events: [event("g1")] }}
+          images={{}}
+          error={'TTMSG:{"code":"scene_capacity_full"}'}
+          busy={false}
+          onError={() => {}}
+          onAdvanceScene={onAdvanceScene}
+          onReenter={onReenter}
+          onShowChat={() => {}}
+          onGoLobby={() => {}}
+          onReplayChapter={onReplayChapter}
+          onEnterTable={onEnterTable}
+          flagHints
+          onFlagHints={() => {}}
+        />,
+      );
+    });
+    await settle();
+    await act(async () => button(t("sceneAdvance"))!.click());
+    await settle();
+    expect(onAdvanceScene).toHaveBeenCalledWith(false);
+  });
+
+  it("a new scene (replay, fork, advance) starts at its entry, not at the old scene's end", async () => {
+    backend.cells = [gm("g1", [n("one"), n("two")])];
+    await render({ events: [event("g1")] });
+    await advance();
+    await advance();
+    expect(text()).toBe("two");
+    backend.cells = [gm("o1", [n("opening"), n("more")])];
+    sceneNo = 1;
+    await render({ events: [event("o1")] });
+    expect(text().length).toBeLessThanOrEqual("opening".length);
+    expect("opening".startsWith(text())).toBe(true);
+  });
+
+  it("reaching the ending cell shows the end screen with the ending title and reached count", async () => {
+    backend.cells = [gm("g1", [n("farewell"), { type: "ending", id: "true_end" }])];
+    backend.endings = {
+      endings: [
+        { id: "true_end", title: "Dawn", reached: true },
+        { id: "default", title: "", reached: false },
+      ],
+      current: "true_end",
+    };
+    await render({ events: [event("g1")] });
+    expect(host.querySelector(".vn-ending-screen")).toBeNull();
+    await advance();
+    expect(host.querySelector(".vn-ending-title")?.textContent).toBe("Dawn");
+    expect(host.querySelector(".vn-ending-screen")?.textContent).toContain(
+      t("vnEndingsReached", { x: 1, y: 2 }),
+    );
+    expect(button(t("vnNextChapter"))!.disabled).toBe(true);
+    expect(button(t("vnContinue"))).toBeUndefined();
+
+    // 結局一覽：未達成顯示 ???
+    await act(async () => button(t("vnEndingsList"))!.click());
+    await settle();
+    const list = [...host.querySelectorAll(".vn-story-panel li")].map((item) => item.textContent);
+    expect(list).toEqual(["Dawn", "???"]);
+    await act(async () => button(t("vnChapterClose"))!.click());
+    // 從某一章重玩：第 1 章到目前這章
+    await act(async () => button(t("vnReplayChapter"))!.click());
+    await act(async () => button(t("vnChapterStart", { n: 1 }))!.click());
+    expect(onReplayChapter).toHaveBeenCalledWith(1);
+    // 開新周目：確認後帶在地化樣板建桌，進新桌
+    await act(async () => button(t("vnNewPlaythrough"))!.click());
+    await settle();
+    expect(onEnterTable).toHaveBeenCalledWith(
+      `new:${t("vnPlaythroughName", { name: "{name}", n: "{n}" })}`,
+    );
   });
 });

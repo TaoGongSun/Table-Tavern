@@ -8,6 +8,7 @@ use serde_json::json;
 use std::path::Path;
 
 mod undo_floor;
+mod vn_chapter;
 
 const USER: &str = "阿濤";
 

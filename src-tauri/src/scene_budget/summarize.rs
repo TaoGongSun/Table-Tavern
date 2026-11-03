@@ -316,9 +316,10 @@ pub async fn advance_locked<C: SummaryCaller>(
     world_id: &str,
     cap: &Capacity,
     caller: &mut C,
+    chapter_end: bool,
 ) -> Result<u64, String> {
     let _permit = crate::data::world_write_permit_async(world_id).await?;
-    advance_with(root, world_id, cap, caller).await
+    advance_with(root, world_id, cap, caller, chapter_end).await
 }
 
 /// 換幕：整理本幕、全部成功才開新幕（失敗一律零寫入，原紀錄不動）。
@@ -327,8 +328,11 @@ pub async fn advance_with<C: SummaryCaller>(
     world_id: &str,
     cap: &Capacity,
     caller: &mut C,
+    chapter_end: bool,
 ) -> Result<u64, String> {
     let state = crate::data::read_state(root, world_id).map_err(|error| error.to_string())?;
+    // 完結的 VN 桌不換幕：摘要呼叫之前先擋，不白花額度（交易內會再判一次）
+    crate::data::vn::refuse_ended(&state)?;
     let events = crate::data::read_transcript(root, world_id, state.current_scene)
         .map_err(|error| error.to_string())?;
     if events.is_empty() {
@@ -339,7 +343,7 @@ pub async fn advance_with<C: SummaryCaller>(
     let reply = summarize_scene(&events, cap, takeover, caller).await?;
     // 換幕順手取幕名：回覆第一行「標題：…」／「Title: …」解析不到就整段當摘要，不報錯
     let (title, summary) = transport::extract_scene_title(&reply);
-    crate::data::begin_next_scene(root, world_id, &summary, title.as_deref())
+    crate::data::begin_next_scene_as(root, world_id, &summary, title.as_deref(), chapter_end)
         .map_err(|error| error.to_string())
 }
 

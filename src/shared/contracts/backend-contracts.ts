@@ -46,6 +46,8 @@ export interface SceneLabel {
   parent: number | null;
   // 分岔複製來的幕：開頭那則是真實對話而非前情提要，換幕的兩條補救路都不適用
   forked?: boolean;
+  /** 分岔幕複製的來源幕（劇情祖先鏈）；換幕來的幕省略 */
+  source?: number;
 }
 
 export interface WorldState {
@@ -155,6 +157,18 @@ export interface VnEventCells {
   cells: VnCell[];
   /** 格邊旗標提示（Rust `vn_bible::FlagHint`）；沒有變動時省略 */
   hints?: FlagHint[];
+  /** 這則事件快照的章號（章末字卡用）；快照沒有章號時省略 */
+  chapter?: number;
+  /** 換幕摘要（前情提要）：播放器不播、只進 log；不是摘要時省略 */
+  recap?: boolean;
+}
+
+/** `vn_endings`：結局一覽與完結畫面的已達成 x／y（Rust `vn_bible::EndingsOverview`） */
+export interface VnEndings {
+  /** 未達成的 title 是空字串（顯示「???」） */
+  endings: { id: string; title: string; reached: boolean }[];
+  /** 目前這條分支接受的結局 id */
+  current: string | null;
 }
 
 export type FlagHint =

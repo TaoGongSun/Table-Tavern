@@ -16,9 +16,11 @@ const CHAPTER_RANGE: (u32, u32) = (3, 30);
 const RESIDENT_CAP: usize = 12_000;
 const CHAPTER_CAP: usize = 4_000;
 pub const PRIVATE_CAP: usize = 2_000;
-/// 聖經在狀態樹佔的三個頂層鍵：只收表內欄位逐葉更新（`Mechanism::locked_roots`）。
-pub const LOCKED_ROOTS: [&str; 3] = ["flags", "revealed", "chapter"];
+/// VN 桌在狀態樹佔的頂層鍵：只收表內欄位逐葉更新（`Mechanism::locked_roots`）。
+pub const LOCKED_ROOTS: [&str; 5] = ["flags", "revealed", "chapter", "ended", "finale"];
 pub const DEFAULT_ENDING: &str = "default";
+/// `ended` 未完結的值（空字串在狀態樹＝刪葉子，所以用保留字；結局 id 不得叫這個）。
+pub const NOT_ENDED: &str = "none";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VnFile {
@@ -35,6 +37,15 @@ pub struct VnFile {
     /// 從 VN 卡建的桌才有：卡原件（plans/vn-mode-pkg9.md §2.4）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub card: Option<CardOrigin>,
+    /// 新周目（包 5 §2.10）：第幾周目與第 1 周目的桌名；第 1 周目沒有
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub playthrough: Option<Playthrough>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Playthrough {
+    pub number: u32,
+    pub base_name: String,
 }
 
 fn version() -> u32 {
@@ -53,6 +64,7 @@ impl Default for VnFile {
             bible: None,
             frozen: None,
             card: None,
+            playthrough: None,
         }
     }
 }
@@ -338,6 +350,7 @@ pub fn normalize(mut bible: Bible, cast: &[(String, String)]) -> Bible {
     let mut seen = HashSet::new();
     bible.endings.retain(|ending| {
         valid_id(&ending.id)
+            && ending.id != NOT_ENDED
             && seen.insert(ending.id.clone())
             && ending.when.iter().all(|condition| {
                 let path = condition_path(condition);
@@ -512,7 +525,7 @@ pub fn cap_chars(text: &str, cap: usize) -> String {
 }
 
 impl Bible {
-    /// 狀態樹初值：`flags.<id>`、`revealed.<秘密id>`＝false、`chapter`＝1。
+    /// 狀態樹初值：`flags.<id>`、`revealed.<秘密id>`＝false，加引擎三鍵（`engine_seeds`）。
     pub fn seeds(&self) -> Vec<(Vec<String>, String)> {
         let path = |root: &str, id: &str| vec![root.to_owned(), id.to_owned()];
         self.flags
@@ -523,10 +536,7 @@ impl Bible {
                     .iter()
                     .map(|secret| (path("revealed", &secret.id), "false".to_owned())),
             )
-            .chain(std::iter::once((
-                vec!["chapter".to_owned()],
-                "1".to_owned(),
-            )))
+            .chain(engine_seeds())
             .collect()
     }
 
@@ -557,16 +567,116 @@ impl Bible {
         for secret in &self.secrets {
             rules.insert(format!("revealed.{}", secret.id), choice(yes_no()));
         }
-        rules.insert(
-            "chapter".to_owned(),
-            FieldRule {
+        rules.extend(engine_rules());
+        rules
+    }
+}
+
+/// 引擎自管的三鍵初值（包 5 §2.1）：`chapter`＝1、`ended`＝未完結、`finale`＝false。沒有聖經的桌也有。
+pub fn engine_seeds() -> Vec<(Vec<String>, String)> {
+    [("chapter", "1"), ("ended", NOT_ENDED), ("finale", "false")]
+        .into_iter()
+        .map(|(key, value)| (vec![key.to_owned()], value.to_owned()))
+        .collect()
+}
+
+/// 引擎三鍵的規則：唯讀、模型寫入一律拒收，值進回合尾。
+pub fn engine_rules() -> BTreeMap<String, FieldRule> {
+    ["chapter", "ended", "finale"]
+        .into_iter()
+        .map(|key| {
+            let rule = FieldRule {
                 update: UpdateMode::Reject,
                 inject: InjectLevel::Turn,
                 ..FieldRule::for_kind(FieldKind::ReadOnly)
-            },
-        );
-        rules
+            };
+            (key.to_owned(), rule)
+        })
+        .collect()
+}
+
+/// 沒有聖經的 VN 桌第一次 GM 回合補上引擎三鍵的規則與受保護根（有聖經的桌套用聖經時已寫）；回傳有沒有改。
+pub fn ensure_engine_rules(mechanism: &mut super::Mechanism) -> bool {
+    let mut changed = false;
+    for (key, rule) in engine_rules() {
+        if !mechanism.rules.contains_key(&key) {
+            mechanism.rules.insert(key, rule);
+            changed = true;
+        }
     }
+    for root in LOCKED_ROOTS {
+        if !mechanism.locked_roots.iter().any(|item| item == root) {
+            mechanism.locked_roots.push(root.to_owned());
+            changed = true;
+        }
+    }
+    changed
+}
+
+/// 樹上的章號（缺或壞＝1）。
+pub fn chapter_in(tree: &BTreeMap<String, StateNode>) -> u32 {
+    match tree.get("chapter") {
+        Some(StateNode::Leaf(text)) => text.trim().parse().ok().filter(|n| *n >= 1).unwrap_or(1),
+        _ => 1,
+    }
+}
+
+/// 樹上接受的結局 id；未完結回 None。
+pub fn ended_in(tree: &BTreeMap<String, StateNode>) -> Option<&str> {
+    match tree.get("ended") {
+        Some(StateNode::Leaf(text)) if !text.is_empty() && text != NOT_ENDED => Some(text),
+        _ => None,
+    }
+}
+
+/// 已完結的 VN 桌拒收續寫（GM、角色、玩家句、換一組、換幕；包 5 §2.6）；收回與分岔不擋。
+pub fn refuse_ended(state: &super::WorldState) -> Result<(), String> {
+    match state.table_kind == super::TableKind::Vn && ended_in(&state.state.tree).is_some() {
+        true => Err(crate::ui_msg::UiMsg::VnEnded.into()),
+        false => Ok(()),
+    }
+}
+
+/// 同 `refuse_ended`，從磁碟讀狀態（變數模式下 `read_state` 已以權威表覆蓋）。
+pub fn refuse_if_ended(root: &Path, world_id: &str) -> Result<(), String> {
+    refuse_ended(&super::read_state(root, world_id).map_err(|error| error.to_string())?)
+}
+
+/// 換幕交易內的章結束那一步（包 5 §2.3）：回要寫進樹的葉子。完結的 VN 桌任何換幕都拒；
+/// 不是章結束（容量、聊天視圖換幕）只換幕不動章；未到上限加一章，已到上限改設強制收尾。
+pub fn chapter_step(
+    root: &Path,
+    world_id: &str,
+    state: &super::WorldState,
+    chapter_end: bool,
+) -> DataResult<Vec<(Vec<String>, String)>> {
+    let tree = &state.state.tree;
+    if state.table_kind != super::TableKind::Vn {
+        return Ok(Vec::new());
+    }
+    if ended_in(tree).is_some() {
+        return Err(crate::ui_msg::UiMsg::VnEnded.into_error());
+    }
+    if !chapter_end {
+        return Ok(Vec::new());
+    }
+    let max = read_vn(root, world_id)?
+        .bible
+        .map_or(CHAPTER_FALLBACK, |bible| bible.chapter_max);
+    let chapter = chapter_in(tree);
+    let leaf = |key: &str, value: String| (vec![key.to_owned()], value);
+    Ok(match chapter < max {
+        true => vec![
+            leaf("chapter", (chapter + 1).to_string()),
+            leaf("finale", "false".to_owned()),
+        ],
+        false => vec![leaf("finale", "true".to_owned())],
+    })
+}
+
+/// 樹上是否在強制收尾中。
+pub fn finale_in(tree: &BTreeMap<String, StateNode>) -> bool {
+    matches!(tree.get("finale"), Some(StateNode::Leaf(text)) if text == "true")
 }
 
 /// 補種：表內但樹上缺的路徑補成初值，只補不覆蓋。回傳有沒有補。

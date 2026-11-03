@@ -152,6 +152,12 @@ pub enum UiMsg {
     SceneCapacityFull,
     /// 玩家按停止，換幕／重寫提要沒做；原紀錄不動
     SceneSummaryStopped,
+    /// VN 桌已完結：續寫、換一組、換幕一律拒（只能收回或從分岔點續，vn-mode 包 5）
+    VnEnded,
+    /// VN 從某一章重玩：目前這條劇情線上找不到那一章的開頭
+    VnReplayNoChapter {
+        chapter: u32,
+    },
     /// 介面接管桌只走 GM 敘事線：角色回合一律拒收，不寫樓、不打模型、不扣容量
     InterfaceTableGmOnly,
     /// 舞台卡只提供設定、不參與角色發言：它的角色回合一律拒收，不寫樓、不打模型、不扣容量

@@ -21,6 +21,10 @@ export interface FlatCell {
   cell: VnCell;
   /** 這則事件的格邊旗標提示（同一則的格共用） */
   hints?: FlagHint[];
+  /** 這則事件快照的章號 */
+  chapter?: number;
+  /** 換幕摘要的格：不播、只進 log */
+  recap?: boolean;
 }
 
 export interface Cursor {
@@ -49,6 +53,8 @@ export function flatten(events: VnEventCells[]): FlatCell[] {
       kind: event.kind,
       cell,
       hints: event.hints,
+      chapter: event.chapter,
+      recap: event.recap,
     }));
   });
 }
@@ -63,20 +69,26 @@ export function pendingCells(generation: number, cells: VnCell[]): FlatCell[] {
   }));
 }
 
+/** 終止格：選項、章末、結局（游標停在它們上面時對話框留著前一格文字） */
+export const isTerminal = (cell: VnCell) =>
+  cell.type === "choices" || cell.type === "chapter" || cell.type === "ending";
+
 /**
- * 游標可停的格：文字格（玩家句除外，只進 log）＋仍有效的正式選項格。
- * 選項只在它屬於本幕最後一則正式事件時有效；之後有玩家句或任何新事件＝已消耗。
- * `[bg]`、章、結局不停（舞台照摺疊；章與結局在包 2 等同沒有選項的結尾）。
+ * 游標可停的格：文字格（玩家句與換幕摘要除外，只進 log）＋仍有效的正式終止格（選項、章末、結局）。
+ * 終止格只在它屬於本幕最後一則正式事件時有效；之後有玩家句或任何新事件＝已消耗。串流暫定格裡的終止標記
+ * 可能在提交時被剝掉，不當停點。`[bg]` 不停（舞台照摺疊）。
  */
 export function isPlayable(cell: FlatCell, lastEventKey: string | null): boolean {
-  if (cell.kind === "player") return false;
-  if (cell.cell.type === "choices") return cell.kind !== "pending" && cell.eventKey === lastEventKey;
+  if (cell.kind === "player" || cell.recap) return false;
+  if (isTerminal(cell.cell)) return cell.kind !== "pending" && cell.eventKey === lastEventKey;
   return cellText(cell.cell) !== "";
 }
 
-/** 進桌位置：最後一則非玩家正式事件的第一個可停格；還沒有正式事件（空桌第一回合）就從第一格播 */
+/** 進桌位置：最後一則非玩家、非摘要正式事件的第一個可停格；還沒有正式事件（空桌第一回合）就從第一格播 */
 export function entryKey(cells: FlatCell[], playable: FlatCell[]): string | null {
-  const last = [...cells].reverse().find((cell) => cell.kind !== "player" && cell.kind !== "pending");
+  const last = [...cells]
+    .reverse()
+    .find((cell) => cell.kind !== "player" && cell.kind !== "pending" && !cell.recap);
   const first = last && playable.find((cell) => cell.eventKey === last.eventKey);
   return (first ?? lastFormal(playable) ?? playable[0])?.key ?? null;
 }

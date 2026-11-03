@@ -64,6 +64,8 @@ pub(crate) enum VnStop {
     Choices,
     Chapter,
     Ending,
+    /// 第 M 章的 `[chapter]` 轉成強制收尾（包 5 §2.2）：前端照沒有選項處理
+    Finale,
 }
 
 /// 文字出自哪條線：角色線只認自己的對白，別人的對白格改旁白（文字原樣）。
@@ -188,6 +190,21 @@ enum Marker {
     Choices,
     Chapter,
     Ending(String),
+}
+
+/// 一行是不是章末／結局標記（包 5 提交時驗證用）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Terminal {
+    Chapter,
+    Ending(String),
+}
+
+pub(crate) fn terminal_of(line: &str) -> Option<Terminal> {
+    match marker(line.trim())? {
+        Marker::Chapter => Some(Terminal::Chapter),
+        Marker::Ending(id) => Some(Terminal::Ending(id)),
+        _ => None,
+    }
 }
 
 /// 整行、行首的 `[...]` 標記，關鍵字英文不分大小寫；認不得（或缺必要內容）回 None。
@@ -384,11 +401,6 @@ fn terminal_rank(cell: &VnCell) -> Option<u8> {
     }
 }
 
-/// 包 1 的壓制資格：`[chapter]`／`[ending]` 不驗證、不取得資格（包 5 接上驗證），選項恆有。
-pub(crate) fn pkg1_accepted(cell: &VnCell) -> bool {
-    matches!(cell, VnCell::Choices { .. })
-}
-
 /// 取得壓制資格的最高終止格生效時，低優先的終止格剝掉。
 pub(crate) fn apply_terminal_priority(
     cells: Vec<VnCell>,
@@ -417,6 +429,12 @@ pub(crate) struct VnEventCells {
     /// 格邊旗標提示（這則事件快照的旗標與揭露變動，`vn_bible::flag_hints`）
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub hints: Vec<crate::vn_bible::FlagHint>,
+    /// 這則事件快照的章號（章末字卡用）；快照沒有章號＝None
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chapter: Option<u32>,
+    /// 換幕摘要（前情提要）：播放器不播、只進 log
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub recap: bool,
 }
 
 /// 一幕事件逐則解析：GM 旁白照 GM 線、角色台詞照該角色線；玩家句原樣一格旁白；系統事件略過。
@@ -444,6 +462,15 @@ pub(crate) fn read_scene(
         .into_iter()
         .filter_map(|event| {
             let cells = match event.kind {
+                // 換幕摘要是摘要模型照原文整理的，可能照抄 `[chapter]`／`[ending]`／`[choices]`；
+                // 它沒經過提交時的驗證，終止格一律不算（包 5 實測）
+                data::TranscriptKind::Narration
+                    if event.marker == Some(data::EventMarker::SceneSummary) =>
+                {
+                    let mut cells = parse_event(&event.text, &VnSource::Gm, &roster);
+                    cells.retain(|cell| terminal_rank(cell).is_none());
+                    cells
+                }
                 data::TranscriptKind::Narration => parse_event(&event.text, &VnSource::Gm, &roster),
                 data::TranscriptKind::Dialogue => parse_event(
                     &event.text,
@@ -461,8 +488,15 @@ pub(crate) fn read_scene(
                 (Some(bible), Some(state)) => crate::vn_bible::flag_hints(bible, state),
                 _ => Vec::new(),
             };
+            let chapter = event
+                .state
+                .as_ref()
+                .filter(|state| state.tree.contains_key("chapter"))
+                .map(|state| data::vn::chapter_in(&state.tree));
             Some(VnEventCells {
                 hints,
+                chapter,
+                recap: event.marker == Some(data::EventMarker::SceneSummary),
                 event_id: event.id,
                 kind: event.kind,
                 cells,
@@ -507,7 +541,8 @@ pub(crate) fn parse_event(text: &str, source: &VnSource, roster: &VnRoster) -> V
             }
         }
     }
-    apply_terminal_priority(cells, pkg1_accepted)
+    // 落檔文字裡的終止標記都是提交時驗過的（`vn_ending`），一律取得壓制資格
+    apply_terminal_priority(cells, |_| true)
 }
 
 /// 停的理由：取得壓制資格的最高終止格；都沒有資格時取出現的最高者。三種任一出現都停接力。
@@ -527,14 +562,16 @@ pub(crate) fn stop_reason(cells: &[VnCell], accepted: impl Fn(&VnCell) -> bool) 
     best(true).or_else(|| best(false))
 }
 
-/// VN 桌 GM 回合的停點：有終止標記就不點名（`next` 改 None，不是 `__PLAYER__`）並回理由。
+/// VN 桌 GM 回合的停點：有終止標記（提交時驗過的文字）或轉收尾就不點名（`next` 改 None，不是
+/// `__PLAYER__`）並回理由。
 pub(crate) fn gm_stop(
     display: &str,
     roster: &VnRoster,
     next: Option<String>,
+    finale: Option<VnStop>,
 ) -> (Option<String>, Option<VnStop>) {
     let cells = parse_event(display, &VnSource::Gm, roster);
-    match stop_reason(&cells, pkg1_accepted) {
+    match stop_reason(&cells, |_| true).or(finale) {
         Some(stop) => (None, Some(stop)),
         None => (next, None),
     }

@@ -121,12 +121,32 @@ pub(crate) fn append_transcript_tx(
     append_line_tx(tx, scene, event)
 }
 
+/// 同 `append_transcript_tx`，但不把快照回寫成目前狀態：換幕摘要落在還沒發布的新幕，
+/// 回寫會讓舊幕先帶上新章號（發布失敗、重試時多加一章）。
+pub(crate) fn append_unpublished_tx(
+    tx: &CommitTx<'_>,
+    scene: u64,
+    event: &TranscriptEvent,
+) -> DataResult<(u64, TranscriptEvent)> {
+    message_vars::settle_before_append(tx, None)?;
+    write_line_tx(tx, scene, event, false)
+}
+
 /// 實際追加一行（不交接，只給本模組的回合路徑與上面兩個入口）：沒有 ID 就配發、帶表的（復原帶回來的）
 /// 換新版本 token、沒快照就蓋上目前有效狀態。回傳收據與實際落檔的那則。
 fn append_line_tx(
     tx: &CommitTx<'_>,
     scene: u64,
     event: &TranscriptEvent,
+) -> DataResult<(u64, TranscriptEvent)> {
+    write_line_tx(tx, scene, event, true)
+}
+
+fn write_line_tx(
+    tx: &CommitTx<'_>,
+    scene: u64,
+    event: &TranscriptEvent,
+    publish: bool,
 ) -> DataResult<(u64, TranscriptEvent)> {
     let (root, world_id) = (tx.root, tx.world_id);
     let mut event = event.clone();
@@ -151,7 +171,7 @@ fn append_line_tx(
     )?;
     // 目前值恆等於最後一則事件的快照，復原舊句時狀態才會跟著回到那一刻。
     // 快取寫失敗不該把「事件已經寫進去了」這件事變成錯誤，權威在 transcript。
-    if let Some(snapshot) = &event.state {
+    if let Some(snapshot) = event.state.as_ref().filter(|_| publish) {
         if let Ok(mut world) = read_state_cache(root, world_id) {
             if world.state != *snapshot {
                 world.state = snapshot.clone();

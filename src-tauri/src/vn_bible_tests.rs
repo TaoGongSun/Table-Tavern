@@ -271,3 +271,179 @@ fn flag_hints_read_marks_values_and_reveals() {
         ]
     );
 }
+
+/// 目前幕落一則 GM 旁白（快照蓋目前狀態）
+fn gm_line(root: &Path, world_id: &str, text: &str) {
+    let scene = data::read_state(root, world_id).unwrap().current_scene;
+    let event = data::TranscriptEvent {
+        id: None,
+        message_vars: None,
+        vars_rev: None,
+        vars_epoch: None,
+        turn_key: None,
+        action_id: None,
+        raw: None,
+        ts: "now".to_owned(),
+        speaker_id: String::new(),
+        speaker_name: "GM".to_owned(),
+        kind: data::TranscriptKind::Narration,
+        text: text.to_owned(),
+        state: None,
+        truncated: false,
+        gm_only: false,
+        marker: None,
+        opening: false,
+    };
+    data::append_event(root, world_id, scene, &event, None).unwrap();
+}
+
+fn set_leaf(root: &Path, world_id: &str, key: &str, value: &str) {
+    let mut state = data::read_state(root, world_id).unwrap();
+    data::set_tree_value(&mut state.state.tree, &[key.to_owned()], value);
+    data::write_state(root, world_id, &state).unwrap();
+}
+
+/// 章結束換幕（包 5 §2.3）：加章與幕號同次提交、摘要事件快照帶新章號、退幕還原；到上限改設收尾不加章；
+/// 不是章結束只換幕；完結後任何換幕都拒
+#[tokio::test]
+async fn chapter_end_advances_chapter_then_finale_then_refuses_when_ended() {
+    let (root, world_id, _) = vn_table("vn-chapter-end");
+    generate(
+        &root,
+        &world_id,
+        "zh-TW",
+        None,
+        &mut fake(&[&bible_reply("trust", "主線")]),
+    )
+    .await
+    .unwrap();
+    data::state_commit::with_commit(&root, &world_id, |tx| {
+        vn::edit_vn(tx, |file| file.bible.as_mut().unwrap().chapter_max = 3)
+    })
+    .unwrap();
+    assert_eq!(leaf(&root, &world_id, "chapter").as_deref(), Some("1"));
+    assert_eq!(
+        leaf(&root, &world_id, "ended").as_deref(),
+        Some(vn::NOT_ENDED)
+    );
+    let mut state = data::read_state(&root, &world_id).unwrap();
+    state
+        .state
+        .changes
+        .insert("flags.trust".to_owned(), "+1".to_owned());
+    data::write_state(&root, &world_id, &state).unwrap();
+    gm_line(&root, &world_id, "第一章。\n[chapter]");
+    data::begin_next_scene_as(&root, &world_id, "摘要", None, true).unwrap();
+    assert_eq!(leaf(&root, &world_id, "chapter").as_deref(), Some("2"));
+    let summary = &data::read_transcript(&root, &world_id, 1).unwrap()[0];
+    assert_eq!(vn::chapter_in(&summary.state.as_ref().unwrap().tree), 2);
+    // 上一回合的變動標記不跟到摘要事件（格邊旗標提示不重播）
+    assert!(summary.state.as_ref().unwrap().changes.is_empty());
+    data::revert_scene(&root, &world_id).unwrap();
+    assert_eq!(leaf(&root, &world_id, "chapter").as_deref(), Some("1"));
+
+    set_leaf(&root, &world_id, "chapter", "3");
+    data::begin_next_scene_as(&root, &world_id, "摘要", None, false).unwrap();
+    assert_eq!(leaf(&root, &world_id, "chapter").as_deref(), Some("3"));
+    assert_eq!(leaf(&root, &world_id, "finale").as_deref(), Some("false"));
+    data::begin_next_scene_as(&root, &world_id, "摘要", None, true).unwrap();
+    assert_eq!(leaf(&root, &world_id, "chapter").as_deref(), Some("3"));
+    assert_eq!(leaf(&root, &world_id, "finale").as_deref(), Some("true"));
+
+    set_leaf(&root, &world_id, "ended", "default");
+    let scene = data::read_state(&root, &world_id).unwrap().current_scene;
+    for chapter_end in [true, false] {
+        let error = data::begin_next_scene_as(&root, &world_id, "摘要", None, chapter_end)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("vn_ended"), "{error}");
+    }
+    assert_eq!(
+        data::read_state(&root, &world_id).unwrap().current_scene,
+        scene
+    );
+    assert!(vn::refuse_if_ended(&root, &world_id)
+        .unwrap_err()
+        .contains("vn_ended"));
+}
+
+/// 結局一覽：任一幕事件快照出現過的 `ended` 算達成（含已離開的分支），未達成不帶標題
+#[tokio::test]
+async fn endings_overview_scans_every_scene() {
+    let (root, world_id, _) = vn_table("vn-endings-overview");
+    generate(
+        &root,
+        &world_id,
+        "zh-TW",
+        None,
+        &mut fake(&[&bible_reply("trust", "主線")]),
+    )
+    .await
+    .unwrap();
+    data::state_commit::with_commit(&root, &world_id, |tx| {
+        vn::edit_vn(tx, |file| {
+            file.bible.as_mut().unwrap().endings[0].title = "保底".to_owned()
+        })
+    })
+    .unwrap();
+    let overview = endings_overview(&root, &world_id).unwrap();
+    assert!(overview
+        .endings
+        .iter()
+        .all(|ending| !ending.reached && ending.title.is_empty()));
+    set_leaf(&root, &world_id, "ended", "default");
+    gm_line(&root, &world_id, "完。\n[ending: default]");
+    // 分岔出新幕離開結局那條分支：一覽照樣算達成，目前分支沒有完結
+    data::begin_next_scene_as(&root, &world_id, "摘要", None, false).unwrap_err();
+    set_leaf(&root, &world_id, "ended", vn::NOT_ENDED);
+    data::begin_next_scene_as(&root, &world_id, "摘要", None, false).unwrap();
+    let overview = endings_overview(&root, &world_id).unwrap();
+    let default = overview
+        .endings
+        .iter()
+        .find(|ending| ending.id == vn::DEFAULT_ENDING)
+        .unwrap();
+    assert!(default.reached);
+    assert_eq!(default.title, "保底");
+    assert_eq!(overview.current, None);
+}
+
+/// 換幕摘要照抄的終止標記不算（包 5 實測：摘要模型把角色線原文裡的 `[ending: …]` 抄進摘要）
+#[test]
+fn summary_events_never_yield_terminal_cells() {
+    let (root, world_id, _) = vn_table("vn-summary-terminals");
+    gm_line(&root, &world_id, "開場。");
+    data::begin_next_scene_as(
+        &root,
+        &world_id,
+        "前情。\n[ending: default]\n[chapter]",
+        None,
+        false,
+    )
+    .unwrap();
+    let (events, _) = crate::chat_turn::read_scene(&root, &world_id, 1).unwrap();
+    assert_eq!(events.len(), 1);
+    assert!(events[0].recap);
+    assert!(events[0]
+        .cells
+        .iter()
+        .all(|cell| matches!(cell, crate::chat_turn::VnCell::Narration { .. })));
+}
+
+#[test]
+fn chapter_end_publish_failure_leaves_scene_and_chapter_then_retries_once() {
+    let (root, world_id, _) = vn_table("vn-chapter-publish-fail");
+    gm_line(&root, &world_id, "開場。");
+    data::fail_publish::arm();
+    assert!(data::begin_next_scene_as(&root, &world_id, "前情。", None, true).is_err());
+    let state = data::read_state(&root, &world_id).unwrap();
+    assert_eq!(state.current_scene, 0);
+    assert_eq!(data::vn::chapter_in(&state.state.tree), 1);
+    assert_eq!(
+        data::begin_next_scene_as(&root, &world_id, "前情。", None, true).unwrap(),
+        1
+    );
+    let state = data::read_state(&root, &world_id).unwrap();
+    assert_eq!(data::vn::chapter_in(&state.state.tree), 2);
+    assert_eq!(data::read_transcript(&root, &world_id, 1).unwrap().len(), 1);
+}
