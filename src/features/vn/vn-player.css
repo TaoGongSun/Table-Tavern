@@ -1,0 +1,225 @@
+/* VN 播放器主題（第 1 套）：底色＋地點字卡（背景圖在包 3），立繪底部對齊、下緣裁切。 */
+.vn-player {
+  --vn-ground: linear-gradient(180deg, #2a3142 0%, #1b1f2a 70%, #12151c 100%);
+  --vn-box: rgba(16, 19, 26, 0.88);
+  --vn-box-line: rgba(230, 196, 110, 0.45);
+  --vn-ink: #eef1f7;
+  --vn-thought: #a9c4e8;
+  --vn-dim: brightness(0.45) saturate(0.7);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--vn-ground);
+  color: var(--vn-ink);
+}
+
+.vn-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.6rem;
+  z-index: 3;
+}
+.vn-toolbar h1 {
+  margin: 0;
+  font-size: var(--fs-title);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vn-toolbar [aria-pressed="true"] {
+  color: var(--amber);
+}
+
+.vn-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.vn-shake {
+  animation: vn-shake 0.4s;
+}
+.vn-location {
+  position: absolute;
+  top: 0.6rem;
+  left: 0.8rem;
+  padding: 0.2rem 0.7rem;
+  border-left: 3px solid var(--amber);
+  background: var(--vn-box);
+  font-size: var(--fs-ui);
+  animation: vn-fade 0.8s;
+}
+
+/* 立繪：底部對齊、下緣被對話框蓋住；槽位 0 左、1 右、2 中 */
+.vn-sprite {
+  position: absolute;
+  bottom: -12%;
+  height: 92%;
+  width: 34%;
+  margin: 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  transform-origin: bottom center;
+  transition: filter 0.25s, transform 0.25s, opacity 0.25s, left 0.25s;
+}
+.vn-sprite img,
+.vn-silhouette {
+  max-height: 100%;
+  max-width: 100%;
+  object-fit: contain;
+  animation: vn-breathe 4s ease-in-out infinite;
+  transform-origin: bottom center;
+}
+.vn-silhouette {
+  height: 80%;
+  aspect-ratio: 1 / 2.4;
+  border-radius: 45% 45% 8% 8%;
+  background: #0b0d12;
+}
+.vn-slot-0 { left: 4%; }
+.vn-slot-1 { left: 62%; }
+.vn-slot-2 { left: 33%; }
+.vn-dim { filter: var(--vn-dim); }
+.vn-idle { filter: brightness(0.8); }
+.vn-speaking { transform: scale(1.03) translateY(-1%); z-index: 1; }
+.vn-closeup { left: 20%; width: 60%; transform: scale(1.25); z-index: 2; }
+.vn-faded { opacity: 0; }
+
+.vn-bottom {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 1rem 1rem;
+}
+.vn-choices,
+.vn-continue {
+  position: absolute;
+  bottom: calc(100% + 0.5rem);
+  left: 50%;
+  transform: translateX(-50%);
+}
+.vn-choices {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  width: min(32rem, 90%);
+}
+.vn-choice {
+  width: 100%;
+  min-height: 2.4rem;
+  background: var(--vn-box);
+  border-color: var(--vn-box-line);
+  color: var(--vn-ink);
+}
+.vn-choice-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: var(--fs-ui);
+}
+
+.vn-dialogue {
+  position: relative;
+  width: min(56rem, 100%);
+  min-height: 8.5rem;
+  padding: 1.4rem 1.6rem 1rem;
+  border: 1px solid var(--vn-box-line);
+  border-radius: var(--radius-l);
+  background: var(--vn-box);
+  color: var(--vn-ink);
+  font: inherit;
+  font-family: var(--font-story);
+  font-size: calc(var(--fs-story) * 1.1);
+  text-align: left;
+  cursor: pointer;
+  /* 按鈕內容預設垂直置中；VN 慣例文字靠上 */
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+}
+.vn-nameplate {
+  position: absolute;
+  top: -0.9rem;
+  left: 1.2rem;
+  padding: 0.15rem 0.9rem;
+  border-radius: var(--radius-s);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-btn);
+  font-weight: 600;
+}
+.vn-text {
+  white-space: pre-wrap;
+}
+.vn-thought {
+  color: var(--vn-thought);
+  font-style: italic;
+}
+.vn-ctc {
+  position: absolute;
+  right: 1.1rem;
+  bottom: 0.7rem;
+  border: 0.35rem solid transparent;
+  border-top-color: var(--amber);
+  animation: vn-bob 1s ease-in-out infinite;
+}
+
+.vn-backlog {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  overflow-y: auto;
+  padding: 3rem 15% 2rem;
+  background: rgba(10, 12, 17, 0.94);
+  font-family: var(--font-story);
+}
+.vn-backlog-close {
+  position: fixed;
+  top: 0.6rem;
+  right: 0.8rem;
+}
+.vn-backlog ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.vn-backlog li {
+  margin-bottom: 0.9rem;
+  white-space: pre-wrap;
+}
+.vn-backlog b {
+  display: block;
+  color: var(--amber);
+  font-family: var(--font-ui);
+  font-size: var(--fs-btn);
+}
+.vn-backlog-bg {
+  color: var(--ink-3);
+  font-size: var(--fs-ui);
+}
+
+@keyframes vn-breathe { 50% { transform: scale(1.015); } }
+@keyframes vn-bob { 50% { transform: translateY(3px); } }
+@keyframes vn-fade { from { opacity: 0; } }
+@keyframes vn-shake {
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vn-player * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

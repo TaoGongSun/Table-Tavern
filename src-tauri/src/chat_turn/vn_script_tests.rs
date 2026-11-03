@@ -284,3 +284,43 @@ fn replace_choices_rewrites_only_the_last_block() {
     );
     assert_eq!(replace_choices("沒有選項", &options), None);
 }
+
+/// 卡名帶括號註記：模型只寫本名也對得上，但撞名（兩張卡去註記同名）不認
+#[test]
+fn names_match_without_the_trailing_note_only_when_unique() {
+    let roster = VnRoster {
+        characters: vec![
+            ("leon".to_owned(), "雷恩（花豹）".to_owned()),
+            ("a".to_owned(), "米雅 (學姊)".to_owned()),
+            ("b".to_owned(), "米雅(學妹)".to_owned()),
+        ],
+        player: None,
+    };
+    assert_eq!(roster.id_of("雷恩").as_deref(), Some("leon"));
+    assert_eq!(roster.id_of("雷恩（花豹）").as_deref(), Some("leon"));
+    assert_eq!(roster.id_of("米雅"), None);
+    assert_eq!(roster.id_of("米雅(學妹)").as_deref(), Some("b"));
+    let cells = parse_event("雷恩 (happy): 「來比一場」", &VnSource::Gm, &roster);
+    assert_eq!(cells, vec![line(Some("leon"), "雷恩", "happy", "來比一場")]);
+}
+
+/// 行首「旁白：」類前綴剝掉當旁白
+#[test]
+fn narrator_prefixes_are_stripped_into_narration() {
+    let source = VnSource::Character {
+        self_id: "fox".to_owned(),
+    };
+    let cells = parse_event(
+        "旁白：狐狸走近。\nNarrator: He waits.\n\n狐狸: 「嗨」\n\nnarration:風停了。",
+        &source,
+        &roster(),
+    );
+    assert_eq!(
+        cells,
+        vec![
+            narration("狐狸走近。\nHe waits."),
+            line(Some("fox"), "狐狸", "neutral", "嗨"),
+            narration("風停了。"),
+        ]
+    );
+}

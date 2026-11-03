@@ -133,7 +133,8 @@ export function AppDialogs({
         onAnswerChoice={(answer) => void imports.answerChoice(answer)}
         route={imports.route}
         onAnswerRoute={(answer) => void imports.answerRoute(answer)}
-        openings={imports.openings}
+        // 精靈與開場白面板都是 modal：精靈開著先不出面板，關掉後再答
+        openings={vnWizard ? null : imports.openings}
         expanded={imports.expanded}
         translationState={imports.transState}
         translations={imports.translations}

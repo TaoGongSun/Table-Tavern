@@ -703,7 +703,7 @@ describe("lobby and table navigation", () => {
       [...document.querySelectorAll<HTMLButtonElement>("button")].find(
         (b) => b.textContent === text || b.querySelector("b")?.textContent === text,
       )!;
-    const vnView = () => document.querySelector(".vn-table-view");
+    const vnView = () => document.querySelector(".vn-player");
 
     function installVn(fixture: Fixture) {
       install(fixture);
@@ -728,7 +728,7 @@ describe("lobby and table navigation", () => {
       expect(homeButton()).not.toBeNull();
     });
 
-    it("the lobby VN card runs the wizard, builds a vn table and lands on the placeholder view", async () => {
+    it("the lobby VN card runs the wizard, builds a vn table and lands on the player", async () => {
       const fixture: Fixture = { worlds: [world("w1", "Alpha")], open: {}, characters: [] };
       installVn(fixture);
       backend.handlers.generate_table_outline = () => ({
@@ -760,6 +760,8 @@ describe("lobby and table navigation", () => {
       await click(buttonText(t("vnShowChat")));
       expect(vnView()).toBeNull();
       expect(homeButton()).not.toBeNull();
+      await click(buttonText(t("vnShowVn")));
+      expect(vnView()).not.toBeNull();
     });
 
     it("wizard step ① can start from a character card: builds a vn table, imports, then resumes at ②", async () => {

@@ -122,6 +122,37 @@ export interface TranscriptEvent {
   action_id?: string;
 }
 
+// VN 劇本格（Rust `chat_turn::VnCell`，以 type 標籤序列化）：`read_vn_cells` 逐則回、`parse_vn_text` 串流回
+export type VnCell =
+  | { type: "narration"; text: string }
+  | {
+      type: "dialogue";
+      /** 對上名單的角色 id（玩家是 `__PLAYER__`）；null＝沒有卡的配角 */
+      speaker_id: string | null;
+      speaker_name: string;
+      expression: string;
+      variant: string | null;
+      thought: boolean;
+      directive: "closeup" | "shake" | null;
+      text: string;
+    }
+  | { type: "bg"; location: string; time: string | null }
+  | { type: "choices"; options: string[] }
+  | { type: "chapter" }
+  | { type: "ending"; id: string };
+
+export interface VnEventCells {
+  event_id: string | null;
+  kind: TranscriptEvent["kind"];
+  cells: VnCell[];
+}
+
+/** 串流中的暫定格：最後一格可能還在長 */
+export interface VnText {
+  cells: VnCell[];
+  tail_tentative: boolean;
+}
+
 /** `append_player_event` 的回傳：落檔的那則，與它在逐字稿檔裡的起始位元組（收回時的收據） */
 export interface PlayerAppend {
   event: TranscriptEvent;

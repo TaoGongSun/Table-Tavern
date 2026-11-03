@@ -40,6 +40,8 @@ interface AppWorkspaceProps {
   relayable: boolean;
   /** 這桌 GM 回合確定不點名：「GM 推進」只剩一次旁白，藏起來 */
   skipsNomination: boolean;
+  /** VN 桌：工具列出「VN 視圖」鈕切回播放器 */
+  onShowVn?: () => void;
   table: string;
   tableName: string;
   scene: number;
@@ -132,6 +134,7 @@ export function AppWorkspace({
   roomMode,
   deskRoom,
   hasRoom,
+  onShowVn,
 }: AppWorkspaceProps) {
   const {
     leaveGuard,
@@ -314,6 +317,7 @@ export function AppWorkspace({
           onOpenSettings={() => onOpenSettings("appearance")}
           onOpenVersions={() => onOpenSettings("versions")}
           roomMode={roomMode}
+          onShowVn={onShowVn}
         />
 
         {gate === "repair" && repairNotice ? (

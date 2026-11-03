@@ -51,14 +51,14 @@ pub fn vn_character_rules(lang: &str) -> String {
         true => format!(
             "\n## Visual novel script format\n\
              This table is played as a visual novel. Write only the assigned character's own part: dialogue as `Name (expression): \"line\"` \
-             (expressions: {expressions}), inner thoughts as `Name (expression) thought: text`, and actions or expressions as narration; \
-             a blank line starts the next cell. Use the name exactly as on the list. Do not write markers such as `[bg]` or `[choices]`, \
+             (expressions: {expressions}), inner thoughts as `Name (expression) thought: text`, and actions or expressions as narration \
+             (plain lines, no `Narration:` prefix); a blank line starts the next cell. Use the name exactly as on the list. Do not write markers such as `[bg]` or `[choices]`, \
              and do not speak for other characters or the player.\n"
         ),
         false => format!(
             "\n## 視覺小說劇本格式\n\
              這桌以視覺小說呈現。每一輪只寫被指定角色自己的部分：對白 `名字 (表情): 「台詞」`（表情限 {expressions}）、\
-             內心獨白 `名字 (表情) thought: 台詞`，動作與神情寫成旁白，空一行換下一格。名字照名單原字。\
+             內心獨白 `名字 (表情) thought: 台詞`，動作與神情寫成旁白（直接寫，不加「旁白：」），空一行換下一格。名字照名單原字。\
              不要寫 `[bg]`、`[choices]` 這類標記，不要替其他角色或玩家說話。\n"
         ),
     }

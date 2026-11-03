@@ -94,15 +94,47 @@ impl VnRoster {
     }
 
     fn id_of(&self, name: &str) -> Option<String> {
+        // 卡名常帶括號註記（「雷恩（花豹）」），模型只寫「雷恩」：去掉註記後唯一對上才認
+        let mut noted = self
+            .characters
+            .iter()
+            .filter(|(_, known)| without_note(known) == name);
+        let by_base = match (noted.next(), noted.next()) {
+            (Some((id, _)), None) => Some(id.clone()),
+            _ => None,
+        };
         self.characters
             .iter()
             .find(|(_, known)| known == name)
             .map(|(id, _)| id.clone())
+            .or(by_base)
             .or_else(|| {
                 (self.player.as_deref() == Some(name))
                     .then(|| transport::PLAYER_SENTINEL.to_owned())
             })
     }
+}
+
+/// 名字尾端的括號註記去掉（全形、半形皆可）；沒有註記回原字。
+fn without_note(name: &str) -> &str {
+    name.strip_suffix([')', '）'])
+        .and_then(|inner| {
+            inner
+                .rfind(['(', '（'])
+                .map(|open| inner[..open].trim_end())
+        })
+        .filter(|base| !base.is_empty())
+        .unwrap_or(name)
+}
+
+/// 行首的「旁白：」類前綴（模型偶爾會寫）：剝掉，剩下的當旁白。
+fn narrator_body(line: &str) -> Option<&str> {
+    let colon = line.find([':', '：'])?;
+    let head = line[..colon].trim();
+    let narrator = ["旁白", "narration", "narrator"]
+        .iter()
+        .any(|word| head.eq_ignore_ascii_case(word));
+    narrator.then(|| line[colon..].trim_start_matches([':', '：']).trim())
 }
 
 /// 串流入口的結果：最後一格可能還在長。
@@ -270,6 +302,12 @@ fn parse_cells(text: &str, source: &VnSource, roster: &VnRoster) -> Vec<VnCell> 
                 Marker::Choices => choices = Some(Vec::new()),
                 Marker::Chapter => cells.push(VnCell::Chapter),
                 Marker::Ending(id) => cells.push(VnCell::Ending { id }),
+            }
+            continue;
+        }
+        if let Some(body) = narrator_body(line) {
+            if !body.is_empty() {
+                narration.push(body);
             }
             continue;
         }

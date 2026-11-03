@@ -43,6 +43,8 @@ interface TableToolbarProps {
   onOpenVersions: () => void;
   /** 這桌的房間開著：換幕由房間（房主面板）做，工具列不給換幕 */
   roomMode?: boolean;
+  /** VN 桌才有：切回播放器 */
+  onShowVn?: () => void;
 }
 
 export function TableToolbar({
@@ -66,6 +68,7 @@ export function TableToolbar({
   onOpenSettings,
   onOpenVersions,
   roomMode = false,
+  onShowVn,
 }: TableToolbarProps) {
   return (
     <header className="table-toolbar">
@@ -132,6 +135,11 @@ export function TableToolbar({
         >
           <IconCardInterface />
           <span className="btn-label">{t("cardInterfaceOpen")}</span>
+        </button>
+      )}
+      {onShowVn && (
+        <button type="button" className="btn btn-ghost btn-shrink" onClick={onShowVn}>
+          <span className="btn-label">{t("vnShowVn")}</span>
         </button>
       )}
       {!roomMode && (

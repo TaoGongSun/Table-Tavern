@@ -62,7 +62,7 @@ import {
   useWorkspaceNavigationController,
 } from "./controllers/useWorkspaceNavigationController";
 import { AppDialogs } from "./views/AppDialogs";
-import { VnTableView } from "./features/vn/VnTableView";
+import { VnPlayer } from "./features/vn/VnPlayer";
 import { VnWizard, type VnWizardStart } from "./features/vn/VnWizard";
 import type { SettingsTab } from "./features/settings/SettingsWindow";
 import { AppWorkspace, type EditingTableName } from "./views/AppWorkspace";
@@ -154,7 +154,7 @@ function App() {
   const [pendingRefactorCard, setPendingRefactorCard] = useState<PendingRefactorCard | null>(null);
   // 生成對話框只留開關在 App：草稿與三支生成流程都在 GenerateTableDialog 自己身上
   const [genTableOpen, setGenTableOpen] = useState(false);
-  // VN 桌進桌先看佔位視圖；false＝聊天視圖（聊天桌一律 false）
+  // VN 桌進桌先看播放器；false＝聊天視圖（聊天桌一律 false）
   const [vnView, setVnView] = useState(false);
   // 桌型（開桌定死）：送出走 VN 推進迴圈；與 vnView（目前看哪個視圖）分開
   const [vnTable, setVnTable] = useState(false);
@@ -1048,10 +1048,15 @@ function App() {
           onDeleteTable={(id) => void deleteTable(id)}
         />
       ) : vnView ? (
-        <VnTableView
+        <VnPlayer
+          worldId={liveWorldId}
+          scene={scene}
           tableName={tableName}
+          chat={lockedChat}
+          images={characters.images}
           notice={error && <ErrorNote text={error} transport={transport} />}
           busy={tableOp.busy || chat.busy}
+          onError={setError}
           onShowChat={() => setVnView(false)}
           onGoLobby={() => void goLobby()}
         />
@@ -1101,6 +1106,7 @@ function App() {
           roomMode={room.isRoomTable(table)}
           deskRoom={deskRoom}
           hasRoom={table in room.host.rooms}
+          onShowVn={vnTable ? () => setVnView(true) : undefined}
         />
       )}
 
