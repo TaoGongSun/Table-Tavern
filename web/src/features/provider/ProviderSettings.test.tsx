@@ -17,6 +17,7 @@ function connection(provider: CnProviderId): AiConnection {
     : () => new Promise<Response>(() => {})) as typeof globalThis.fetch;
   return {
     provider,
+    choices: ["modelscope", "siliconflow", "openrouter"],
     model: null,
     choose: () => {},
     chooseModel: () => {},

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { t } from "../../i18n";
 import { fetchModelIds } from "./fixed-pool";
-import { isCn, priceTag, PROVIDER_IDS, type CnProviderId, type ProviderId } from "./providers";
+import { isCn, priceTag, type CnProviderId, type ProviderId } from "./providers";
 import type { AiConnection } from "./useAiConnection";
 
 export const providerName = (id: ProviderId) => (id === "openrouter" ? "OpenRouter" : t(`provider_${id}`));
@@ -81,7 +81,7 @@ export function ProviderSettings({ connection, busy }: { connection: AiConnectio
   return (
     <fieldset className="provider-settings" disabled={busy} data-testid="provider-settings">
       <legend>{t("settingsProvider")}</legend>
-      {PROVIDER_IDS.map((id) => (
+      {connection.choices.map((id) => (
         <label key={id} className="settings-choice">
           <input type="radio" name="provider" checked={current === id} onChange={() => connection.choose(id)} />
           {providerName(id)}

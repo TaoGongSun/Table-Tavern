@@ -33,6 +33,7 @@ export const ko: WebMessages = {
   provider_modelscope: "ModelScope",
   provider_siliconflow: "SiliconFlow",
   cnConnectTitle: "{provider}에 연결하면 바로 플레이할 수 있어요",
+  connectBack: "← {provider}(으)로 돌아가기",
   cnConnectBody: "{provider} 액세스 토큰(API 키)을 붙여 넣으면 바로 대화할 수 있고, 모델은 자동으로 골라 줍니다. 키는 이 브라우저에만 저장되며 다른 곳으로 보내지 않습니다.",
   msStep1: "ModelScope에 가입합니다(휴대폰 번호만 있으면 되고, GitHub 로그인도 가능).",
   msStep2: "오른쪽 위 프로필 → \"알리바바 클라우드 계정 연결\"에서 안내대로 실명 인증을 마칩니다(공식 필수 조건).",

@@ -262,6 +262,10 @@ button:disabled {
   margin-top: 0;
 }
 
+.connect-back {
+  margin-bottom: 10px;
+}
+
 .key-steps {
   padding-left: 22px;
   line-height: 1.6;

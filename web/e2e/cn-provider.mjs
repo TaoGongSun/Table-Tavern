@@ -1,6 +1,6 @@
 // 簡中情境（cn-web-provider）：首開預設魔搭貼令牌面板、頂欄沒有下載鈕也不打 GitHub；矽基流動貼錯金鑰當場擋；
 // 回合中供應商／模型切換停用、按停止收尾後才能換，換了下一句打新的一家、帶那家自己的金鑰；手選模型失敗只報錯
-// 不換別支；整段沒有任何請求帶付費模型。TT_E2E_SHOTS＝資料夾：手機尺寸截圖存到那裡。
+// 不換別支；換家後有返回鈕；其他語系只有 OpenRouter；整段沒有任何請求帶付費模型。TT_E2E_SHOTS＝資料夾：手機尺寸截圖存到那裡。
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { devices } from "playwright";
@@ -84,12 +84,15 @@ export async function runCnScenario({ browser, base, fake, step, consoleErrors }
   await page.getByTestId("provider-menu").click();
   assert.ok(await page.getByLabel("硅基流动 SiliconFlow").isDisabled(), "回合中不能換供應商");
   assert.ok(await page.getByTestId("model-picker").isDisabled(), "回合中不能換模型");
+  const langOption = (lang) => page.getByTestId("lang-picker").locator(`option[value="${lang}"]`);
+  assert.ok(await langOption("zh-TW").isDisabled(), "回合中不能換到會連帶換供應商的語系");
   await page.getByText("回复完成或按停止后再切换").waitFor();
   await shot("cn-switch-disabled");
   await page.getByRole("button", { name: "停止" }).click();
   await page.getByRole("button", { name: "发送" }).waitFor();
   fake.state.chat = "normal";
   assert.ok(!(await page.getByLabel("硅基流动 SiliconFlow").isDisabled()), "回合收尾後才解鎖");
+  assert.ok(!(await langOption("zh-TW").isDisabled()));
   const beforeSwitch = fake.state.cnRequests.length;
   await page.getByLabel("硅基流动 SiliconFlow").click();
   await page.getByTestId("provider-menu").click();
@@ -128,10 +131,18 @@ export async function runCnScenario({ browser, base, fake, step, consoleErrors }
   await page.getByLabel("OpenRouter").click();
   await page.getByRole("button", { name: "用 OpenRouter 登录" }).waitFor();
   await page.getByTestId("left-table").getByText("接着玩", { exact: false }).waitFor();
-  await page.getByText("更多设置").click();
-  await page.getByLabel("魔搭 ModelScope").click();
+  await page.getByTestId("connect-back").getByText("返回魔搭 ModelScope").click();
   await page.getByText("选一张角色卡开始").waitFor();
   assert.equal(await page.getByTestId("message-user").count(), 0, "沒有重掛舊桌");
+
+  step("換語系分流：繁中只有 OpenRouter、沒有供應商設定；換回簡中回到魔搭");
+  await page.getByTestId("lang-picker").selectOption("zh-TW");
+  await page.getByRole("button", { name: "用 OpenRouter 登入" }).waitFor();
+  assert.equal(await page.getByText("更多設定").count(), 0, "其他語系不列魔搭、矽基流動");
+  assert.equal(await page.getByTestId("provider-menu").count(), 0);
+  await page.getByTestId("lang-picker").selectOption("zh-CN");
+  await page.getByText("选一张角色卡开始").waitFor();
+  assert.equal(await page.getByTestId("provider-menu").textContent(), "魔搭 ModelScope");
 
   step("整段：沒有請求帶付費模型；每家只收到自己的金鑰");
   const all = fake.state.cnRequests.slice(requestsBefore);

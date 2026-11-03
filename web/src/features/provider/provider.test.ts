@@ -6,7 +6,7 @@ import { FailoverRuntime } from "../openrouter/failover";
 import { MemoryStorage } from "../openrouter/memory-storage";
 import { runSmartCall } from "../openrouter/smart-call";
 import { FixedPool } from "./fixed-pool";
-import { initialProvider } from "./provider-choice";
+import { effectiveProvider, providersFor } from "./provider-choice";
 import { CN_PROVIDERS, isPaidId, priceTag } from "./providers";
 
 afterEach(() => setLang("zh-TW"));
@@ -17,18 +17,23 @@ const modelsFetch = (ids: string[] | null) =>
 const pool = (ids: string[] | null, chosen: string | null = null) =>
   new FixedPool(CN_PROVIDERS.modelscope, { fetch: modelsFetch(ids), apiBase: "http://fake/ms/v1" }, chosen);
 
-describe("provider default", () => {
-  it("follows the language only until the player has chosen, and keeps OpenRouter players on OpenRouter", () => {
+describe("provider by language", () => {
+  it("lists ModelScope and SiliconFlow only in Simplified Chinese, OpenRouter last", () => {
+    expect(providersFor("zh-CN")).toEqual(["modelscope", "siliconflow", "openrouter"]);
+    for (const lang of ["zh-TW", "en", "ja"] as const) expect(providersFor(lang)).toEqual(["openrouter"]);
+  });
+
+  it("defaults Simplified Chinese to ModelScope, keeps OpenRouter players, and drops choices the language does not list", () => {
     const storage = new MemoryStorage();
-    expect(initialProvider("zh-CN", storage)).toBe("modelscope");
-    expect(initialProvider("zh-TW", storage)).toBe("openrouter");
+    expect(effectiveProvider("zh-CN", null, storage)).toBe("modelscope");
+    expect(effectiveProvider("zh-TW", null, storage)).toBe("openrouter");
+    expect(effectiveProvider("zh-CN", "siliconflow", storage)).toBe("siliconflow");
+    expect(effectiveProvider("en", "siliconflow", storage)).toBe("openrouter");
+    expect(effectiveProvider("zh-CN", "openrouter", storage)).toBe("openrouter");
     storage.setItem("tt-web:openrouter-key", "sk-or-v1-old");
-    expect(initialProvider("zh-CN", storage)).toBe("openrouter");
-    storage.setItem("tt-web:provider", "siliconflow");
-    expect(initialProvider("en", storage)).toBe("siliconflow");
+    expect(effectiveProvider("zh-CN", null, storage)).toBe("openrouter");
   });
 });
-
 describe("never auto-picks a paid model", () => {
   it("keeps Pro/, LoRA/ and `:` provider-suffixed ids out of every hard-coded lineup", () => {
     for (const provider of Object.values(CN_PROVIDERS)) {

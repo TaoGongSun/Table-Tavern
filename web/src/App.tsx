@@ -38,16 +38,18 @@ function QuotaBadge({ quota }: { quota: QuotaState }) {
 }
 
 export default function App({ callback, lang: initialLang }: { callback: OAuthCallback | null; lang: Lang }) {
-  const connection = useAiConnection(callback, initialLang);
-  const session = connection.session;
-  const cn = isCn(connection.provider);
-  // 換語系：整棵重繪、文案跟著換；桌、輸入框草稿都是各自的 state，不受影響
+  // 換語系：整棵重繪、文案跟著換；桌、輸入框草稿都是各自的 state，不受影響。供應商跟著語系分流
   const [lang, setLangState] = useState(initialLang);
   const changeLang = useCallback((next: Lang) => {
     applyLang(next);
     rememberLang(next);
     setLangState(next);
   }, []);
+  const connection = useAiConnection(callback, lang);
+  const session = connection.session;
+  const cn = isCn(connection.provider);
+  // 只有一家可選的語系不出供應商設定（OpenRouter 沒有手選模型）
+  const hasSettings = connection.choices.length > 1;
   // 中國供應商模式不打 GitHub，下載頁只給 pCloud〔作者裁決 2026-11-03〕
   const release = useLatestRelease(!cn);
   const downloadPage = useDownloadPage();
@@ -99,9 +101,14 @@ export default function App({ callback, lang: initialLang }: { callback: OAuthCa
           <span className="brand-sub">{t("brandSub")}</span>
         </div>
         <div className="topbar-actions">
-          <LanguagePicker lang={lang} onChange={changeLang} />
+          {/* 回合中不能換到會連帶換供應商的語系（同供應商選項停用） */}
+          <LanguagePicker
+            lang={lang}
+            onChange={changeLang}
+            locked={(next) => busy && connection.providerFor(next) !== connection.provider}
+          />
           {session.apiKey && <QuotaBadge quota={session.quota} />}
-          {session.apiKey && (
+          {session.apiKey && hasSettings && (
             <SettingsMenu
               className="provider-menu"
               summary={providerName(connection.provider)}
@@ -138,6 +145,11 @@ export default function App({ callback, lang: initialLang }: { callback: OAuthCa
       <main className="stage">
         {!session.apiKey ? (
           <div className="connect-stack">
+            {connection.previous && (
+              <button type="button" className="ghost connect-back" data-testid="connect-back" onClick={connection.back}>
+                {t("connectBack", { provider: providerName(connection.previous) })}
+              </button>
+            )}
             {isCn(connection.provider) ? (
               // 依供應商重掛：貼到一半的草稿不會跟著換到另一家、送去那家
               <KeyPanel key={connection.provider} provider={connection.provider} session={connection.keyed} />
@@ -149,7 +161,9 @@ export default function App({ callback, lang: initialLang }: { callback: OAuthCa
                 {t("leftTableHint")}
               </p>
             )}
-            <SettingsMenu className="connect-more" summary={t("settingsToggle")} connection={connection} busy={false} />
+            {hasSettings && (
+              <SettingsMenu className="connect-more" summary={t("settingsToggle")} connection={connection} busy={false} />
+            )}
           </div>
         ) : !globalsReady ? null : game ? (
           <ChatView

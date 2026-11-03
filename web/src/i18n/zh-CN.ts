@@ -31,6 +31,7 @@ export const zhCN: WebMessages = {
   provider_modelscope: "魔搭 ModelScope",
   provider_siliconflow: "硅基流动 SiliconFlow",
   cnConnectTitle: "连接{provider}就能开始玩",
+  connectBack: "← 返回{provider}",
   cnConnectBody: "粘贴{provider}的访问令牌（API 密钥）就能开聊，网页版会自动挑选模型。密钥只存在这个浏览器，不会传到别的地方。",
   msStep1: "注册魔搭（手机号即可，也能用 GitHub 登录）。",
   msStep2: "右上角头像 →「绑定阿里云账号」，按页面完成阿里云实名认证（官方要求，没实名用不了）。",

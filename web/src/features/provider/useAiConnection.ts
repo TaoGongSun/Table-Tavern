@@ -5,13 +5,27 @@ import type { Lang } from "../../i18n";
 import type { OAuthCallback } from "../openrouter/oauth";
 import { useOpenRouterSession, type OpenRouterSession } from "../openrouter/useOpenRouterSession";
 import type { AiSession } from "./ai-session";
-import { initialProvider, loadModelChoice, rememberModelChoice, rememberProvider } from "./provider-choice";
+import {
+  effectiveProvider,
+  loadModelChoice,
+  providersFor,
+  rememberModelChoice,
+  rememberProvider,
+  storedProvider,
+} from "./provider-choice";
 import { CN_PROVIDERS, isCn, type CnProviderId, type ProviderId } from "./providers";
 import { useKeyedSession, type KeyedSession } from "./useKeyedSession";
 
 export interface AiConnection {
   provider: ProviderId;
+  /** 目前語系列出的供應商 */
+  choices: ProviderId[];
   choose: (id: ProviderId) => void;
+  /** 這次從哪一家換過來（給「返回」用）；沒換過或那家這個語系沒列就是 null */
+  previous: ProviderId | null;
+  back: () => void;
+  /** 換到這個語系會用哪一家 */
+  providerFor: (lang: Lang) => ProviderId;
   /** 中國供應商的手選模型；null＝自動（寫死名單） */
   model: string | null;
   chooseModel: (model: string | null) => void;
@@ -22,8 +36,11 @@ export interface AiConnection {
 }
 
 export function useAiConnection(callback: OAuthCallback | null, lang: Lang): AiConnection {
-  // OpenRouter 授權回來＝玩家選了 OpenRouter
-  const [provider, setProvider] = useState<ProviderId>(() => (callback ? "openrouter" : initialProvider(lang)));
+  // OpenRouter 授權回來＝玩家選了 OpenRouter。實際用哪家跟著目前語系算，換語系就跟著換
+  const [chosen, setChosen] = useState<ProviderId | null>(() => (callback ? "openrouter" : storedProvider()));
+  const [previous, setPrevious] = useState<ProviderId | null>(null);
+  const choices = providersFor(lang);
+  const provider = effectiveProvider(lang, chosen);
   const [models, setModels] = useState<Record<CnProviderId, string | null>>(() => ({
     modelscope: loadModelChoice("modelscope"),
     siliconflow: loadModelChoice("siliconflow"),
@@ -36,10 +53,22 @@ export function useAiConnection(callback: OAuthCallback | null, lang: Lang): AiC
     if (callback) rememberProvider("openrouter");
   }, [callback]);
 
-  const choose = useCallback((id: ProviderId) => {
-    rememberProvider(id);
-    setProvider(id);
-  }, []);
+  const choose = useCallback(
+    (id: ProviderId) => {
+      if (id === provider) return;
+      rememberProvider(id);
+      setPrevious(provider);
+      setChosen(id);
+    },
+    [provider],
+  );
+
+  const back = useCallback(() => {
+    if (!previous) return;
+    rememberProvider(previous);
+    setPrevious(null);
+    setChosen(previous);
+  }, [previous]);
 
   const chooseModel = useCallback(
     (model: string | null) => {
@@ -54,7 +83,10 @@ export function useAiConnection(callback: OAuthCallback | null, lang: Lang): AiC
   const adoptAndRemember = useCallback(
     async (key: string) => {
       const ok = await adoptKey(key);
-      if (ok) rememberProvider(cnId);
+      if (ok) {
+        rememberProvider(cnId);
+        setChosen(cnId);
+      }
       return ok;
     },
     [adoptKey, cnId],
@@ -63,7 +95,11 @@ export function useAiConnection(callback: OAuthCallback | null, lang: Lang): AiC
 
   return {
     provider,
+    choices,
     choose,
+    previous: previous && previous !== provider && choices.includes(previous) ? previous : null,
+    back,
+    providerFor: (next) => effectiveProvider(next, chosen),
     model: isCn(provider) ? models[cnId] : null,
     chooseModel,
     openrouter,

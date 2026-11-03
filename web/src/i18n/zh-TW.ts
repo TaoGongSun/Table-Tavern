@@ -31,6 +31,7 @@ export const zhTW = {
   provider_modelscope: "魔搭 ModelScope",
   provider_siliconflow: "矽基流動 SiliconFlow",
   cnConnectTitle: "連接{provider}就能開始玩",
+  connectBack: "← 返回{provider}",
   cnConnectBody: "貼上{provider}的存取權杖（API 金鑰）就能開聊，網頁版會自動挑模型。金鑰只存在這個瀏覽器，不會傳到別的地方。",
   msStep1: "註冊魔搭（手機號即可，也能用 GitHub 登入）。",
   msStep2: "右上角頭像 →「綁定阿里雲帳號」，照頁面完成阿里雲實名認證（官方要求，沒實名用不了）。",
