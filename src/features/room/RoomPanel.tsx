@@ -127,7 +127,7 @@ export function RoomPanel({ worldId, onClose }: { worldId: string; onClose: () =
           </div>
           <div className="room-row">
             <span className="room-label">{t("roomModel")}</span>
-            <span>{status.modelLabel ?? "—"}</span>
+            <span>{status.modelLabel === "default" ? t("roomModelDefault") : (status.modelLabel ?? "—")}</span>
           </div>
           {status.lastError && (
             <div className="room-row">

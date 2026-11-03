@@ -47,6 +47,7 @@ export const en: PartyMessages = {
   roundAbort: "Stop generating",
   roundContinue: "Skip this part and continue",
   gmModel: "GM: {model}",
+  modelDefault: "default",
 
   actionPlaceholder: "What does your character do this round?",
   actionSubmit: "Submit",

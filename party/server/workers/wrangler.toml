@@ -3,6 +3,9 @@
 name = "table-tavern-party"
 main = "index.ts"
 compatibility_date = "2025-09-01"
+# 正式網址＝自訂網域（桌面版預設連這裡）；workers.dev 關閉。
+routes = [{ pattern = "tt-room.pirahus.com", custom_domain = true }]
+workers_dev = false
 # account_id = "<部署者自己的帳號 id，不進版控>"
 
 # 手機客戶端（party/src；`npm run build` 產 party/dist）跟 Worker 一起部署（Workers Static Assets）。

@@ -47,6 +47,7 @@ export const zhCN: PartyMessages = {
   roundAbort: "中止生成",
   roundContinue: "跳过这段，继续",
   gmModel: "GM：{model}",
+  modelDefault: "默认",
 
   actionPlaceholder: "你的角色这回合要做什么？",
   actionSubmit: "提交",

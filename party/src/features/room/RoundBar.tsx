@@ -1,6 +1,6 @@
 // 回合列：回合號與幕、倒數、GM 生成中／主機離線等待中、held 的公開錯誤；房主（與出額度者）的回合級按鈕也在這裡。
 import { useEffect, useState } from "react";
-import { t } from "../../i18n";
+import { modelName, t } from "../../i18n";
 import { clock, HOLD_TEXT } from "./error-text";
 import type { RoomView } from "./room-state";
 import { useRun, type Act } from "./useRoom";
@@ -35,7 +35,7 @@ export function RoundBar({ view, act }: { view: RoomView; act: Act }) {
       <div className="round-line">
         {r && <span className="round-no">{t("roundNumber", { round: r.round, scene: view.room.scene })}</span>}
         <span className="round-status">{status(view, now)}</span>
-        {view.room.sceneSettings && <span className="round-gm">{t("gmModel", { model: view.room.sceneSettings.modelLabel })}</span>}
+        {view.room.sceneSettings && <span className="round-gm">{t("gmModel", { model: modelName(view.room.sceneSettings.modelLabel) })}</span>}
       </div>
       <div className="round-actions">
         {host && view.room.status === "lobby" && <button type="button" className="primary" onClick={() => run("room.start")}>{t("hostStart")}</button>}

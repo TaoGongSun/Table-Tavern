@@ -3,7 +3,7 @@ import { getLang, t, type MsgKey } from "../../i18n";
 import { PCLOUD_PAGE } from "../../shared/endpoints/origins";
 import { FEATURE_COMPARE } from "./feature-compare";
 import type { ReleaseInfo } from "./releases";
-import { TOUR_FEATURES, TOUR_HERO, type TourFeature } from "./tour-features";
+import { ROOM_TOUR_ZH_CN, TOUR_FEATURES, TOUR_HERO } from "./tour-features";
 import { pickTourImage, TOUR_IMAGES, type TourImages } from "./tour-images";
 
 const cell = (value: boolean | MsgKey) => (typeof value === "string" ? t(value) : t(value ? "compareYes" : "compareNo"));
@@ -19,12 +19,11 @@ const STATUS_TEXT: Record<Exclude<ReleaseInfo["status"], "ok">, MsgKey> = {
 const SHOT_WIDTH = 1600;
 const SHOT_HEIGHT = 1136;
 
-/**
- * 下載鈕：沒有對應安裝檔就不出該平台鈕，「所有版本與檔案」永遠在（沒有平台檔時它就是主要按鈕）。
- * 簡中排 pCloud 在最前當主要按鈕（GitHub 在中國連不上）；中國供應商模式不打 GitHub，只給 pCloud。
- */
+/** 簡中頁與中國供應商模式只給 pCloud：GitHub 在中國連不上，且 GitHub 正式版還沒有多人連線 */
+const pcloudOnly = (cn: boolean) => cn || getLang() === "zh-CN";
+
+/** 下載鈕：沒有對應安裝檔就不出該平台鈕，「所有版本與檔案」永遠在（沒有平台檔時它就是主要按鈕） */
 function DownloadButtons({ release, cn, testId }: { release: ReleaseInfo; cn: boolean; testId: string }) {
-  const pcloud = cn || getLang() === "zh-CN";
   const link = (href: string, label: string, primary: boolean) => (
     <a className={primary ? "button primary" : "button"} href={href} target="_blank" rel="noopener noreferrer">
       {label}
@@ -32,12 +31,13 @@ function DownloadButtons({ release, cn, testId }: { release: ReleaseInfo; cn: bo
   );
   return (
     <div className="tour-cta" data-testid={testId}>
-      {pcloud && link(PCLOUD_PAGE, t("downloadPcloud"), true)}
-      {!cn && (
+      {pcloudOnly(cn) ? (
+        link(PCLOUD_PAGE, t("downloadPcloud"), true)
+      ) : (
         <>
-          {release.windows && link(release.windows, t("downloadWindows"), !pcloud)}
-          {release.mac && link(release.mac, t("downloadMac"), !pcloud)}
-          {link(release.pageUrl, t("downloadAllFiles"), !pcloud && !release.windows && !release.mac)}
+          {release.windows && link(release.windows, t("downloadWindows"), true)}
+          {release.mac && link(release.mac, t("downloadMac"), true)}
+          {link(release.pageUrl, t("downloadAllFiles"), !release.windows && !release.mac)}
         </>
       )}
     </div>
@@ -107,13 +107,14 @@ export function DownloadPage({ release, cn = false, onClose, images = TOUR_IMAGE
     );
   };
 
+  const rooms = lang === "zh-CN" ? ROOM_TOUR_ZH_CN.features.filter((feature) => imageOf(feature.key) !== null) : [];
   const shown = TOUR_FEATURES.filter((feature) => feature.form === "shot" && imageOf(feature.key) !== null);
   const iconCards = TOUR_FEATURES.filter((feature) => !shown.includes(feature));
   const hero = shot(TOUR_HERO, t("tourTitle"), false);
-  const text = (feature: TourFeature) => (
+  const text = (title: string, body: string) => (
     <div className="tour-feature-text">
-      <h3>{t(feature.title)}</h3>
-      <p>{t(feature.body)}</p>
+      <h3>{title}</h3>
+      <p>{body}</p>
     </div>
   );
 
@@ -133,7 +134,7 @@ export function DownloadPage({ release, cn = false, onClose, images = TOUR_IMAGE
           <h1 id="tour-title">{t("tourTitle")}</h1>
           <p className="tour-lead">{t("tourLead")}</p>
           <DownloadButtons release={release} cn={cn} testId="download-cta" />
-          {!cn && (
+          {!pcloudOnly(cn) && (
             <p className="download-version" data-testid="download-version">
               {release.status === "ok" ? t("downloadVersion", { version: release.version ?? "" }) : t(STATUS_TEXT[release.status])}
             </p>
@@ -142,12 +143,24 @@ export function DownloadPage({ release, cn = false, onClose, images = TOUR_IMAGE
         {hero}
       </section>
 
+      {rooms.length > 0 && (
+        <section className="tour-inner tour-section">
+          <h2>{ROOM_TOUR_ZH_CN.title}</h2>
+          {rooms.map((feature) => (
+            <article key={feature.key} className="tour-feature" data-testid={`tour-${feature.key}`}>
+              {shot(feature.key, feature.title, true)}
+              {text(feature.title, feature.body)}
+            </article>
+          ))}
+        </section>
+      )}
+
       <section className="tour-inner tour-section">
         <h2>{t("tourFeaturesTitle")}</h2>
         {shown.map((feature) => (
           <article key={feature.key} className="tour-feature" data-testid={`tour-${feature.key}`}>
             {shot(feature.key, t(feature.title), true)}
-            {text(feature)}
+            {text(t(feature.title), t(feature.body))}
           </article>
         ))}
         {iconCards.length > 0 && (
@@ -155,7 +168,7 @@ export function DownloadPage({ release, cn = false, onClose, images = TOUR_IMAGE
             {iconCards.map((feature) => (
               <li key={feature.key} className="tour-icon-card" data-testid={`tour-${feature.key}`}>
                 <TourIcon name={feature.key} />
-                {text(feature)}
+                {text(t(feature.title), t(feature.body))}
               </li>
             ))}
           </ul>

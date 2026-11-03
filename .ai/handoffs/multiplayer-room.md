@@ -19,7 +19,7 @@ v1＝出額度者家裡的桌面版當 GM 執行端，所有人（含出額度�
 3. 防休眠：Windows 先 `cargo check`（`SetThreadExecutionState` 路徑未編譯驗證）再實跑；Linux `systemd-inhibit`。
 4. 牆內：系統代理模式下 WebSocket 走 CONNECT 連得上 Cloudflare。
 5. 命令列工具通道（Claude／Codex／Gemini）在房間模式無人值守跑一晚；撞額度時手機端看到 quota 類錯誤並能切路線。
-6. 真 Workers 部署：`party/server/workers/wrangler.toml` 填 `account_id` 與 Rate Limiting binding，`party/dist` 走 Static Assets；桌面版輸入 https 網址開房。
+6. 真 Workers 部署：已完成（2026-11-03，自訂網域 `tt-room.pirahus.com`，桌面版預設連它；見 [multiplayer-friends-test](multiplayer-friends-test.md)），端到端實跑過。
 7. Node 殼放在 Caddy 反向代理後實跑（`PUBLIC_ORIGIN`、`TRUST_PROXY=1`），手機經 https 加入跑兩回合。
 
 ## 已知限制（v1，不另立案）

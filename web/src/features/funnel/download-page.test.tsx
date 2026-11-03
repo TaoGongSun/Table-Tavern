@@ -11,7 +11,7 @@ import { setLang, t, type MsgKey } from "../../i18n";
 import { PCLOUD_PAGE } from "../../shared/endpoints/origins";
 import { FEATURE_COMPARE } from "./feature-compare";
 import { fetchLatestRelease, LOADING_RELEASE, NO_RELEASE, RELEASE_UNAVAILABLE, type ReleaseInfo } from "./releases";
-import { TOUR_FEATURES } from "./tour-features";
+import { ROOM_TOUR_ZH_CN, TOUR_FEATURES } from "./tour-features";
 import { pickTourImage, type TourImages } from "./tour-images";
 
 beforeAll(() => {
@@ -65,17 +65,12 @@ describe("the download page", () => {
     expect(targets()).toEqual(Array(6).fill("_blank"));
   });
 
-  it("simplified Chinese: pCloud first as the main button, GitHub files after it", async () => {
+  it("simplified Chinese: only pCloud, no GitHub links and no version line (the GitHub release has no multiplayer)", async () => {
     setLang("zh-CN");
     try {
       await render(<DownloadPage release={RELEASE} onClose={() => {}} />);
-      const cta = host.querySelector("[data-testid=download-cta]")!;
-      expect([...cta.querySelectorAll("a")].map((a) => [a.textContent, a.getAttribute("href"), a.className])).toEqual([
-        ["从 pCloud 下载（国内可用）", PCLOUD_PAGE, "button primary"],
-        ["下载 Windows 版", RELEASE.windows, "button"],
-        ["下载 macOS 版（Apple Silicon）", RELEASE.mac, "button"],
-        ["所有版本与文件", RELEASE.pageUrl, "button"],
-      ]);
+      expect(groups()).toEqual(Array(2).fill([{ text: "从 pCloud 下载（国内可用）", href: PCLOUD_PAGE, rel: "noopener noreferrer" }]));
+      expect(host.querySelector("[data-testid=download-version]")).toBeNull();
     } finally {
       setLang("zh-TW");
     }
@@ -195,10 +190,12 @@ describe("the tour around the download buttons", () => {
   const fakeImages = (langs: string[]): TourImages =>
     Object.fromEntries(SHOT_KEYS.flatMap((key) => langs.map((lang) => [`./tour/${key}.${lang}.webp`, `/assets/${key}.${lang}.webp`])));
 
-  it("picks the Traditional Chinese shot for both Chinese pages, the English shot for the rest, and nothing when it is missing", () => {
-    const images = fakeImages(["zh-TW", "en"]);
+  it("picks each Chinese page its own shot, the English shot for the rest, and nothing when it is missing", () => {
+    const images = fakeImages(["zh-TW", "zh-CN", "en"]);
     expect(pickTourImage(images, "status", "zh-TW")).toBe("/assets/status.zh-TW.webp");
-    expect(pickTourImage(images, "status", "zh-CN")).toBe("/assets/status.zh-TW.webp");
+    expect(pickTourImage(images, "status", "zh-CN")).toBe("/assets/status.zh-CN.webp");
+    // 簡中頁不借繁中圖
+    expect(pickTourImage(fakeImages(["zh-TW", "en"]), "status", "zh-CN")).toBeNull();
     for (const lang of ["en", "ja", "ko", "es", "pt-BR", "de", "fr", "ru"] as const) {
       expect(pickTourImage(images, "status", lang), lang).toBe("/assets/status.en.webp");
     }
@@ -222,6 +219,26 @@ describe("the tour around the download buttons", () => {
     expect(images.map((img) => img.getAttribute("loading"))).toEqual([null, "lazy", "lazy", "lazy", "lazy"]);
     expect(images[1].getAttribute("src")).toBe("/assets/subscription.zh-TW.webp");
     expect(host.querySelectorAll(".tour-icon-card")).toHaveLength(2);
+  });
+
+  it("simplified Chinese leads with the multiplayer cards and their shots; other languages never show them", async () => {
+    const images = { ...fakeImages(["zh-TW"]), "./tour/roomHost.zh-CN.webp": "/assets/roomHost.webp", "./tour/roomGuest.zh-CN.webp": "/assets/roomGuest.webp" };
+    setLang("zh-CN");
+    try {
+      await render(<DownloadPage release={NO_RELEASE} onClose={() => {}} images={images} />);
+      expect([...host.querySelectorAll("img")].map((img) => [img.getAttribute("src"), img.getAttribute("alt")])).toEqual(
+        ROOM_TOUR_ZH_CN.features.map((feature) => [`/assets/${feature.key}.webp`, feature.title]),
+      );
+      expect(host.querySelector("h1")?.textContent).toContain("手机");
+      // 簡中沒拍的特色退圖示卡
+      expect(host.querySelectorAll(".tour-icon-card")).toHaveLength(TOUR_FEATURES.length);
+    } finally {
+      setLang("zh-TW");
+    }
+    await act(async () => root?.unmount());
+    host.remove();
+    await render(<DownloadPage release={NO_RELEASE} onClose={() => {}} images={images} />);
+    expect(host.querySelector("[data-testid=tour-roomHost]")).toBeNull();
   });
 
   it("without shots every feature is an icon card, and a shot that fails to load turns its card into an icon card", async () => {

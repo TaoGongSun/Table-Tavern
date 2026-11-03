@@ -56,6 +56,9 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 ## 中國安卓（2026-11-02 立案）
 - [cn-apk-shell](tasks/cn-apk-shell.md) — 網頁版包成 Android APK（Capacitor；階段 2，大案估 350 行，方案與驗收都送審） — 下一步：開工先寫方案；階段 3 發佈（自有網域、側載說明）另行立案
 
+## 多人連線
+- [room-server-own-domain](tasks/room-server-own-domain.md) — 房間伺服器從暫用的 tt-room.pirahus.com 換成專用網域（小案，幾行＋部署打包） — 下一步：不急〔作者裁決 2026-11-03〕；朋友測試順利、作者買好網域後，跟下一次打包一起換
+
 ## 排後
 原訂 16 件（發佈平台 5、API 限定 5、供應商設定 3、其他功能 2、碰運氣 1）；以下為目前 BACKLOG 裡不屬於上面各階段的案子，逐件歸類待作者確認〔模型判斷·未裁決〕。
 - [initvar-entry-yaml-semantics](tasks/initvar-entry-yaml-semantics.md) — [initvar] 條目挑選與 YAML 語意（$meta、# 註解）對齊上游 — 下一步：縮小〔模型判斷·未裁決〕：第 3 項照作者裁決，第 1、2 項只做合併條目＋剝圍欄＋# 當註解，$meta 分支留限制；排在 initvar-yaml-list 之後

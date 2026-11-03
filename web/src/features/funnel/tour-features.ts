@@ -19,3 +19,22 @@ export const TOUR_FEATURES: TourFeature[] = [
 
 /** 主截圖（範例桌遊玩畫面）的鍵 */
 export const TOUR_HERO = "table";
+
+/**
+ * 簡中頁的多人連線段（排在特色卡前，各配一張簡中截圖）：作者只要求簡中頁改版（2026-11-03），文案固定簡中、不進十語字典。
+ */
+export const ROOM_TOUR_ZH_CN = {
+  title: "怎么和朋友一起玩",
+  features: [
+    {
+      key: "roomHost",
+      title: "房主：桌面版开房，当 GM",
+      body: "房主在桌面版打开一张桌，点“房间模式”→“进入房间模式”就开好房间，把邀请链接发到群里。AI 额度由房主出，电脑替大家跑 GM；房主自己也用手机一起玩。",
+    },
+    {
+      key: "roomGuest",
+      title: "朋友：手机点链接就加入",
+      body: "朋友不用装 App，手机浏览器点开邀请链接、选一个角色就能上桌。每人写下这一轮的行动，到齐后 GM 一起结算，剧情实时流到每个人的手机上。",
+    },
+  ],
+};

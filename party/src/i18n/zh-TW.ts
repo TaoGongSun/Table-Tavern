@@ -48,6 +48,7 @@ export const zhTW = {
   roundAbort: "中止生成",
   roundContinue: "跳過這段，繼續",
   gmModel: "GM：{model}",
+  modelDefault: "預設",
 
   actionPlaceholder: "你的角色這回合要做什麼？",
   actionSubmit: "送出",

@@ -170,8 +170,8 @@ export const zhCN: WebMessages = {
   quotaClose: "知道了",
 
   tourBrand: "Table Tavern 桌面版",
-  tourTitle: "桌面版：一整桌角色，连 GM 都是 AI",
-  tourLead: "没有每日次数上限：用自己的 OpenRouter 额度，或接上 Claude、ChatGPT、Gemini、Grok 订阅。网页版的存档导出后直接导入，接着玩。",
+  tourTitle: "和朋友开一桌：AI 当 GM，大家用手机玩",
+  tourLead: "房主装桌面版开房、出 AI 额度，电脑替大家跑 GM；朋友不用装 App，手机浏览器点邀请链接、选个角色就加入。",
   tourFeaturesTitle: "桌面版多了什么",
   tour_subscription_title: "用你已有的 AI 订阅",
   tour_subscription_body: "接上你已经付费的 Claude、ChatGPT、Gemini、Grok 订阅，或自己的 OpenRouter 额度，不受网页版的每日次数限制。",
@@ -198,7 +198,7 @@ export const zhCN: WebMessages = {
     "Windows：桌面版还没有购买代码签名证书，SmartScreen 可能弹出“Windows 已保护你的电脑”或“未知发布者”——点“更多信息”，再点“仍要运行”。下载时浏览器若提示文件“不常下载”，选“保留”（Edge 在“…”里，再点“仍然保留”）。",
   downloadInstallMac:
     "macOS（仅 Apple Silicon）：把 Table Tavern.app 拖进“应用程序”后双击打开。桌面版还没送 Apple 公证，Gatekeeper 可能提示“无法验证是否包含恶意软件”：点“完成”，打开“系统设置 → 隐私与安全性”，滚到最底下点“仍要打开”，再确认一次就好。",
-  downloadInstallWhy: "这是未签名或未公证的软件常见的提示；请只从上面的 GitHub 发布页下载。",
+  downloadInstallWhy: "这是未签名或未公证的软件常见的提示；请只从本页的下载按钮下载。",
   downloadCompareTitle: "网页版和桌面版差在哪",
   downloadCompareFeature: "功能",
   downloadCompareWeb: "网页版",

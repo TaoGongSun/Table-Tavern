@@ -185,6 +185,8 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 }
 
 const FILE: &str = "room.json";
+/// 官方房間伺服器：還沒開過房時面板預設填這個（自架者可改）
+const OFFICIAL_SERVER: &str = "https://tt-room.pirahus.com";
 
 /// 寫 room.json：暫存檔＋改名，unix 0600（憑證只限本人可讀）
 fn write_saved(path: &Path, saved: &Saved) -> Result<(), String> {
@@ -403,7 +405,7 @@ pub(crate) fn status(config_root: &Path) -> Status {
     Status {
         world_id: known(saved.world_id),
         room_code: known(saved.room_code),
-        server: saved.server,
+        server: known(saved.server).unwrap_or_else(|| OFFICIAL_SERVER.to_owned()),
         ..Status::default()
     }
 }

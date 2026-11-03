@@ -1,6 +1,6 @@
 // 出額度者面板（協定 §7）：執行端狀態、額度細節、最近錯誤與可做的遠端動作（重試、換模型、切路線、中止）、下一幕設定。
 import type { RemoteCommand } from "../../../server/core/types";
-import { t } from "../../i18n";
+import { modelName, t } from "../../i18n";
 import { clock } from "../room/error-text";
 import type { RoomView } from "../room/room-state";
 import { useRun, type Act } from "../room/useRoom";
@@ -31,7 +31,7 @@ export function PayerPanel({ view, act, resumed }: { view: RoomView; act: Act; r
         <dt>{t("payerKeepAwake")}</dt>
         <dd>{yesNo(x.keepAwake)}</dd>
         <dt>{t("payerNextModel")}</dt>
-        <dd>{x.modelLabel ?? "—"}</dd>
+        <dd>{x.modelLabel ? modelName(x.modelLabel) : "—"}</dd>
         {q && (
           <>
             <dt>{t("payerQuota")}</dt>

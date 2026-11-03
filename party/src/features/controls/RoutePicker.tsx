@@ -2,7 +2,7 @@
 // （填錯由伺服器回 E_MODEL_NOT_OFFERED）。只有出額度者看得到這個元件（裁決 1：其他玩家看不到供應商與模型）。
 import { useState } from "react";
 import type { RouteOffer, SceneSettings } from "../../../server/core/types";
-import { t } from "../../i18n";
+import { modelName, t } from "../../i18n";
 
 export interface RouteChoice {
   route: string;
@@ -22,7 +22,7 @@ export function RoutePicker({ routes, current, label, onPick }: { routes: RouteO
           </select>
           <select aria-label={t("payerModel")} value={c.model} onChange={(e) => setC({ ...c, model: e.target.value })}>
             <option value="">—</option>
-            {offer?.models.map((m) => <option key={m.id} value={m.id}>{m.label + laxity(m.laxity)}</option>)}
+            {offer?.models.map((m) => <option key={m.id} value={m.id}>{modelName(m.label) + laxity(m.laxity)}</option>)}
           </select>
         </>
       ) : (
