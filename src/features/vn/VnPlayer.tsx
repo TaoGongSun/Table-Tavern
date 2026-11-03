@@ -33,7 +33,16 @@ import { backdropKey, useBackgrounds } from "./useBackgrounds";
 import { useVnPlayback } from "./useVnPlayback";
 import { replayNav } from "./replay/replay-nav";
 import { UnfinishedPath } from "./replay/UnfinishedPath";
-import { cellHash, isTerminal, rerollError, stageAt } from "./vn-cells";
+import {
+  AUTO_WAITS,
+  TEXT_SPEEDS,
+  cellHash,
+  isTerminal,
+  rerollError,
+  stageAt,
+  type AutoWait,
+  type TextSpeed,
+} from "./vn-cells";
 import "./vn-player.css";
 
 const REROLL_MESSAGES: Record<string, MsgKey> = {
@@ -41,6 +50,18 @@ const REROLL_MESSAGES: Record<string, MsgKey> = {
   stale: "vnRerollStale",
   failed: "vnRerollFailed",
   unavailable: "vnRerollUnavailable",
+};
+
+const TEXT_SPEED_LABELS: Record<TextSpeed, MsgKey> = {
+  slow: "vnTextSpeedSlow",
+  normal: "vnLevelNormal",
+  fast: "vnTextSpeedFast",
+  instant: "vnTextSpeedInstant",
+};
+const AUTO_WAIT_LABELS: Record<AutoWait, MsgKey> = {
+  short: "vnAutoWaitShort",
+  normal: "vnLevelNormal",
+  long: "vnAutoWaitLong",
 };
 
 /** 實測量時間用（方案 §7）：測試通道讀 performance.getEntriesByType("mark") */
@@ -69,6 +90,10 @@ export function VnPlayer({
   onEnterTable,
   flagHints,
   onFlagHints,
+  textSpeed,
+  autoWait,
+  onTextSpeed,
+  onAutoWait,
   title,
   onTitle,
   replay,
@@ -102,6 +127,11 @@ export function VnPlayer({
   /** 格邊旗標提示開關（app 設定，預設開） */
   flagHints: boolean;
   onFlagHints: (on: boolean) => void;
+  /** 打字速度與 auto 等待檔位（app 設定，預設 normal＝原本的固定值） */
+  textSpeed: TextSpeed;
+  autoWait: AutoWait;
+  onTextSpeed: (speed: TextSpeed) => void;
+  onAutoWait: (wait: AutoWait) => void;
   /** 標題畫面開著（從大廳進桌時，包 6 §2.8） */
   title: boolean;
   onTitle: (open: boolean) => void;
@@ -140,6 +170,8 @@ export function VnPlayer({
     hold: !progress.loaded,
     isRead,
     paused,
+    charMs: TEXT_SPEEDS[textSpeed],
+    autoFactor: AUTO_WAITS[autoWait],
   });
   realignRef.current = play.realign;
   const stage = useMemo(() => stageAt(vn.cells, play.flatIndex), [vn.cells, play.flatIndex]);
@@ -576,6 +608,26 @@ export function VnPlayer({
           <label className="vn-setting">
             <input type="checkbox" checked={flagHints} onChange={(event) => onFlagHints(event.target.checked)} />
             {t("vnFlagHintsToggle")}
+          </label>
+          <label className="vn-setting">
+            {t("vnTextSpeed")}
+            <select value={textSpeed} onChange={(event) => onTextSpeed(event.target.value as TextSpeed)}>
+              {(Object.keys(TEXT_SPEEDS) as TextSpeed[]).map((level) => (
+                <option key={level} value={level}>
+                  {t(TEXT_SPEED_LABELS[level])}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="vn-setting">
+            {t("vnAutoWait")}
+            <select value={autoWait} onChange={(event) => onAutoWait(event.target.value as AutoWait)}>
+              {(Object.keys(AUTO_WAITS) as AutoWait[]).map((level) => (
+                <option key={level} value={level}>
+                  {t(AUTO_WAIT_LABELS[level])}
+                </option>
+              ))}
+            </select>
           </label>
         </Panel>
       )}

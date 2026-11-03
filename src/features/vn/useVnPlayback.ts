@@ -1,4 +1,4 @@
-// VN 播放器的游標：斷格推進、逐格回溯、打字機（40 字／秒）、auto、skip、結尾狀態（包 2 §3、包 6 §2.5）。
+// VN 播放器的游標：斷格推進、逐格回溯、打字機（速度依設定，預設 40 字／秒）、auto、skip、結尾狀態（包 2 §3、包 6 §2.5）。
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { VnCell } from "../../shared/contracts/backend-contracts";
 import type { Snapshot } from "./useVnCells";
@@ -18,7 +18,6 @@ import {
   type FlatCell,
 } from "./vn-cells";
 
-const CHAR_MS = 25;
 const SKIP_MS = 80;
 
 const reducedMotion = () =>
@@ -40,6 +39,8 @@ export function useVnPlayback({
   hold,
   isRead,
   paused,
+  charMs,
+  autoFactor,
 }: {
   cells: FlatCell[];
   lastEventKey: string | null;
@@ -57,6 +58,9 @@ export function useVnPlayback({
   isRead: (cell: FlatCell) => boolean;
   /** 標題畫面或面板蓋著播放器：打字機、auto、skip、等下一格都先停，auto／skip 開關留著，收起後接著跑 */
   paused: boolean;
+  /** 打字機每字毫秒（0＝瞬間全出）與 auto 等待倍率：標題設定的檔位，改了立即生效 */
+  charMs: number;
+  autoFactor: number;
 }) {
   const playable = useMemo(
     () => cells.filter((cell) => isPlayable(cell, lastEventKey)),
@@ -103,7 +107,7 @@ export function useVnPlayback({
   const full = charLen(text);
   // skip 只對已讀格全出：開 skip 時目前格未讀＝下面的 effect 關掉 skip、這格照常打字（不被 skip 變成已讀）
   const currentRead = current !== undefined && isRead(current);
-  const instant = (skip && currentRead) || reducedMotion();
+  const instant = (skip && currentRead) || charMs <= 0 || reducedMotion();
   const shown = instant ? full : Math.min(effective?.shown ?? 0, full);
   const typing = shown < full;
   const tailing = tail && current?.key === playable[playable.length - 1]?.key && current?.kind === "pending";
@@ -121,9 +125,9 @@ export function useVnPlayback({
     if (paused || !typing || !key) return;
     const id = setInterval(() => {
       setCursor((c) => (c && c.key === key ? { key, shown: c.shown + 1 } : c));
-    }, CHAR_MS);
+    }, charMs);
     return () => clearInterval(id);
-  }, [key, typing, paused]);
+  }, [key, typing, paused, charMs]);
 
   const advance = useCallback(() => {
     if (!current) return setWantNext(true);
@@ -153,9 +157,9 @@ export function useVnPlayback({
 
   useEffect(() => {
     if (paused || !auto || skip || typing || tailing || !next) return;
-    const id = setTimeout(() => setCursor({ key: next.key, shown: 0 }), autoDelay(text));
+    const id = setTimeout(() => setCursor({ key: next.key, shown: 0 }), autoDelay(text, autoFactor));
     return () => clearTimeout(id);
-  }, [paused, auto, skip, typing, tailing, next, text]);
+  }, [paused, auto, skip, typing, tailing, next, text, autoFactor]);
 
   // skip 只跳已讀（包 6 §2.6）：目前格或下一格未讀就停在目前格
   const nextRead = next !== undefined && isRead(next);

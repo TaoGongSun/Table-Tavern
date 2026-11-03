@@ -333,8 +333,16 @@ textarea {
   resize: vertical;
 }
 
-.app-shell {
+.app-frame {
   display: flex;
+  flex-direction: column;
   height: 100vh;
+}
+
+/* 子畫面（大廳、牌桌、VN 播放器）靠 stretch 吃滿這一列，不各自寫 100vh */
+.app-shell {
+  flex: 1;
+  min-height: 0;
+  display: flex;
 }
 

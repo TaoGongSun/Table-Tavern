@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { VnCell, VnEventCells } from "../../shared/contracts/backend-contracts";
 import {
+  AUTO_WAITS,
+  TEXT_SPEEDS,
   autoDelay,
+  pickLevel,
   cellHash,
   entryKey,
   flatten,
@@ -177,6 +180,22 @@ describe("autoDelay / rerollError", () => {
     ["abcde", 1400],
     ["x".repeat(500), 6000],
   ])("autoDelay(%j) = %i", (text, ms) => expect(autoDelay(text)).toBe(ms));
+
+  it("autoDelay scales by the auto-wait factor", () => {
+    expect(autoDelay("abcde", AUTO_WAITS.short)).toBe(700);
+    expect(autoDelay("x".repeat(500), AUTO_WAITS.long)).toBe(12000);
+  });
+
+  it.each([
+    [undefined, "normal"],
+    ["fast", "fast"],
+    ["bogus", "normal"],
+    ["toString", "normal"],
+    [3, "normal"],
+  ])("pickLevel(%j) = %s; normal keeps the old fixed 25 ms", (value, level) => {
+    expect(pickLevel(TEXT_SPEEDS, value)).toBe(level);
+    expect(TEXT_SPEEDS.normal).toBe(25);
+  });
 
   it.each([
     ["VN_REROLL_BUSY: a turn is in progress", "busy"],

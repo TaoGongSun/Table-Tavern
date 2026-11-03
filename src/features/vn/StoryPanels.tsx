@@ -20,7 +20,16 @@ export function useEndings(worldId: string, key: string) {
   return endings;
 }
 
-export const reachedCount = (endings: VnEndings) => endings.endings.filter((ending) => ending.reached).length;
+/** 已達成 x／y 與結局一覽只算正式結局：保底結局（`default`）不算〔作者裁決 2026-11-02〕 */
+export const countedEndings = (endings: VnEndings) => endings.endings.filter((ending) => ending.id !== "default");
+
+/** 「已達成 x／y」；沒有正式結局（沒有聖經）回 null 不顯示 */
+export function reachedText(endings: VnEndings): string | null {
+  const counted = countedEndings(endings);
+  if (counted.length === 0) return null;
+  const x = counted.filter((ending) => ending.reached).length;
+  return t("vnEndingsReached", { x, y: counted.length });
+}
 
 export function Panel({ label, children, onClose }: { label: string; children: React.ReactNode; onClose: () => void }) {
   return (
@@ -36,18 +45,16 @@ export function Panel({ label, children, onClose }: { label: string; children: R
   );
 }
 
-/** 已達成顯示標題（`default` 沒標題時顯示「完」），未達成「???」；劇透鎖住時也一樣 */
+/** 已達成顯示標題（沒標題時顯示「完」），未達成「???」；劇透鎖住時也一樣 */
 export function EndingsPanel({ worldId, onClose }: { worldId: string; onClose: () => void }) {
   const endings = useEndings(worldId, "");
   return (
     <Panel label={t("vnEndingsList")} onClose={onClose}>
       {endings && (
         <>
-          <p className="vn-chapter-note">
-            {t("vnEndingsReached", { x: reachedCount(endings), y: endings.endings.length })}
-          </p>
+          {reachedText(endings) && <p className="vn-chapter-note">{reachedText(endings)}</p>}
           <ol className="vn-story-list">
-            {endings.endings.map((ending) => (
+            {countedEndings(endings).map((ending) => (
               <li key={ending.id} className={ending.reached ? undefined : "vn-unreached"}>
                 {ending.reached ? ending.title || t("vnTheEnd") : "???"}
               </li>

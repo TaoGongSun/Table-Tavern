@@ -2,7 +2,7 @@
 .lobby {
   flex: 1;
   min-width: 0;
-  height: 100vh;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   background: var(--surface-0);
@@ -62,12 +62,24 @@
   margin: 0;
 }
 
-/* 新桌區：兩張動作卡。日後換成引導精靈時整塊替換 */
+/* 新桌區：四張動作卡。欄數只取 4／2／1，不讓最後一張落單成一排 */
 .lobby-new {
   flex: none;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
+}
+
+@media (max-width: 1100px) {
+  .lobby-new {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .lobby-new {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 button.lobby-new-card {

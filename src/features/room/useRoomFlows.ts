@@ -84,7 +84,7 @@ export function useRoomFlows(deps: Deps) {
     return deps.runTableOp(async () => {
       deps.setError("");
       try {
-        const id = await invoke<string>("create_world", { name: t("roomTableName") });
+        const id = await invoke<string>("create_world", { name: t("roomTableName"), tableKind: "chat" });
         await deps.refreshWorlds();
         await deps.enterTable(id);
         if (files.length > 0) setQueue({ world: id, files });

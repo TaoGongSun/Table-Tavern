@@ -139,17 +139,17 @@ export function t(key: MsgKey, params?: Record<string, string | number>): string
                           ? cliUpdateMessage(lang, key)
                           : isRoomMsgKey(key)
                             ? roomMessage(lang, key)
-                          : isVnModeMsgKey(key)
-                            ? vnModeMessage(lang, key)
-                            : isVnBibleMsgKey(key)
-                              ? vnBibleMessage(lang, key)
-                              : isVnCardMsgKey(key)
-                                ? vnCardMessage(lang, key)
-                                : isVnStoryMsgKey(key)
-                                  ? vnStoryMessage(lang, key)
-                                  : isVnWorkMsgKey(key)
-                                    ? vnWorkMessage(lang, key)
-                                    : MESSAGES[lang][key as CoreMsgKey];
+                            : isVnModeMsgKey(key)
+                              ? vnModeMessage(lang, key)
+                              : isVnBibleMsgKey(key)
+                                ? vnBibleMessage(lang, key)
+                                : isVnCardMsgKey(key)
+                                  ? vnCardMessage(lang, key)
+                                  : isVnStoryMsgKey(key)
+                                    ? vnStoryMessage(lang, key)
+                                    : isVnWorkMsgKey(key)
+                                      ? vnWorkMessage(lang, key)
+                                      : MESSAGES[lang][key as CoreMsgKey];
   return formatMessage(raw, lang, params);
 }
 

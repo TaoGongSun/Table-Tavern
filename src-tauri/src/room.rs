@@ -775,6 +775,8 @@ impl Engine for AppEngine {
             self.app.clone(),
             world,
             Some(turn),
+            // 房間換幕不是 VN 章末「下一章」，不加章
+            None,
         ))
     }
 

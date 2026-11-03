@@ -75,7 +75,7 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) })
 vi.mock("@tauri-apps/plugin-dialog", () => ({ confirm: vi.fn(async () => true) }));
 
 import { VnPlayer } from "./VnPlayer";
-import { cellHash } from "./vn-cells";
+import { cellHash, type AutoWait, type TextSpeed } from "./vn-cells";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -123,6 +123,9 @@ async function settle() {
 }
 
 let flagHints = true;
+let textSpeed: TextSpeed = "normal";
+const onTextSpeed = vi.fn((_speed: TextSpeed) => {});
+const onAutoWait = vi.fn((_wait: AutoWait) => {});
 let replayTable = false;
 let labels: Record<string, SceneLabel> = {};
 let titleOpen = false;
@@ -161,6 +164,10 @@ async function render(patch: Partial<ChatController> = {}) {
         onEnterTable={onEnterTable}
         flagHints={flagHints}
         onFlagHints={() => {}}
+        textSpeed={textSpeed}
+        autoWait="normal"
+        onTextSpeed={onTextSpeed}
+        onAutoWait={onAutoWait}
         title={titleOpen}
         onTitle={onTitle}
         replay={replayTable}
@@ -198,6 +205,7 @@ beforeEach(() => {
   backend.loaded = null;
   backend.args = {};
   titleOpen = false;
+  textSpeed = "normal";
   onTitle.mockClear();
   sceneNo = 0;
   replayTable = false;
@@ -436,6 +444,10 @@ describe("VnPlayer", () => {
           onEnterTable={onEnterTable}
           flagHints
           onFlagHints={() => {}}
+          textSpeed="normal"
+          autoWait="normal"
+          onTextSpeed={() => {}}
+          onAutoWait={() => {}}
           title={false}
           onTitle={() => {}}
           replay={false}
@@ -476,7 +488,7 @@ describe("VnPlayer", () => {
     await advance();
     expect(host.querySelector(".vn-ending-title")?.textContent).toBe("Dawn");
     expect(host.querySelector(".vn-ending-screen")?.textContent).toContain(
-      t("vnEndingsReached", { x: 1, y: 2 }),
+      t("vnEndingsReached", { x: 1, y: 1 }),
     );
     expect(button(t("vnNextChapter"))!.disabled).toBe(true);
     expect(button(t("vnContinue"))).toBeUndefined();
@@ -485,7 +497,7 @@ describe("VnPlayer", () => {
     await act(async () => button(t("vnEndingsList"))!.click());
     await settle();
     const list = [...host.querySelectorAll(".vn-story-panel li")].map((item) => item.textContent);
-    expect(list).toEqual(["Dawn", "???"]);
+    expect(list).toEqual(["Dawn"]);
     await act(async () => button(t("vnChapterClose"))!.click());
     // 從某一章重玩：第 1 章到目前這章
     await act(async () => button(t("vnReplayChapter"))!.click());
@@ -656,6 +668,28 @@ describe("VnPlayer", () => {
       await settle();
       expect(button(t("vnSkip"))!.getAttribute("aria-pressed")).toBe("false");
       expect(text().length).toBeLessThan("a long unread line".length);
+    });
+
+    it("the instant text speed shows the whole line at once and the settings panel reports picks", async () => {
+      window.matchMedia = (() => ({ matches: false })) as unknown as typeof window.matchMedia;
+      backend.cells = [gm("g1", [n("a long unread line"), n("b")])];
+      textSpeed = "instant";
+      titleOpen = true;
+      await render({ events: [event("g1")] });
+      await act(async () => button(t("vnTitleSettings"))!.click());
+      const [speed, wait] = [...host.querySelectorAll<HTMLSelectElement>(".vn-setting select")];
+      expect(speed.value).toBe("instant");
+      await act(async () => {
+        speed.value = "fast";
+        speed.dispatchEvent(new Event("change", { bubbles: true }));
+        wait.value = "long";
+        wait.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      expect(onTextSpeed).toHaveBeenLastCalledWith("fast");
+      expect(onAutoWait).toHaveBeenLastCalledWith("long");
+      titleOpen = false;
+      await render({ events: [event("g1")] });
+      expect(text()).toBe("a long unread line");
     });
 
     it("enters at the last read position of the scene", async () => {

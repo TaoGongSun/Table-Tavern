@@ -255,7 +255,19 @@ export function cellHash(cell: VnCell): string {
 }
 
 /** auto：本格打完後等 1200 + 40×字數 ms，上限 6000 */
-export const autoDelay = (text: string) => Math.min(6000, 1200 + 40 * charLen(text));
+/** auto 停留時間；factor＝玩家選的 auto 等待檔位倍率 */
+export const autoDelay = (text: string, factor = 1) => Math.round(factor * Math.min(6000, 1200 + 40 * charLen(text)));
+
+/** 標題「設定」的打字速度（每字毫秒，0＝瞬間全出）與 auto 等待（倍率）檔位，存全域偏好（包 6 §7.1） */
+export const TEXT_SPEEDS = { slow: 50, normal: 25, fast: 12, instant: 0 } as const;
+export const AUTO_WAITS = { short: 0.5, normal: 1, long: 2 } as const;
+export type TextSpeed = keyof typeof TEXT_SPEEDS;
+export type AutoWait = keyof typeof AUTO_WAITS;
+
+/** 偏好值 → 檔位；沒存或認不得就回預設檔 normal（＝原本寫死的速度） */
+export function pickLevel<T extends string>(levels: Record<T, number>, value: unknown): T {
+  return typeof value === "string" && Object.prototype.hasOwnProperty.call(levels, value) ? (value as T) : ("normal" as T);
+}
 
 export type RerollError = "busy" | "stale" | "failed" | "unavailable";
 

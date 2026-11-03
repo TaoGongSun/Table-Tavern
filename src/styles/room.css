@@ -52,20 +52,16 @@
   margin: 0;
 }
 
+/* 房間開著、人在別處：app 最上方一列常駐條（佔位，不疊在任何頂欄上） */
 .room-active-banner {
-  position: fixed;
-  top: 0.4rem;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 50;
+  flex: none;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.6rem;
-  padding: 0.25rem 0.5rem 0.25rem 0.9rem;
-  border: 1px solid var(--line);
-  border-radius: 999px;
+  padding: 0.3rem 1rem;
+  border-bottom: 1px solid var(--line);
   background: var(--surface-1);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
   font-family: var(--font-ui);
 }
 

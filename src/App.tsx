@@ -68,6 +68,7 @@ import { VnPlayer } from "./features/vn/VnPlayer";
 import { VnWizard, type VnWizardStart } from "./features/vn/VnWizard";
 import { openVnCardTable as openVnCardTableFlow } from "./features/vn/card/vn-card";
 import { ImportWorkDialog } from "./features/vn/work/ImportWorkDialog";
+import { AUTO_WAITS, TEXT_SPEEDS, pickLevel } from "./features/vn/vn-cells";
 import {
   canContinueWork,
   confirmVnWork,
@@ -1093,215 +1094,222 @@ function App() {
   };
 
   return (
-    <div className="app-shell">
-      <RoomSession ctl={deskRoom} />
+    // 房間提示條佔自己一列、不疊在任何畫面的頂欄上；底下的畫面吃剩下的高度
+    <div className="app-frame">
       {roomBanner}
-      {room.dialog && <OpenRoomDialog server={room.dialog.server} onCancel={room.closeDialog} onOpen={(files, server) => void room.open(files, server)} />}
-      {table === "" ? (
-        <Lobby
-          rooms={room.host.rooms}
-          activeRoom={room.host.activeWorld}
-          onOpenRoom={() => void room.start()}
-          onReopenRoom={(id) => void room.reopen(id)}
-          onEndRoom={(id) => void room.end(id)}
-          worlds={worlds}
-          busy={tableOp.busy || chat.busy}
-          notices={
-            <>
-              {error && <ErrorNote text={error} transport={transport} />}
-              <UpdateBanner
-                update={versionCenter.update}
-                preferences={config.preferences}
-                onView={() => openSettings("versions")}
-              />
-              <Onboarding config={config} onSaved={setConfig} />
-            </>
-          }
-          appVersion={versionCenter.appVersion}
-          updateDot={updateDot}
-          onOpenSettings={() => openSettings("appearance")}
-          onOpenVersions={() => openSettings("versions")}
-          onNewTable={() => void newTable()}
-          onGenerateTable={() => setGenTableOpen(true)}
-          onVnTable={() => setVnWizard({ worldId: null })}
-          onImportWork={(path) => void importWork(path)}
-          onEnterTable={(id) => void switchTable(id)}
-          onRenameTable={(id, raw) => void renameTable(id, raw)}
-          onDeleteTable={(id) => void deleteTable(id)}
-        />
-      ) : vnView ? (
-        <VnPlayer
-          worldId={liveWorldId}
-          scene={scene}
-          tableName={tableName}
-          chat={lockedChat}
-          images={characters.images}
-          error={error}
-          transport={transport}
-          busy={tableOp.busy || chat.busy}
-          onError={setError}
-          onAdvanceScene={sceneActions.advanceVn}
-          onReenter={sceneActions.reenterVn}
-          onShowChat={() => setVnView(false)}
-          onGoLobby={() => void goLobby()}
-          onReplayChapter={sceneActions.replayChapter}
-          onBranch={sceneActions.vnBranch}
-          onEnterTable={(id) => void switchTable(id, false)}
-          title={vnTitle}
-          onTitle={setVnTitle}
-          replay={worlds.find((w) => w.id === table)?.replay === true}
-          sceneLabels={sceneLabels}
-          flagHints={config.preferences["vn_flag_hints"] !== false}
-          onFlagHints={(on) => void changePreference("vn_flag_hints", on)}
-        />
-      ) : (
-        <AppWorkspace
-          table={table}
-          tableName={tableName}
-          scene={scene}
-          editingName={editingName}
-          setEditingName={setEditingName}
-          hasStateBar={hasStateBar}
-          chattedSinceImport={chattedSinceImport}
-          config={config}
-          error={error}
-          transport={transport}
-          characters={characters}
-          chat={lockedChat}
-          tableState={tableState}
-          cardInterface={cardInterface}
-          imports={imports}
-          navigation={navigation}
-          sceneActions={sceneActions}
-          tableOpBusy={tableOp.busy}
-          undoImportLocked={tableOp.busy || openingPost.busy}
-          onRenameTable={(raw) => void renameTable(table, raw)}
-          onGoLobby={() => void goLobby()}
-          onUndoImport={() => void undoLastImport()}
-          turnWaiting={imports.waitingForTurn || undoWait.waiting}
-          onOpenSettings={openSettings}
-          onPreference={changePreference}
-          onConfigSaved={setConfig}
-          onEntryConverted={refreshAfterEntryConverted}
-          onRefactorApplied={refreshAfterRefactorApplied}
-          pendingRefactorCard={pendingRefactorCard}
-          onPendingRefactorCardTaken={(generation) =>
-            setPendingRefactorCard((current) => (current?.generation === generation ? null : current))
-          }
-          gate={gate}
-          readOnlyNotice={readOnlyNotice}
-          repairNotice={repairNotice}
-          skippedLines={skippedLines}
-          onUseBackup={() => void useBackup()}
-          onOpenRepairFolder={() => void openRepairFolder()}
-          updateDot={updateDot}
-          relayable={gmOnlyTable.nominates}
-          skipsNomination={gmOnlyTable.skipsNomination}
-          roomMode={room.isRoomTable(table)}
-          deskRoom={deskRoom}
-          hasRoom={table in room.host.rooms}
-          onShowVn={vnTable ? () => setVnView(true) : undefined}
-        />
-      )}
+      <div className="app-shell">
+        <RoomSession ctl={deskRoom} />
+        {room.dialog && <OpenRoomDialog server={room.dialog.server} onCancel={room.closeDialog} onOpen={(files, server) => void room.open(files, server)} />}
+        {table === "" ? (
+          <Lobby
+            rooms={room.host.rooms}
+            activeRoom={room.host.activeWorld}
+            onOpenRoom={() => void room.start()}
+            onReopenRoom={(id) => void room.reopen(id)}
+            onEndRoom={(id) => void room.end(id)}
+            worlds={worlds}
+            busy={tableOp.busy || chat.busy}
+            notices={
+              <>
+                {error && <ErrorNote text={error} transport={transport} />}
+                <UpdateBanner
+                  update={versionCenter.update}
+                  preferences={config.preferences}
+                  onView={() => openSettings("versions")}
+                />
+                <Onboarding config={config} onSaved={setConfig} />
+              </>
+            }
+            appVersion={versionCenter.appVersion}
+            updateDot={updateDot}
+            onOpenSettings={() => openSettings("appearance")}
+            onOpenVersions={() => openSettings("versions")}
+            onNewTable={() => void newTable()}
+            onGenerateTable={() => setGenTableOpen(true)}
+            onVnTable={() => setVnWizard({ worldId: null })}
+            onImportWork={(path) => void importWork(path)}
+            onEnterTable={(id) => void switchTable(id)}
+            onRenameTable={(id, raw) => void renameTable(id, raw)}
+            onDeleteTable={(id) => void deleteTable(id)}
+          />
+        ) : vnView ? (
+          <VnPlayer
+            worldId={liveWorldId}
+            scene={scene}
+            tableName={tableName}
+            chat={lockedChat}
+            images={characters.images}
+            error={error}
+            transport={transport}
+            busy={tableOp.busy || chat.busy}
+            onError={setError}
+            onAdvanceScene={sceneActions.advanceVn}
+            onReenter={sceneActions.reenterVn}
+            onShowChat={() => setVnView(false)}
+            onGoLobby={() => void goLobby()}
+            onReplayChapter={sceneActions.replayChapter}
+            onBranch={sceneActions.vnBranch}
+            onEnterTable={(id) => void switchTable(id, false)}
+            title={vnTitle}
+            onTitle={setVnTitle}
+            replay={worlds.find((w) => w.id === table)?.replay === true}
+            sceneLabels={sceneLabels}
+            flagHints={config.preferences["vn_flag_hints"] !== false}
+            onFlagHints={(on) => void changePreference("vn_flag_hints", on)}
+            textSpeed={pickLevel(TEXT_SPEEDS, config.preferences["vn_text_speed"])}
+            autoWait={pickLevel(AUTO_WAITS, config.preferences["vn_auto_wait"])}
+            onTextSpeed={(speed) => void changePreference("vn_text_speed", speed)}
+            onAutoWait={(wait) => void changePreference("vn_auto_wait", wait)}
+          />
+        ) : (
+          <AppWorkspace
+            table={table}
+            tableName={tableName}
+            scene={scene}
+            editingName={editingName}
+            setEditingName={setEditingName}
+            hasStateBar={hasStateBar}
+            chattedSinceImport={chattedSinceImport}
+            config={config}
+            error={error}
+            transport={transport}
+            characters={characters}
+            chat={lockedChat}
+            tableState={tableState}
+            cardInterface={cardInterface}
+            imports={imports}
+            navigation={navigation}
+            sceneActions={sceneActions}
+            tableOpBusy={tableOp.busy}
+            undoImportLocked={tableOp.busy || openingPost.busy}
+            onRenameTable={(raw) => void renameTable(table, raw)}
+            onGoLobby={() => void goLobby()}
+            onUndoImport={() => void undoLastImport()}
+            turnWaiting={imports.waitingForTurn || undoWait.waiting}
+            onOpenSettings={openSettings}
+            onPreference={changePreference}
+            onConfigSaved={setConfig}
+            onEntryConverted={refreshAfterEntryConverted}
+            onRefactorApplied={refreshAfterRefactorApplied}
+            pendingRefactorCard={pendingRefactorCard}
+            onPendingRefactorCardTaken={(generation) =>
+              setPendingRefactorCard((current) => (current?.generation === generation ? null : current))
+            }
+            gate={gate}
+            readOnlyNotice={readOnlyNotice}
+            repairNotice={repairNotice}
+            skippedLines={skippedLines}
+            onUseBackup={() => void useBackup()}
+            onOpenRepairFolder={() => void openRepairFolder()}
+            updateDot={updateDot}
+            relayable={gmOnlyTable.nominates}
+            skipsNomination={gmOnlyTable.skipsNomination}
+            roomMode={room.isRoomTable(table)}
+            deskRoom={deskRoom}
+            hasRoom={table in room.host.rooms}
+            onShowVn={vnTable ? () => setVnView(true) : undefined}
+          />
+        )}
 
-      <AppDialogs
-        genTableOpen={genTableOpen}
-        onCloseGenerateTable={() => setGenTableOpen(false)}
-        onGeneratedTable={enterGeneratedTable}
-        transport={transport}
-        settingsOpen={settingsOpen}
-        settingsRequestKey={settingsRequestKey}
-        versionTab={
-          <VersionTab
-            center={versionCenter}
-            preferences={config.preferences}
-            onPreference={(key, value) => void changeSettingPreference(key, value)}
-          />
-        }
-        updateDialog={
-          <FormatUpdateDialog
-            update={versionCenter.update}
-            preferences={config.preferences}
-            onView={() => openSettings("versions")}
-          />
-        }
-        vnWizard={
-          (vnWizard || pendingWork) && (
-            <>
-              {vnWizard && (
-                <VnWizard
-                  key={vnWizard.worldId ?? ""}
-                  start={vnWizard}
-                  transport={transport}
-                  onCreated={() => refreshWorlds().catch((reason) => setError(String(reason)))}
-                  onImportCard={(file, spoilerLock) => {
-                    vnSpoilerLock.current = spoilerLock;
-                    setVnWizard(null);
-                    void imports.importFileToVnTable(file, spoilerLock);
-                  }}
-                  onImportWork={() =>
-                    void pickVnWork().then((path) => {
-                      if (path) void importWork(path);
-                    })
-                  }
-                  onFinish={finishVnWizard}
-                  onClose={() => setVnWizard(null)}
-                />
-              )}
-              {pendingWork && (
-                <ImportWorkDialog
-                  probe={pendingWork.probe}
-                  onChoose={(mode, spoilerLock) => void chooseWork(pendingWork.path, mode, spoilerLock)}
-                  onCancel={() => setPendingWork(null)}
-                />
-              )}
-            </>
-          )
-        }
-        turnFailureDialog={
-          turnFailure && (
-            <TurnFailedDialog
-              failure={turnFailure}
-              transport={transport}
-              onClose={() => setTurnFailure(null)}
-              onAdvanceScene={() => {
-                setTurnFailure(null);
-                void sceneActions.advanceScene();
-              }}
-              onResetWorldInfo={() =>
-                // 彈窗不關：玩家原文留著；重設失敗就把彈窗內容換成這次的錯誤（原文照帶）
-                resetWorldInfoTiming(liveWorldId).catch((reason) => {
-                  setTurnFailure((previous) => previous && { ...previous, raw: String(reason) });
-                  throw reason;
-                })
-              }
+        <AppDialogs
+          genTableOpen={genTableOpen}
+          onCloseGenerateTable={() => setGenTableOpen(false)}
+          onGeneratedTable={enterGeneratedTable}
+          transport={transport}
+          settingsOpen={settingsOpen}
+          settingsRequestKey={settingsRequestKey}
+          versionTab={
+            <VersionTab
+              center={versionCenter}
+              preferences={config.preferences}
+              onPreference={(key, value) => void changeSettingPreference(key, value)}
             />
-          )
-        }
-        config={config}
-        onConfigSaved={setConfig}
-        onSettingPreference={changeSettingPreference}
-        sponsorUnlocked={sponsorUnlocked}
-        onSponsorUnlocked={() => setSponsorUnlocked(true)}
-        onCloseSettings={() => setSettingsOpen(false)}
-        currentWorld={table}
-        regenOpen={regenAsk !== null}
-        onAnswerRegen={answerRegen}
-        chatBusy={chat.busy}
-        imports={imports}
-        onPostOpening={postOpening}
-        openingPostBusy={openingPost.busy}
-        openingPostWaiting={openingPost.waiting}
-        onTranslateAndPost={postTranslatedOpening}
-      />
+          }
+          updateDialog={
+            <FormatUpdateDialog
+              update={versionCenter.update}
+              preferences={config.preferences}
+              onView={() => openSettings("versions")}
+            />
+          }
+          vnWizard={
+            (vnWizard || pendingWork) && (
+              <>
+                {vnWizard && (
+                  <VnWizard
+                    key={vnWizard.worldId ?? ""}
+                    start={vnWizard}
+                    transport={transport}
+                    onCreated={() => refreshWorlds().catch((reason) => setError(String(reason)))}
+                    onImportCard={(file, spoilerLock) => {
+                      vnSpoilerLock.current = spoilerLock;
+                      setVnWizard(null);
+                      void imports.importFileToVnTable(file, spoilerLock);
+                    }}
+                    onImportWork={() =>
+                      void pickVnWork().then((path) => {
+                        if (path) void importWork(path);
+                      })
+                    }
+                    onFinish={finishVnWizard}
+                    onClose={() => setVnWizard(null)}
+                  />
+                )}
+                {pendingWork && (
+                  <ImportWorkDialog
+                    probe={pendingWork.probe}
+                    onChoose={(mode, spoilerLock) => void chooseWork(pendingWork.path, mode, spoilerLock)}
+                    onCancel={() => setPendingWork(null)}
+                  />
+                )}
+              </>
+            )
+          }
+          turnFailureDialog={
+            turnFailure && (
+              <TurnFailedDialog
+                failure={turnFailure}
+                transport={transport}
+                onClose={() => setTurnFailure(null)}
+                onAdvanceScene={() => {
+                  setTurnFailure(null);
+                  void sceneActions.advanceScene();
+                }}
+                onResetWorldInfo={() =>
+                  // 彈窗不關：玩家原文留著；重設失敗就把彈窗內容換成這次的錯誤（原文照帶）
+                  resetWorldInfoTiming(liveWorldId).catch((reason) => {
+                    setTurnFailure((previous) => previous && { ...previous, raw: String(reason) });
+                    throw reason;
+                  })
+                }
+              />
+            )
+          }
+          config={config}
+          onConfigSaved={setConfig}
+          onSettingPreference={changeSettingPreference}
+          sponsorUnlocked={sponsorUnlocked}
+          onSponsorUnlocked={() => setSponsorUnlocked(true)}
+          onCloseSettings={() => setSettingsOpen(false)}
+          currentWorld={table}
+          regenOpen={regenAsk !== null}
+          onAnswerRegen={answerRegen}
+          chatBusy={chat.busy}
+          imports={imports}
+          onPostOpening={postOpening}
+          openingPostBusy={openingPost.busy}
+          openingPostWaiting={openingPost.waiting}
+          onTranslateAndPost={postTranslatedOpening}
+        />
 
-      <SmartFreeNewModelBanner
-        config={config}
-        onConfigSaved={setConfig}
-        onOpenSettings={openSettings}
-      />
-      <SmartFreeNoticeToast />
-      <ClaudeOverageToast />
+        <SmartFreeNewModelBanner
+          config={config}
+          onConfigSaved={setConfig}
+          onOpenSettings={openSettings}
+        />
+        <SmartFreeNoticeToast />
+        <ClaudeOverageToast />
+      </div>
     </div>
   );
 }

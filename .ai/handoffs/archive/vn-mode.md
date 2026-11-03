@@ -1,6 +1,8 @@
 # vn-mode — VN 桌型：AI 生成視覺小說模式
 
-總綱 [plans/vn-mode.md](../plans/vn-mode.md)（§11 分包與順序、§12 十九項拍板）；立案背景與八項拍板〔作者裁決 2026-08-07〕見下方「立案摘要」。生圖管線定案 [vn-mode-image-spike](../plans/vn-mode-image-spike.md)、前置拆檔 [vn-prestructure-split](archive/vn-prestructure-split.md) 皆完成。分支 `vn-mode`，整案做到結案才進 main。
+Status: 已合 main（2026-11-04，一包一筆）；待作者實機試玩，排在[實測佇列](../../reference/verification-queue.md)。
+
+總綱 [plans/vn-mode.md](../../plans/vn-mode.md)（§11 分包與順序、§12 十九項拍板）；立案背景與八項拍板〔作者裁決 2026-08-07〕見下方「立案摘要」。生圖管線定案 [vn-mode-image-spike](../../plans/vn-mode-image-spike.md)、前置拆檔 [vn-prestructure-split](vn-prestructure-split.md) 皆完成。分支 `vn-mode` 已合進 main 並刪除。
 
 ## 案別與預算（立案凍結）
 - 大案，分包 0–9 核心估共約 4300 行（各包估見總綱 §11，已乘 1.5）；順序 0 → 1 → 2 → 7 → 3 → 4 → 9a → 9b → 5 → 6 → 8。
@@ -15,18 +17,18 @@
 - 熱點行數：`src/App.tsx` 1091→1132、`useImportController.ts` 729→771、`GenerateTableDialog.tsx` 357→368、`Lobby.tsx` 117→129；新檔 VnWizard 114、VnTableView 42。
 
 ## 下一步
-- 包 1（大案，核心估 400）2026-11-01 完成，在分支 `vn-mode`（commit 5c5dfed3＋7446b5dd）：方案 [plans/vn-mode-pkg1.md](../plans/vn-mode-pkg1.md)（Sol 方案審 2 輪、驗收 2 輪皆 PASS，串 01a19506）。落地：`chat_turn/vn_script.rs`（解析器、角色線過濾、終止優先序與 `pkg1_accepted`、串流入口 `parse_text`、`replace_choices`）、`chat_turn/vn_reroll.rs`（換一組：在途互斥＋閘門內重驗）、`transport/vn_format.rs`（GM／角色規範、導演指示、`vn_assigned_line`、收尾句）、`commands/vn.rs`（`read_vn_cells`、`parse_vn_text`、`vn_reroll_choices`）、`GmTurnFormat::VnScript`、`gm_stop`（next None＋`vn_stop`）、`ReplyEcho::VnDialogue`、VN 桌角色線 own prefix 空字串且歷史不加前綴、前端 `advanceFrom`（VN 送出走推進迴圈）。實作核心淨約 1064 行（程式行約 930，估的 2.3 倍，原因見 process-log）、測試約 750；verify 13 步綠。
+- 包 1（大案，核心估 400）2026-11-01 完成，在分支 `vn-mode`（commit 5c5dfed3＋7446b5dd）：方案 [plans/vn-mode-pkg1.md](../../plans/vn-mode-pkg1.md)（Sol 方案審 2 輪、驗收 2 輪皆 PASS，串 01a19506）。落地：`chat_turn/vn_script.rs`（解析器、角色線過濾、終止優先序與 `pkg1_accepted`、串流入口 `parse_text`、`replace_choices`）、`chat_turn/vn_reroll.rs`（換一組：在途互斥＋閘門內重驗）、`transport/vn_format.rs`（GM／角色規範、導演指示、`vn_assigned_line`、收尾句）、`commands/vn.rs`（`read_vn_cells`、`parse_vn_text`、`vn_reroll_choices`）、`GmTurnFormat::VnScript`、`gm_stop`（next None＋`vn_stop`）、`ReplyEcho::VnDialogue`、VN 桌角色線 own prefix 空字串且歷史不加前綴、前端 `advanceFrom`（VN 送出走推進迴圈）。實作核心淨約 1064 行（程式行約 930，估的 2.3 倍，原因見 process-log）、測試約 750；verify 13 步綠。
 - 包 1 已知限制：聊天視圖看 VN 桌會看到原始標記；名單外名字沒加括號的「X：台詞」算旁白；`[bg]` 與圍欄 place 以指示要求一致、不強制；改名後舊對白對不到 id；有介面殼的卡匯進 VN 桌仍被 `reject_character_turn_on_takeover` 擋角色回合；換一組錯誤碼（`VN_REROLL_BUSY`／`STALE`／`FAILED`／`UNAVAILABLE`）未進 i18n，包 2 接按鈕時補；`[chapter]`／`[ending]` 寫法未進給模型的規範（包 5）。
-- 包 2（大案，核心估 600）2026-11-01 完成，在分支 `vn-mode`（commit 5ff4f199、b09f8f37、7327c23c）：方案 [plans/vn-mode-pkg2.md](../plans/vn-mode-pkg2.md)（Sol 方案審 2 輪必改 3 全採納、驗收 1 輪 PASS 無必改；方案串 01a19548、驗收串 01a1957a）。落地 `features/vn/`：`VnPlayer`（工具列、共用動作鎖、換一組錯誤碼、效能標記）、`Stage`、`DialogueBox`、`ChoicePanel`、`Backlog`、`useVnCells`（整幕重抓＋串流暫定格＋凍結快照換手）、`useVnPlayback`（游標、打字機、auto、skip、結尾狀態）、`vn-cells.ts`（攤平、可播判定、`realignCursor`、`stageAt`）、`vn-player.css`；`VnTableView` 刪除；包 0 限制 (a)(b)(d) 已解（精靈開著不出開場白面板、聊天頂列「VN 視圖」鈕、主題）。實測修正連帶改包 1 的 `vn_script.rs`（卡名括號註記對名、剝「旁白：」）與角色規範一句。實作核心約 1050（含 CSS，1.75 倍）、測試約 430；verify 13 步綠；測試通道真模型實測三個時間見方案 §7。
+- 包 2（大案，核心估 600）2026-11-01 完成，在分支 `vn-mode`（commit 5ff4f199、b09f8f37、7327c23c）：方案 [plans/vn-mode-pkg2.md](../../plans/vn-mode-pkg2.md)（Sol 方案審 2 輪必改 3 全採納、驗收 1 輪 PASS 無必改；方案串 01a19548、驗收串 01a1957a）。落地 `features/vn/`：`VnPlayer`（工具列、共用動作鎖、換一組錯誤碼、效能標記）、`Stage`、`DialogueBox`、`ChoicePanel`、`Backlog`、`useVnCells`（整幕重抓＋串流暫定格＋凍結快照換手）、`useVnPlayback`（游標、打字機、auto、skip、結尾狀態）、`vn-cells.ts`（攤平、可播判定、`realignCursor`、`stageAt`）、`vn-player.css`；`VnTableView` 刪除；包 0 限制 (a)(b)(d) 已解（精靈開著不出開場白面板、聊天頂列「VN 視圖」鈕、主題）。實測修正連帶改包 1 的 `vn_script.rs`（卡名括號註記對名、剝「旁白：」）與角色規範一句。實作核心約 1050（含 CSS，1.75 倍）、測試約 430；verify 13 步綠；測試通道真模型實測三個時間見方案 §7。
 - 包 2 已知限制：進桌從最後一則非玩家事件開頭播、不記讀到哪；skip 不分已讀；打字速度與 auto 時間固定；立繪是角色卡原圖（可能帶背景）、表情不換圖；背景只有地點字卡；單角色桌 GM 常自己寫名單角色台詞（Haiku 遵守度低，包 1 指示已要求不替名單角色說話）。
-- 包 7（大案，立繪管線）2026-11-01 完成，在分支 `vn-mode`：前置補測見 [實測報告](../plans/vn-mode-image-spike.md)「包 7 前補測」（裁頭重繪勝出、CLI 抓圖改讀 thread 目錄）；方案 [plans/vn-mode-pkg7.md](../plans/vn-mode-pkg7.md)（Sol 方案審 2 輪 PASS；作者裁決：權重首次下載、來源 Codex／agy／API、拆 7a／7b、`ort` 靜態連結）。
+- 包 7（大案，立繪管線）2026-11-01 完成，在分支 `vn-mode`：前置補測見 [實測報告](../../plans/vn-mode-image-spike.md)「包 7 前補測」（裁頭重繪勝出、CLI 抓圖改讀 thread 目錄）；方案 [plans/vn-mode-pkg7.md](../../plans/vn-mode-pkg7.md)（Sol 方案審 2 輪 PASS；作者裁決：權重首次下載、來源 Codex／agy／API、拆 7a／7b、`ort` 靜態連結）。
   - 7a（commit aeee6713、22747c73、0c330bb7；驗收 2 輪 PASS）：取圖層改讀 codex thread／agy brain 目錄（既有角色生圖一併修）、`vn_sprites/`（sprite.json、裁頭重繪臉層＋對齊門檻＋定稿 alpha 裁剪、背景佇列可續生、定稿世代號）、Stage 兩層疊圖與退路鏈、精靈 ③、立繪分頁。
   - 7b（commit 9397bab6、e78256c9、4390ccef、eb9b3062；驗收 2 輪 PASS，串 01a19650）：變體（共用／獨立表情組，換定稿前共用組自動轉獨立組）、`@變體` 上台沿用與 GM／角色線提示詞注入、去背（`ort` 靜態連結＋BiRefNet 首用下載、SHA-256 驗證，執行檔 +27 MB）、立繪來源偏好 `vn_sprite_source`（Codex／agy／API）、變體鍵路徑驗證兩層擋。
   - 核心 7a 約 2000–2300、7b 約 1035（高於估計，收尾審過無不必要程式碼，見 process-log 第 3 次檢討）。通道真生圖共約 29 張：雙角色、closeup、重開續生、改臉框、變體、換定稿、去背，接縫目視皆過。
   - 已知限制：對齊門檻沒有真位移樣本；臉框不合格退預設框（獨立組退預設框時分頁不提示）；agy 生圖與 API 來源未實生（API 排實機驗收佇列，agy 撞 429）；新增變體改角色線固定前段、resume 線斷一次快取；ort 共用環境第二次推論與 Windows DirectML 連結待驗（看第一次 CI）；`AI_IMAGE_FREE_KEY` 在立繪分頁顯示原文；預算量測未算變體那段提示詞。
-- 包 3（中案，背景管線）2026-11-01 完成，在分支 `vn-mode`（commit c91460ca、9bc5ac42＋收尾一筆）：方案 [plans/vn-mode-pkg3.md](../plans/vn-mode-pkg3.md)；Sol 驗收 1 輪 PASS 無必改（串 01a196ad），採納建議一條（背景 PNG 改原子寫入）。落地：`vn_backgrounds.rs`（地點雜湊 slug＋固定四時段鍵、背景庫與 `backgrounds.json`、整幕讀取補沿用時段與幕首退路格、改光線參考圖、失敗自動重試一次）、佇列泛化成臉層／背景共用一次一張（背景優先）、`commands/vn_backgrounds.rs`、提示詞 `transport/vn_background_prompts.rs`、VN 開桌開場第一行寫 `[bg]`、舞台背景層（生成中前一張模糊或黑幕＋字卡、好了淡入）、工具列「重生成背景」、精靈 ④ 預生並預覽。核心淨約 650–750（立案估 250）、測試約 215；verify 13 步綠；通道 Codex 真生圖五項全過，主線親看截圖。
+- 包 3（中案，背景管線）2026-11-01 完成，在分支 `vn-mode`（commit c91460ca、9bc5ac42＋收尾一筆）：方案 [plans/vn-mode-pkg3.md](../../plans/vn-mode-pkg3.md)；Sol 驗收 1 輪 PASS 無必改（串 01a196ad），採納建議一條（背景 PNG 改原子寫入）。落地：`vn_backgrounds.rs`（地點雜湊 slug＋固定四時段鍵、背景庫與 `backgrounds.json`、整幕讀取補沿用時段與幕首退路格、改光線參考圖、失敗自動重試一次）、佇列泛化成臉層／背景共用一次一張（背景優先）、`commands/vn_backgrounds.rs`、提示詞 `transport/vn_background_prompts.rs`、VN 開桌開場第一行寫 `[bg]`、舞台背景層（生成中前一張模糊或黑幕＋字卡、好了淡入）、工具列「重生成背景」、精靈 ④ 預生並預覽。核心淨約 650–750（立案估 250）、測試約 215；verify 13 步綠；通道 Codex 真生圖五項全過，主線親看截圖。
 - 包 3 已知限制：失敗只記記憶體，重開 app 會再自動試一次；重生成無確認；英文時段子字串比對（today→day）；字卡照模型原文顯示時段；agy 背景回 NO_IMAGE；立繪與背景同框、真 GM 回合寫的時段詞、開場時段改內容語言後都未在通道重看；來源鍵仍叫 `vn_sprite_source`。
-- 包 4（大案，聖經、劇本分頁、劇透鎖、旗標、揭露）2026-11-01 完成，在分支 `vn-mode`（commit 0f304792、dbc14863、dd5176e5、e8db6b43＋收尾一筆）：方案 [plans/vn-mode-pkg4.md](../plans/vn-mode-pkg4.md)。
+- 包 4（大案，聖經、劇本分頁、劇透鎖、旗標、揭露）2026-11-01 完成，在分支 `vn-mode`（commit 0f304792、dbc14863、dd5176e5、e8db6b43＋收尾一筆）：方案 [plans/vn-mode-pkg4.md](../../plans/vn-mode-pkg4.md)。
   - Sol 方案審 2 輪：必改 3＋1 全採納，串 01a196d9。驗收 2 輪：必改 3＋0，串 01a19725。
   - 落地：`data/vn.rs`（`vn.json`、驗證正規化、補種）、`vn_bible.rs`（生成、套用、凍結注入，以幕為鍵）、`transport/vn_bible_prompts.rs`、`commands/vn_bible.rs`、`mechanism/write_guard.rs`（`FieldRule.allowed`、受保護根 `flags`／`revealed`／`chapter`，擋模型更新、圍欄、面板手改、once 旗標四個入口）；前端 `features/vn/bible/`（遮罩、劇本分頁、精靈 ②、格邊旗標提示），世界編輯器「世界｜劇本」分頁。
   - 規模：核心約 2110（立案估 450，重估 1000–1200），測試約 870；verify 13 步綠。
@@ -40,39 +42,41 @@
   - zod 引擎桌不補種。
   - 劇本只能在分頁內存（頂列儲存只存 world.md）。
   - 結構類（增刪章、旗標、結局）不能改，只能重骰。
-- 包 9 拆 9a／9b〔作者裁決 2026-11-01〕。9a（初始 VN 卡）2026-11-01 完成，在分支 `vn-mode`（commit a092deda、d8763972、20b10c80＋收尾一筆）：方案 [plans/vn-mode-pkg9.md](../plans/vn-mode-pkg9.md)。
+- 包 9 拆 9a／9b〔作者裁決 2026-11-01〕。9a（初始 VN 卡）2026-11-01 完成，在分支 `vn-mode`（commit a092deda、d8763972、20b10c80＋收尾一筆）：方案 [plans/vn-mode-pkg9.md](../../plans/vn-mode-pkg9.md)。
   - Sol 方案審 2 輪：必改 3＋0 全採納，串 01a1975e。驗收 2 輪：必改 1＋0，串 01a19798。
   - 落地：後端 `import/vn_card/`（schema、remap、materialize、export）、`commands/vn_card.rs`、`vn.json` 加 `card`（卡原件、逐角色欄位、美術欄位原樣保存）、`Bible.chapter_lock`、恢復卡內原版（`vn_bible_generate` 在有原版的卡桌改走恢復）、GM 總則／玩家段／導演指示的卡定主角與 `branching`／人稱句、出場限制段；前端 `features/vn/card/`、精靈從 ③ 起、VN 工具列 ⋯「匯出成 VN 卡」、劇本分頁恢復鈕與章數唯讀。
   - 規模：核心約 1500（立案估 450，重估 900–1300），測試約 600；verify 13 步綠。
   - 通道真模型（luna）實測六項通過，主線親看截圖；SunSmell 測試卡在 `TestCards/sunsmell-vn-card.json`／`.png`。
-  - 已知限制見方案 §4；觀察見方案 §5（`[chapter]` 未寫屬包 5、`[bg]` 自由地名屬 9b）。角色線內心獨白洩漏私設另立案 [vn-thought-spoiler](../tasks/vn-thought-spoiler.md)。
-- 包 9b（卡內美術欄位接進生圖）2026-11-02 完成，在分支 `vn-mode`（commit 6da5cf5f、18dd5182＋收尾一筆）：方案 [plans/vn-mode-pkg9b.md](../plans/vn-mode-pkg9b.md)。
+  - 已知限制見方案 §4；觀察見方案 §5（`[chapter]` 未寫屬包 5、`[bg]` 自由地名屬 9b）。角色線內心獨白洩漏私設另立案 [vn-thought-spoiler](../../tasks/vn-thought-spoiler.md)。
+- 包 9b（卡內美術欄位接進生圖）2026-11-02 完成，在分支 `vn-mode`（commit 6da5cf5f、18dd5182＋收尾一筆）：方案 [plans/vn-mode-pkg9b.md](../../plans/vn-mode-pkg9b.md)。
   - Sol 方案審 2 輪：必改 3＋0 全採納，串 01a197a8。驗收 1 輪 PASS 無必改，串 01a197f5。
   - 落地：卡美術欄位改型別並在匯入時驗（`data/vn_art.rs`、`import/vn_card/art.rs`，匯出寫回原名）；外觀規格取代公開設定、卡畫風與避免項進立繪與背景提示詞；每角色額外表情鍵（拍板 16）貫穿臉層、佇列、解析器、規範與立繪分頁；卡宣告變體是保留鍵、立繪分頁顯示空格按了才生；卡地點（鍵或名稱比對）與每地點有效時段清單、GM「可用地點」段；參考圖種類列舉、封面當畫風參考；`height_cm` 以名單最高者為基準固定縮放（特寫不套）。
   - 規模：核心約 1230（方案估 750），測試約 590；verify 13 步綠。通道 Codex 真生圖 23 張八項全過，主線親看截圖。
   - 已知限制、待作者裁決三項（變體不自動生、身高基準、主角不上台）見方案 §4、§4.1；分級被拒提示（§2.8）沒做。
-- 包 5（章、結局、完結；拆 5a／5b）2026-11-02 完成，在分支 `vn-mode`（commit 7a928bcb–87419f77＋收尾一筆）：方案 [plans/vn-mode-pkg5.md](../plans/vn-mode-pkg5.md)。
+- 包 5（章、結局、完結；拆 5a／5b）2026-11-02 完成，在分支 `vn-mode`（commit 7a928bcb–87419f77＋收尾一筆）：方案 [plans/vn-mode-pkg5.md](../../plans/vn-mode-pkg5.md)。
   - Sol 方案審 2 輪（必改 2＋0，串 01a19806）；5a 驗收 2 輪（必改 1＋0）；5b 驗收 2 輪（必改 1＋0）。
   - 5a 落地：提交時驗 `[chapter]`／`[ending]`（`chat_turn/vn_ending.rs`，取代 `pkg1_accepted`）、引擎鍵 `ended`／`finale`（唯讀受保護根）、章結束在換幕交易內加章（`advance_scene(chapter_end)`，含變數模式表同步、先備妥後發布）、第 M 章強制收尾必定完結、完結鎖住續寫（`UiMsg::VnEnded`）、規範與回合尾章提示、章末字卡、「下一章」、完結畫面；換幕摘要只進紀錄不播、對話框限高捲動。
   - 5b 落地：結局一覽、從某一章重玩（`SceneLabel.source` 劇情祖先鏈、截幕首分岔 `data/scene/replay.rs`）、開新周目（`data/vn_playthrough.rs` 白名單複製、MVU 控制檔照開場重建、重構骨架與玩法標記沿用、失敗刪整桌）。
   - 規模：核心約 1600（立案估 250、方案重估 1060），測試約 1000；verify 13 步綠。通道 luna／Haiku／MVU 桌真模型實測全過，主線親看截圖。
   - 總綱 §8 已改：容量與聊天視圖換幕不加章、第 M 章「下一章」換幕並強制收尾。待作者裁決四項見方案 §7.1。
   - 遵守度：Haiku 第 1 章 14 拍寫 1 次 `[chapter]`、第 3 章不寫結局只靠強制收尾，也常不寫 `<UpdateVariable>`；luna 會自己寫 `[chapter]` 與合法結局。
-- 包 6（回溯、分岔、已讀、存檔、標題；拆 6a／6b）2026-11-02 完成，在分支 `vn-mode`（commit bc03f01c–f30c2d05＋收尾一筆）：方案 [plans/vn-mode-pkg6.md](../plans/vn-mode-pkg6.md)。
+- 包 6（回溯、分岔、已讀、存檔、標題；拆 6a／6b）2026-11-02 完成，在分支 `vn-mode`（commit bc03f01c–f30c2d05＋收尾一筆）：方案 [plans/vn-mode-pkg6.md](../../plans/vn-mode-pkg6.md)。
   - Sol 方案審 2 輪（必改 3＋0）；6a 驗收 2 輪（1＋0）；6b 驗收 2 輪（1＋0）。
   - 6a：幕號水位（新幕號＝全桌最大＋1，修「切回舊分支再換幕會刪別條分支」的資料遺失）、分岔來源改驗已發布、共用選項邊界、選項點分岔、切換分支（`data/scene/branches.rs`、`vn_branches.rs`）、退幕引用守門、玩家句幕號守門、上一格回溯與過去的選項面板。
   - 6b：已讀與續讀（`vn/vn-progress.json`，內容雜湊）、skip 只跳已讀、存檔書籤（同幕跳格／切尾幕／整幕分岔、失效提示）、標題畫面、工具列抽成 `VnToolbar`、標題與面板蓋著時暫停播放與已讀登記。
   - 規模：核心約 1870（立案估 350、方案重估 1245），測試約 890；verify 13 步綠。通道 Haiku／luna 實測全過，主線親看截圖。
   - 總綱 §9／§13 已改：存檔＝書籤。待作者裁決六項見方案 §7.1。
-- 包 8（VN 作品包；拆 8a／8b／8c）2026-11-02 完成，在分支 `vn-mode`（commit c1b7d2d0–3e9374b7＋收尾一筆）：方案 [plans/vn-mode-pkg8.md](../plans/vn-mode-pkg8.md)。
+- 包 8（VN 作品包；拆 8a／8b／8c）2026-11-02 完成，在分支 `vn-mode`（commit c1b7d2d0–3e9374b7＋收尾一筆）：方案 [plans/vn-mode-pkg8.md](../../plans/vn-mode-pkg8.md)。
   - Sol 方案審 2 輪（必改 3＋0，串 01a1994f）；8a 驗收 2 輪（2＋1，第 2 輪後最後一條由主線驗收，串 01a19982）；8b 驗收 1 輪 PASS（串 01a199c8）；8c 驗收 1 輪 PASS（串 01a199ea）。
   - 8a：`.ttvn`（zip，只開 deflate）匯出／演出包匯入（`vn_work/`：開包前整檔串流驗每個 EOCD 候選的原始條目數與目錄大小、拒 zip64、實讀計量、條目名只當查表鍵、落檔路徑由驗過的鍵重組、出入包共用 PNG 區塊白名單、分岔展開後計限、失敗刪整桌）；重播桌 `replay` 旗標與後端守門（§2.6.1 命令層＋資料層五支兜底＋`assemble_card_context`／收回玩家句／重寫提要各自判斷）；精靈 ① 匯入鈕、拖進大廳、桌卡「作品」徽章。
   - 8b：重播播放體驗（收生成入口、章末 goto 子幕、選項點走作者分支／未走過灰掉、此路作者未完成＋回上一個選項、章節選擇、進桌位置五種 `entryCell`）。
   - 8c：匯出附設定（自訂對話框、預設不勾、變數模式桌停用）、匯入二選一、可續寫桌（聖經、卡原件、角色設定、世界書、world.md、逐則快照；機制照聖經推導且 `incremental=true`）。
   - 規模：核心約 8a 2,000＋8b 250＋8c 630（方案估 2,060，約 1.4 倍），測試約 1,400；verify 13 步綠。通道實測三包全過（8c 用 Haiku 真模型續寫、分岔換幕、從第 1 章重玩），主線親看截圖。
   - 待作者裁決七項見方案 §7.1；拖進大廳待實機試（通道模擬不了系統拖放）。
-- **下一步：整案結案進 main**（等作者點頭）。
-- 整案結案才進 main：分支歷史整理成一包一筆（以 commit 訊息前綴「包 N」分包，含立案、方案、施工、驗收修正、收尾各筆，各壓成一筆；子代理 commit 署名是 Opus 5.5，壓縮時統一）。
+- 各包待裁決已全數由作者裁決（2026-11-02，記在各方案「作者裁決」節）；照裁決補做：結局 x／y 不算保底結局、標題設定加打字速度與 auto 等待（皆 Sol 驗收 PASS）。agy 生圖權限另立案進 BACKLOG。
+- **下一步：作者實機試玩**（已排實測佇列；試玩發現的問題照流程上限判案別、在 main 上修）。
+  - 試玩重點：①把 `.ttvn` 拖進大廳匯入（通道模擬不了系統拖放，從沒實測過）；②匯入時選「當可續寫的桌」，再讓 AI 接著寫幾拍；③其餘各包已知限制見各方案檔。
+  - 現成測試包（本機、gitignore）：`TestCards/sunsmell-replay.ttvn`（只帶演出）、`TestCards/sunsmell-with-settings.ttvn`（附設定，可選可續寫）；原卡 `TestCards/sunsmell-vn-card.json`。
 
 ## 立案摘要〔作者裁決 2026-08-07〕
 VN 做在本專案內：內核即現有引擎（GM 發言權分配＝劇本推進、自動上下場＝立繪進退場、換幕＝背景切換、scene-fork＝分支、收回＝回溯），VN 是同一引擎的另一種桌型。對 ST 的差異化：任何普通角色卡都能用 VN 方式玩，多角色進退場是引擎原生。
@@ -83,7 +87,7 @@ VN 做在本專案內：內核即現有引擎（GM 發言權分配＝劇本推�
 5. 玩家輸入＝純選項制；GM 同一發尾端產選項、分岔點才出；「換一組」是唯一糾偏保險絲。
 6. 背景每幕即時生成一張。
 7. 立繪一張定稿、五表情差分預生存桌資料夾；主路原生透明輸出，後備本地去背（BiRefNet-lite，ort）〔作者裁決 2026-10-27〕。
-8. CG 必帶人物、定稿當參考圖＋外觀規格塊＋玩家重骰把關；CG 屬 v3（[vn-cg-generation](../tasks/vn-cg-generation.md)）。
+8. CG 必帶人物、定稿當參考圖＋外觀規格塊＋玩家重骰把關；CG 屬 v3（[vn-cg-generation](../../tasks/vn-cg-generation.md)）。
 
 分期〔作者裁決 2026-11-01〕：v1＝包 0–9；v3 即時 CG；之後音訊、全自動雙軌、條件選項、第 2–3 套主題、跨周目。
 
