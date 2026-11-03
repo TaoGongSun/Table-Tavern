@@ -87,10 +87,14 @@ fn parser_follows_each_lenient_rule() {
                 VnCell::Bg {
                     location: "港口".to_owned(),
                     time: Some("黃昏".to_owned()),
+                    slug: crate::vn_backgrounds::slug_of("港口"),
+                    period: Some("dusk".to_owned()),
                 },
                 VnCell::Bg {
                     location: "教室".to_owned(),
                     time: None,
+                    slug: crate::vn_backgrounds::slug_of("教室"),
+                    period: None,
                 },
             ],
         ),

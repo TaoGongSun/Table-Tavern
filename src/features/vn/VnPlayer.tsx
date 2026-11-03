@@ -12,6 +12,7 @@ import { DialogueBox } from "./DialogueBox";
 import { Stage } from "./Stage";
 import { useVnCells } from "./useVnCells";
 import { useSprites } from "./useSprites";
+import { backdropKey, useBackgrounds } from "./useBackgrounds";
 import { useVnPlayback } from "./useVnPlayback";
 import { rerollError, stageAt } from "./vn-cells";
 import "./vn-player.css";
@@ -75,6 +76,18 @@ export function VnPlayer({
   realignRef.current = play.realign;
   const stage = useMemo(() => stageAt(vn.cells, play.flatIndex), [vn.cells, play.flatIndex]);
   const sprites = useSprites(worldId);
+  const backgrounds = useBackgrounds(worldId);
+  // 正式格有新事件落檔就排入這幕缺的背景（串流暫定格不排：中斷的回合不替玩家花額度）
+  useEffect(() => {
+    invoke("vn_backgrounds_fill", { worldId, scene }).catch(() => {});
+  }, [worldId, scene, vn.lastEventKey]);
+  const backdrop = stage.backdrop;
+  const backdropId = backdrop ? backdropKey(backdrop) : null;
+  const { load } = backgrounds;
+  useEffect(() => {
+    if (backdrop) load(backdrop);
+  }, [backdrop, load]);
+  const backdropState = backdropId ? backgrounds.status[backdropId]?.state : undefined;
   const [logOpen, setLogOpen] = useState(false);
   const [rerollMessage, setRerollMessage] = useState<string | null>(null);
 
@@ -187,6 +200,16 @@ export function VnPlayer({
         >
           {t("vnSkip")}
         </button>
+        {backdrop && (
+          <button
+            type="button"
+            className="btn btn-ghost"
+            disabled={backdropState === "queued" || backdropState === "running"}
+            onClick={() => void backgrounds.regenerate(backdrop).catch((reason) => onError(backendText(reason)))}
+          >
+            {t("vnBackgroundRegenerate")}
+          </button>
+        )}
         <button type="button" className="btn btn-ghost" onClick={() => setLogOpen(true)}>
           {t("vnLog")}
         </button>
@@ -195,7 +218,13 @@ export function VnPlayer({
         </button>
       </header>
       {notice}
-      <Stage stage={stage} sprites={sprites} images={images} cellKey={play.current?.key ?? ""} />
+      <Stage
+        stage={stage}
+        sprites={sprites}
+        images={images}
+        backdrop={backdropId ? backgrounds.images[backdropId] : undefined}
+        cellKey={play.current?.key ?? ""}
+      />
       <div className="vn-bottom">
         {choices && (
           <ChoicePanel

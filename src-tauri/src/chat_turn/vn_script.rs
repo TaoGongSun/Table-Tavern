@@ -42,6 +42,10 @@ pub(crate) enum VnCell {
     Bg {
         location: String,
         time: Option<String>,
+        /// 背景庫鍵的地點部分（`vn_backgrounds::slug_of`）
+        slug: String,
+        /// 固定時段；解析時只認明寫的，整幕讀取時（`vn_backgrounds::resolve_scene`）補上沿用值
+        period: Option<String>,
     },
     Choices {
         options: Vec<String>,
@@ -298,7 +302,15 @@ fn parse_cells(text: &str, source: &VnSource, roster: &VnRoster) -> Vec<VnCell> 
         if let Some(marker) = marker(line) {
             flush(&mut narration, &mut cells);
             match marker {
-                Marker::Bg { location, time } => cells.push(VnCell::Bg { location, time }),
+                Marker::Bg { location, time } => cells.push(VnCell::Bg {
+                    slug: crate::vn_backgrounds::slug_of(&location),
+                    period: time
+                        .as_deref()
+                        .and_then(crate::vn_backgrounds::period_of)
+                        .map(str::to_owned),
+                    location,
+                    time,
+                }),
                 Marker::Choices => choices = Some(Vec::new()),
                 Marker::Chapter => cells.push(VnCell::Chapter),
                 Marker::Ending(id) => cells.push(VnCell::Ending { id }),
@@ -361,6 +373,65 @@ pub(crate) fn apply_terminal_priority(
         .into_iter()
         .filter(|cell| terminal_rank(cell).is_none_or(|rank| rank >= top))
         .collect()
+}
+
+/// 一則事件的正式格（播放器只消費這個）。
+#[derive(Serialize)]
+pub(crate) struct VnEventCells {
+    pub event_id: Option<String>,
+    pub kind: data::TranscriptKind,
+    pub cells: Vec<VnCell>,
+}
+
+/// 一幕事件逐則解析：GM 旁白照 GM 線、角色台詞照該角色線；玩家句原樣一格旁白；系統事件略過。
+/// 背景格補好沿用時段，幕首沒 `[bg]` 時以幕首事件快照的 place／time 補一格；一併回這幕用到的背景。
+pub(crate) fn read_scene(
+    root: &std::path::Path,
+    world_id: &str,
+    scene: u64,
+) -> Result<(Vec<VnEventCells>, Vec<crate::vn_backgrounds::Backdrop>), String> {
+    let roster = VnRoster::load(root, world_id)?;
+    let events = data::read_transcript(root, world_id, scene).map_err(|error| error.to_string())?;
+    let start = events
+        .first()
+        .and_then(|event| event.state.as_ref())
+        .map(|state| {
+            let get = |key: &str| state.table.get(key).map(String::as_str);
+            (
+                get("place").unwrap_or_default().to_owned(),
+                get("time").map(str::to_owned),
+            )
+        });
+    let mut cells: Vec<VnEventCells> = events
+        .into_iter()
+        .filter_map(|event| {
+            let cells = match event.kind {
+                data::TranscriptKind::Narration => parse_event(&event.text, &VnSource::Gm, &roster),
+                data::TranscriptKind::Dialogue => parse_event(
+                    &event.text,
+                    &VnSource::Character {
+                        self_id: event.speaker_id.clone(),
+                    },
+                    &roster,
+                ),
+                data::TranscriptKind::Player => vec![VnCell::Narration {
+                    text: event.text.clone(),
+                }],
+                data::TranscriptKind::System => return None,
+            };
+            Some(VnEventCells {
+                event_id: event.id,
+                kind: event.kind,
+                cells,
+            })
+        })
+        .collect();
+    let start = start
+        .as_ref()
+        .map(|(place, time)| (place.as_str(), time.as_deref()));
+    let used =
+        crate::vn_backgrounds::resolve_scene(cells.iter_mut().map(|event| &mut event.cells), start);
+    Ok((cells, used))
 }
 
 /// 落檔版：選項少於 2 個丟掉、多塊取最後一塊、指令每事件上限、終止優先序。

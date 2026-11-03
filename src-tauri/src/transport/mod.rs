@@ -26,6 +26,7 @@ pub use state_yaml::parse_initvar_tree;
 pub(crate) mod test_support;
 pub(crate) mod translate;
 mod turns;
+pub(crate) mod vn_background_prompts;
 mod vn_format;
 pub(crate) mod vn_sprite_prompts;
 mod worldbook;

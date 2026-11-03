@@ -25,7 +25,13 @@ const d = (id: string | null, text: string, extra: Partial<VnCell> = {}): VnCell
     text,
     ...extra,
   }) as VnCell;
-const bg = (location: string, time: string | null = null): VnCell => ({ type: "bg", location, time });
+const bg = (location: string, time: string | null = null, period: string | null = time): VnCell => ({
+  type: "bg",
+  location,
+  time,
+  slug: `slug-${location}`,
+  period,
+});
 const choices = (...options: string[]): VnCell => ({ type: "choices", options });
 const ev = (id: string | null, kind: VnEventCells["kind"], cells: VnCell[]): VnEventCells => ({
   event_id: id,
@@ -102,6 +108,17 @@ describe("stageAt", () => {
     const moved = at([d("a", "1"), bg("Inn"), d("b", "2")]);
     expect(moved.slots).toEqual(["b", null, null]);
     expect(moved.location).toBe("Inn");
+  });
+
+  it("backdrop keys follow [bg]; a pending cell without a period keeps the current one", () => {
+    expect(at([n("x")]).backdrop).toBeNull();
+    expect(at([bg("Port", "黃昏", "dusk"), d("a", "1")]).backdrop).toEqual({
+      location: "Port",
+      slug: "slug-Port",
+      period: "dusk",
+    });
+    expect(at([bg("Port", "黃昏", "dusk"), bg("Inn", "不久", null)]).backdrop?.period).toBe("dusk");
+    expect(at([bg("Inn", null, null)]).backdrop?.period).toBe("day");
   });
 
   it("each character keeps their last expression until they speak again", () => {

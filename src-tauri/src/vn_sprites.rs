@@ -32,7 +32,7 @@ fn transparent(source: &str) -> bool {
 }
 
 /// 生一張圖（同一時間一張），回 normalize 過的 PNG。API 的參考圖走 `input_references`
-async fn generate_png(
+pub(crate) async fn generate_png(
     app: &tauri::AppHandle,
     config: &data::AppConfig,
     world: &str,
@@ -70,7 +70,7 @@ fn source_gate() -> &'static tokio::sync::Mutex<()> {
     &GATE
 }
 
-fn read_config(app: &tauri::AppHandle) -> Result<data::AppConfig, String> {
+pub(crate) fn read_config(app: &tauri::AppHandle) -> Result<data::AppConfig, String> {
     data::read_config(&config_root(app)?).map_err(|error| error.to_string())
 }
 

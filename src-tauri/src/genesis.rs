@@ -71,12 +71,18 @@ pub fn expand_messages(
     title: &str,
     outline_raw: &str,
     lang: &str,
+    vn: bool,
 ) -> Vec<ChatMessage> {
     let genres = genre_line(genres);
+    // VN 桌：開場第一行就是場景標記，精靈 ④ 才有首幕背景可預生（plans/vn-mode-pkg3.md §2）
+    let opening_scene = match vn {
+        true => "\n- The OPENING's first line must be a scene marker `[bg: location | time]` on its own line: location is a short place name and time is the time of day (morning, daytime, dusk or night), both written in the content language.",
+        false => "",
+    };
     vec![ChatMessage {
         role: "user".to_owned(),
         content: format!(
-            "You are a tabletop RPG game master. The player approved this campaign outline. Expand it into full campaign materials.\n\nPlayer's idea: {input}\n{genres}Approved outline:\n{outline_raw}\n\nAll content must be written in the language with BCP-47 code \"{lang}\". Output EXACTLY this structure, using these exact English markers at line start:\n\n## WORLD: {title}\n<full world setting in markdown: the setting, key places or factions, tone, current situation. Enough substance for a GM to run scenes from.>\n\n## CHARACTER: <name>\nEMOJI: <one single emoji fitting this character>\nPUBLIC:\n<what everyone can see: appearance, role, public personality>\nPRIVATE:\n<secrets, hidden motives, inner voice — visible only to this character's actor>\n\n## OPENING\n<the opening narration the GM speaks to start the first scene, addressed to the player, ending at a moment that invites the player to act>\n\nRules:\n- Keep the WORLD line exactly as written above; do not rename the campaign.\n- Keep the same characters and names as the outline.\n- Markers exactly as shown. No text outside the sections."
+            "You are a tabletop RPG game master. The player approved this campaign outline. Expand it into full campaign materials.\n\nPlayer's idea: {input}\n{genres}Approved outline:\n{outline_raw}\n\nAll content must be written in the language with BCP-47 code \"{lang}\". Output EXACTLY this structure, using these exact English markers at line start:\n\n## WORLD: {title}\n<full world setting in markdown: the setting, key places or factions, tone, current situation. Enough substance for a GM to run scenes from.>\n\n## CHARACTER: <name>\nEMOJI: <one single emoji fitting this character>\nPUBLIC:\n<what everyone can see: appearance, role, public personality>\nPRIVATE:\n<secrets, hidden motives, inner voice — visible only to this character's actor>\n\n## OPENING\n<the opening narration the GM speaks to start the first scene, addressed to the player, ending at a moment that invites the player to act>\n\nRules:\n- Keep the WORLD line exactly as written above; do not rename the campaign.\n- Keep the same characters and names as the outline.\n- Markers exactly as shown. No text outside the sections.{opening_scene}"
         ),
     }]
 }

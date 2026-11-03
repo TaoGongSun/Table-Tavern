@@ -1,6 +1,11 @@
 // VN 播放器的純函式：攤平格、可播判定、正式化對位、舞台摺疊、auto 延遲、換一組錯誤碼。
 // 規則見 .ai/plans/vn-mode-pkg2.md §2–§4。
-import type { TranscriptEvent, VnCell, VnEventCells } from "../../shared/contracts/backend-contracts";
+import type {
+  Backdrop,
+  TranscriptEvent,
+  VnCell,
+  VnEventCells,
+} from "../../shared/contracts/backend-contracts";
 
 /** 對白格裡玩家的 speaker_id（Rust `PLAYER_SENTINEL`）：主角不上舞台，只出名牌 */
 export const PLAYER_ID = "__PLAYER__";
@@ -114,6 +119,8 @@ export interface Stage {
   directive: "closeup" | "shake" | null;
   location: string | null;
   time: string | null;
+  /** 目前的背景鍵 */
+  backdrop: Backdrop | null;
 }
 
 /** 進場順序：首位左、次位右、第三位中 */
@@ -130,6 +137,7 @@ export function stageAt(cells: FlatCell[], index: number): Stage {
     directive: null,
     location: null,
     time: null,
+    backdrop: null,
   };
   let recent: string[] = [];
   for (const { cell } of cells.slice(0, index + 1)) {
@@ -140,6 +148,9 @@ export function stageAt(cells: FlatCell[], index: number): Stage {
       }
       stage.location = cell.location;
       stage.time = cell.time;
+      // 正式格的時段後端已補好沿用值；串流暫定格只有明寫的，沒寫就沿用目前的
+      const period = cell.period ?? stage.backdrop?.period ?? "day";
+      stage.backdrop = { location: cell.location, slug: cell.slug, period };
       continue;
     }
     if (cell.type !== "dialogue" || !cell.speaker_id || cell.speaker_id === PLAYER_ID) continue;

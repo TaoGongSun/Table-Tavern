@@ -27,6 +27,7 @@ mod transport;
 mod ui_msg;
 mod updater;
 mod usage;
+mod vn_backgrounds;
 mod vn_sprites;
 mod world_info;
 mod world_scan;
@@ -230,6 +231,10 @@ pub fn run() {
             commands::vn::read_vn_cells,
             commands::vn::parse_vn_text,
             commands::vn::vn_reroll_choices,
+            commands::vn_backgrounds::vn_backgrounds_fill,
+            commands::vn_backgrounds::vn_background_read,
+            commands::vn_backgrounds::vn_backgrounds_status,
+            commands::vn_backgrounds::vn_background_regenerate,
             commands::vn_sprites::vn_sprites_read_all,
             commands::vn_sprites::vn_sprite_read,
             commands::vn_sprites::vn_sprite_candidate,
@@ -379,6 +384,8 @@ mod command_classification {
         "undo_last_import",
         "upsert_worldbook_entry",
         "vn_reroll_choices",
+        "vn_background_regenerate",
+        "vn_backgrounds_fill",
         "vn_sprite_delete",
         "vn_sprite_generate",
         "vn_sprite_pick",
@@ -427,6 +434,8 @@ mod command_classification {
         "vn_sprite_read",
         "vn_sprites_read_all",
         "vn_sprites_status",
+        "vn_background_read",
+        "vn_backgrounds_status",
         "read_world_md",
         "rollback_preview",
         "read_world_readonly",

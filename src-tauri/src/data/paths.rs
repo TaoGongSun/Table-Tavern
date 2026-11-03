@@ -152,6 +152,11 @@ pub(crate) fn vn_sprite_dir(
         .join(character_id))
 }
 
+/// VN 背景庫目錄：worlds/<world_id>/vn/backgrounds（plans/vn-mode-pkg3.md §2）。
+pub(crate) fn vn_background_dir(root: &Path, world_id: &str) -> DataResult<PathBuf> {
+    Ok(world_dir(root, world_id)?.join("vn").join("backgrounds"))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::data::test_support::*;

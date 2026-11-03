@@ -43,6 +43,7 @@ function render(expressions: Record<string, string>) {
     directive: null,
     location: null,
     time: null,
+    backdrop: null,
   };
   const host = document.createElement("div");
   act(() =>

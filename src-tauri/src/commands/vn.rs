@@ -1,53 +1,15 @@
 //! VN 桌（vn-mode）的 Tauri 邊界：接參數、轉呼叫 `chat_turn` 的劇本解析與換一組。
-use crate::chat_turn::{self, VnCell, VnRoster, VnSource, VnText};
+use crate::chat_turn::{self, VnEventCells, VnRoster, VnSource, VnText};
 use crate::{config_root, data, data_root, transport};
-use serde::Serialize;
 
-/// 一則事件的正式格（包 2 播放器只消費這個）。
-#[derive(Serialize)]
-pub(crate) struct VnEventCells {
-    event_id: Option<String>,
-    kind: data::TranscriptKind,
-    cells: Vec<VnCell>,
-}
-
-/// 一幕事件逐則解析：GM 旁白照 GM 線、角色台詞照該角色線；玩家句原樣一格旁白；系統事件略過。
+/// 一幕的正式格（背景已補好沿用時段，見 `chat_turn::read_scene`）。
 #[tauri::command]
 pub(crate) fn read_vn_cells(
     app: tauri::AppHandle,
     world_id: String,
     scene: u64,
 ) -> Result<Vec<VnEventCells>, String> {
-    let root = data_root(&app)?;
-    let roster = VnRoster::load(&root, &world_id)?;
-    let events =
-        data::read_transcript(&root, &world_id, scene).map_err(|error| error.to_string())?;
-    Ok(events
-        .into_iter()
-        .filter_map(|event| {
-            let cells = match event.kind {
-                data::TranscriptKind::Narration => {
-                    chat_turn::parse_event(&event.text, &VnSource::Gm, &roster)
-                }
-                data::TranscriptKind::Dialogue => chat_turn::parse_event(
-                    &event.text,
-                    &VnSource::Character {
-                        self_id: event.speaker_id.clone(),
-                    },
-                    &roster,
-                ),
-                data::TranscriptKind::Player => vec![VnCell::Narration {
-                    text: event.text.clone(),
-                }],
-                data::TranscriptKind::System => return None,
-            };
-            Some(VnEventCells {
-                event_id: event.id,
-                kind: event.kind,
-                cells,
-            })
-        })
-        .collect())
+    Ok(chat_turn::read_scene(&data_root(&app)?, &world_id, scene)?.0)
 }
 
 /// 串流中未落檔的文字→暫定格（同一個解析器、同一份名單；不套刪格規則）。

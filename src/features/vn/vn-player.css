@@ -41,8 +41,29 @@
   min-height: 0;
   overflow: hidden;
 }
+/* 立繪與字卡一層：震動以它為準（背景不跟著重掛，免得每次震動重播淡入） */
+.vn-cast {
+  position: absolute;
+  inset: 0;
+}
 .vn-shake {
   animation: vn-shake 0.4s;
+}
+/* 背景：圖好淡入；生成中＝前一張模糊；第一張都還沒有＝黑幕 */
+.vn-backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  animation: vn-fade 0.8s;
+}
+.vn-backdrop-waiting {
+  filter: blur(10px) brightness(0.6);
+  animation: none;
+}
+.vn-backdrop-black {
+  background: #000;
 }
 .vn-location {
   position: absolute;

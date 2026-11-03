@@ -109,7 +109,14 @@ pub(crate) async fn generate_table_expand(
     let title = genesis::draft_title(&title).ok_or_else(|| "EMPTY_TITLE".to_owned())?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
-    let messages = genesis::expand_messages(input, &genres, title, &outline_raw, &lang);
+    let messages = genesis::expand_messages(
+        input,
+        &genres,
+        title,
+        &outline_raw,
+        &lang,
+        table_kind == data::TableKind::Vn,
+    );
     let raw = stream_via_transport(
         &app,
         &config,

@@ -136,7 +136,15 @@ export type VnCell =
       directive: "closeup" | "shake" | null;
       text: string;
     }
-  | { type: "bg"; location: string; time: string | null }
+  | {
+      type: "bg";
+      location: string;
+      time: string | null;
+      /** 背景庫鍵的地點部分（後端雜湊） */
+      slug: string;
+      /** 固定時段 morning／day／dusk／night；正式格已補好沿用值，串流暫定格只有明寫的 */
+      period: string | null;
+    }
   | { type: "choices"; options: string[] }
   | { type: "chapter" }
   | { type: "ending"; id: string };
@@ -188,6 +196,21 @@ export interface SpriteSlotStatus {
   /** null＝定稿與共用表情組；變體鍵＝該變體的獨立表情組 */
   variant: string | null;
   expression: string;
+  state: "queued" | "running" | "done" | "failed";
+  reason: string | null;
+}
+
+/** 一個背景鍵（`vn_backgrounds_fill` 回這幕用到的，依出現順序） */
+export interface Backdrop {
+  location: string;
+  slug: string;
+  period: string;
+}
+
+export interface BackgroundStatus {
+  worldId: string;
+  slug: string;
+  period: string;
   state: "queued" | "running" | "done" | "failed";
   reason: string | null;
 }

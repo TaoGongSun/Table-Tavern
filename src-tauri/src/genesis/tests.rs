@@ -210,7 +210,7 @@ fn outline_still_requires_a_title() {
 
 #[test]
 fn expand_messages_prefill_the_draft_title() {
-    let messages = expand_messages("idea", &[], "夜港", "## WORLD: 夜港\n霧。", "zh-TW");
+    let messages = expand_messages("idea", &[], "夜港", "## WORLD: 夜港\n霧。", "zh-TW", false);
     assert!(messages[0]
         .content
         .contains("\n## WORLD: 夜港\n<full world setting"));

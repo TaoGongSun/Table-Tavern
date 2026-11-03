@@ -119,7 +119,7 @@ pub(crate) use format::{
     readonly_lane_scan, remove_reset_build_root, replace_world_from_build, reset_build_root,
 };
 #[allow(unused_imports)]
-pub(crate) use paths::{refactor_outcome_path, validate_id, vn_sprite_dir};
+pub(crate) use paths::{refactor_outcome_path, validate_id, vn_background_dir, vn_sprite_dir};
 #[allow(unused_imports)]
 pub use state::SceneLabel;
 pub use state::COLLECTION_ORDER_KEY;

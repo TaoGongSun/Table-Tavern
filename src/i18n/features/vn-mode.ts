@@ -2,6 +2,9 @@
 // 獨立成補充字典，不塞回十份主字典。i18n/index.ts 的 t() 把它併進同一個 MsgKey 空間。
 const COPY = {
   "zh-TW": {
+    vnBackgroundRegenerate: "重生成背景",
+    vnBackgroundPreparing: "首幕背景生成中……可以先開始，背景好了會自動淡入。",
+    vnBackgroundFailed: "首幕背景生成失敗。進桌後可按工具列的「重生成背景」再試。",
     vnHaveCard: "我有角色卡",
     vnEntryTitle: "視覺小說",
     vnEntryHint: "AI 演出的視覺小說，用選項推進劇情",
@@ -77,6 +80,9 @@ const COPY = {
     vnSpriteMattingDownload: "去背模型下載失敗或檔案不符，請稍後再試。",
   },
   "zh-CN": {
+    vnBackgroundRegenerate: "重新生成背景",
+    vnBackgroundPreparing: "首幕背景生成中……可以先开始，背景好了会自动淡入。",
+    vnBackgroundFailed: "首幕背景生成失败。进桌后可点工具栏的“重新生成背景”再试。",
     vnHaveCard: "我有角色卡",
     vnEntryTitle: "视觉小说",
     vnEntryHint: "AI 演出的视觉小说，用选项推进剧情",
@@ -152,6 +158,9 @@ const COPY = {
     vnSpriteMattingDownload: "去背模型下载失败或文件不符，请稍后再试。",
   },
   en: {
+    vnBackgroundRegenerate: "Regenerate background",
+    vnBackgroundPreparing: "Generating the first scene's background… You can start now; it fades in when ready.",
+    vnBackgroundFailed: "The first scene's background failed to generate. Use “Regenerate background” in the toolbar to retry.",
     vnHaveCard: "I have a character card",
     vnEntryTitle: "Visual novel",
     vnEntryHint: "An AI-performed visual novel driven by choices",
@@ -227,6 +236,9 @@ const COPY = {
     vnSpriteMattingDownload: "The background-removal model failed to download or did not match. Please try again later.",
   },
   ja: {
+    vnBackgroundRegenerate: "背景を再生成",
+    vnBackgroundPreparing: "最初の場面の背景を生成中…先に始めても大丈夫です。完成すると自動でフェードインします。",
+    vnBackgroundFailed: "最初の場面の背景を生成できませんでした。ツールバーの「背景を再生成」で再試行できます。",
     vnHaveCard: "キャラカードがある",
     vnEntryTitle: "ビジュアルノベル",
     vnEntryHint: "AI が演じるビジュアルノベル。選択肢で物語が進む",
@@ -302,6 +314,9 @@ const COPY = {
     vnSpriteMattingDownload: "背景除去モデルのダウンロードに失敗したか、ファイルが一致しません。後でもう一度お試しください。",
   },
   ko: {
+    vnBackgroundRegenerate: "배경 다시 생성",
+    vnBackgroundPreparing: "첫 장면 배경을 생성하는 중… 먼저 시작해도 됩니다. 완성되면 자동으로 페이드인됩니다.",
+    vnBackgroundFailed: "첫 장면 배경 생성에 실패했습니다. 툴바의 '배경 다시 생성'으로 다시 시도할 수 있습니다.",
     vnHaveCard: "캐릭터 카드가 있어요",
     vnEntryTitle: "비주얼 노벨",
     vnEntryHint: "AI가 연기하는 비주얼 노벨, 선택지로 이야기를 진행",
@@ -377,6 +392,9 @@ const COPY = {
     vnSpriteMattingDownload: "배경 제거 모델 다운로드에 실패했거나 파일이 일치하지 않습니다. 잠시 후 다시 시도하세요.",
   },
   es: {
+    vnBackgroundRegenerate: "Regenerar fondo",
+    vnBackgroundPreparing: "Generando el fondo de la primera escena… Puedes empezar ya; aparecerá cuando esté listo.",
+    vnBackgroundFailed: "No se pudo generar el fondo de la primera escena. Usa «Regenerar fondo» en la barra para reintentar.",
     vnHaveCard: "Tengo una tarjeta",
     vnEntryTitle: "Novela visual",
     vnEntryHint: "Una novela visual de IA que avanza con tus elecciones",
@@ -452,6 +470,9 @@ const COPY = {
     vnSpriteMattingDownload: "No se pudo descargar el modelo de recorte o no coincide. Inténtalo más tarde.",
   },
   "pt-BR": {
+    vnBackgroundRegenerate: "Gerar fundo de novo",
+    vnBackgroundPreparing: "Gerando o fundo da primeira cena… Você já pode começar; ele aparece quando ficar pronto.",
+    vnBackgroundFailed: "Não foi possível gerar o fundo da primeira cena. Use “Gerar fundo de novo” na barra para tentar outra vez.",
     vnHaveCard: "Tenho um cartão",
     vnEntryTitle: "Visual novel",
     vnEntryHint: "Uma visual novel encenada por IA que avança por escolhas",
@@ -527,6 +548,9 @@ const COPY = {
     vnSpriteMattingDownload: "Falha ao baixar o modelo de recorte ou o arquivo não confere. Tente mais tarde.",
   },
   de: {
+    vnBackgroundRegenerate: "Hintergrund neu erzeugen",
+    vnBackgroundPreparing: "Hintergrund der ersten Szene wird erzeugt … Du kannst schon starten; er blendet sich ein, sobald er fertig ist.",
+    vnBackgroundFailed: "Der Hintergrund der ersten Szene konnte nicht erzeugt werden. Mit „Hintergrund neu erzeugen“ in der Leiste erneut versuchen.",
     vnHaveCard: "Ich habe eine Karte",
     vnEntryTitle: "Visual Novel",
     vnEntryHint: "Von der KI gespielt, deine Entscheidungen lenken die Story",
@@ -602,6 +626,9 @@ const COPY = {
     vnSpriteMattingDownload: "Das Freistellungsmodell konnte nicht geladen werden oder stimmt nicht. Bitte später erneut versuchen.",
   },
   fr: {
+    vnBackgroundRegenerate: "Régénérer le fond",
+    vnBackgroundPreparing: "Génération du fond de la première scène… Vous pouvez commencer ; il apparaîtra une fois prêt.",
+    vnBackgroundFailed: "Le fond de la première scène n'a pas pu être généré. Utilisez « Régénérer le fond » dans la barre pour réessayer.",
     vnHaveCard: "J'ai une carte",
     vnEntryTitle: "Visual novel",
     vnEntryHint: "Un visual novel joué par l'IA, qui avance au fil des choix",
@@ -677,6 +704,9 @@ const COPY = {
     vnSpriteMattingDownload: "Le modèle de détourage n’a pas pu être téléchargé ou ne correspond pas. Réessayez plus tard.",
   },
   ru: {
+    vnBackgroundRegenerate: "Перегенерировать фон",
+    vnBackgroundPreparing: "Создаётся фон первой сцены… Можно начинать: он появится, когда будет готов.",
+    vnBackgroundFailed: "Не удалось создать фон первой сцены. Повторите через «Перегенерировать фон» на панели.",
     vnHaveCard: "У меня есть карточка",
     vnEntryTitle: "Визуальная новелла",
     vnEntryHint: "Визуальная новелла в исполнении ИИ, сюжет движется выборами",

@@ -19,5 +19,6 @@ pub(crate) use party_batch::{
 };
 pub(crate) use vn_reroll::reroll_choices;
 pub(crate) use vn_script::{
-    finish_vn_character_reply, parse_event, parse_text, VnCell, VnRoster, VnSource, VnText,
+    finish_vn_character_reply, parse_text, read_scene, VnCell, VnEventCells, VnRoster, VnSource,
+    VnText,
 };

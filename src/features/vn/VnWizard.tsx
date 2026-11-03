@@ -1,11 +1,12 @@
 // VN 開桌精靈骨架：① 起點、② 展開重用一句話開桌（GenerateTableDialog＋genesis，建出 vn 桌）；
 // ① 也可以改選「我有角色卡」：交給匯入流程開 VN 桌，匯完回到這裡的 ②。
 // 從匯入來的桌角色與世界書已就位，直接從 ② 起（聖經生成在後續版本）。③ 立繪挑定稿（VnSpriteStep），
-// ④ 開演＝進桌，進桌後背景補表情。
+// ④ 開演（VnStartStep：一進來就預生首幕背景）＝進桌，進桌後背景補表情。
 // 精靈結束＝進那張 vn 桌；中途關掉時桌已建好、留在大廳清單裡。
 import { invoke } from "@tauri-apps/api/core";
 import { useRef, useState } from "react";
 import { VnSpriteStep } from "./VnSpriteStep";
+import { VnStartStep } from "./VnStartStep";
 import { t, type MsgKey } from "../../i18n";
 import { Dialog } from "../../shared/ui/Dialog";
 import { GenerateTableDialog } from "../lobby/GenerateTableDialog";
@@ -128,6 +129,8 @@ export function VnWizard({
     >
       {sprites ? (
         <VnSpriteStep worldId={worldId.current!} onReady={setSpritesReady} />
+      ) : step === "start" && worldId.current !== null ? (
+        <VnStartStep worldId={worldId.current} />
       ) : (
         <p>{t(current.body)}</p>
       )}

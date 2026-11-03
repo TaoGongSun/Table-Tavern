@@ -18,7 +18,7 @@ pub fn vn_format_rules(lang: &str) -> String {
              - Dialogue: `Name (expression): \"line\"`, one line per cell, short lines. Expressions: {expressions}; leaving out the parentheses means neutral. Write names exactly as on the Characters list. Supporting characters without cards use the same form and must keep the parentheses.\n\
              - Inner thoughts: `Name (expression) thought: text`, without quotation marks.\n\
              - Staging: after the expression you may add `, closeup` or `, shake`, e.g. `Name (surprised, shake): \"line\"`; at most two per turn.\n\
-             - Scene: `[bg: location | time]` on its own line, only when the location or time changes. A new location clears the stage.\n\
+             - Scene: `[bg: location | time]` on its own line, only when the location or time changes; time is one of morning, day, dusk, night. A new location clears the stage.\n\
              - Choices: only when the story reaches a point where the player must decide, end the story text with `[choices]` followed by 2–4 lines `- option`. No choices anywhere else.\n\
              - Markers always stand on their own line with lowercase English keywords. No Markdown headings, bold, or lists other than option lines.\n\
              Example (the name is only illustrative):\n\
@@ -33,7 +33,7 @@ pub fn vn_format_rules(lang: &str) -> String {
              - 對白：`名字 (表情): 「台詞」`，一行一格，台詞要短。表情只能用 {expressions}，不寫括號＝neutral。名字照「登場角色」名單原字逐字寫；沒有角色卡的配角同樣寫法，括號不可省。\n\
              - 內心獨白：`名字 (表情) thought: 台詞`，不加引號。\n\
              - 演出：表情後可加 `, closeup`（特寫）或 `, shake`（震動），例如 `名字 (surprised, shake): 「台詞」`；每回合最多兩個。\n\
-             - 換場景：`[bg: 地點 | 時間]` 單獨一行，只在地點或時間改變時寫；換地點＝舞台清空。\n\
+             - 換場景：`[bg: 地點 | 時段]` 單獨一行，只在地點或時段改變時寫；時段只能寫 清晨、白天、黃昏、夜晚 其中之一；換地點＝舞台清空。\n\
              - 選項：只在劇情走到需要玩家抉擇的分岔點時，在正文最後寫 `[choices]`，下面每行 `- 選項` 共 2–4 個；其他時候不要出選項。\n\
              - 標記一律單獨一行、關鍵字用英文小寫；不要用 Markdown 標題、粗體或清單（選項行除外）。\n\
              範例（名字只是示意）：\n\
@@ -110,13 +110,13 @@ pub fn vn_narrate_instruction(
              You may portray supporting characters without character cards; do not speak for listed characters or the player, they reply on their own turns. \
              Do not output a status bar or any explanation outside the format. Order: script text (including `[bg]` and dialogue) → the `[choices]` block if needed → \
              the ```state fence → the `Next:` line. After the script text, start a new line and {fence}\
-             The fence's `place` and `time` must match the latest `[bg]`."
+             The fence's `place` must match the latest `[bg]`, and its `time` must fall in that `[bg]` time of day (it may be more specific, e.g. with the date)."
         ),
         false => format!(
             "（導演指示）請以視覺小說劇本格式寫這一拍：推進劇情、描述場景與世界反應。沒有角色卡的配角由你扮演；\
              不要替「登場角色」名單上的角色或玩家說話，他們會在自己的回合接話。不要輸出狀態欄或格式以外的說明。\
              輸出順序：劇本正文（含 `[bg]` 與對白）→ 需要時的 `[choices]` 區塊 → ```state 圍欄 → 「下一位」行。\
-             劇本正文寫完後另起一行，{fence}圍欄的 place、time 要與最近一次 `[bg]` 一致。"
+             劇本正文寫完後另起一行，{fence}圍欄的 place 要與最近一次 `[bg]` 一致，time 要落在該 `[bg]` 的時段內（可更具體，例如帶日期）。"
         ),
     };
     if updates {
