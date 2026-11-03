@@ -34,7 +34,7 @@ export const es: WebMessages = {
   provider_siliconflow: "SiliconFlow",
   cnConnectTitle: "Conecta {provider} para empezar a jugar",
   connectBack: "← Volver",
-  topConnect: "Conectar",
+  topConnect: "Conectar modelo de IA",
   cnConnectBody: "Pega tu token de acceso (clave API) de {provider} y empieza a chatear; la versión web elige el modelo. La clave solo se guarda en este navegador y no se envía a ningún otro sitio.",
   msStep1: "Regístrate en ModelScope (basta un número de teléfono; también vale GitHub).",
   msStep2: "Avatar (arriba a la derecha) → «Vincular cuenta de Alibaba Cloud» y completa la verificación de identidad que pide la página (requisito oficial).",

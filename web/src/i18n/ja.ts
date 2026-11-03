@@ -34,7 +34,7 @@ export const ja: WebMessages = {
   provider_siliconflow: "SiliconFlow",
   cnConnectTitle: "{provider} をつなげば遊べます",
   connectBack: "← 戻る",
-  topConnect: "接続",
+  topConnect: "AI モデルに接続",
   cnConnectBody: "{provider} のアクセストークン（API キー）を貼り付ければすぐ話せます。モデルは自動で選びます。キーはこのブラウザにだけ保存され、ほかには送られません。",
   msStep1: "ModelScope に登録します（電話番号だけで可。GitHub でもログインできます）。",
   msStep2: "右上のアイコン →「阿里雲アカウントを連携」から、画面の案内どおり阿里雲の実名認証を済ませます（公式の必須条件）。",
