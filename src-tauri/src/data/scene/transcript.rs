@@ -194,6 +194,13 @@ pub fn append_event(
     turn: Option<&message_vars::TurnKey>,
 ) -> DataResult<(TranscriptEvent, Option<u64>)> {
     with_commit(root, world_id, |tx| {
+        // 玩家句只寫進目前幕，與追加同一把提交鎖：分岔、切換、讀檔後畫面還沒換手時送出的舊幕號不落檔
+        if turn.is_none()
+            && event.kind == TranscriptKind::Player
+            && read_state(root, world_id)?.current_scene != scene
+        {
+            return Err(crate::ui_msg::UiMsg::SceneStale.into_error());
+        }
         message_vars::settle_before_append(tx, turn)?;
         let mut event = event.clone();
         let mut table = None;

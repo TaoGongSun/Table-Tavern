@@ -4,18 +4,10 @@ use std::path::Path;
 use super::super::state::{read_state, WorldState};
 use super::super::state_commit::with_commit;
 use super::super::DataResult;
-use super::lifecycle::{fork_scene_tx, scene_label};
+use super::branches::story_previous;
+use super::lifecycle::fork_scene_tx;
 use super::transcript::read_transcript;
 use crate::ui_msg::UiMsg;
-
-/// 劇情上的前一幕：分岔幕走被複製的來源幕（內容等於它），換幕來的幕走 `parent`。
-fn story_previous(state: &WorldState, scene: u64) -> Option<u64> {
-    let label = scene_label(state, scene);
-    match (label.forked, label.source) {
-        (true, Some(source)) => Some(source),
-        _ => label.parent,
-    }
-}
 
 /// 第 `chapter` 章的章頭幕：鏈上幕首快照章號等於它的最早一幕（同章多幕取最早）；第 1 章＝鏈上最早的幕。
 fn chapter_head(root: &Path, world_id: &str, state: &WorldState, chapter: u32) -> DataResult<u64> {

@@ -20,18 +20,48 @@ const backend = vi.hoisted(() => ({
   /** 讓整幕重抓晚一拍回來，跟串流解析落在同一批更新 */
   slowRead: false,
   endings: null as unknown,
+  branches: [] as unknown[],
+  /** 分支查詢：等這個 promise 才回；fail＝回錯 */
+  branchesGate: null as Promise<void> | null,
+  branchesFail: false,
+  progress: null as unknown,
+  loaded: null as unknown,
+  args: {} as Record<string, Record<string, unknown>>,
 }));
+
+/** 照後端共用選項邊界標選項點：其後第一則玩家句＝已選，之前又出選項＝被取代（不標） */
+function marked(events: VnEventCells[]): VnEventCells[] {
+  return events.map((event, index) => {
+    if (!event.cells.some((cell) => cell.type === "choices")) return event;
+    for (const later of events.slice(index + 1)) {
+      if (later.kind === "player") {
+        const first = later.cells[0];
+        return { ...event, choice: { answered: first?.type === "narration" ? first.text : "" } };
+      }
+      if (later.cells.some((cell) => cell.type === "choices")) return event;
+    }
+    return { ...event, choice: { answered: null } };
+  });
+}
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(async (command: string, args: Record<string, unknown>) => {
     backend.calls.push(command);
+    backend.args[command] = args;
     if (command === "read_vn_cells") {
       if (backend.slowRead) await new Promise((resolve) => setTimeout(resolve, 0));
-      return structuredClone(backend.cells);
+      return marked(structuredClone(backend.cells));
     }
     if (command === "parse_vn_text") return backend.parse(args.text as string);
     if (command === "vn_reroll_choices") return backend.reroll();
     if (command === "vn_backgrounds_status") return [];
     if (command === "vn_endings") return backend.endings;
+    if (command === "vn_progress_read") return backend.progress;
+    if (command === "vn_save_load") return backend.loaded;
+    if (command === "vn_choice_branches") {
+      if (backend.branchesGate) await backend.branchesGate;
+      if (backend.branchesFail) throw new Error("boom");
+      return backend.branches;
+    }
     if (command === "vn_new_playthrough") return `new:${String(args.nameTemplate)}`;
     return null;
   }),
@@ -41,6 +71,7 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) })
 vi.mock("@tauri-apps/plugin-dialog", () => ({ confirm: vi.fn(async () => true) }));
 
 import { VnPlayer } from "./VnPlayer";
+import { cellHash } from "./vn-cells";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -88,11 +119,19 @@ async function settle() {
 }
 
 let flagHints = true;
+let titleOpen = false;
+const onTitle = vi.fn((open: boolean) => {
+  titleOpen = open;
+});
 let sceneNo = 0;
 let onAdvanceScene = vi.fn(async (_chapterEnd: boolean): Promise<VnAdvance> => ({ stage: "entered" }));
 let onReenter = vi.fn(async () => true);
 const onReplayChapter = vi.fn(async (_chapter: number) => {});
 const onEnterTable = vi.fn((_id: string) => {});
+let onBranch = vi.fn(async (run: () => Promise<unknown>): Promise<VnAdvance> => {
+  await run();
+  return { stage: "entered" };
+});
 
 async function render(patch: Partial<ChatController> = {}) {
   chat = { ...chat, ...patch };
@@ -112,9 +151,12 @@ async function render(patch: Partial<ChatController> = {}) {
         onShowChat={() => {}}
         onGoLobby={() => {}}
         onReplayChapter={onReplayChapter}
+        onBranch={onBranch}
         onEnterTable={onEnterTable}
         flagHints={flagHints}
         onFlagHints={() => {}}
+        title={titleOpen}
+        onTitle={onTitle}
       />,
     );
   });
@@ -137,6 +179,18 @@ beforeEach(() => {
   backend.slowRead = false;
   onAdvanceScene = vi.fn(async () => ({ stage: "entered" }) as VnAdvance);
   onReenter = vi.fn(async () => true);
+  onBranch = vi.fn(async (run: () => Promise<unknown>): Promise<VnAdvance> => {
+    await run();
+    return { stage: "entered" };
+  });
+  backend.branches = [];
+  backend.branchesGate = null;
+  backend.branchesFail = false;
+  backend.progress = null;
+  backend.loaded = null;
+  backend.args = {};
+  titleOpen = false;
+  onTitle.mockClear();
   sceneNo = 0;
   window.matchMedia = (() => ({ matches: true })) as unknown as typeof window.matchMedia;
   host = document.createElement("div");
@@ -191,11 +245,12 @@ describe("VnPlayer", () => {
     await act(async () => finish());
   });
 
-  it("a choice already answered by the player does not show the panel again", async () => {
+  it("a choice already answered by the player shows only the past panel, and continue answers the player", async () => {
     backend.cells = [gm("g1", [n("hello"), choices("A", "B")]), player("p1", "A")];
     await render({ events: [event("g1"), event("p1")] });
     await advance();
-    expect(choiceButtons()).toHaveLength(0);
+    expect(host.querySelector(".vn-choices:not(.vn-choices-past)")).toBeNull();
+    expect(host.querySelector(".vn-choice-current")?.textContent).toContain("A");
     await act(async () => button(t("vnContinue"))!.click());
     expect(chat.gmAdvance).toHaveBeenCalledTimes(1);
   });
@@ -367,9 +422,12 @@ describe("VnPlayer", () => {
           onShowChat={() => {}}
           onGoLobby={() => {}}
           onReplayChapter={onReplayChapter}
+          onBranch={onBranch}
           onEnterTable={onEnterTable}
           flagHints
           onFlagHints={() => {}}
+          title={false}
+          onTitle={() => {}}
         />,
       );
     });
@@ -427,5 +485,252 @@ describe("VnPlayer", () => {
     expect(onEnterTable).toHaveBeenCalledWith(
       `new:${t("vnPlaythroughName", { name: "{name}", n: "{n}" })}`,
     );
+  });
+
+  it("rolls back cell by cell for display only, and stops at the scene's first cell", async () => {
+    backend.cells = [gm("g1", [n("one"), n("two")])];
+    await render({ events: [event("g1")] });
+    await advance();
+    expect(text()).toBe("two");
+    await act(async () => button(t("vnBack"))!.click());
+    expect(text()).toBe("one");
+    expect(button(t("vnBack"))!.disabled).toBe(true);
+    expect(backend.calls.filter((call) => call.startsWith("vn_fork") || call.startsWith("vn_switch"))).toEqual([]);
+  });
+
+  it("rolling back from a choice panel skips the line the dialogue box already shows", async () => {
+    backend.cells = [gm("g1", [n("one"), n("two"), choices("A", "B")])];
+    await render({ events: [event("g1")] });
+    await advance();
+    await advance();
+    expect(choiceButtons()).toHaveLength(2);
+    expect(text()).toBe("two");
+    await act(async () => button(t("vnBack"))!.click());
+    expect(text()).toBe("one");
+  });
+
+  it("an open choice followed by a character line shows its panel after the line", async () => {
+    backend.cells = [
+      gm("g1", [n("q"), choices("A", "B")]),
+      { event_id: "c1", kind: "dialogue", cells: [n("who?")] },
+    ];
+    await render({ events: [event("g1"), event("c1")] });
+    expect(text()).toBe("who?");
+    expect(choiceButtons().map((b) => b.textContent)).toEqual(["A", "B"]);
+    expect(button(t("vnReroll"))).toBeUndefined();
+  });
+
+  describe("past choice panel", () => {
+    const past = () => [
+      gm("g1", [n("q"), choices("A", "B", "C")]),
+      player("p1", "A"),
+      gm("g2", [n("after A")]),
+    ];
+    async function openPast() {
+      backend.cells = past();
+      backend.branches = [{ option: "B", tip: 3, ended: true }];
+      await render({ events: [event("g1"), event("p1"), event("g2")] });
+      await act(async () => button(t("vnBack"))!.click());
+      await settle();
+    }
+    const panel = () => [...host.querySelectorAll<HTMLButtonElement>(".vn-choices-past .vn-choice")];
+
+    it("marks the current route and played branches; the current route reads on", async () => {
+      await openPast();
+      expect(panel().map((b) => b.textContent)).toEqual([
+        `A${t("vnChoiceCurrent")}`,
+        `B${t("vnChoicePlayed")} · ${t("vnChoiceEnded")}`,
+        "C",
+      ]);
+      await act(async () => panel()[0].click());
+      expect(text()).toBe("after A");
+      expect(onBranch).not.toHaveBeenCalled();
+    });
+
+    it("other routes stay locked until this choice point's branches are loaded", async () => {
+      let release = () => {};
+      backend.branchesGate = new Promise<void>((resolve) => (release = resolve));
+      await openPast();
+      expect(panel().map((b) => b.disabled)).toEqual([false, true, true]);
+      await act(async () => panel()[1].click());
+      expect(onBranch).not.toHaveBeenCalled();
+      await act(async () => release());
+      await settle();
+      expect(panel().map((b) => b.disabled)).toEqual([false, false, false]);
+      expect(panel()[1].textContent).toContain(t("vnChoicePlayed"));
+    });
+
+    it("a failed branch lookup keeps other routes locked and offers a retry", async () => {
+      backend.branchesFail = true;
+      await openPast();
+      expect(panel().map((b) => b.disabled)).toEqual([false, true, true]);
+      expect(host.querySelector(".vn-choices-past .vn-choice-error")?.textContent).toContain(t("vnChoiceBranchesFailed"));
+      backend.branchesFail = false;
+      await act(async () => button(t("vnBranchReenterRetry"))!.click());
+      await settle();
+      expect(panel().map((b) => b.disabled)).toEqual([false, false, false]);
+    });
+
+    it("a played branch switches to its tip", async () => {
+      await openPast();
+      await act(async () => panel()[1].click());
+      await settle();
+      expect(onBranch).toHaveBeenCalledTimes(1);
+      expect(backend.calls).toContain("vn_switch_branch");
+      expect(chat.submitText).not.toHaveBeenCalled();
+    });
+
+    it("an unplayed option forks, then sends only after the player is on the new scene", async () => {
+      await openPast();
+      await act(async () => panel()[2].click());
+      await settle();
+      expect(backend.calls).toContain("vn_fork_choice");
+      expect(chat.submitText).not.toHaveBeenCalled();
+      backend.cells = [gm("g9", [n("q"), choices("A", "B", "C")])];
+      sceneNo = 4;
+      await render({ events: [event("g9")] });
+      expect(chat.submitText).toHaveBeenCalledTimes(1);
+      expect(chat.submitText).toHaveBeenCalledWith("C");
+    });
+
+    it("a committed fork whose re-entry failed retries only the re-entry", async () => {
+      onBranch = vi.fn(async (run: () => Promise<unknown>): Promise<VnAdvance> => {
+        await run();
+        return { stage: "committed" };
+      });
+      await openPast();
+      await act(async () => panel()[2].click());
+      await settle();
+      expect(host.querySelector(".vn-choice-error")?.textContent).toContain(t("vnBranchReenterFailed"));
+      await act(async () => button(t("vnBranchReenterRetry"))!.click());
+      await settle();
+      expect(onReenter).toHaveBeenCalledTimes(1);
+      expect(onBranch).toHaveBeenCalledTimes(1);
+      expect(chat.submitText).not.toHaveBeenCalled();
+      backend.cells = [gm("g9", [n("q"), choices("A", "B", "C")])];
+      sceneNo = 4;
+      await render({ events: [event("g9")] });
+      expect(chat.submitText).toHaveBeenCalledWith("C");
+    });
+  });
+
+  describe("reading progress, saves and the title screen", () => {
+    const progress = (read: VnCell[], positions: Record<string, string> = {}) => ({
+      version: 1,
+      read: read.map(cellHash),
+      positions,
+      saves: [],
+    });
+
+    it("skip runs over read cells and stops before the first unread one", async () => {
+      backend.cells = [gm("g1", [n("a"), n("b"), n("c")])];
+      backend.progress = progress([n("a"), n("b")]);
+      await render({ events: [event("g1")] });
+      expect(text()).toBe("a");
+      await act(async () => button(t("vnSkip"))!.click());
+      await settle();
+      await act(async () => new Promise((resolve) => setTimeout(resolve, 200)));
+      await settle();
+      expect(text()).toBe("b");
+      expect(button(t("vnSkip"))!.getAttribute("aria-pressed")).toBe("false");
+    });
+
+    it("turning skip on while an unread cell types stops skip and keeps typing it", async () => {
+      window.matchMedia = (() => ({ matches: false })) as unknown as typeof window.matchMedia;
+      backend.cells = [gm("g1", [n("a long unread line"), n("b")])];
+      backend.progress = progress([]);
+      await render({ events: [event("g1")] });
+      await act(async () => button(t("vnSkip"))!.click());
+      await settle();
+      expect(button(t("vnSkip"))!.getAttribute("aria-pressed")).toBe("false");
+      expect(text().length).toBeLessThan("a long unread line".length);
+    });
+
+    it("enters at the last read position of the scene", async () => {
+      backend.cells = [gm("g0", [n("old")]), gm("g1", [n("a"), n("b")])];
+      backend.progress = progress([], { "0": "g0#0" });
+      await render({ events: [event("g0"), event("g1")] });
+      expect(text()).toBe("old");
+    });
+
+    it("saves the current cell and loads a save through the branch flow", async () => {
+      backend.cells = [gm("g1", [n("a"), n("b")])];
+      backend.progress = { ...progress([]), saves: [{ id: "s1", name: "mine", scene: 0, event_id: "g1", cell: 1, chapter: 1, ts: "t", preview: "b" }] };
+      backend.loaded = { scene: 0, event_id: "g1", cell: 1 };
+      await render({ events: [event("g1")] });
+      await act(async () => button(t("vnSave"))!.click());
+      await act(async () => button(t("vnSaveCreate"))!.click());
+      await settle();
+      expect(backend.args["vn_save_create"]).toMatchObject({ eventId: "g1", cell: 0 });
+      await act(async () => button(t("vnSaveLoad"))!.click());
+      await settle();
+      expect(onBranch).toHaveBeenCalledTimes(1);
+      expect(backend.calls).toContain("vn_save_load");
+      expect(text()).toBe("b");
+    });
+
+    it("the title screen continues, starts an unplayed table without replaying, and the ending returns to it", async () => {
+      onReplayChapter.mockClear();
+      backend.cells = [gm("g1", [n("hello")])];
+      titleOpen = true;
+      await render({ events: [event("g1")] });
+      expect(host.querySelector(".vn-title-screen")).not.toBeNull();
+      await act(async () => button(t("vnTitleStart"))!.click());
+      await settle();
+      expect(onTitle).toHaveBeenLastCalledWith(false);
+      expect(onReplayChapter).not.toHaveBeenCalled();
+      await act(async () => host.querySelector<HTMLButtonElement>(`[aria-label="${t("vnBackToTitle")}"]`)!.click());
+      expect(onTitle).toHaveBeenLastCalledWith(true);
+    });
+
+    const wait = (ms: number) => act(async () => new Promise((resolve) => setTimeout(resolve, ms)));
+
+    it("the title screen holds reading, auto and the chapter end until it closes", async () => {
+      backend.cells = [gm("g1", [n("a"), { type: "chapter" }])];
+      backend.progress = progress([]);
+      titleOpen = true;
+      await render({ events: [event("g1")] });
+      await act(async () => button(t("vnAuto"))!.click());
+      await wait(1600);
+      expect(text()).toBe("a");
+      expect(onAdvanceScene).not.toHaveBeenCalled();
+      expect(backend.args["vn_progress_write"]).toBeUndefined();
+      titleOpen = false;
+      await render();
+      await wait(1600);
+      expect(backend.args["vn_progress_write"]?.readAdd).toContain(cellHash(n("a")));
+      expect(onAdvanceScene).toHaveBeenCalledWith(true);
+    }, 10000);
+
+    it("skip waits behind the title and resumes when it closes", async () => {
+      backend.cells = [gm("g1", [n("a"), n("b"), n("c")])];
+      backend.progress = progress([n("a"), n("b"), n("c")]);
+      titleOpen = true;
+      await render({ events: [event("g1")] });
+      await act(async () => button(t("vnSkip"))!.click());
+      await wait(300);
+      expect(text()).toBe("a");
+      expect(button(t("vnSkip"))!.getAttribute("aria-pressed")).toBe("true");
+      titleOpen = false;
+      await render();
+      await wait(200);
+      await wait(200);
+      expect(text()).toBe("c");
+    });
+
+    it("an open panel or the log holds auto until it closes", async () => {
+      backend.cells = [gm("g1", [n("a"), n("b"), n("c")])];
+      await render({ events: [event("g1")] });
+      await act(async () => button(t("vnAuto"))!.click());
+      await act(async () => button(t("vnSave"))!.click());
+      await wait(1400);
+      expect(text()).toBe("a");
+      await act(async () => button(t("vnChapterClose"))!.click());
+      await wait(1400);
+      expect(text()).toBe("b");
+      await act(async () => button(t("vnLog"))!.click());
+      await wait(1400);
+      expect(text()).toBe("b");
+    }, 10000);
   });
 });

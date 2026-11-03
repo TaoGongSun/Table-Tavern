@@ -29,6 +29,7 @@ mod updater;
 mod usage;
 mod vn_backgrounds;
 mod vn_bible;
+mod vn_branches;
 mod vn_sprites;
 mod world_info;
 mod world_scan;
@@ -236,6 +237,15 @@ pub fn run() {
             commands::vn::vn_reroll_choices,
             commands::vn::vn_endings,
             commands::vn::vn_replay_chapter,
+            commands::vn::vn_fork_choice,
+            commands::vn::vn_switch_branch,
+            commands::vn::vn_choice_branches,
+            commands::vn::vn_progress_read,
+            commands::vn::vn_progress_write,
+            commands::vn::vn_save_create,
+            commands::vn::vn_save_delete,
+            commands::vn::vn_save_load,
+            commands::vn::vn_cover,
             commands::vn::vn_new_playthrough,
             commands::vn_bible::vn_bible_read,
             commands::vn_bible::vn_bible_generate,
@@ -397,6 +407,12 @@ mod command_classification {
         "upsert_worldbook_entry",
         "vn_reroll_choices",
         "vn_replay_chapter",
+        "vn_fork_choice",
+        "vn_switch_branch",
+        "vn_progress_write",
+        "vn_save_create",
+        "vn_save_delete",
+        "vn_save_load",
         "vn_new_playthrough",
         "vn_bible_generate",
         "vn_bible_save",
@@ -450,6 +466,9 @@ mod command_classification {
         "read_transcript",
         "read_vn_cells",
         "vn_endings",
+        "vn_choice_branches",
+        "vn_progress_read",
+        "vn_cover",
         "vn_bible_read",
         "vn_sprite_candidate",
         "vn_sprite_read",

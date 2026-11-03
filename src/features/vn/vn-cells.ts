@@ -5,6 +5,7 @@ import type {
   FlagHint,
   TranscriptEvent,
   VnCell,
+  VnChoiceMark,
   VnEventCells,
 } from "../../shared/contracts/backend-contracts";
 
@@ -25,6 +26,8 @@ export interface FlatCell {
   chapter?: number;
   /** 換幕摘要的格：不播、只進 log */
   recap?: boolean;
+  /** 這則是選項點（後端照共用選項邊界算）：已選＝answered 有字 */
+  choice?: VnChoiceMark;
 }
 
 export interface Cursor {
@@ -55,6 +58,7 @@ export function flatten(events: VnEventCells[]): FlatCell[] {
       hints: event.hints,
       chapter: event.chapter,
       recap: event.recap,
+      choice: event.choice,
     }));
   });
 }
@@ -74,15 +78,26 @@ export const isTerminal = (cell: VnCell) =>
   cell.type === "choices" || cell.type === "chapter" || cell.type === "ending";
 
 /**
- * 游標可停的格：文字格（玩家句與換幕摘要除外，只進 log）＋仍有效的正式終止格（選項、章末、結局）。
- * 終止格只在它屬於本幕最後一則正式事件時有效；之後有玩家句或任何新事件＝已消耗。串流暫定格裡的終止標記
- * 可能在提交時被剝掉，不當停點。`[bg]` 不停（舞台照摺疊）。
+ * 游標可停的格：文字格（玩家句與換幕摘要除外，只進 log）＋正式終止格。串流暫定格裡的終止標記可能在提交時
+ * 被剝掉，不當停點。`[bg]` 不停（舞台照摺疊）。
+ * - 選項格看後端的選項點標記（包 6 §2.2）：已選過的可停（過去的選項面板）；未選的只在它是本幕最後一則
+ *   正式事件時停，後面還有角色線就等播完再出面板（`liveChoice`）；不是選項點（被取代）不停。
+ * - 章末、結局只在屬於本幕最後一則正式事件時有效。
  */
 export function isPlayable(cell: FlatCell, lastEventKey: string | null): boolean {
   if (cell.kind === "player" || cell.recap) return false;
-  if (isTerminal(cell.cell)) return cell.kind !== "pending" && cell.eventKey === lastEventKey;
-  return cellText(cell.cell) !== "";
+  if (!isTerminal(cell.cell)) return cellText(cell.cell) !== "";
+  if (cell.kind === "pending") return false;
+  if (cell.cell.type === "choices" && cell.choice?.answered) return true;
+  if (cell.cell.type === "choices" && !cell.choice) return false;
+  return cell.eventKey === lastEventKey;
 }
+
+/** 本幕還沒選的選項格（正式格）：玩家句之後才算選過，夾在中間的角色線播完照樣出面板 */
+export const liveChoice = (cells: FlatCell[]) =>
+  [...cells]
+    .reverse()
+    .find((cell) => cell.kind !== "pending" && cell.cell.type === "choices" && cell.choice?.answered === null);
 
 /** 進桌位置：最後一則非玩家、非摘要正式事件的第一個可停格；還沒有正式事件（空桌第一回合）就從第一格播 */
 export function entryKey(cells: FlatCell[], playable: FlatCell[]): string | null {
@@ -189,6 +204,25 @@ export function stageAt(cells: FlatCell[], index: number): Stage {
     stage.directive = current.directive === "shake" ? "shake" : null;
   }
   return stage;
+}
+
+/**
+ * 已讀鍵（包 6 §2.6）：格內容的 FNV-1a 64 位元雜湊。分岔與作品包匯入都會重發事件 id，用內容當鍵才對得上；
+ * 一字不差的重複句算同一格（罕見、無害）。
+ */
+export function cellHash(cell: VnCell): string {
+  const body =
+    cell.type === "dialogue"
+      ? `d\u0000${cell.speaker_id ?? cell.speaker_name}\u0000${cell.text}`
+      : cell.type === "choices"
+        ? `c\u0000${cell.options.join("\u0000")}`
+        : `${cell.type}\u0000${cellText(cell)}`;
+  let hash = 0xcbf29ce484222325n;
+  for (const byte of new TextEncoder().encode(body)) {
+    hash ^= BigInt(byte);
+    hash = (hash * 0x100000001b3n) & 0xffffffffffffffffn;
+  }
+  return hash.toString(16).padStart(16, "0");
 }
 
 /** auto：本格打完後等 1200 + 40×字數 ms，上限 6000 */

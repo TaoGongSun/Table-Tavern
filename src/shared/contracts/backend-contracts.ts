@@ -48,6 +48,9 @@ export interface SceneLabel {
   forked?: boolean;
   /** 分岔幕複製的來源幕（劇情祖先鏈）；換幕來的幕省略 */
   source?: number;
+  /** 分岔複製了來源幕前幾則；`cut`＝最後一則被複製事件當時的 id（包 6 源頭對應） */
+  keep?: number;
+  cut?: string;
 }
 
 export interface WorldState {
@@ -161,6 +164,49 @@ export interface VnEventCells {
   chapter?: number;
   /** 換幕摘要（前情提要）：播放器不播、只進 log；不是摘要時省略 */
   recap?: boolean;
+  /** 選項點（包 6 §2.2）：`answered`＝玩家選的那句，還沒選＝null；不是選項點時省略 */
+  choice?: VnChoiceMark;
+}
+
+export interface VnChoiceMark {
+  answered: string | null;
+}
+
+/** `vn_progress_read`：VN 個人進度（Rust `data::vn_progress::Progress`） */
+export interface VnProgress {
+  version: number;
+  /** 已讀格的內容雜湊 */
+  read: string[];
+  /** 幕號字串 → 最後讀到的格鍵 */
+  positions: Record<string, string>;
+  saves: VnSave[];
+}
+
+export interface VnSave {
+  id: string;
+  name: string;
+  scene: number;
+  event_id: string;
+  cell: number;
+  chapter: number;
+  ts: string;
+  /** 該格前 40 字 */
+  preview: string;
+}
+
+/** `vn_save_load`：讀檔後停在這一格 */
+export interface VnLoaded {
+  scene: number;
+  event_id: string;
+  cell: number;
+}
+
+/** `vn_choice_branches`：選項點上玩過的一條分支（Rust `vn_branches::ChoiceBranch`） */
+export interface VnChoiceBranch {
+  option: string;
+  /** 可切過去的尾幕 */
+  tip: number;
+  ended: boolean;
 }
 
 /** `vn_endings`：結局一覽與完結畫面的已達成 x／y（Rust `vn_bible::EndingsOverview`） */

@@ -85,3 +85,98 @@
 .vn-unreached {
   opacity: 0.5;
 }
+
+/* 標題畫面（包 6）：蓋住工具列；封面或目前背景鋪滿、選單置中 */
+.vn-title-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(8, 10, 14);
+  color: var(--vn-ink);
+  animation: vn-story-fade 0.6s ease-out;
+}
+.vn-title-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.45;
+}
+.vn-title-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.6rem;
+  padding: 1rem;
+  text-align: center;
+}
+.vn-title-name {
+  margin: 0;
+  font-size: 2.6rem;
+  letter-spacing: 0.15em;
+  color: var(--amber);
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8);
+}
+.vn-title-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 14rem;
+}
+@media (prefers-reduced-motion: reduce) {
+  .vn-title-screen {
+    animation: none;
+  }
+}
+
+/* 存檔面板與設定 */
+.vn-save-form {
+  display: flex;
+  gap: 0.5rem;
+  width: min(32rem, 100%);
+}
+.vn-save-name {
+  flex: 1;
+  min-width: 0;
+}
+.vn-save-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  width: min(32rem, 100%);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.vn-save-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--vn-box-line);
+  border-radius: 6px;
+  text-align: left;
+}
+.vn-save-meta {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  font-size: var(--fs-ui);
+}
+.vn-save-preview {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0.7;
+}
+.vn-setting {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}

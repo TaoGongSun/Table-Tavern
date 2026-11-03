@@ -36,6 +36,121 @@ pub(crate) fn vn_replay_chapter(
     Ok(scene)
 }
 
+/// 從目前幕已選過的選項點分岔（包 6 §2.3）：只留玩家選它之前的事件，回新幕號。
+#[tauri::command]
+pub(crate) fn vn_fork_choice(
+    app: tauri::AppHandle,
+    world_id: String,
+    event_id: String,
+) -> Result<u64, String> {
+    let _permit = data::world_write_permit(&world_id)?;
+    let scene = crate::vn_branches::fork_choice(&data_root(&app)?, &world_id, &event_id)?;
+    crate::world_scan::macros::forget_outlets(&world_id);
+    Ok(scene)
+}
+
+/// 切到另一條分支的尾幕（包 6 §2.4），回目標幕號。
+#[tauri::command]
+pub(crate) fn vn_switch_branch(
+    app: tauri::AppHandle,
+    world_id: String,
+    scene: u64,
+) -> Result<u64, String> {
+    let _permit = data::world_write_permit(&world_id)?;
+    let scene = data::switch_scene(&data_root(&app)?, &world_id, scene)
+        .map_err(|error| error.to_string())?;
+    crate::world_scan::macros::forget_outlets(&world_id);
+    Ok(scene)
+}
+
+/// 目前幕某個選項點上玩過的各條分支（包 6 §2.5）。
+#[tauri::command]
+pub(crate) fn vn_choice_branches(
+    app: tauri::AppHandle,
+    world_id: String,
+    event_id: String,
+) -> Result<Vec<crate::vn_branches::ChoiceBranch>, String> {
+    crate::vn_branches::choice_branches(&data_root(&app)?, &world_id, &event_id)
+}
+
+/// VN 個人進度（包 6 §2.6）：已讀、各幕位置、存檔。
+#[tauri::command]
+pub(crate) fn vn_progress_read(
+    app: tauri::AppHandle,
+    world_id: String,
+) -> Result<data::vn_progress::Progress, String> {
+    data::vn_progress::read_progress(&data_root(&app)?, &world_id)
+        .map_err(|error| error.to_string())
+}
+
+/// 記已讀與目前這幕的閱讀位置（前端防抖整批送）。
+#[tauri::command]
+pub(crate) fn vn_progress_write(
+    app: tauri::AppHandle,
+    world_id: String,
+    read_add: Vec<String>,
+    scene: Option<u64>,
+    position: Option<String>,
+) -> Result<(), String> {
+    let _permit = data::world_write_permit(&world_id)?;
+    let position = scene.zip(position.as_deref());
+    data::vn_progress::record_reading(&data_root(&app)?, &world_id, &read_add, position)
+        .map_err(|error| error.to_string())
+}
+
+/// 存檔書籤（包 6 §2.7）。
+#[tauri::command]
+pub(crate) fn vn_save_create(
+    app: tauri::AppHandle,
+    world_id: String,
+    name: String,
+    event_id: String,
+    cell: u32,
+) -> Result<data::vn_progress::Save, String> {
+    let _permit = data::world_write_permit(&world_id)?;
+    crate::vn_branches::create_save(&data_root(&app)?, &world_id, &name, &event_id, cell)
+}
+
+#[tauri::command]
+pub(crate) fn vn_save_delete(
+    app: tauri::AppHandle,
+    world_id: String,
+    id: String,
+) -> Result<(), String> {
+    let _permit = data::world_write_permit(&world_id)?;
+    data::vn_progress::delete_save(&data_root(&app)?, &world_id, &id)
+        .map_err(|error| error.to_string())
+}
+
+/// 讀檔：目前幕只回位置；別條尾幕切換；已換章的幕整幕分岔。
+#[tauri::command]
+pub(crate) fn vn_save_load(
+    app: tauri::AppHandle,
+    world_id: String,
+    id: String,
+) -> Result<crate::vn_branches::Loaded, String> {
+    let _permit = data::world_write_permit(&world_id)?;
+    let loaded = crate::vn_branches::load_save(&data_root(&app)?, &world_id, &id)?;
+    crate::world_scan::macros::forget_outlets(&world_id);
+    Ok(loaded)
+}
+
+/// 標題畫面封面（VN 卡匯入的桌才有）：data URL，沒有回 null。
+#[tauri::command]
+pub(crate) fn vn_cover(app: tauri::AppHandle, world_id: String) -> Result<Option<String>, String> {
+    use base64::Engine as _;
+    let path =
+        data::vn::cover_path(&data_root(&app)?, &world_id).map_err(|error| error.to_string())?;
+    match std::fs::read(path) {
+        Ok(bytes) => Ok(Some(format!(
+            "data:image/png;base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(bytes)
+        ))),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
 /// 開新周目（包 5 §2.10）：原桌握寫入許可只讀，建好回新桌 id。
 #[tauri::command]
 pub(crate) async fn vn_new_playthrough(

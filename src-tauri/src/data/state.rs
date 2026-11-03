@@ -508,7 +508,7 @@ fn is_true(value: &bool) -> bool {
 }
 
 /// 分岔幕的顯示編號：內部幕號單調遞增不變，玩家看到的編號靠這個脫鉤。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SceneLabel {
     /// 玩家看到的幕號，內部 0 起算（前端顯示時再 +1）。
     pub base: u64,
@@ -523,6 +523,12 @@ pub struct SceneLabel {
     /// 分岔幕複製的來源幕（劇情祖先鏈走這裡；`parent` 是分岔前玩家所在的幕）。換幕來的幕沒有。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<u64>,
+    /// 分岔複製了來源幕前幾則（整幕分岔也記）；`cut`＝來源幕索引 `keep − 1` 那則在分岔當下的 id。
+    /// 兩者合起來判斷本幕前段是否仍等於來源幕（`scene::branches::origin`，vn-mode 包 6 §2.2）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keep: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cut: Option<String>,
 }
 
 /// 桌面有效狀態的投影入口（計畫 8.2）：卡片變數模式時 `tree` 換成初始化來源 stat_data 的投影，

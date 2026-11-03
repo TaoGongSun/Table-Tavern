@@ -25,6 +25,8 @@
   z-index: 3;
 }
 .vn-toolbar h1 {
+  flex: 0 1 auto;
+  min-width: 6em;
   margin: 0;
   font-size: var(--fs-title);
   white-space: nowrap;
@@ -166,6 +168,16 @@
   margin: 0;
   color: var(--danger);
   font-size: var(--fs-ui);
+}
+/* 過去的選項面板（包 6）：本分支選的那個框線加重，玩過的分支掛小標 */
+.vn-choice-current {
+  border-color: var(--vn-ink);
+  font-weight: 600;
+}
+.vn-choice-tag {
+  margin-left: 0.6rem;
+  font-size: var(--fs-ui);
+  opacity: 0.7;
 }
 
 .vn-dialogue {

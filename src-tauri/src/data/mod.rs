@@ -15,6 +15,7 @@ mod test_support;
 pub mod vn;
 pub mod vn_art;
 pub mod vn_playthrough;
+pub mod vn_progress;
 mod world;
 mod world_file;
 pub mod world_info_store;
@@ -59,6 +60,10 @@ pub use scene::{
 };
 #[cfg(test)]
 pub use scene::{begin_next_scene, fail_publish};
+pub use scene::{
+    choice_state, fork_before, origin, scene_high, story_previous, switch_scene, tip_of, Beat,
+    ChoiceState, Transcripts,
+};
 pub(crate) use scene::{
     fold_glyphs, glyph_equal, lang_key, match_present, match_present_with, name_matches,
     player_fallback_name, split_present_names,

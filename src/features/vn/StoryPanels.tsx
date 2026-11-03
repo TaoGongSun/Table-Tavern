@@ -22,7 +22,7 @@ export function useEndings(worldId: string, key: string) {
 
 export const reachedCount = (endings: VnEndings) => endings.endings.filter((ending) => ending.reached).length;
 
-function Panel({ label, children, onClose }: { label: string; children: React.ReactNode; onClose: () => void }) {
+export function Panel({ label, children, onClose }: { label: string; children: React.ReactNode; onClose: () => void }) {
   return (
     <div className="vn-story-panel" role="dialog" aria-label={label}>
       <p className="vn-chapter-heading">{label}</p>

@@ -1,4 +1,4 @@
-// VN 播放器的游標：斷格推進、打字機（40 字／秒）、auto、skip、結尾狀態（方案 §3）。
+// VN 播放器的游標：斷格推進、逐格回溯、打字機（40 字／秒）、auto、skip、結尾狀態（包 2 §3、包 6 §2.5）。
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { VnCell } from "../../shared/contracts/backend-contracts";
 import type { Snapshot } from "./useVnCells";
@@ -8,7 +8,9 @@ import {
   charLen,
   entryKey,
   isPlayable,
+  isTerminal,
   lastFormal,
+  liveChoice,
   realignCursor,
   type Cursor,
   type FlatCell,
@@ -31,6 +33,11 @@ export function useVnPlayback({
   tail,
   generating,
   scene,
+  entry,
+  resumeKey,
+  hold,
+  isRead,
+  paused,
 }: {
   cells: FlatCell[];
   lastEventKey: string | null;
@@ -38,6 +45,16 @@ export function useVnPlayback({
   scene: number | null;
   tail: boolean;
   generating: boolean;
+  /** 進新幕的指定位置（包 6）：key＝讀檔的那一格；null＝最後一格（選項點分岔、切換分支後直接回到面板） */
+  entry: { key: string | null } | null;
+  /** 這幕上次讀到的格（`vn-progress.json`），沒有指定位置時用 */
+  resumeKey: string | undefined;
+  /** 進度還沒讀回來：先不定位，免得落在預設位置後續讀位置來不及用 */
+  hold: boolean;
+  /** 這格讀過了沒（skip 只跳已讀，§2.6） */
+  isRead: (cell: FlatCell) => boolean;
+  /** 標題畫面或面板蓋著播放器：打字機、auto、skip、等下一格都先停，auto／skip 開關留著，收起後接著跑 */
+  paused: boolean;
 }) {
   const playable = useMemo(
     () => cells.filter((cell) => isPlayable(cell, lastEventKey)),
@@ -58,13 +75,21 @@ export function useVnPlayback({
   const effective = useMemo<Cursor | null>(() => {
     if (cursor && playable.some((cell) => cell.key === cursor.key)) return cursor;
     if (cursor === null) {
+      if (hold) return null;
+      const has = (key: string | null | undefined) => (key && playable.some((cell) => cell.key === key) ? key : null);
+      if (entry) {
+        const key = has(entry.key) ?? lastFormal(playable)?.key;
+        if (key) return { key, shown: entry.key === key ? 0 : Infinity };
+      }
+      const resumed = has(resumeKey);
+      if (resumed) return { key: resumed, shown: 0 };
       const key = entryKey(cells, playable);
       return key ? { key, shown: 0 } : null;
     }
     const last = lastFormal(playable);
     if (last) return { key: last.key, shown: Infinity };
     return playable[0] ? { key: playable[0].key, shown: 0 } : null;
-  }, [cursor, cells, playable]);
+  }, [cursor, cells, playable, entry, resumeKey, hold]);
   const effectiveRef = useRef(effective);
   effectiveRef.current = effective;
 
@@ -73,10 +98,13 @@ export function useVnPlayback({
   const next = playable[pos + 1];
   const text = current ? cellText(current.cell) : "";
   const full = charLen(text);
-  const instant = skip || reducedMotion();
+  // skip 只對已讀格全出：開 skip 時目前格未讀＝下面的 effect 關掉 skip、這格照常打字（不被 skip 變成已讀）
+  const currentRead = current !== undefined && isRead(current);
+  const instant = (skip && currentRead) || reducedMotion();
   const shown = instant ? full : Math.min(effective?.shown ?? 0, full);
   const typing = shown < full;
   const tailing = tail && current?.key === playable[playable.length - 1]?.key && current?.kind === "pending";
+  const live = useMemo(() => liveChoice(cells), [cells]);
 
   useEffect(() => {
     if (cursor === null && effective !== null) {
@@ -87,12 +115,12 @@ export function useVnPlayback({
 
   const key = current?.key;
   useEffect(() => {
-    if (!typing || !key) return;
+    if (paused || !typing || !key) return;
     const id = setInterval(() => {
       setCursor((c) => (c && c.key === key ? { key, shown: c.shown + 1 } : c));
     }, CHAR_MS);
     return () => clearInterval(id);
-  }, [key, typing]);
+  }, [key, typing, paused]);
 
   const advance = useCallback(() => {
     if (!current) return setWantNext(true);
@@ -101,26 +129,39 @@ export function useVnPlayback({
     setWantNext(true);
   }, [current, typing, next]);
 
+  /** 逐格回溯：純顯示，回到上一個可停格（字全出）；幕首就不動。停在終止格時對話框已顯示前一格的字，
+   *  再往前一格才看得出動了（實測：從選項面板按上一格第一下像沒反應） */
+  const behind = current && isTerminal(current.cell) && pos >= 2 && !isTerminal(playable[pos - 1].cell) ? 2 : 1;
+  const previous = pos >= behind ? playable[pos - behind] : pos > 0 ? playable[pos - 1] : undefined;
+  const back = useCallback(() => {
+    if (!previous) return;
+    setSkip(false);
+    setWantNext(false);
+    setCursor({ key: previous.key, shown: Infinity });
+  }, [previous]);
+
   // 游標還沒定位時第一格本身就是「下一格」，由上面的定位 effect 接手
   useEffect(() => {
-    if (wantNext && next && cursor !== null) {
+    if (!paused && wantNext && next && cursor !== null) {
       setCursor({ key: next.key, shown: 0 });
       setWantNext(false);
     }
-  }, [wantNext, next, cursor]);
+  }, [wantNext, next, cursor, paused]);
 
   useEffect(() => {
-    if (!auto || skip || typing || tailing || !next) return;
+    if (paused || !auto || skip || typing || tailing || !next) return;
     const id = setTimeout(() => setCursor({ key: next.key, shown: 0 }), autoDelay(text));
     return () => clearTimeout(id);
-  }, [auto, skip, typing, tailing, next, text]);
+  }, [paused, auto, skip, typing, tailing, next, text]);
 
+  // skip 只跳已讀（包 6 §2.6）：目前格或下一格未讀就停在目前格
+  const nextRead = next !== undefined && isRead(next);
   useEffect(() => {
-    if (!skip) return;
-    if (!next) return setSkip(false);
+    if (!skip || paused) return;
+    if (!currentRead || !next || !nextRead) return setSkip(false);
     const id = setTimeout(() => setCursor({ key: next.key, shown: Infinity }), SKIP_MS);
     return () => clearTimeout(id);
-  }, [skip, next]);
+  }, [skip, paused, next, currentRead, nextRead]);
 
   /** 暫定段落檔成正式事件：游標若停在那段裡，對位到正式格（與格的更新同一批） */
   const realign = useCallback((snapshot: Snapshot, eventKey: string, formal: VnCell[]) => {
@@ -134,8 +175,10 @@ export function useVnPlayback({
 
   let end: EndState = null;
   if (!typing && !next && !tailing) {
+    // 過去的選項格（已選）在這裡收尾＝玩家句還沒有回覆：照「繼續」；未選的選項播完夾在後面的角色線才出面板
+    const past = current?.cell.type === "choices" && Boolean(current.choice?.answered);
     if (generating) end = "waiting";
-    else end = (current && TERMINAL_END[current.cell.type]) || "continue";
+    else end = (current && !past && TERMINAL_END[current.cell.type]) || (live ? "choices" : "continue");
   }
 
   return {
@@ -148,6 +191,16 @@ export function useVnPlayback({
     end,
     playable,
     advance,
+    back,
+    /** 跳到這一格（同一幕讀檔） */
+    jump: (key: string) => {
+      setSkip(false);
+      setWantNext(false);
+      setCursor({ key, shown: 0 });
+    },
+    canBack: previous !== undefined,
+    /** 本幕還沒選的選項格 */
+    live,
     expectNext: () => setWantNext(true),
     auto,
     setAuto,

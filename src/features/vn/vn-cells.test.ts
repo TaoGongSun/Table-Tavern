@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import type { VnCell, VnEventCells } from "../../shared/contracts/backend-contracts";
 import {
   autoDelay,
+  cellHash,
   entryKey,
   flatten,
   isPlayable,
+  liveChoice,
   pendingCells,
   realignCursor,
   rerollError,
@@ -41,9 +43,9 @@ const ev = (id: string | null, kind: VnEventCells["kind"], cells: VnCell[]): VnE
 
 describe("flatten / playable / entry", () => {
   const events = [
-    ev("g1", "narration", [n("a"), choices("x", "y")]),
+    { ...ev("g1", "narration", [n("a"), choices("x", "y")]), choice: { answered: "x" } },
     ev("p1", "player", [n("x")]),
-    ev(null, "narration", [bg("Port"), n("b"), choices("p", "q")]),
+    { ...ev(null, "narration", [bg("Port"), n("b"), choices("p", "q")]), choice: { answered: null } },
   ];
   const cells = flatten(events);
 
@@ -51,14 +53,25 @@ describe("flatten / playable / entry", () => {
     expect(cells.map((cell) => cell.key)).toEqual(["g1#0", "g1#1", "p1#0", "@2#0", "@2#1", "@2#2"]);
   });
 
-  it("drops player cells, bg and consumed choices; keeps choices of the last event only", () => {
+  it("drops player cells and bg; stops at answered (past) choices and the open choice of the last event", () => {
     const playable = cells.filter((cell) => isPlayable(cell, "@2")).map((cell) => cell.key);
-    expect(playable).toEqual(["g1#0", "@2#1", "@2#2"]);
+    expect(playable).toEqual(["g1#0", "g1#1", "@2#1", "@2#2"]);
+    expect(liveChoice(cells)?.key).toBe("@2#2");
     const pending = pendingCells(3, [n("c"), choices("r", "s")]);
     expect(pending.map((cell) => [cell.key, isPlayable(cell, "@2")])).toEqual([
       ["pending:3#0", true],
       ["pending:3#1", false],
     ]);
+  });
+
+  it("an open choice followed by character lines waits for them; a superseded choice never stops", () => {
+    const later = flatten([
+      ev("g0", "narration", [choices("old", "older")]),
+      { ...ev("g1", "narration", [n("a"), choices("x", "y")]), choice: { answered: null } },
+      ev("c1", "dialogue", [d("c", "who?")]),
+    ]);
+    expect(later.filter((cell) => isPlayable(cell, "c1")).map((cell) => cell.key)).toEqual(["g1#0", "c1#0"]);
+    expect(liveChoice(later)?.key).toBe("g1#1");
   });
 
   it("enters at the first playable cell of the last non-player event", () => {
@@ -172,4 +185,13 @@ describe("autoDelay / rerollError", () => {
     ["VN_REROLL_UNAVAILABLE: not a VN table", "unavailable"],
     ["AI_INCOMPLETE_RESPONSE: VN_REROLL_FAILED:", null],
   ])("rerollError(%j)", (raw, code) => expect(rerollError(raw)).toBe(code));
+});
+
+describe("cellHash", () => {
+  it("is stable per content and tells apart speaker, kind and text", () => {
+    expect(cellHash(n("a"))).toBe(cellHash(n("a")));
+    expect(cellHash(n("a"))).toMatch(/^[0-9a-f]{16}$/);
+    const keys = new Set([n("a"), n("b"), d("x", "a"), d("y", "a"), choices("a", "b")].map(cellHash));
+    expect(keys.size).toBe(5);
+  });
 });

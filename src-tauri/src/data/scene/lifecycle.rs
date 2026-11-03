@@ -4,6 +4,7 @@ use super::super::message_vars;
 use super::super::state::{read_state, write_state, SceneLabel, WorldState};
 use super::super::state_commit::{with_commit, CommitTx};
 use super::super::{local_timestamp, DataResult};
+use super::branches::{scene_high, story_previous};
 use super::marker::EventMarker;
 use super::presence::settle_card_visibility;
 use super::transcript::{
@@ -18,17 +19,19 @@ pub fn scene_label(state: &WorldState, scene: u64) -> SceneLabel {
     state
         .scene_labels
         .get(&scene.to_string())
-        .copied()
+        .cloned()
         .unwrap_or(SceneLabel {
             base: scene,
             version: 1,
             parent: scene.checked_sub(1),
             forked: false,
             source: None,
+            keep: None,
+            cut: None,
         })
 }
 
-/// 算「某個 base 目前該排第幾個版本」：掃 0..=upto 每一幕的顯示 base，數出撞號的幕數再 +1。
+/// 算「某個 base 目前該排第幾個版本」：掃 0..=upto（幕號水位）每一幕的顯示 base，數出撞號的幕數再 +1。
 /// begin_next_scene 與 fork_scene 都靠它算新標籤，掃描範圍在插入新標籤之前的呼叫端已經固定。
 fn next_scene_version(state: &WorldState, upto: u64, base: u64) -> u32 {
     (0..=upto)
@@ -48,7 +51,8 @@ pub fn fork_scene(root: &Path, world_id: &str, from_scene: u64) -> DataResult<u6
 
 /// 發布順序（計畫 8.4）：①新幕逐字稿（事件 id 與表版本重新配發、來源幕有效 epoch 的表改成新幕 epoch）
 /// ②控制檔寫新幕種子 ③寫 current_scene。任一步失敗就停；新幕號仍是「目前幕＋1」，重試覆寫上次的殘留。
-/// `keep`＝只留來源幕前幾則（VN 從某一章重玩截幕首，包 5 §2.9）；截幕首可以從目前這幕分岔。
+/// `keep`＝只留來源幕前幾則（VN 從某一章重玩截幕首、選項點分岔截到玩家句前，包 5 §2.9、包 6 §2.3）；
+/// 截幕首可以從目前這幕分岔。來源只要已發布（不超過幕號水位、逐字稿非空）就收，不綁目前幕號（包 6 §2.1）。
 pub(super) fn fork_scene_tx(
     tx: &CommitTx<'_>,
     from_scene: u64,
@@ -57,7 +61,8 @@ pub(super) fn fork_scene_tx(
     let (root, world_id) = (tx.root, tx.world_id);
     message_vars::refuse_during_turn(tx)?;
     let mut state = read_state(root, world_id)?;
-    if from_scene > state.current_scene || (keep.is_none() && from_scene == state.current_scene) {
+    let high = scene_high(&state);
+    if from_scene > high || (keep.is_none() && from_scene == state.current_scene) {
         return Err(UiMsg::SceneForkNotEarlier.into_error());
     }
     let mut events = read_transcript(root, world_id, from_scene)?;
@@ -68,8 +73,11 @@ pub(super) fn fork_scene_tx(
         return Err(UiMsg::SceneNothingToContinue.into_error());
     }
 
+    // 截點：來源幕最後一則被複製的事件在分岔當下的 id（事件 id 下面會重發）
+    let copied = events.len();
+    let cut = events.last().and_then(|event| event.id.clone());
     let current_scene = state.current_scene;
-    let new_scene = current_scene + 1;
+    let new_scene = high + 1;
     let plan = message_vars::scene_seed_for_fork(tx, from_scene)?;
     // 角色卡隱藏（兩段提交）：先落地被離開那幕的快照與 pending_leave，再照來源幕快照改卡；
     // 改卡或後面任一步失敗，重試會沿用這份快照，不把改了一半的卡當成原值
@@ -111,7 +119,7 @@ pub(super) fn fork_scene_tx(
     }
 
     let base = scene_label(&state, from_scene).base;
-    let version = next_scene_version(&state, current_scene, base);
+    let version = next_scene_version(&state, high, base);
     state.scene_labels.insert(
         new_scene.to_string(),
         SceneLabel {
@@ -120,6 +128,8 @@ pub(super) fn fork_scene_tx(
             parent: Some(current_scene),
             forked: true,
             source: Some(from_scene),
+            keep: Some(copied as u32),
+            cut,
         },
     );
     state.current_scene = new_scene;
@@ -190,7 +200,8 @@ fn begin_next_scene_tx(
         snapshot
     });
     let old_scene = state.current_scene;
-    let next_scene = old_scene + 1;
+    let high = scene_high(&state);
+    let next_scene = high + 1;
     // 角色卡隱藏快照在結算前拍（跟 current_scene 同一次 write_state 落地），退回／分岔回這幕時照它寫回
     record_leaving_scene(root, world_id, &mut state)?;
     state.pending_leave = None;
@@ -234,7 +245,7 @@ fn begin_next_scene_tx(
             .insert(old_scene.to_string(), name.to_owned());
     }
     let base = scene_label(&state, old_scene).base + 1;
-    let version = next_scene_version(&state, old_scene, base);
+    let version = next_scene_version(&state, high, base);
     state.scene_labels.insert(
         next_scene.to_string(),
         SceneLabel {
@@ -243,6 +254,8 @@ fn begin_next_scene_tx(
             parent: Some(old_scene),
             forked: false,
             source: None,
+            keep: None,
+            cut: None,
         },
     );
     state.current_scene = next_scene;
@@ -288,6 +301,20 @@ fn revert_scene_tx(tx: &CommitTx<'_>) -> DataResult<u64> {
     // 逐字稿的追加都走短提交鎖：這裡判完到刪檔之間不會插進新的一句
     if read_transcript(root, world_id, scene)?.len() != 1 {
         return Err(UiMsg::SceneRewindHasNewContent.into_error());
+    }
+    // 切換分支之後才遇得到（包 6 §2.4）：父幕已換幕往下走過，退回去會長出第二個換幕子幕；
+    // 這幕被別幕當來源或分岔起點，刪了祖先鏈與源頭對應會指向不存在的幕
+    let others = || {
+        state
+            .scene_labels
+            .iter()
+            .filter(|(key, _)| **key != scene.to_string())
+    };
+    if others().any(|(_, label)| !label.forked && label.parent == Some(previous_scene)) {
+        return Err(UiMsg::SceneRewindNotTip.into_error());
+    }
+    if others().any(|(_, label)| label.source == Some(scene) || label.parent == Some(scene)) {
+        return Err(UiMsg::SceneRewindReferenced.into_error());
     }
     // 世界書計時：子幕的 pending 先結算（變數意圖寫在不分幕的層，檔刪了就撤不回）；結算失敗就整個不退
     super::super::world_info_store::settle_pending(root, world_id, scene)?;
@@ -381,17 +408,15 @@ fn replace_scene_summary_locked(
     Ok(())
 }
 
-/// 本幕之前、本分支最近一則開場事件（greeting-context-st-parity：換幕後 GM 的格式範例）。沿 `scene_label`
-/// 的 parent 往回找，開場被收回的幕就再往上一層。分岔幕複製了來源幕的事件，來源有開場＝分岔幕本身就有。
-/// parent 記的是分岔當下所在的幕（退回用），不是來源幕：從較早的非開場幕分岔、且當下那條線貼過不同開場白時，
-/// 範例會取到當下那條線的（罕見，只影響格式範例）。
+/// 本幕之前、本分支最近一則開場事件（greeting-context-st-parity：換幕後 GM 的格式範例）。沿劇情祖先鏈
+/// （分岔幕走來源幕、換幕來的走 parent）往回找，開場被收回的幕就再往上一層。
 pub fn branch_opening(
     root: &Path,
     world_id: &str,
     state: &WorldState,
     scene: u64,
 ) -> DataResult<Option<TranscriptEvent>> {
-    let mut next = scene_label(state, scene).parent;
+    let mut next = story_previous(state, scene);
     // parent 一定比本幕小（換幕、分岔都是往後開新幕），上限只防壞檔成環
     let mut budget = scene;
     while let Some(previous) = next {
@@ -402,7 +427,7 @@ pub fn branch_opening(
             break;
         }
         budget -= 1;
-        next = scene_label(state, previous).parent;
+        next = story_previous(state, previous);
     }
     Ok(None)
 }
@@ -434,7 +459,7 @@ pub mod fail_publish {
     pub fn arm() {
         ARMED.with(|armed| armed.set(true));
     }
-    pub(super) fn take() -> bool {
+    pub(in crate::data::scene) fn take() -> bool {
         ARMED.with(|armed| armed.replace(false))
     }
 }

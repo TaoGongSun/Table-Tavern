@@ -435,6 +435,18 @@ pub(crate) struct VnEventCells {
     /// 換幕摘要（前情提要）：播放器不播、只進 log
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub recap: bool,
+    /// 選項點（包 6 §2.2）：這則的選項格仍是選項點才有；被後來的選項取代（沒人選它）不帶
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub choice: Option<ChoiceMark>,
+    /// 這則在逐字稿裡的索引（系統事件不出格，所以和陣列位置不同）
+    #[serde(skip)]
+    pub index: usize,
+}
+
+/// 選項點的狀態：`answered`＝玩家選它的那句（還沒選＝None）
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct ChoiceMark {
+    pub answered: Option<String>,
 }
 
 /// 一幕事件逐則解析：GM 旁白照 GM 線、角色台詞照該角色線；玩家句原樣一格旁白；系統事件略過。
@@ -448,6 +460,7 @@ pub(crate) fn read_scene(
     let (bible, card) = file.map_or((None, None), |file| (file.bible, file.card));
     let roster = VnRoster::load(root, world_id, card.as_ref())?;
     let events = data::read_transcript(root, world_id, scene).map_err(|error| error.to_string())?;
+    let total = events.len();
     let start = events
         .first()
         .and_then(|event| event.state.as_ref())
@@ -460,7 +473,8 @@ pub(crate) fn read_scene(
         });
     let mut cells: Vec<VnEventCells> = events
         .into_iter()
-        .filter_map(|event| {
+        .enumerate()
+        .filter_map(|(index, event)| {
             let cells = match event.kind {
                 // 換幕摘要是摘要模型照原文整理的，可能照抄 `[chapter]`／`[ending]`／`[choices]`；
                 // 它沒經過提交時的驗證，終止格一律不算（包 5 實測）
@@ -500,9 +514,12 @@ pub(crate) fn read_scene(
                 event_id: event.id,
                 kind: event.kind,
                 cells,
+                choice: None,
+                index,
             })
         })
         .collect();
+    mark_choices(&mut cells, total);
     let start = start
         .as_ref()
         .map(|(place, time)| (place.as_str(), time.as_deref()));
@@ -512,6 +529,54 @@ pub(crate) fn read_scene(
         &roster.places,
     );
     Ok((cells, used))
+}
+
+/// 逐字稿每一則的選項邊界輸入：換幕摘要的選項格在上面已剝掉，不會算成選項點。
+pub(crate) fn beats(cells: &[VnEventCells], total: usize) -> Vec<data::Beat> {
+    let mut beats = vec![data::Beat::Other; total];
+    for event in cells {
+        beats[event.index] = match event.kind {
+            data::TranscriptKind::Player => data::Beat::Player,
+            data::TranscriptKind::Narration
+                if event
+                    .cells
+                    .iter()
+                    .any(|cell| matches!(cell, VnCell::Choices { .. })) =>
+            {
+                data::Beat::Choice
+            }
+            _ => data::Beat::Other,
+        };
+    }
+    beats
+}
+
+/// 每則選項事件照共用的選項邊界（`data::choice_state`）標上已選／未選；被取代的不標。
+fn mark_choices(cells: &mut [VnEventCells], total: usize) {
+    let beats = beats(cells, total);
+    let answer = |p: usize, cells: &[VnEventCells]| {
+        cells
+            .iter()
+            .find(|event| event.index == p)
+            .and_then(|event| event.cells.first())
+            .map(|cell| match cell {
+                VnCell::Narration { text } => text.clone(),
+                _ => String::new(),
+            })
+    };
+    for position in 0..cells.len() {
+        let k = cells[position].index;
+        if beats[k] != data::Beat::Choice {
+            continue;
+        }
+        cells[position].choice = match data::choice_state(&beats, k) {
+            data::ChoiceState::Live => Some(ChoiceMark { answered: None }),
+            data::ChoiceState::Answered(p) => Some(ChoiceMark {
+                answered: Some(answer(p, cells).unwrap_or_default()),
+            }),
+            data::ChoiceState::Superseded => None,
+        };
+    }
 }
 
 /// 落檔版：選項少於 2 個丟掉、多塊取最後一塊、指令每事件上限、終止優先序。

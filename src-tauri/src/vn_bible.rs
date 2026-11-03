@@ -276,13 +276,7 @@ pub(crate) fn endings_overview(root: &Path, world_id: &str) -> Result<EndingsOve
                 when: Vec::new(),
             }]
         });
-    let last = state
-        .scene_labels
-        .keys()
-        .filter_map(|key| key.parse::<u64>().ok())
-        .chain(std::iter::once(state.current_scene))
-        .max()
-        .unwrap_or_default();
+    let last = data::scene_high(&state);
     let mut reached = std::collections::BTreeSet::new();
     for scene in 0..=last {
         for event in data::read_transcript(root, world_id, scene).map_err(text)? {
@@ -517,7 +511,7 @@ pub(crate) fn revealed(
                 }
             }
         }
-        scene = data::scene_label(state, current).parent;
+        scene = data::story_previous(state, current);
     }
     Ok(ids
         .into_iter()

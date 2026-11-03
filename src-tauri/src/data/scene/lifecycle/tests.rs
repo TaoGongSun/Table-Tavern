@@ -477,13 +477,15 @@ fn fork_scene_copies_history_and_relabels_through_continue_and_revert() {
     let state = read_state(root.path(), &world_id).unwrap();
     assert_eq!(state.current_scene, 3);
     assert_eq!(
-        state.scene_labels.get("3").copied(),
+        state.scene_labels.get("3").cloned().map(bare),
         Some(SceneLabel {
             base: 0,
             version: 2,
             parent: Some(2),
             forked: true,
-            source: Some(0)
+            source: Some(0),
+            keep: None,
+            cut: None
         })
     );
 
@@ -519,13 +521,15 @@ fn fork_scene_copies_history_and_relabels_through_continue_and_revert() {
 
     let state = read_state(root.path(), &world_id).unwrap();
     assert_eq!(
-        state.scene_labels.get("4").copied(),
+        state.scene_labels.get("4").cloned().map(bare),
         Some(SceneLabel {
             base: 1,
             version: 2,
             parent: Some(3),
             forked: false,
-            source: None
+            source: None,
+            keep: None,
+            cut: None
         })
     );
     assert_eq!(
@@ -550,13 +554,15 @@ fn fork_scene_copies_history_and_relabels_through_continue_and_revert() {
     assert_eq!(forked_again, 4);
     let state = read_state(root.path(), &world_id).unwrap();
     assert_eq!(
-        state.scene_labels.get("4").copied(),
+        state.scene_labels.get("4").cloned().map(bare),
         Some(SceneLabel {
             base: 0,
             version: 3,
             parent: Some(3),
             forked: true,
-            source: Some(0)
+            source: Some(0),
+            keep: None,
+            cut: None
         })
     );
 }
@@ -631,7 +637,9 @@ fn scene_label_falls_back_to_original_line_for_unlabeled_scene() {
             version: 1,
             parent: Some(4),
             forked: false,
-            source: None
+            source: None,
+            keep: None,
+            cut: None
         }
     );
     // 幕 0 沒有前幕：fallback 的 parent 也要是 None，跟 revert_scene 的邊界檢查對得起來
@@ -642,7 +650,18 @@ fn scene_label_falls_back_to_original_line_for_unlabeled_scene() {
             version: 1,
             parent: None,
             forked: false,
-            source: None
+            source: None,
+            keep: None,
+            cut: None
         }
     );
+}
+
+/// 比對標籤時不看分岔截點（另有 branches 測試驗）
+fn bare(label: SceneLabel) -> SceneLabel {
+    SceneLabel {
+        keep: None,
+        cut: None,
+        ..label
+    }
 }

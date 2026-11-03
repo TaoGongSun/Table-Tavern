@@ -184,6 +184,22 @@ export function useSceneActions({
     });
   }
 
+  // VN 選項點分岔、切換分支（包 6 §2.3、§2.4）：分支動作提交後重進本桌，分階段回報（同 advanceVn）
+  async function vnBranch(run: () => Promise<unknown>): Promise<VnAdvance> {
+    const done = await runTableOp<VnAdvance>(async () => {
+      if (chat.isBusy()) return { stage: "failed", message: null };
+      onError("");
+      try {
+        await run();
+      } catch (reason) {
+        await reportSceneError(worldId, reason, onError);
+        return { stage: "failed", message: String(reason) };
+      }
+      return (await reenterWritable()) ? { stage: "entered" } : { stage: "committed" };
+    });
+    return done ?? { stage: "failed", message: null };
+  }
+
   // 太早按到換幕的補救：這一幕還只有那則前情提要時，刪掉它退回上一幕接著玩。
   // 前幕紀錄從來沒被動過（換幕只是開新檔），所以退回不會掉任何內容
   async function revertScene() {
@@ -267,6 +283,7 @@ export function useSceneActions({
     reenterVn,
     forkScene,
     replayChapter,
+    vnBranch,
     revertScene,
     regenerateSummary,
     exportTranscript,

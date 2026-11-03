@@ -8,15 +8,19 @@ import type { ChatController } from "../play/chat/useChatController";
 import type { VnAdvance } from "../play/scene/useSceneActions";
 import { ErrorNote } from "../../shared/ui/atoms";
 import { backendText } from "../../shared/ui/backend-text";
-import { IconHome, IconStop } from "../../shared/ui/icons";
-import { MoreMenu } from "../../shared/ui/MoreMenu";
 import { exportVnCard } from "./card/vn-card";
 import { Backlog } from "./Backlog";
 import { ChapterCardView } from "./ChapterCardView";
 import { EndingScreen } from "./EndingScreen";
-import { ChapterPanel, EndingsPanel } from "./StoryPanels";
+import { ChapterPanel, EndingsPanel, Panel } from "./StoryPanels";
+import { SavesPanel } from "./SavesPanel";
+import { TitleScreen } from "./TitleScreen";
+import { VnToolbar } from "./VnToolbar";
+import { useVnProgress } from "./useVnProgress";
 import { useChapterEnd } from "./useChapterEnd";
 import { ChoicePanel } from "./ChoicePanel";
+import { PastChoicePanel } from "./PastChoicePanel";
+import { useBranchOps, type VnEntry } from "./useBranchOps";
 import { DialogueBox } from "./DialogueBox";
 import { Stage } from "./Stage";
 import { FlagHints } from "./bible/FlagHints";
@@ -24,7 +28,7 @@ import { useVnCells } from "./useVnCells";
 import { useSprites } from "./useSprites";
 import { backdropKey, useBackgrounds } from "./useBackgrounds";
 import { useVnPlayback } from "./useVnPlayback";
-import { isTerminal, rerollError, stageAt } from "./vn-cells";
+import { cellHash, isTerminal, rerollError, stageAt } from "./vn-cells";
 import "./vn-player.css";
 
 const REROLL_MESSAGES: Record<string, MsgKey> = {
@@ -56,9 +60,12 @@ export function VnPlayer({
   onShowChat,
   onGoLobby,
   onReplayChapter,
+  onBranch,
   onEnterTable,
   flagHints,
   onFlagHints,
+  title,
+  onTitle,
 }: {
   worldId: string;
   scene: number;
@@ -81,12 +88,21 @@ export function VnPlayer({
   onGoLobby: () => void;
   /** 從某一章重玩（包 5 §2.9）：截幕首分岔後重進本桌 */
   onReplayChapter: (chapter: number) => Promise<void>;
+  /** 選項點分岔、切換分支（包 6 §2.3、§2.4）：跑完分支動作後重進本桌，分階段回報 */
+  onBranch: (run: () => Promise<unknown>) => Promise<VnAdvance>;
   /** 進另一張桌（開新周目建好後） */
   onEnterTable: (worldId: string) => void;
   /** 格邊旗標提示開關（app 設定，預設開） */
   flagHints: boolean;
   onFlagHints: (on: boolean) => void;
+  /** 標題畫面開著（從大廳進桌時，包 6 §2.8） */
+  title: boolean;
+  onTitle: (open: boolean) => void;
 }) {
+  const [logOpen, setLogOpen] = useState(false);
+  const [panel, setPanel] = useState<"endings" | "chapters" | "saves" | "settings" | null>(null);
+  // 標題畫面、面板、log 蓋著播放器時：游標不動、不登記已讀與位置、不觸發章末（收起後接著跑）
+  const paused = title || panel !== null || logOpen;
   const realignRef = useRef<ReturnType<typeof useVnPlayback>["realign"]>(() => {});
   const vn = useVnCells({
     worldId,
@@ -97,12 +113,21 @@ export function VnPlayer({
     onLanded: (...args) => realignRef.current(...args),
     onError,
   });
+  const progress = useVnProgress(worldId);
+  const [entry, setEntry] = useState<VnEntry | null>(null);
+  const { isRead: readKey } = progress;
+  const isRead = useCallback((cell: { cell: Parameters<typeof cellHash>[0] }) => readKey(cellHash(cell.cell)), [readKey]);
   const play = useVnPlayback({
     cells: vn.cells,
     lastEventKey: vn.lastEventKey,
     tail: vn.tail,
     generating: chat.generating !== null,
     scene: vn.formalScene,
+    entry: entry !== null && vn.formalScene !== entry.from ? entry : null,
+    resumeKey: vn.formalScene === null ? undefined : progress.positions[String(vn.formalScene)],
+    hold: !progress.loaded,
+    isRead,
+    paused,
   });
   realignRef.current = play.realign;
   const stage = useMemo(() => stageAt(vn.cells, play.flatIndex), [vn.cells, play.flatIndex]);
@@ -119,8 +144,7 @@ export function VnPlayer({
     if (backdrop) load(backdrop);
   }, [backdrop, load]);
   const backdropState = backdropId ? backgrounds.status[backdropId]?.state : undefined;
-  const [logOpen, setLogOpen] = useState(false);
-  const [panel, setPanel] = useState<"endings" | "chapters" | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [rerollMessage, setRerollMessage] = useState<string | null>(null);
 
   const lock = useRef(false);
@@ -202,11 +226,12 @@ export function VnPlayer({
   const startRef = useRef(endChapter);
   startRef.current = endChapter;
   useEffect(() => {
+    if (paused) return;
     const previous = landedKey.current;
     landedKey.current = play.current?.key;
     const moved = previous !== undefined && previous !== play.current?.key;
     if (moved && play.current?.cell.type === "chapter" && !skipRef.current) startRef.current(true);
-  }, [play.current]);
+  }, [play.current, paused]);
   // 重進後播放器換到新幕才開首拍（同一輪的聊天控制器還綁著舊幕）
   const { beginBeat } = chapter;
   useEffect(() => {
@@ -238,6 +263,73 @@ export function VnPlayer({
         onError(backendText(reason));
       }
     });
+  const branch = useBranchOps({
+    worldId,
+    formalScene: vn.formalScene,
+    live: play.live !== undefined,
+    onBranch,
+    onReenter,
+    runLocked,
+    submit: (option) => void startTurn(() => chat.submitText(option)),
+    setEntry,
+    jump: play.jump,
+    scene,
+  });
+  // 新幕的游標定位好就收回指定位置，之後換幕照一般進桌位置
+  const positioned = play.current !== undefined;
+  useEffect(() => {
+    if (entry !== null && vn.formalScene !== null && vn.formalScene !== entry.from && positioned) setEntry(null);
+  }, [entry, vn.formalScene, positioned]);
+  // 已讀與閱讀位置（§2.6）：正式格字全出才算讀過；skip 只停在已讀格上，不另擋
+  const { markRead, setPosition } = progress;
+  const readable = play.current && play.current.kind !== "pending" && !play.typing ? play.current : null;
+  useEffect(() => {
+    if (paused || !readable || vn.formalScene === null) return;
+    markRead(cellHash(readable.cell));
+    setPosition(vn.formalScene, readable.key);
+  }, [paused, readable, vn.formalScene, markRead, setPosition]);
+  const saveHere = (name: string) =>
+    runLocked(async () => {
+      const at = play.current;
+      if (!at?.eventKey) return;
+      setSaveError(null);
+      try {
+        await invoke("vn_save_create", { worldId, name, eventId: at.eventKey, cell: at.index });
+        await progress.reloadSaves();
+      } catch (reason) {
+        setSaveError(backendText(reason));
+      }
+    });
+  const deleteSave = (id: string) =>
+    runLocked(async () => {
+      if (!(await confirm(t("vnSaveDeleteConfirm"), { kind: "warning", okLabel: t("vnSaveDelete"), cancelLabel: t("dialogCancel") }))) return;
+      await invoke("vn_save_delete", { worldId, id }).catch((reason) => setSaveError(backendText(reason)));
+      await progress.reloadSaves();
+    });
+  const loadSave = async (id: string) => {
+    setPanel(null);
+    onTitle(false);
+    await branch.load(id);
+  };
+  // 標題「開始」：只有開場（還沒玩）＝繼續；玩過就從第 1 章重玩（原本的進度留在原分支）
+  const playedAny = scene > 0 || vn.cells.some((cell) => cell.kind === "player");
+  const startOver = async () => {
+    if (!playedAny) return onTitle(false);
+    if (!(await confirm(t("vnTitleRestartConfirm"), { kind: "info", okLabel: t("vnTitleStart"), cancelLabel: t("dialogCancel") }))) return;
+    onTitle(false);
+    await replay(1);
+  };
+  // 滾輪往上＝上一格（Ren'Py 慣例）；面板、log、可捲動的對話文字自己吃滾輪
+  const wheelAt = useRef(0);
+  const onWheel = (event: React.WheelEvent) => {
+    if (event.deltaY >= 0 || Date.now() - wheelAt.current < 250) return;
+    const target = event.target as Element;
+    if (target.closest(".vn-backlog, .vn-story-panel, .vn-ending-screen, .vn-chapter-card, .vn-title-screen")) return;
+    const text = target.closest(".vn-text");
+    if (text && text.scrollHeight > text.clientHeight) return;
+    wheelAt.current = Date.now();
+    play.back();
+  };
   const askNextChapter = async () => {
     if (await confirm(t("vnNextChapterConfirm"), { kind: "info", okLabel: t("vnNextChapter"), cancelLabel: t("dialogCancel") })) endChapter(true);
   };
@@ -250,7 +342,11 @@ export function VnPlayer({
 
   const actionsDisabled = locked || busy;
   const onTerminal = play.current && isTerminal(play.current.cell) ? play.current : null;
-  const choices = play.end === "choices" && onTerminal?.cell.type === "choices" ? onTerminal.cell : null;
+  const choices = play.end === "choices" && play.live?.cell.type === "choices" ? play.live.cell : null;
+  const past =
+    play.current?.cell.type === "choices" && play.current.choice?.answered && play.current.eventKey
+      ? { cell: play.current.cell, answered: play.current.choice.answered, eventId: play.current.eventKey }
+      : null;
   const ending = play.end === "ended" && onTerminal?.cell.type === "ending" ? onTerminal.cell : null;
   // 停在終止格（選項、章末、結局）時對話框留著前一格文字
   const shownCell = onTerminal ? play.playable[play.playable.indexOf(onTerminal) - 1] : play.current;
@@ -261,89 +357,48 @@ export function VnPlayer({
       ? current.hints
       : undefined;
   return (
-    <main className="vn-player">
-      <header className="vn-toolbar">
-        <button
-          type="button"
-          className="btn btn-ghost btn-icon"
-          aria-label={t("backToLobby")}
-          title={t("backToLobby")}
-          disabled={busy}
-          onClick={onGoLobby}
-        >
-          <IconHome />
-        </button>
-        <h1>{tableName}</h1>
-        <span className="toolbar-spacer" />
-        {chat.canStop && (
-          <button type="button" className="btn" onClick={chat.stopResponse}>
-            <IconStop />
-            {t("stopResponse")}
-          </button>
-        )}
-        <button
-          type="button"
-          className="btn btn-ghost"
-          aria-pressed={play.auto}
-          onClick={() => play.setAuto(!play.auto)}
-        >
-          {t("vnAuto")}
-        </button>
-        <button
-          type="button"
-          className="btn btn-ghost"
-          aria-pressed={skip}
-          onClick={() => setSkip(!skip)}
-        >
-          {t("vnSkip")}
-        </button>
-        {backdrop && (
-          <button
-            type="button"
-            className="btn btn-ghost"
-            disabled={backdropState === "queued" || backdropState === "running"}
-            onClick={() => void backgrounds.regenerate(backdrop).catch((reason) => onError(backendText(reason)))}
-          >
-            {t("vnBackgroundRegenerate")}
-          </button>
-        )}
-        <button
-          type="button"
-          className="btn btn-ghost"
-          aria-pressed={flagHints}
-          onClick={() => onFlagHints(!flagHints)}
-        >
-          {t("vnFlagHintsToggle")}
-        </button>
-        <button type="button" className="btn btn-ghost" onClick={() => setLogOpen(true)}>
-          {t("vnLog")}
-        </button>
-        <button
-          type="button"
-          className="btn btn-ghost"
-          disabled={actionsDisabled || ending !== null}
-          onClick={() => void askNextChapter()}
-        >
-          {t("vnNextChapter")}
-        </button>
-        <button type="button" className="btn btn-ghost" onClick={onShowChat}>
-          {t("vnShowChat")}
-        </button>
-        <MoreMenu
-          label={t("moreActions")}
-          disabled={busy}
-          items={[
-            { key: "endings", label: t("vnEndingsList"), onSelect: () => setPanel("endings") },
-            { key: "replay", label: t("vnReplayChapter"), onSelect: () => setPanel("chapters") },
-            {
-              key: "export-card",
-              label: t("vnCardExport"),
-              onSelect: () =>
-                void exportVnCard(worldId, tableName).catch((reason) => onError(backendText(reason))),
-            },
-          ]}
-        />
-      </header>
+    <main className="vn-player" onWheel={onWheel}>
+      <VnToolbar
+        tableName={tableName}
+        busy={busy}
+        actionsDisabled={actionsDisabled}
+        ended={ending !== null}
+        canStop={chat.canStop}
+        onStop={chat.stopResponse}
+        auto={play.auto}
+        onAuto={() => play.setAuto(!play.auto)}
+        skip={skip}
+        onSkip={() => setSkip(!skip)}
+        canBack={play.canBack}
+        onBack={play.back}
+        onLog={() => setLogOpen(true)}
+        onSaves={() => {
+          setSaveError(null);
+          setPanel("saves");
+        }}
+        onNextChapter={() => void askNextChapter()}
+        onShowChat={onShowChat}
+        onTitle={() => onTitle(true)}
+        more={[
+          ...(backdrop
+            ? [
+                {
+                  key: "background",
+                  label: t("vnBackgroundRegenerate"),
+                  disabled: backdropState === "queued" || backdropState === "running",
+                  onSelect: () => void backgrounds.regenerate(backdrop).catch((reason) => onError(backendText(reason))),
+                },
+              ]
+            : []),
+          { key: "endings", label: t("vnEndingsList"), onSelect: () => setPanel("endings") },
+          { key: "replay", label: t("vnReplayChapter"), onSelect: () => setPanel("chapters") },
+          {
+            key: "export-card",
+            label: t("vnCardExport"),
+            onSelect: () => void exportVnCard(worldId, tableName).catch((reason) => onError(backendText(reason))),
+          },
+        ]}
+      />
       {error && (
         <ErrorNote text={error} transport={transport} onAdvanceScene={() => endChapter(false)} />
       )}
@@ -362,8 +417,28 @@ export function VnPlayer({
             disabled={actionsDisabled}
             error={rerollMessage}
             onChoose={(option) => void startTurn(() => chat.submitText(option))}
-            onReroll={() => void reroll()}
+            onReroll={play.live?.eventKey === vn.lastEventKey ? () => void reroll() : undefined}
           />
+        )}
+        {past && (
+          <PastChoicePanel
+            worldId={worldId}
+            eventId={past.eventId}
+            options={past.cell.options}
+            answered={past.answered}
+            disabled={actionsDisabled}
+            onCurrent={advance}
+            onSwitch={(tip) => void branch.switchTo(tip)}
+            onFork={(option) => void branch.forkAt(past.eventId, option)}
+          />
+        )}
+        {branch.reenter !== null && (
+          <p className="vn-choice-error" role="alert">
+            {t("vnBranchReenterFailed")}{" "}
+            <button type="button" className="btn" disabled={actionsDisabled} onClick={() => void branch.retry()}>
+              {t("vnBranchReenterRetry")}
+            </button>
+          </p>
         )}
         {play.end === "chapter" && !chapter.card && (
           <button
@@ -409,8 +484,43 @@ export function VnPlayer({
           onReplay={() => setPanel("chapters")}
           onNewPlaythrough={() => void newPlaythrough()}
           onEndings={() => setPanel("endings")}
-          onGoLobby={onGoLobby}
+          onTitle={() => onTitle(true)}
         />
+      )}
+      {title && !panel && (
+        <TitleScreen
+          worldId={worldId}
+          tableName={tableName}
+          backdrop={(backdropId && backgrounds.images[backdropId]?.src) || undefined}
+          disabled={actionsDisabled}
+          onStart={() => void startOver()}
+          onContinue={() => onTitle(false)}
+          onLoad={() => setPanel("saves")}
+          onEndings={() => setPanel("endings")}
+          onSettings={() => setPanel("settings")}
+          onLobby={onGoLobby}
+        />
+      )}
+      {panel === "saves" && (
+        <SavesPanel
+          saves={progress.saves}
+          defaultName={t("vnSaveDefaultName", { n: chapterNow })}
+          canSave={!title && play.current?.kind !== "pending" && Boolean(play.current?.eventKey)}
+          disabled={actionsDisabled}
+          error={saveError}
+          onSave={(name) => void saveHere(name)}
+          onLoad={(id) => void loadSave(id)}
+          onDelete={(id) => void deleteSave(id)}
+          onClose={() => setPanel(null)}
+        />
+      )}
+      {panel === "settings" && (
+        <Panel label={t("vnTitleSettings")} onClose={() => setPanel(null)}>
+          <label className="vn-setting">
+            <input type="checkbox" checked={flagHints} onChange={(event) => onFlagHints(event.target.checked)} />
+            {t("vnFlagHintsToggle")}
+          </label>
+        </Panel>
       )}
       {panel === "endings" && <EndingsPanel worldId={worldId} onClose={() => setPanel(null)} />}
       {panel === "chapters" && (

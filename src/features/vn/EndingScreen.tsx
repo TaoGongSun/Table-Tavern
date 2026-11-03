@@ -1,4 +1,4 @@
-// 完結畫面（vn-mode 包 5 §2.7）：「完」、結局標題、已達成 x／y；從某一章重玩、開新周目、結局一覽、回大廳。
+// 完結畫面（vn-mode 包 5 §2.7、包 6 §2.8）：「完」、結局標題、已達成 x／y；從某一章重玩、開新周目、結局一覽、回標題。
 import { t } from "../../i18n";
 import { reachedCount, useEndings } from "./StoryPanels";
 import "./vn-story.css";
@@ -10,7 +10,7 @@ export function EndingScreen({
   onReplay,
   onNewPlaythrough,
   onEndings,
-  onGoLobby,
+  onTitle,
 }: {
   worldId: string;
   endingId: string;
@@ -18,7 +18,7 @@ export function EndingScreen({
   onReplay: () => void;
   onNewPlaythrough: () => void;
   onEndings: () => void;
-  onGoLobby: () => void;
+  onTitle: () => void;
 }) {
   const endings = useEndings(worldId, endingId);
   const title = endings?.endings.find((ending) => ending.id === endingId)?.title;
@@ -41,8 +41,8 @@ export function EndingScreen({
         <button type="button" className="btn" onClick={onEndings}>
           {t("vnEndingsList")}
         </button>
-        <button type="button" className="btn" onClick={onGoLobby}>
-          {t("backToLobby")}
+        <button type="button" className="btn" onClick={onTitle}>
+          {t("vnBackToTitle")}
         </button>
       </div>
     </div>

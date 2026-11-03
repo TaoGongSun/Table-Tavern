@@ -142,6 +142,12 @@ pub enum UiMsg {
     SceneNothingToContinue,
     SceneFirstNoPrevious,
     SceneRewindHasNewContent,
+    /// 退幕的父幕已換幕往下走過（切換分支後才遇得到）：退回去會長出第二條換幕線
+    SceneRewindNotTip,
+    /// 這一幕被別幕當分岔來源或分岔起點：刪了那些幕的來歷會斷
+    SceneRewindReferenced,
+    /// 送出時的幕已不是目前幕（分岔、切換、讀檔後畫面還沒換手）；什麼都沒寫
+    SceneStale,
     SummaryFirstScene,
     SummaryContinuedScene,
     SummaryHasNewContent,
@@ -157,6 +163,20 @@ pub enum UiMsg {
     /// VN 從某一章重玩：目前這條劇情線上找不到那一章的開頭
     VnReplayNoChapter {
         chapter: u32,
+    },
+    /// VN 切換分支：目標不是可接著玩的分支尾端（已換幕往下走過、不存在或就是目前這幕）
+    VnBranchNotTip,
+    /// VN 選項點分岔：找不到那則選項，或那組選項還沒選過（直接選就好，不必分岔）
+    VnChoiceNotPast,
+    /// VN 讀檔：存檔指的幕、事件或格已經不在（聊天視圖收回、退幕或改寫過）
+    VnSaveStale,
+    /// VN 存檔：槽位已滿
+    VnSavesFull {
+        cap: u32,
+    },
+    /// VN 存檔：名稱空白或太長
+    VnSaveNameInvalid {
+        max: u32,
     },
     /// 介面接管桌只走 GM 敘事線：角色回合一律拒收，不寫樓、不打模型、不扣容量
     InterfaceTableGmOnly,

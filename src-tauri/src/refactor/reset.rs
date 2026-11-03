@@ -42,12 +42,12 @@ pub(crate) fn refactored(
     Ok(state.refactor_mode.is_some() || data::read_refactor_outcome(root, world_id)?.is_some())
 }
 
-/// 已遊玩〔作者裁決 2026-10-11〕：換過幕、第 0 幕有開場白以外的事件（舊紀錄沒有 opening 欄位的照算）、
+/// 已遊玩〔作者裁決 2026-10-11〕：換過幕或分岔過（看幕號水位，切回第 0 幕也算）、第 0 幕有開場白以外的事件（舊紀錄沒有 opening 欄位的照算）、
 /// 有生成中或已提交還沒落檔的 GM 回覆（含中止的半截），或是網頁存檔匯入的桌（天生有遊玩紀錄〔作者裁決 2026-10-12〕）。
 /// 生成中的回合也算：在途回合即將成為遊玩紀錄；失敗或沒有正文就中止的回合會解除，不會一直擋著。
 /// 已遊玩的桌一律不能重構，請玩家開新桌。
 pub(crate) fn played(root: &Path, world_id: &str, state: &data::WorldState) -> DataResult<bool> {
-    if state.current_scene > 0 || data::web_save_sidecar_path(root, world_id)?.exists() {
+    if data::scene_high(state) > 0 || data::web_save_sidecar_path(root, world_id)?.exists() {
         return Ok(true);
     }
     if data::read_transcript(root, world_id, 0)?

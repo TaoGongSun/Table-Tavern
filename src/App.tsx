@@ -158,6 +158,8 @@ function App() {
   const [genTableOpen, setGenTableOpen] = useState(false);
   // VN 桌進桌先看播放器；false＝聊天視圖（聊天桌一律 false）
   const [vnView, setVnView] = useState(false);
+  // VN 標題畫面（包 6 §2.8）：只在從大廳進 VN 桌時出；換幕、分岔、讀檔等重進本桌不出
+  const [vnTitle, setVnTitle] = useState(false);
   // 桌型（開桌定死）：送出走 VN 推進迴圈；與 vnView（目前看哪個視圖）分開
   const [vnTable, setVnTable] = useState(false);
   const [vnWizard, setVnWizard] = useState<VnWizardStart | null>(null);
@@ -676,12 +678,13 @@ function App() {
   // 那時 create_world 之類的副作用已經發生，取消就會留下半張桌。
   // 大廳沒有編輯畫面，大廳專屬的入口不必問。
 
-  // 從大廳進桌
-  function switchTable(id: string) {
+  // 從大廳進桌（title＝VN 桌先到標題畫面；開新周目建好直接開演）
+  function switchTable(id: string, title = true) {
     return runTableOp(async () => {
       if (!config || chat.busy) return;
       setError("");
       try {
+        setVnTitle(title);
         await enterTable(id);
         setWorlds(await invoke<WorldMeta[]>("list_worlds"));
       } catch (reason) {
@@ -711,6 +714,7 @@ function App() {
         }
       }
       blankSurface(leaving);
+      setVnTitle(false);
       setTable("");
       setGate("play");
       setReadOnlyNotice(null);
@@ -1090,7 +1094,10 @@ function App() {
           onShowChat={() => setVnView(false)}
           onGoLobby={() => void goLobby()}
           onReplayChapter={sceneActions.replayChapter}
-          onEnterTable={(id) => void switchTable(id)}
+          onBranch={sceneActions.vnBranch}
+          onEnterTable={(id) => void switchTable(id, false)}
+          title={vnTitle}
+          onTitle={setVnTitle}
           flagHints={config.preferences["vn_flag_hints"] !== false}
           onFlagHints={(on) => void changePreference("vn_flag_hints", on)}
         />
