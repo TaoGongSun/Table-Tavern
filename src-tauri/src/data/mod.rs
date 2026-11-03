@@ -50,9 +50,9 @@ pub use scene::{
     append_within_turn, begin_next_scene, branch_opening, discard_unanswered_player,
     export_scene_markdown, export_transcript_markdown, fork_scene, opening_checkpoint,
     pop_transcript_floor, read_transcript, remove_transcript_event, replace_scene_summary,
-    restore_transcript_events, revert_scene, scene_label, set_last_transcript_state,
-    settle_pending_turn, sync_scene_state_tree, write_imported_scene, ImportedEvent, ImportedScene,
-    TranscriptEvent, TranscriptKind,
+    replace_transcript_text, restore_transcript_events, revert_scene, scene_label,
+    set_last_transcript_state, settle_pending_turn, sync_scene_state_tree, write_imported_scene,
+    ImportedEvent, ImportedScene, TranscriptEvent, TranscriptKind,
 };
 pub(crate) use scene::{
     fold_glyphs, glyph_equal, lang_key, match_present, match_present_with, name_matches,

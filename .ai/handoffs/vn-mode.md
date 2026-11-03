@@ -15,8 +15,10 @@
 - 熱點行數：`src/App.tsx` 1091→1132、`useImportController.ts` 729→771、`GenerateTableDialog.tsx` 357→368、`Lobby.tsx` 117→129；新檔 VnWizard 114、VnTableView 42。
 
 ## 下一步
-- 開包 1（大案：方案審＋驗收）：劇本格式解析、退旁白、GM／角色 VN 導演指示、推進迴圈接 `[choices]` 停點、換一組。方案先定死三件事（總綱 §11）：格的穩定識別（事件 ULID＋格序）、分支識別（幕號＋`scene_labels`）、同一拍多個終止標記的優先序 `[ending]` > `[chapter]` > `[choices]`。`useChatController.ts` 905 行是推進迴圈熱點，接力邏輯抽出時順手搬。
-- 整案結案才進 main：分支歷史整理成一包一筆（包 0 目前五筆：立案、施工兩筆、驗收修正、收尾，壓成一筆；子代理的兩筆署名是 Opus 5.5，壓縮時統一署名）。
+- 包 1（大案，核心估 400）2026-11-01 完成，在分支 `vn-mode`（commit 5c5dfed3＋7446b5dd）：方案 [plans/vn-mode-pkg1.md](../plans/vn-mode-pkg1.md)（Sol 方案審 2 輪、驗收 2 輪皆 PASS，串 01a19506）。落地：`chat_turn/vn_script.rs`（解析器、角色線過濾、終止優先序與 `pkg1_accepted`、串流入口 `parse_text`、`replace_choices`）、`chat_turn/vn_reroll.rs`（換一組：在途互斥＋閘門內重驗）、`transport/vn_format.rs`（GM／角色規範、導演指示、`vn_assigned_line`、收尾句）、`commands/vn.rs`（`read_vn_cells`、`parse_vn_text`、`vn_reroll_choices`）、`GmTurnFormat::VnScript`、`gm_stop`（next None＋`vn_stop`）、`ReplyEcho::VnDialogue`、VN 桌角色線 own prefix 空字串且歷史不加前綴、前端 `advanceFrom`（VN 送出走推進迴圈）。實作核心淨約 1064 行（程式行約 930，估的 2.3 倍，原因見 process-log）、測試約 750；verify 13 步綠。
+- 包 1 已知限制：聊天視圖看 VN 桌會看到原始標記；名單外名字沒加括號的「X：台詞」算旁白；`[bg]` 與圍欄 place 以指示要求一致、不強制；改名後舊對白對不到 id；有介面殼的卡匯進 VN 桌仍被 `reject_character_turn_on_takeover` 擋角色回合；換一組錯誤碼（`VN_REROLL_BUSY`／`STALE`／`FAILED`／`UNAVAILABLE`）未進 i18n，包 2 接按鈕時補；`[chapter]`／`[ending]` 寫法未進給模型的規範（包 5）。
+- **開包 2**（大案，核心估 600；方案審＋驗收，測試通道實測）：VN 播放器——舞台（站位、底部對齊、說話者亮、呼吸微動）、對話框、打字機、斷格推進、auto／skip／log、選項鈕與「繼續」「換一組」、1 套主題；消費包 1 的 `read_vn_cells`／`parse_vn_text`（串流暫定格、正式化時游標以已顯示文字長度對位，見包 1 方案 §2）與 `vn_reroll_choices`；取代包 0 的 `VnTableView` 佔位視圖並解掉包 0 已知限制 (a)(b)(d)。順序之後：7 → 3 → 4 → 9 → 5 → 6 → 8。
+- 整案結案才進 main：分支歷史整理成一包一筆（以 commit 訊息前綴「包 N」分包，含立案、方案、施工、驗收修正、收尾各筆，各壓成一筆；子代理 commit 署名是 Opus 5.5，壓縮時統一）。
 
 ## 立案摘要〔作者裁決 2026-08-07〕
 VN 做在本專案內：內核即現有引擎（GM 發言權分配＝劇本推進、自動上下場＝立繪進退場、換幕＝背景切換、scene-fork＝分支、收回＝回溯），VN 是同一引擎的另一種桌型。對 ST 的差異化：任何普通角色卡都能用 VN 方式玩，多角色進退場是引擎原生。

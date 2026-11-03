@@ -72,6 +72,7 @@ function Harness({ world }: { world: string }) {
     config: null,
     speaker: "gm",
     gmTargeted: true,
+    vnTable: false,
     metaOf: () => undefined,
     playerName: undefined,
     castCount: 0,

@@ -31,18 +31,33 @@ use std::collections::{BTreeMap, BTreeSet};
 fn gm_turn_format_follows_shell_and_mode() {
     use GmTurnFormat::*;
     // 沒重構過的卡（含 MVU 桌：開了增量但沒有骨架）照卡片格式
-    assert_eq!(gm_turn_format(true, false, None), CardFormat);
-    assert_eq!(gm_turn_format(true, false, Some("interface")), CardFormat);
+    assert_eq!(gm_turn_format(false, true, false, None), CardFormat);
+    assert_eq!(
+        gm_turn_format(false, true, false, Some("interface")),
+        CardFormat
+    );
     // 有骨架＝App 接管，不管卡有沒有顯示腳本
     assert_eq!(
-        gm_turn_format(true, true, Some("interface")),
+        gm_turn_format(false, true, true, Some("interface")),
         InterfaceTakeover
     );
-    assert_eq!(gm_turn_format(false, true, None), InterfaceTakeover);
+    assert_eq!(gm_turn_format(false, false, true, None), InterfaceTakeover);
     // 角色優先桌、卡片沒有顯示腳本都走一般旁白
-    assert_eq!(gm_turn_format(true, true, Some("characters")), Narration);
-    assert_eq!(gm_turn_format(true, false, Some("characters")), Narration);
-    assert_eq!(gm_turn_format(false, false, None), Narration);
+    assert_eq!(
+        gm_turn_format(false, true, true, Some("characters")),
+        Narration
+    );
+    assert_eq!(
+        gm_turn_format(false, true, false, Some("characters")),
+        Narration
+    );
+    assert_eq!(gm_turn_format(false, false, false, None), Narration);
+    // VN 桌一律 VN 劇本，卡片格式、接管、玩法標記都不看
+    assert_eq!(gm_turn_format(true, true, false, None), VnScript);
+    assert_eq!(
+        gm_turn_format(true, false, true, Some("characters")),
+        VnScript
+    );
 }
 
 /// 接管指示要 UpdateVariable、不要 state 圍欄；只走 GM 敘事線：不點名、名單角色由 GM 演

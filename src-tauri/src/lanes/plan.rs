@@ -220,7 +220,9 @@ pub(super) fn plan_turn(
     // 未抹線（claude 單角色）：先判換人、換模式，緊接著判 StateBlockGone，不能被「同一人續用」短路
     if let Some(owner) = &state.unerased_owner {
         let speaker = match &input.echo {
-            ReplyEcho::Dialogue { speaker_id, .. } => Some(speaker_id.as_str()),
+            ReplyEcho::Dialogue { speaker_id, .. } | ReplyEcho::VnDialogue { speaker_id } => {
+                Some(speaker_id.as_str())
+            }
             ReplyEcho::Narration => None,
         };
         if speaker != Some(owner.as_str()) {
@@ -308,6 +310,11 @@ pub(super) fn expected_reply_for(echo: &ReplyEcho, reply: &str) -> ExpectedReply
             speaker_id: speaker_id.clone(),
             kind: TranscriptKind::Dialogue,
             text: transport::finish_character_reply(reply, prefix, false).text,
+        },
+        ReplyEcho::VnDialogue { speaker_id } => ExpectedReply {
+            speaker_id: speaker_id.clone(),
+            kind: TranscriptKind::Dialogue,
+            text: crate::chat_turn::finish_vn_character_reply(reply, false).text,
         },
         // 前端落 transcript 的是剝掉狀態欄與「下一位」點名行的顯示文字（gm_narrate 的行為）。
         // 刻意不做顯示層剝除（strip_state_echo、strip_narrator_label）：剝過的回合對不上→下一輪

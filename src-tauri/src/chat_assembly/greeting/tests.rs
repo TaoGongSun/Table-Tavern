@@ -117,7 +117,16 @@ fn gm_turn(root: &std::path::Path, world_id: &str) -> (String, String, String, S
     let (lane_system, turn) = gm_lane_parts(&materials, &scan, &scope, &joined, LANG);
     let side = lanes::lane_side(Lane::Gm, materials.opening.raw_history);
     let regex = &materials.prompt_regex;
-    let prompt = lanes::build_prompt_as(&materials.events, 0, &turn.tail, true, side, LANG, regex);
+    let prompt = lanes::build_prompt_as(
+        &materials.events,
+        0,
+        &turn.tail,
+        true,
+        side,
+        LANG,
+        regex,
+        false,
+    );
     let all = api
         .iter()
         .map(|message| message.content.as_str())
@@ -143,7 +152,16 @@ fn gm_sees_raw_opening_and_cards_lose_greetings() {
     // 角色線照 text：狀態欄不回來
     let side = lanes::lane_side(Lane::Chars, false);
     let events = data::read_transcript(&root.0, &world_id, 0).unwrap();
-    let chars = lanes::build_prompt_as(&events, 0, "尾段", true, side, LANG, &Default::default());
+    let chars = lanes::build_prompt_as(
+        &events,
+        0,
+        "尾段",
+        true,
+        side,
+        LANG,
+        &Default::default(),
+        false,
+    );
     assert!(chars.contains("風雪拍打著城門") && !chars.contains("<details>"));
     // 對照：關鍵字真的出現在對話裡就觸發，證明上面不是條目壞了
     data::append_transcript(&root.0, &world_id, 0, &player(&format!("我問起{SECRET}。"))).unwrap();

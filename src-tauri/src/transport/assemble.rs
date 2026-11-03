@@ -14,7 +14,7 @@ use super::worldbook::section_body;
 use super::state_view::{gm_dynamic_block, StateScope};
 
 use super::arrivals::{render_for_prompt, Side};
-use super::turns::{chars_lane_system, chars_lane_turn, Hoist};
+use super::turns::{chars_lane_system, chars_lane_turn_with, Hoist};
 
 /// 共線組裝（api-shared-lane 包 B）：claude 以外的四條路共用一份**與「這輪是誰」無關**的前綴。
 /// system 走 `chars_lane_system`（扮演引擎前言＋全部公開角色卡），歷史裡所有角色台詞一律
@@ -31,6 +31,7 @@ use super::turns::{chars_lane_system, chars_lane_turn, Hoist};
 ///
 /// API 無狀態，上一輪注入的私設不會出現在下一輪的 messages 裡，
 /// 不需要 claude lane 那套「回合後從 session 檔抹掉」。
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 pub fn assemble_shared_messages(
     card: &CharacterCard,
@@ -44,15 +45,38 @@ pub fn assemble_shared_messages(
     lang: &str,
     regex: &PromptRegex,
 ) -> Vec<ChatMessage> {
+    assemble_shared_messages_with(
+        card, cards, player, events, scan, state, mechanism, branch, lang, regex, false,
+    )
+}
+
+/// `assemble_shared_messages`；`vn`＝VN 桌（台詞不加名字前綴、system 附 VN 角色規範）。
+#[allow(clippy::too_many_arguments)]
+pub fn assemble_shared_messages_with(
+    card: &CharacterCard,
+    cards: &[CharacterCard],
+    player: Option<&CharacterCard>,
+    events: &[TranscriptEvent],
+    scan: &WorldScan,
+    state: &TableState,
+    mechanism: &Mechanism,
+    branch: Option<&[String]>,
+    lang: &str,
+    regex: &PromptRegex,
+    vn: bool,
+) -> Vec<ChatMessage> {
     let mut system = chars_lane_system(cards, player, scan, lang);
     // 單人＝發言角色只有一位（舞台卡不算，與 lane 的 sole_present、用量的 solo 同一判定）
     let hoist = match cards.iter().filter(|card| !card.stage).count() <= 1 {
         true => Hoist::StableConfidential,
         false => Hoist::None,
     };
-    let turn = chars_lane_turn(
-        card, cards, player, scan, state, mechanism, branch, lang, hoist,
+    let turn = chars_lane_turn_with(
+        card, cards, player, scan, state, mechanism, branch, lang, hoist, vn,
     );
+    if vn {
+        system.push_str(&super::vn_format::vn_character_rules(lang));
+    }
     if let Some(private) = &turn.hoisted_private {
         system.push('\n');
         system.push_str(private);
@@ -65,6 +89,8 @@ pub fn assemble_shared_messages(
         let text = &event.text;
         // 台詞一律 assistant＋名字前綴：對白對誰都是同一則，前綴才穩得住
         let (role, line) = match event.kind {
+            // VN 桌的台詞本文已自帶「名字 (表情):」
+            TranscriptKind::Dialogue if vn => ("assistant", text.clone()),
             TranscriptKind::Dialogue => (
                 "assistant",
                 format!("{}{text}", speaker_prefix(&event.speaker_name, lang)),
@@ -104,6 +130,7 @@ pub fn assemble_gm_messages_with(
     takeover: bool,
     opening: &GmOpening,
     regex: &PromptRegex,
+    vn: bool,
 ) -> Vec<ChatMessage> {
     let user_name = player
         .map(|player| player.name.as_str())
@@ -126,6 +153,7 @@ pub fn assemble_gm_messages_with(
     for event in &rendered {
         let (role, line) = match event.kind {
             TranscriptKind::Narration => ("assistant", event.text.clone()),
+            TranscriptKind::Dialogue if vn => ("user", event.text.clone()),
             TranscriptKind::Dialogue | TranscriptKind::Player => (
                 "user",
                 format!(

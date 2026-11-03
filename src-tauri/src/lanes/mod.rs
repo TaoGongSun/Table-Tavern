@@ -168,6 +168,8 @@ pub(crate) enum ReplyEcho {
     /// 角色台詞：事件原文＝剝掉本輪 `speaker_prefix`（`prefix`）後的回覆，見 transport::finish_character_reply。
     /// 前綴另傳、不從 `TurnInput.prefix` 反推：Agy 那欄是 None，但模型照樣會自加前綴
     Dialogue { speaker_id: String, prefix: String },
+    /// VN 桌的角色台詞：不剝前綴，控制區塊與角色線過濾見 `chat_turn::finish_vn_character_reply`
+    VnDialogue { speaker_id: String },
     /// GM 旁白：事件原文＝剝掉狀態欄與「下一位」點名行後的顯示文字
     Narration,
 }
@@ -209,6 +211,8 @@ pub(crate) struct TurnInput<'a> {
     pub capacity: Option<crate::world_scan::Budget>,
     /// 卡片 promptOnly 正則（`chat_assembly::prompt_regex`）：本輪新送的事件本文先套
     pub prompt_regex: transport::PromptRegex,
+    /// VN 桌：歷史裡的角色台詞不加名字前綴（`transport::lane_line`）
+    pub vn: bool,
 }
 
 /// 歷史裡累積的舊尾段世界書（tail-worldbook-erase）：舊尾段先留著吃歷史快取，累積到門檻才整線重開壓平。
@@ -608,6 +612,7 @@ pub(crate) async fn run_turn(
             side,
             input.lang,
             &input.prompt_regex,
+            input.vn,
         );
         // 換幕容量的估計校正（計畫 §3.5）：只有重開全量那次「送出的就是整段」，估計與實報才配得上；
         // agy 量的是 bytes，不需要 token 校正；codex 開線的實報含它自帶約 11k 的指示與工具定義，配不上
@@ -666,7 +671,7 @@ pub(crate) async fn run_turn(
         // 本輪角色自加的「名字：」不進畫面；每次 attempt 新建，續聊失敗重開不帶上一試的扣留
         let mut stream = transport::OwnPrefixStream::new(match &input.echo {
             ReplyEcho::Dialogue { prefix, .. } => prefix,
-            ReplyEcho::Narration => "",
+            ReplyEcho::VnDialogue { .. } | ReplyEcho::Narration => "",
         });
         let mut filtered = |delta: &str| {
             let out = stream.push(delta);
@@ -759,6 +764,9 @@ pub(crate) async fn run_turn(
                 let cleaned = match &input.echo {
                     ReplyEcho::Dialogue { prefix, .. } => {
                         Some(transport::finish_character_reply(&reply, prefix, false).text)
+                    }
+                    ReplyEcho::VnDialogue { .. } => {
+                        Some(crate::chat_turn::finish_vn_character_reply(&reply, false).text)
                     }
                     ReplyEcho::Narration => None,
                 };

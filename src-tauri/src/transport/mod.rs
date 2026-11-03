@@ -26,6 +26,7 @@ pub use state_yaml::parse_initvar_tree;
 pub(crate) mod test_support;
 pub(crate) mod translate;
 mod turns;
+mod vn_format;
 mod worldbook;
 
 #[cfg(test)]
@@ -36,7 +37,9 @@ pub use arrivals::{
     NeutralFill, Side,
 };
 pub(crate) use arrivals::{prompt_speaker, prompt_text};
-pub use assemble::{assemble_gm_messages_with, assemble_shared_messages, PLAYER_SENTINEL};
+#[cfg(test)]
+pub use assemble::assemble_shared_messages;
+pub use assemble::{assemble_gm_messages_with, assemble_shared_messages_with, PLAYER_SENTINEL};
 pub(crate) use client::key_tier_for;
 pub(crate) use client::openrouter_api_base;
 #[cfg(feature = "test-harness")]
@@ -59,7 +62,7 @@ pub use own_prefix::OwnPrefixStream;
 pub use prompt_regex::{depths as prompt_depths, PromptRegex};
 pub use reply_cleanup::{
     cut_unclosed_tail, empty_reply_error, final_reply_text, finish_character_reply,
-    strip_narrator_label, strip_self_closing_controls, strip_state_echo,
+    strip_narrator_label, strip_self_closing_controls, strip_state_echo, CharacterReply,
 };
 #[cfg(test)]
 pub use response::card_format_instruction;
@@ -73,8 +76,14 @@ pub(crate) use runaway::{runaway_message, LINE_CAP_BYTES, RUNAWAY_CODE};
 pub use runaway::{RunawayGuard, RunawayPolicy, RunawayReason};
 pub(crate) use stall::STALLED_CODE;
 pub use state_view::{resolve_branch, snapshot_updates, state_scope, StateScope};
+#[cfg(test)]
+pub use turns::chars_lane_turn;
 pub use turns::{
-    chars_lane_system, chars_lane_turn, gm_lane_system_with, gm_lane_turn, lane_event_line,
+    chars_lane_system, chars_lane_turn_with, gm_lane_system_with, gm_lane_turn, lane_event_line,
     lane_line, merge_summary_messages, segment_summary_messages, shorten_summary_messages,
     summary_lines, summary_messages, system_worldbook, Hoist, LaneTurn, SEGMENT_SUMMARY_CHARS,
+};
+pub use vn_format::{
+    vn_character_rules, vn_closing, vn_format_rules, vn_narrate_instruction, vn_reroll_closing,
+    vn_reroll_instruction, VN_EXPRESSIONS,
 };

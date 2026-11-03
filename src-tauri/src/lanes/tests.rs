@@ -155,6 +155,7 @@ fn turn_input<'a>(events: &'a [TranscriptEvent], scene: u64) -> TurnInput<'a> {
         opening_raw: false,
         capacity: None,
         prompt_regex: Default::default(),
+        vn: false,
     }
 }
 
@@ -1556,6 +1557,7 @@ mod solo_restart;
 mod stall;
 mod status_strip;
 mod tail_threshold;
+mod vn;
 
 /// char-line-prefix：預期回聲存剝掉本輪「名字：」的字；前綴另傳，Agy（prefix None）照樣對得上。
 #[test]

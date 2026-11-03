@@ -7,6 +7,8 @@ mod gm;
 mod gm_reply;
 mod party_batch;
 mod stream;
+mod vn_reroll;
+mod vn_script;
 
 pub(crate) use character::{chat_with_character, ChatReply};
 #[cfg(test)]
@@ -14,4 +16,8 @@ pub(crate) use commit::gm_commit_apply;
 pub(crate) use gm::{gm_narrate, GmNarration};
 pub(crate) use party_batch::{
     append_party_batch, BatchOutcome, DepartureMode, PartyAction, PartyBatch,
+};
+pub(crate) use vn_reroll::reroll_choices;
+pub(crate) use vn_script::{
+    finish_vn_character_reply, parse_event, parse_text, VnCell, VnRoster, VnSource, VnText,
 };

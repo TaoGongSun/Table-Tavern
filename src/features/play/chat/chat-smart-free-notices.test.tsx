@@ -77,6 +77,7 @@ describe("chat smart-free notices", () => {
         config,
         speaker: "gm",
         gmTargeted: true,
+        vnTable: false,
         metaOf: () => undefined,
         playerName: undefined,
         castCount: 1,

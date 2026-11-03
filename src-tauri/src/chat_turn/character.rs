@@ -15,10 +15,18 @@ pub(crate) struct ChatReply {
     pub(crate) aborted: bool,
 }
 
-/// 角色回覆收尾的接線層：純函式剝前綴與控制區塊，完成回合剝完沒正文就回錯
-/// （中止沒正文照舊 Ok＋aborted，由 settle 撤回世界書落地）。
-fn character_reply(reply: &str, prefix: &str, aborted: bool) -> Result<ChatReply, String> {
-    let finished = transport::finish_character_reply(reply, prefix, aborted);
+/// 角色回覆收尾的接線層：純函式剝前綴與控制區塊（VN 桌改走 `finish_vn_character_reply`），
+/// 完成回合剝完沒正文就回錯（中止沒正文照舊 Ok＋aborted，由 settle 撤回世界書落地）。
+fn character_reply(
+    reply: &str,
+    prefix: &str,
+    vn: bool,
+    aborted: bool,
+) -> Result<ChatReply, String> {
+    let finished = match vn {
+        true => super::vn_script::finish_vn_character_reply(reply, aborted),
+        false => transport::finish_character_reply(reply, prefix, aborted),
+    };
     if !aborted && finished.text.is_empty() {
         return Err(transport::empty_reply_error(reply));
     }
@@ -109,8 +117,13 @@ pub(crate) async fn chat_with_character(
         &character_id,
         &card.name,
     );
-    // 模型照歷史格式自加的本輪「名字：」：畫面串流、落檔與 lane 預期回聲都剝掉（char-line-prefix）
-    let own_prefix = transport::speaker_prefix(&card.name, &transport::ui_language(&config));
+    // 模型照歷史格式自加的本輪「名字：」：畫面串流、落檔與 lane 預期回聲都剝掉（char-line-prefix）。
+    // VN 桌不剝（空字串）：`名字: 「台詞」` 本身就是對白行，歷史也不加前綴
+    let vn = chat_assembly::vn_table(&state);
+    let own_prefix = match vn {
+        true => String::new(),
+        false => transport::speaker_prefix(&card.name, &transport::ui_language(&config)),
+    };
     // 呼叫回錯、或中止時一個字都沒有＝確定失敗，當場撤回這回合的世界書落地；有正文的等前端落檔清掉
     // （呼叫回錯時沒還原的變數寫入連同原錯回報；中止沒字沒有錯可附，寫進待回報檔）
     let settle = |result: Result<ChatReply, String>| -> Result<ChatReply, String> {
@@ -163,12 +176,15 @@ pub(crate) async fn chat_with_character(
                 frozen_system: frozen,
                 tail: turn.tail,
                 confidential: shape.erase.then_some(turn.confidential).flatten(),
-                prefix: shape
-                    .prefix
-                    .then(|| transport::speaker_prefix(&card.name, &lang)),
-                echo: lanes::ReplyEcho::Dialogue {
-                    speaker_id: card.id.clone(),
-                    prefix: own_prefix.clone(),
+                prefix: shape.prefix.then(|| own_prefix.clone()),
+                echo: match vn {
+                    true => lanes::ReplyEcho::VnDialogue {
+                        speaker_id: card.id.clone(),
+                    },
+                    false => lanes::ReplyEcho::Dialogue {
+                        speaker_id: card.id.clone(),
+                        prefix: own_prefix.clone(),
+                    },
                 },
                 scope: shape.scope_by_card.then(|| card.id.clone()),
                 single_owner: shape.single_owner.then(|| card.id.clone()),
@@ -180,6 +196,7 @@ pub(crate) async fn chat_with_character(
                 opening_raw: false,
                 capacity: path.budget,
                 prompt_regex,
+                vn,
             },
             Some(&mut cancel),
             emit,
@@ -188,14 +205,15 @@ pub(crate) async fn chat_with_character(
         .map_err(ai_call_failure);
         // 半截用這一輪 CLI 自己累的字。外層緩衝會跨降級重開留著前一次嘗試的增量。
         return settle(
-            outcome
-                .and_then(|outcome| character_reply(&outcome.text, &own_prefix, outcome.aborted)),
+            outcome.and_then(|outcome| {
+                character_reply(&outcome.text, &own_prefix, vn, outcome.aborted)
+            }),
         );
     }
     // api／codex 走共線組裝（api-shared-lane 包 B）：全角色共用一份與「這輪是誰」
     // 無關的前綴，本輪指定在尾端那則 user。attendant_label 與 closing 傳空字串，因為這份
     // messages 已經自足——台詞自帶名字前綴、指示已在尾端，補了會重複（見 cli::flatten_messages）。
-    let messages = transport::assemble_shared_messages(
+    let messages = transport::assemble_shared_messages_with(
         &card,
         &cards,
         player.as_ref(),
@@ -206,6 +224,7 @@ pub(crate) async fn chat_with_character(
         branch.as_deref(),
         &lang,
         &prompt_regex,
+        vn,
     );
     // roster 記的是套用策略前的有效角色數，不是實際帶進組裝器的張數——沒有這個數字，
     // 日後零命中退回（no-cache-model-optout）產生的 solo 就跟天然單角色桌長得一樣
@@ -246,7 +265,7 @@ pub(crate) async fn chat_with_character(
     if spoken.is_ok() && !held.is_empty() {
         let _ = on_delta.send(held);
     }
-    settle(spoken.and_then(|spoken| character_reply(&spoken.text, &own_prefix, spoken.aborted)))
+    settle(spoken.and_then(|spoken| character_reply(&spoken.text, &own_prefix, vn, spoken.aborted)))
 }
 
 #[cfg(test)]

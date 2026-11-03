@@ -75,6 +75,7 @@ describe("chat turn failures", () => {
         config,
         speaker: options.gm ? "gm" : "fox",
         gmTargeted: options.gm ?? false,
+        vnTable: false,
         metaOf: () => ({ name: "狐狸" }) as never,
         playerName: undefined,
         castCount: 1,

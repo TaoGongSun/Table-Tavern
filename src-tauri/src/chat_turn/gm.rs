@@ -5,6 +5,7 @@ use super::commit::{
 };
 use super::gm_reply::{aborted_narration, gm_reply_parts, GmReplyParts};
 use super::stream::{prepare_play_lane_call, push_delta, take_abort_or_finish};
+use super::vn_script;
 #[cfg(test)]
 use crate::chat_assembly::gm_turn_instruction;
 use crate::chat_assembly::{self, gm_materials, GmMaterials};
@@ -68,6 +69,7 @@ async fn gm_lane_reply(
             opening_raw: materials.opening.raw_history,
             capacity,
             prompt_regex: materials.prompt_regex.clone(),
+            vn: chat_assembly::vn_table(&materials.state),
         },
         cancel,
         emit,
@@ -88,6 +90,8 @@ pub(crate) struct GmNarration {
     /// 一般桌恆 None、不序列化，前端契約不變。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) next_player: Option<String>,
+    /// VN 桌這一拍停在哪種終止標記（此時 `next` 一律 None）；聊天桌恆 None
+    pub(super) vn_stop: Option<super::vn_script::VnStop>,
     /// 長文字欄這一輪的新值；前端接到就補一則 system 事件進 transcript。空的就不補。
     pub(super) state_updates: Vec<StateUpdate>,
     /// 這輪剛回歸（登場）的角色卡 id（AI 卡重構包 4b）；前端拿它把卡從隱藏區搬回主區。
@@ -385,11 +389,21 @@ pub(crate) async fn gm_narrate(
         }
     }
     let (next, next_player) = chat_assembly::gm_next_speaker(&materials, next_raw);
+    // VN 桌：選項／章末／結局任一出現就停接力（不點名、不寫點名列）
+    let (next, vn_stop) = match chat_assembly::vn_table(&materials.state) {
+        true => {
+            let roster = vn_script::VnRoster::new(&materials.metas, materials.player.as_ref());
+            vn_script::gm_stop(&display, &roster, next)
+        }
+        false => (next, None),
+    };
+    let next_player = next_player.filter(|_| vn_stop.is_none());
     Ok(GmNarration {
         raw: (reply != display).then_some(reply),
         text: display,
         next,
         next_player,
+        vn_stop,
         state_updates,
         arrived_characters,
         arrived_persons,

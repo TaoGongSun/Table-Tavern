@@ -624,6 +624,34 @@ pub fn set_last_transcript_state(
     })
 }
 
+/// 改寫某則事件的 `text` 與 `raw`（VN「換一組」只換選項區塊）：事件 id 與其他欄位不動。
+/// 提交閘門內重驗：它仍是該幕最後一則非系統事件、本文仍逐字等於 `expected`；任一不符回 false 不寫。
+pub fn replace_transcript_text(
+    root: &Path,
+    world_id: &str,
+    scene: u64,
+    event_id: &str,
+    expected: &str,
+    text: &str,
+    raw: Option<&str>,
+) -> DataResult<bool> {
+    with_commit(root, world_id, |_| {
+        edit_scene(root, world_id, scene, |mut events| {
+            let Some(entry) = events
+                .iter_mut()
+                .rev()
+                .find(|entry| entry.kind != TranscriptKind::System)
+                .filter(|entry| entry.id.as_deref() == Some(event_id) && entry.text == expected)
+            else {
+                return Ok((false, None));
+            };
+            entry.text = text.to_owned();
+            entry.raw = raw.map(str::to_owned);
+            Ok((true, Some(events)))
+        })
+    })
+}
+
 /// 打字送出後 AI 沒回成：收掉剛追加、還沒有任何回覆的那句玩家發言。
 /// 整段在逐字稿同檔鎖內：`offset`（追加收據）必須是行首、從那裡到檔尾恰為最後一行，
 /// 且解析後是玩家句、`ts` 與 `text` 都相符，才截檔；任何一項不符回 false 不動。

@@ -1,7 +1,7 @@
 use super::character::{list_characters, read_character, write_character, CharacterCard};
 use super::paths::{interface_shell_path, refactor_outcome_path, validate_single_line, world_dir};
 use super::scene::{append_transcript, TranscriptEvent, TranscriptKind};
-use super::state::{Mechanism, TableKind, TableState, WorldState};
+use super::state::{read_state, Mechanism, TableKind, TableState, WorldState};
 use super::worldbook::{read_worldbook, read_worldbook_value};
 use super::{invalid_data, new_id, DataResult, Tier};
 use crate::ui_msg::UiMsg;
@@ -389,11 +389,17 @@ pub fn is_interface_takeover(root: &Path, world_id: &str, refactor_mode: Option<
 /// `chat_assembly::gm_turn_instruction` 同一份：`import::reply_format_scripts`、接管、玩法標記餵 `transport::gm_turn_format`。
 /// 換幕結算靠它分辨「沒被要求報 present」與「報了、沒人在場」。
 pub fn requires_present_report(root: &Path, world_id: &str, refactor_mode: Option<&str>) -> bool {
-    crate::transport::gm_turn_format(
-        !crate::import::reply_format_scripts(root, world_id).is_empty(),
-        is_interface_takeover(root, world_id, refactor_mode),
-        refactor_mode,
-    ) == crate::transport::GmTurnFormat::Narration
+    use crate::transport::GmTurnFormat;
+    let vn = read_state(root, world_id).is_ok_and(|state| state.table_kind == TableKind::Vn);
+    matches!(
+        crate::transport::gm_turn_format(
+            vn,
+            !crate::import::reply_format_scripts(root, world_id).is_empty(),
+            is_interface_takeover(root, world_id, refactor_mode),
+            refactor_mode,
+        ),
+        GmTurnFormat::Narration | GmTurnFormat::VnScript
+    )
 }
 
 /// `is_interface_takeover`，讀殼失敗回錯。

@@ -98,6 +98,7 @@ export function useChatController({
   config,
   speaker,
   gmTargeted,
+  vnTable,
   metaOf,
   playerName,
   castCount,
@@ -116,6 +117,8 @@ export function useChatController({
   speaker: string;
   /** 發言對象是不是 GM */
   gmTargeted: boolean;
+  /** VN 桌：送出後一律走 GM 推進迴圈（GM 出選項或章末、結局就停，後端回 next＝null） */
+  vnTable: boolean;
   metaOf: (id: string) => CharacterMeta | undefined;
   /** 玩家卡的名字；沒有玩家卡時 undefined，落到通用稱呼 */
   playerName: string | undefined;
@@ -661,7 +664,24 @@ export function useChatController({
     }
   }, [pendingCall, eventsLive, callAndReply, refreshWorlds, onError, failTurn]);
 
-  // 簡易導演：GM 旁白＋點名→角色接話的接力，至「輪到玩家」、GM 沒點名或每回合上限停下（NewPlan §6.1）
+  // 推進迴圈（不含 busy 防護與收尾）：GM 旁白＋點名→角色接話的接力，至「輪到玩家」、GM 沒點名
+  // （含 VN 停點）或每回合上限停下（NewPlan §6.1）。onLanded：第一則起每則旁白落檔時呼叫
+  const advanceFrom = useCallback(
+    async (started: number, onLanded?: () => void) => {
+      const max = Math.max(1, Number(config?.preferences["max_round_speakers"]) || 3);
+      for (let turn = 0; turn < max; turn += 1) {
+        const next = await narrateOnce(started, onLanded);
+        // narrateOnce 之後、寫點名之前：停了或換桌了就不再點名、也不再接力
+        if (stopRequested.current || next === null || generation.current !== started) break;
+        // 輪到玩家：一樣留下點名紀錄（球在你手上），但不接話、就此停下
+        await callAndReply(next, started);
+        if (next === PLAYER_SENTINEL || stopRequested.current) break;
+      }
+    },
+    [config, narrateOnce, callAndReply],
+  );
+
+  // 簡易導演：「GM 推進」鈕
   const gmAdvance = useCallback(async () => {
     if (!config || busyRef.current || castCount === 0) return;
     busyRef.current = true;
@@ -669,16 +689,8 @@ export function useChatController({
     appendFailed.current = false;
     const started = generation.current;
     onError("");
-    const max = Math.max(1, Number(config.preferences["max_round_speakers"]) || 3);
     try {
-      for (let turn = 0; turn < max; turn += 1) {
-        const next = await narrateOnce(started);
-        // narrateOnce 之後、寫點名之前：停了或換桌了就不再點名、也不再接力
-        if (stopRequested.current || next === null || generation.current !== started) break;
-        // 輪到玩家：一樣留下點名紀錄（球在你手上），但不接話、就此停下
-        await callAndReply(next, started);
-        if (next === PLAYER_SENTINEL || stopRequested.current) break;
-      }
+      await advanceFrom(started);
       await refreshWorlds();
     } catch (reason) {
       await failTurn(reason, started);
@@ -690,7 +702,7 @@ export function useChatController({
       setGenerating(null);
       setStreamText("");
     }
-  }, [config, castCount, narrateOnce, callAndReply, refreshWorlds, onError, failTurn]);
+  }, [config, castCount, advanceFrom, refreshWorlds, onError, failTurn]);
 
   // 請目前的發言對象接話：GM 以旁白回應（讀得到世界設定與全部角色卡），角色就點名接話
   const replyFromTarget = useCallback(async () => {
@@ -760,7 +772,12 @@ export function useChatController({
         endWrite();
         // 玩家句落檔時已經換桌：句子留在原桌，不再替原桌發 AI 呼叫
         if (generation.current !== started) return;
-        if (gmTargeted) {
+        if (vnTable) {
+          // VN 桌：玩家句之後走推進迴圈，不看發言對象
+          await advanceFrom(started, () => {
+            replied = true;
+          });
+        } else if (gmTargeted) {
           let relayTo = null as string | null;
           await narrateOnce(started, (landed) => {
             replied = true;
@@ -823,7 +840,7 @@ export function useChatController({
         if (fromComposer) setSending(false);
       }
     },
-    [gmTargeted, speaker, gmNarrate, requestReply, worldId, scene, playerName, onError, narrateOnce, rememberCall, callAndReply, replyOnce, refreshWorlds, failTurn, discardPlayer, refreshState, reload, beginWrite, setEvents],
+    [gmTargeted, vnTable, speaker, gmNarrate, requestReply, worldId, scene, playerName, onError, narrateOnce, rememberCall, callAndReply, advanceFrom, replyOnce, refreshWorlds, failTurn, discardPlayer, refreshState, reload, beginWrite, setEvents],
   );
 
   const submitText = useCallback((raw: string) => submitTurn(raw, false), [submitTurn]);

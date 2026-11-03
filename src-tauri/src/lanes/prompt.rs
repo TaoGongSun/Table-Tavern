@@ -18,7 +18,16 @@ pub(crate) fn build_prompt(
     lang: &str,
 ) -> String {
     let side = lane_side(lane, false);
-    build_prompt_as(events, base, tail, opening, side, lang, &Default::default())
+    build_prompt_as(
+        events,
+        base,
+        tail,
+        opening,
+        side,
+        lang,
+        &Default::default(),
+        false,
+    )
 }
 
 /// 線的渲染視角：chars 線走角色側；GM 線全文，`opening_raw` 時開場事件送原文（`transport::GmOpening`）。
@@ -31,6 +40,8 @@ pub(crate) fn lane_side(lane: Lane, opening_raw: bool) -> transport::Side {
 }
 
 /// `build_prompt`，視角由呼叫端給（GM 線依開場白政策）；事件本文先套卡片 promptOnly 正則。
+/// `vn`：VN 桌的角色台詞不加名字前綴（`transport::lane_line`）。
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn build_prompt_as(
     events: &[TranscriptEvent],
     base: usize,
@@ -39,6 +50,7 @@ pub(crate) fn build_prompt_as(
     side: transport::Side,
     lang: &str,
     regex: &transport::PromptRegex,
+    vn: bool,
 ) -> String {
     // promptOnly 正則的深度對整份事件算（水位前的已在 session 裡，不回頭改）
     let depths = transport::prompt_depths(events);
@@ -48,7 +60,7 @@ pub(crate) fn build_prompt_as(
         .filter_map(|(event, depth)| {
             let text = transport::prompt_text(event, lang, side)?;
             let text = regex.apply(&event.kind, text, *depth);
-            Some(transport::lane_line(event, text, lang, side))
+            Some(transport::lane_line(event, text, lang, side, vn))
         })
         .collect();
     if lines.is_empty() {

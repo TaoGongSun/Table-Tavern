@@ -201,8 +201,16 @@ fn gm_request(
             let joined = format!("{}\n{closing}", instruction.content);
             let (system, turn) = chat_assembly::gm_lane_parts(m, &scan, &scope, &joined, lang);
             let side = lanes::lane_side(Lane::Gm, m.opening.raw_history);
-            let prompt =
-                lanes::build_prompt_as(&m.events, 0, &turn.tail, true, side, lang, &m.prompt_regex);
+            let prompt = lanes::build_prompt_as(
+                &m.events,
+                0,
+                &turn.tail,
+                true,
+                side,
+                lang,
+                &m.prompt_regex,
+                chat_assembly::vn_table(&m.state),
+            );
             Request::Cli { system, prompt }
         }
         None => stateless_request(
@@ -270,12 +278,13 @@ fn character_request(
                 lanes::lane_side(Lane::Chars, false),
                 lang,
                 &m.prompt_regex,
+                chat_assembly::vn_table(&m.state),
             );
             Request::Cli { system, prompt }
         }
         // 共線組裝已自足：label 與 closing 傳空字串（同 chat_with_character）
         None => stateless_request(
-            transport::assemble_shared_messages(
+            transport::assemble_shared_messages_with(
                 card,
                 &m.cards,
                 m.player.as_ref(),
@@ -286,6 +295,7 @@ fn character_request(
                 branch.as_deref(),
                 lang,
                 &m.prompt_regex,
+                chat_assembly::vn_table(&m.state),
             ),
             "",
             "",

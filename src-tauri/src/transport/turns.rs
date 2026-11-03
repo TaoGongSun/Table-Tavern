@@ -49,12 +49,20 @@ pub enum Hoist {
 /// （誰說的靠「X：」前綴分辨，不靠 role），與 session 內既有歷史逐字銜接。
 /// 可見性與標頭照 `prompt_text`：chars 線傳 `Side::Character`，GM 線傳 `Side::Gm`。
 pub fn lane_event_line(event: &TranscriptEvent, lang: &str, side: Side) -> Option<String> {
-    prompt_text(event, lang, side).map(|text| lane_line(event, text, lang, side))
+    prompt_text(event, lang, side).map(|text| lane_line(event, text, lang, side, false))
 }
 
 /// `lane_event_line` 的組行：`text` 是 `prompt_text` 的本文（呼叫端可先套 promptOnly 正則再給）。
-pub fn lane_line(event: &TranscriptEvent, text: String, lang: &str, side: Side) -> String {
+/// `vn`：VN 桌的角色台詞本文已自帶「名字 (表情):」，不再加名字前綴（vn-mode 包 1）。
+pub fn lane_line(
+    event: &TranscriptEvent,
+    text: String,
+    lang: &str,
+    side: Side,
+    vn: bool,
+) -> String {
     match event.kind {
+        TranscriptKind::Dialogue if vn => text,
         TranscriptKind::Dialogue | TranscriptKind::Player => {
             format!(
                 "{}{text}",
@@ -273,6 +281,7 @@ fn public_block(entries: &[&Placed], lang: &str) -> String {
 /// chars 線回合尾段：本輪公開觸發的 `Public` 條目＋機密段（動態公開設定＋本輪角色的私設＋限定可見與私密觸發的
 /// 條目）＋本輪指定。機密段回合結束後從 session 檔抹掉；共用快照的靜態條目已在凍結 system，不重複。
 /// `hoist` 決定私設與世界書要不要改提進 system（見 `Hoist`）。`cards` 是凍結 system 列的那份卡清單。
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 pub fn chars_lane_turn(
     card: &CharacterCard,
@@ -284,6 +293,25 @@ pub fn chars_lane_turn(
     branch: Option<&[String]>,
     lang: &str,
     hoist: Hoist,
+) -> LaneTurn {
+    chars_lane_turn_with(
+        card, cards, player, scan, state, mechanism, branch, lang, hoist, false,
+    )
+}
+
+/// `chars_lane_turn`；`vn`＝VN 桌，尾端的本輪指定改成沿用視覺小說劇本格式。
+#[allow(clippy::too_many_arguments)]
+pub fn chars_lane_turn_with(
+    card: &CharacterCard,
+    cards: &[CharacterCard],
+    player: Option<&CharacterCard>,
+    scan: &WorldScan,
+    state: &TableState,
+    mechanism: &Mechanism,
+    branch: Option<&[String]>,
+    lang: &str,
+    hoist: Hoist,
+    vn: bool,
 ) -> LaneTurn {
     let user_name = player
         .map(|player| player.name.as_str())
@@ -367,14 +395,15 @@ pub fn chars_lane_turn(
         tail.push_str(&confidential);
         tail.push('\n');
     }
-    tail.push_str(&match scaffold_en(lang) {
-        true => format!(
+    tail.push_str(&match (vn, scaffold_en(lang)) {
+        (true, _) => super::vn_format::vn_assigned_line(&card.name, lang),
+        (false, true) => format!(
             "You are now \"{name}\". Write {name}'s actions, lines, and inner thoughts directly in the third person, \
              with \"{name}\" or \"he/she\" as the subject and never \"I\"; put spoken words in quotation marks. \
              Do not add a name prefix or any explanation outside the character.",
             name = card.name
         ),
-        false => format!(
+        (false, false) => format!(
             "現在你是「{name}」。請直接用第三人稱輸出「{name}」的動作、台詞與心理描寫，\
              敘述主詞是「{name}」或「他／她」、不要用「我」，說出口的話寫在引號裡；\
              不要加名字前綴、不要任何角色之外的說明。",

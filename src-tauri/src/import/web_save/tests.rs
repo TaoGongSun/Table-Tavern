@@ -1009,6 +1009,7 @@ fn worldbook_route_next_gm_turn_carries_constant_and_triggered_entries() {
         materials.takeover,
         &Default::default(),
         &Default::default(),
+        false,
     );
     let sent: String = messages
         .iter()

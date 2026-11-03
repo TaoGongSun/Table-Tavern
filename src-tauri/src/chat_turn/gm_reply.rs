@@ -48,19 +48,23 @@ pub(super) fn gm_reply_parts(
     }
 }
 
-/// 中止的旁白：半截原文照正常剝法留成 text，其餘寫入一律空著。
-pub(super) fn aborted_narration(reply: &str) -> GmNarration {
-    // 自閉合標籤先拿掉（免得配到後面的閉標籤），剝完照中止規則切掉沒閉合的尾巴
+/// 半截（中止或串流中）原文的顯示文：自閉合標籤先拿掉（免得配到後面的閉標籤）→剝狀態區塊與點名行→
+/// 照中止規則切掉沒閉合的尾巴→剝旁白標籤。中止旁白與 VN 串流入口共用。
+pub(super) fn partial_display(reply: &str) -> String {
     let block = transport::extract_state_block(&transport::strip_self_closing_controls(reply));
     let (_next, display) = transport::extract_next_speaker(&block.display);
+    let text = transport::cut_unclosed_tail(&display, true).trim_end();
+    transport::strip_narrator_label(text).unwrap_or_else(|| text.to_owned())
+}
+
+/// 中止的旁白：半截原文照正常剝法留成 text，其餘寫入一律空著。
+pub(super) fn aborted_narration(reply: &str) -> GmNarration {
     GmNarration {
-        text: {
-            let text = transport::cut_unclosed_tail(&display, true).trim_end();
-            transport::strip_narrator_label(text).unwrap_or_else(|| text.to_owned())
-        },
+        text: partial_display(reply),
         raw: None,
         next: None,
         next_player: None,
+        vn_stop: None,
         state_updates: Vec::new(),
         arrived_characters: Vec::new(),
         arrived_persons: Vec::new(),

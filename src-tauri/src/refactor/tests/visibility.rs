@@ -170,6 +170,7 @@ fn gm_sent(root: &Path, world_id: &str, said: &str) -> String {
         false,
         &Default::default(),
         &Default::default(),
+        false,
     )
     .iter()
     .map(|message| message.content.clone())

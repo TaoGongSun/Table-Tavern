@@ -469,6 +469,7 @@ pub(crate) fn gm_turn_instruction(
 ) -> (transport::ChatMessage, &'static str) {
     let card_scripts: Vec<import::InterfaceScript> = import::reply_format_scripts(root, world_id);
     let format = transport::gm_turn_format(
+        vn_table(&materials.state),
         !card_scripts.is_empty(),
         materials.takeover,
         materials.state.refactor_mode.as_deref(),
@@ -485,6 +486,13 @@ pub(crate) fn gm_turn_instruction(
             transport::takeover_instruction(lang),
             transport::gm_closing(transport::GmTurnFormat::InterfaceTakeover, false, lang),
         ),
+        transport::GmTurnFormat::VnScript => {
+            let updates = materials.state.mechanism.incremental;
+            (
+                transport::vn_narrate_instruction(lang, roster, player_name, updates),
+                transport::vn_closing(!roster.is_empty(), updates, lang),
+            )
+        }
         transport::GmTurnFormat::Narration => {
             // 增量桌：圍欄只管三欄，其餘欄位的變動另附更新區塊
             let updates = materials.state.mechanism.incremental;
@@ -539,7 +547,7 @@ pub(crate) fn gm_lane_parts(
     instruction: &str,
     lang: &str,
 ) -> (String, transport::LaneTurn) {
-    let frozen = transport::gm_lane_system_with(
+    let mut frozen = transport::gm_lane_system_with(
         &materials.cards,
         materials.player.as_ref(),
         scan,
@@ -548,6 +556,9 @@ pub(crate) fn gm_lane_parts(
         materials.takeover,
         &materials.opening,
     );
+    if vn_table(&materials.state) {
+        frozen.push_str(&transport::vn_format_rules(lang));
+    }
     let turn = transport::gm_lane_turn(
         scan,
         materials.player.as_ref(),
@@ -580,9 +591,20 @@ pub(crate) fn gm_messages(
         materials.takeover,
         &materials.opening,
         &materials.prompt_regex,
+        vn_table(&materials.state),
     );
+    if vn_table(&materials.state) {
+        messages[0]
+            .content
+            .push_str(&transport::vn_format_rules(lang));
+    }
     messages.push(instruction_message);
     messages
+}
+
+/// VN 桌（vn-mode）：GM 指示、system 附加段與送模型的歷史前綴都看這個。
+pub(crate) fn vn_table(state: &data::WorldState) -> bool {
+    state.table_kind == data::TableKind::Vn
 }
 
 /// 角色 lane 的一輪：凍結 system（不抹尾段的線——Agy 一角一線、單人 Claude——把私設與本輪世界書提進來）
@@ -599,7 +621,10 @@ pub(crate) fn character_lane_parts(
     hoist: bool,
 ) -> (String, transport::LaneTurn) {
     let mut frozen = transport::chars_lane_system(cards, player, scan, lang);
-    let turn = transport::chars_lane_turn(
+    if vn_table(state) {
+        frozen.push_str(&transport::vn_character_rules(lang));
+    }
+    let turn = transport::chars_lane_turn_with(
         card,
         cards,
         player,
@@ -612,6 +637,7 @@ pub(crate) fn character_lane_parts(
             true => transport::Hoist::All,
             false => transport::Hoist::None,
         },
+        vn_table(state),
     );
     if let Some(private) = &turn.hoisted_private {
         frozen.push('\n');

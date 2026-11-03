@@ -156,6 +156,8 @@ function App() {
   const [genTableOpen, setGenTableOpen] = useState(false);
   // VN 桌進桌先看佔位視圖；false＝聊天視圖（聊天桌一律 false）
   const [vnView, setVnView] = useState(false);
+  // 桌型（開桌定死）：送出走 VN 推進迴圈；與 vnView（目前看哪個視圖）分開
+  const [vnTable, setVnTable] = useState(false);
   const [vnWizard, setVnWizard] = useState<VnWizardStart | null>(null);
 
   const {
@@ -290,6 +292,7 @@ function App() {
     config,
     speaker,
     gmTargeted,
+    vnTable,
     metaOf: characters.metaOf,
     playerName: characters.player?.name,
     castCount: characters.speaking.length,
@@ -513,6 +516,7 @@ function App() {
       setRepairNotice({ reason: opened.reason, error: opened.error, directory: opened.directory });
       setReadOnlyNotice(null);
       setVnView(false);
+      setVnTable(false);
       return { entered: true, writable: false };
     }
     if (route === "readonly") {
@@ -527,6 +531,7 @@ function App() {
       });
       setRepairNotice(null);
       setVnView(false);
+      setVnTable(false);
       setScene(loose.scene);
       chat.hydrate(looseTranscript(loose.events));
       setSkippedLines(loose.skipped);
@@ -557,6 +562,7 @@ function App() {
     setTable(id);
     setGate("play");
     setVnView(state.table_kind === "vn");
+    setVnTable(state.table_kind === "vn");
     setReadOnlyNotice(null);
     setRepairNotice(null);
     setSkippedLines(0);

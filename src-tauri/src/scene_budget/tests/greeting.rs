@@ -40,6 +40,7 @@ fn assert_measure_matches(root: &std::path::Path, world: &str) {
         side,
         lang,
         &Default::default(),
+        false,
     );
     match gm_path(root, world, "claude") {
         measure::Request::Cli {

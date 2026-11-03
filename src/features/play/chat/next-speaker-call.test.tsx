@@ -43,6 +43,8 @@ describe("next speaker call", () => {
   let root: Root | null = null;
   // 狐狸是不是舞台卡（點名後才切成舞台的情境）
   let foxStage = false;
+  // VN 桌：送出改走推進迴圈
+  let vnTable = false;
   let host: HTMLDivElement | null = null;
 
   afterEach(() => {
@@ -50,6 +52,7 @@ describe("next speaker call", () => {
     host?.remove();
     root = null;
     foxStage = false;
+    vnTable = false;
     invokeMock.mockReset();
   });
 
@@ -94,6 +97,7 @@ describe("next speaker call", () => {
         config,
         speaker: "gm",
         gmTargeted: true,
+        vnTable,
         metaOf: (cid) => (cid === "fox" ? ({ name: "狐狸", stage: foxStage } as never) : undefined),
         playerName: undefined,
         castCount: 1,
@@ -180,6 +184,20 @@ describe("next speaker call", () => {
     expect(gmCalls(h.chat().events)).toHaveLength(0);
     expect(h.count("append_transcript")).toBe(writes);
     expect(h.count("chat_with_character")).toBe(0);
+  });
+
+  it("VN 桌：送出走推進迴圈，接力到 GM 出選項（next＝null）就停、不寫點名列", async () => {
+    vnTable = true;
+    const h = mount();
+    let round = 0;
+    h.handlers.gm_narrate = () =>
+      ++round === 1
+        ? { text: "門開了。", raw: null, next: "fox" }
+        : { text: "[choices]\n- 進去\n- 離開", raw: null, next: null, vn_stop: "choices" };
+    await h.send("我推門");
+    expect(h.count("gm_narrate")).toBe(2);
+    expect(h.count("chat_with_character")).toBe(1);
+    expect(h.texts()).toEqual(["我推門", "門開了。", "[狐狸]", "嗨", "[choices]\n- 進去\n- 離開"]);
   });
 
   it("B：旁白＋點名列＋角色一句就停", async () => {

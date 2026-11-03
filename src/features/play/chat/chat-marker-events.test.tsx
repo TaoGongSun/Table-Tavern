@@ -42,6 +42,7 @@ describe("chat controller with marker events", () => {
         config,
         speaker: "gm",
         gmTargeted: true,
+        vnTable: false,
         metaOf: () => undefined,
         playerName,
         castCount: 1,

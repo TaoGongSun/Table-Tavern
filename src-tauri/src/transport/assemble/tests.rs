@@ -1257,3 +1257,80 @@ fn shared_lane_skips_card_private_event() {
     );
     assert_eq!(joined.matches("（角色回歸）〈騎士〉").count(), 1);
 }
+
+/// VN 桌（無狀態路徑）：角色台詞本文已自帶「名字 (表情):」，GM 與角色兩邊都不再加前綴；
+/// 玩家句照舊帶名字，角色線 system 附 VN 規範。聊天桌（false）照舊加前綴
+#[test]
+fn vn_tables_send_dialogue_without_name_prefix() {
+    use crate::transport::test_support::legacy::prepared;
+    use crate::world_scan::Viewer;
+    let fox = card("fox-id", "狐狸", "", "");
+    let cards = vec![fox.clone()];
+    let events = vec![
+        event(
+            TranscriptKind::Dialogue,
+            "fox-id",
+            "狐狸",
+            "狐狸 (happy): 「嗨」",
+        ),
+        event(TranscriptKind::Player, "", "阿濤", "你好"),
+    ];
+    let lang = "zh-TW";
+    let shared = |vn| {
+        let scan = prepared(
+            &[],
+            Viewer::Character(&fox),
+            "",
+            &cards,
+            None,
+            &events,
+            lang,
+        );
+        assemble_shared_messages_with(
+            &fox,
+            &cards,
+            None,
+            &events,
+            &scan,
+            &TableState::default(),
+            &Mechanism::default(),
+            None,
+            lang,
+            &Default::default(),
+            vn,
+        )
+    };
+    let gm = |vn| {
+        let scan = prepared(&[], Viewer::Gm, "", &cards, None, &events, lang);
+        assemble_gm_messages_with(
+            &cards,
+            None,
+            &events,
+            &scan,
+            &TableState::default(),
+            &Mechanism::default(),
+            &StateScope::default(),
+            lang,
+            false,
+            &Default::default(),
+            &Default::default(),
+            vn,
+        )
+    };
+    let joined = |messages: Vec<ChatMessage>| {
+        messages
+            .iter()
+            .map(|m| m.content.as_str())
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let vn_shared = shared(true);
+    assert!(vn_shared[0].content.contains("視覺小說劇本格式"));
+    let vn_shared = joined(vn_shared);
+    assert!(!vn_shared.contains("狐狸：狐狸") && vn_shared.contains("狐狸 (happy): 「嗨」"));
+    assert!(vn_shared.contains("阿濤：你好"));
+    let vn_gm = joined(gm(true));
+    assert!(!vn_gm.contains("狐狸：狐狸") && vn_gm.contains("阿濤：你好"));
+    assert!(joined(shared(false)).contains("狐狸：狐狸 (happy)"));
+    assert!(joined(gm(false)).contains("狐狸：狐狸 (happy)"));
+}

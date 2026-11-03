@@ -42,48 +42,21 @@ pub fn narrate_instruction(
     statusbar_retired: bool,
 ) -> ChatMessage {
     let extra = narration_extra_content(lang, statusbar_retired);
+    let fence = state_fence_rule(lang);
     let mut instruction = if scaffold_en(lang) {
         format!("(Director instruction) Insert a narration: describe scene changes, the world's response, or plot progress. \
          Use any length the story needs. You may portray supporting characters without character cards, but do not speak for listed characters or the player. \
-         {extra} When all of that is written, start a new line and output one ```state fence. Inside it, write one `key: value` field per line. \
-         Always output `time`, `place`, and `present`; write `time` and `place` in the player's language and repeat them if unchanged. \
-         Output `present` in full every turn: based on this turn's story as it stands at the end of the narration, list only the people who are actually at `place` at that moment. \
-         The character roster only identifies who people are; it is not a list of who is here, so do not list anyone just because they are on the roster, were mentioned, or are expected to come. \
-         If nobody is there, leave `present:` empty. As an exception to the language rule, write each `present` name exactly as it appears in the cast or setting (same characters, no translation, transliteration, or script change), separated by `、`. \
-         Do not add any explanation beyond the content above.")
+         {extra} When all of that is written, start a new line and {fence}Do not add any explanation beyond the content above.")
     } else {
         format!("（導演指示）請插入一段旁白：描述場景變化、世界反應或劇情推進，\
          篇幅不設限，依劇情需要自由發揮。沒有角色卡的配角由你扮演，可以出場與說話；\
-         不要替「登場角色」名單上的角色或玩家說話。{extra}全部寫完後另起一行，輸出一個 ```state 圍欄，\
-         圍欄內一行一欄、格式為「鍵: 值」，固定輸出 time、place、present 三個鍵；\
-         time、place 用玩家的語言寫，沒有變化就照抄目前值。\
-         present 每一回合都要完整輸出：依本輪敘事、以旁白結束當下為準，只列此刻確實身在 place 的人物；\
-         人物名冊只供辨識是誰，不是在場名單，不因列在名冊、被提到或約好要見就列；沒有人在場就寫「present:」後面留空。\
-         present 的名字照登場角色名單或設定裡的原字逐字寫，不翻譯、不音譯、不換簡繁字形（這是語言規範的例外）；多人用頓號分隔。\
-         除了上述內容，不要有多餘說明。")
+         不要替「登場角色」名單上的角色或玩家說話。{extra}全部寫完後另起一行，{fence}除了上述內容，不要有多餘說明。")
     };
     if updates {
         instruction.push_str(narration_update_note(lang));
     }
     if !roster.is_empty() {
-        let call = if scaffold_en(lang) {
-            format!(
-                " After the fence, end with exactly one final line `Next: <name>`, choosing the next speaker from: {}. \
-                 If it is the player{player}'s turn to act, write `Next: {PLAYER_SENTINEL}` instead.",
-                roster.join("、"),
-                player = player_name.map_or(String::new(), |name| format!(" ({name})")),
-            )
-        } else {
-            format!(
-                "圍欄之後最後再另起一行，固定輸出「下一位：〈名字〉」，\
-                 從名單中選出下一位最適合發言的角色：{}。\
-                 若現在應該輪到玩家{player}行動，就寫「下一位：{PLAYER_SENTINEL}」。",
-                roster.join("、"),
-                // 沒玩家卡時是空字串，句子與加玩家卡前逐字相同
-                player = player_name.map_or(String::new(), |name| format!("（{name}）")),
-            )
-        };
-        instruction.push_str(&call);
+        instruction.push_str(&next_line_rule(lang, roster, player_name));
     }
     message("user", instruction)
 }
@@ -118,6 +91,44 @@ pub fn party_instruction(lang: &str, players: &[String], call: bool) -> String {
     }
 }
 
+/// ```state 圍欄的規則（time／place／present）：一般旁白與 VN 劇本的導演指示共用，接在「另起一行，」之後。
+pub(super) fn state_fence_rule(lang: &str) -> &'static str {
+    match scaffold_en(lang) {
+        true => "output one ```state fence. Inside it, write one `key: value` field per line. \
+         Always output `time`, `place`, and `present`; write `time` and `place` in the player's language and repeat them if unchanged. \
+         Output `present` in full every turn: based on this turn's story as it stands at the end of the narration, list only the people who are actually at `place` at that moment. \
+         The character roster only identifies who people are; it is not a list of who is here, so do not list anyone just because they are on the roster, were mentioned, or are expected to come. \
+         If nobody is there, leave `present:` empty. As an exception to the language rule, write each `present` name exactly as it appears in the cast or setting (same characters, no translation, transliteration, or script change), separated by `、`. ",
+        false => "輸出一個 ```state 圍欄，\
+         圍欄內一行一欄、格式為「鍵: 值」，固定輸出 time、place、present 三個鍵；\
+         time、place 用玩家的語言寫，沒有變化就照抄目前值。\
+         present 每一回合都要完整輸出：依本輪敘事、以旁白結束當下為準，只列此刻確實身在 place 的人物；\
+         人物名冊只供辨識是誰，不是在場名單，不因列在名冊、被提到或約好要見就列；沒有人在場就寫「present:」後面留空。\
+         present 的名字照登場角色名單或設定裡的原字逐字寫，不翻譯、不音譯、不換簡繁字形（這是語言規範的例外）；多人用頓號分隔。",
+    }
+}
+
+/// 圍欄之後的「下一位」點名行規則（名單非空才用）：一般旁白與 VN 劇本共用。
+pub(super) fn next_line_rule(lang: &str, roster: &[String], player_name: Option<&str>) -> String {
+    if scaffold_en(lang) {
+        format!(
+            " After the fence, end with exactly one final line `Next: <name>`, choosing the next speaker from: {}. \
+             If it is the player{player}'s turn to act, write `Next: {PLAYER_SENTINEL}` instead.",
+            roster.join("、"),
+            player = player_name.map_or(String::new(), |name| format!(" ({name})")),
+        )
+    } else {
+        format!(
+            "圍欄之後最後再另起一行，固定輸出「下一位：〈名字〉」，\
+             從名單中選出下一位最適合發言的角色：{}。\
+             若現在應該輪到玩家{player}行動，就寫「下一位：{PLAYER_SENTINEL}」。",
+            roster.join("、"),
+            // 沒玩家卡時是空字串，句子與加玩家卡前逐字相同
+            player = player_name.map_or(String::new(), |name| format!("（{name}）")),
+        )
+    }
+}
+
 /// 導演指示裡「設定規定每回合要附的內容」那句；卡片狀態欄已退場的桌改成明說不要印狀態欄。
 fn narration_extra_content(lang: &str, statusbar_retired: bool) -> &'static str {
     match (scaffold_en(lang), statusbar_retired) {
@@ -143,16 +154,21 @@ pub enum GmTurnFormat {
     InterfaceTakeover,
     /// 一般旁白＋```state 圍欄（沒重構的桌、角色優先桌）。
     Narration,
+    /// VN 桌（`table_kind == vn`）：VN 劇本格式＋```state 圍欄，不看卡片格式與介面接管（vn-mode 包 1）。
+    VnScript,
 }
 
 /// 依據：實際的介面骨架＋玩法標記。只看 guide 不準——清殼後 guide 可能還留著，MVU 桌開了增量但
-/// guide 是空的。角色優先（characters）桌一律一般旁白。
+/// guide 是空的。角色優先（characters）桌一律一般旁白；VN 桌一律 VN 劇本。
 pub fn gm_turn_format(
+    vn: bool,
     has_card_scripts: bool,
     has_interface_shell: bool,
     refactor_mode: Option<&str>,
 ) -> GmTurnFormat {
-    if refactor_mode == Some("characters") {
+    if vn {
+        GmTurnFormat::VnScript
+    } else if refactor_mode == Some("characters") {
         GmTurnFormat::Narration
     } else if has_interface_shell {
         GmTurnFormat::InterfaceTakeover
@@ -224,6 +240,7 @@ pub fn card_format_instruction(lang: &str, entry_title: Option<&str>) -> ChatMes
 /// GM 回合 CLI 收尾句（lane 路徑接在導演指示後面）；`has_roster`＝有點名行。
 pub fn gm_closing(format: GmTurnFormat, has_roster: bool, lang: &str) -> &'static str {
     match (scaffold_en(lang), format, has_roster) {
+        (_, GmTurnFormat::VnScript, _) => super::vn_format::vn_closing(has_roster, false, lang),
         (true, GmTurnFormat::CardFormat, _) => {
             "Now, as the GM, produce this turn's reply exactly in the output format above. Do not add a name prefix, and do not output anything outside that format."
         }

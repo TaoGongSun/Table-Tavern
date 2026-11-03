@@ -84,6 +84,7 @@ impl Table {
             opening_raw: false,
             capacity: None,
             prompt_regex: Default::default(),
+            vn: false,
         }
     }
 
