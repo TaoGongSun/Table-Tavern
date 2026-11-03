@@ -28,8 +28,8 @@ pub use card_export::{export_outcome, export_saved};
 pub use card_import::{
     claim_assets, open_and_stage, release_assets, return_assets, OpenCardResult,
 };
-pub(crate) use reset::refactored;
 pub use reset::{apply_to_table, rerun_status, reset_to_import_source, RerunStatus, ResetOutcome};
+pub(crate) use reset::{played, refactored};
 pub(crate) use stage::{keep_resolvable as keep_stage_cards, player_card_name};
 pub use types::{
     normalize_stored_mode, RefactorApplyOrigin, RefactorApplySummary, RefactorCharacter,

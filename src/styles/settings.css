@@ -940,3 +940,11 @@
 .cli-tested-prompt .cli-update-action {
   margin-top: 0;
 }
+
+/* VN 桌世界編輯器：切到「劇本」分頁時世界頁整塊藏起，平常不多一層排版 */
+.world-editor-page {
+  display: contents;
+}
+.world-editor-page[hidden] {
+  display: none;
+}

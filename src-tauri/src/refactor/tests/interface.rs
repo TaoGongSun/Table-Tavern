@@ -281,6 +281,7 @@ fn apply_characters_mode_skips_interface_and_keeps_sources() {
                     branch: None,
                     formula: None,
                     same_as: None,
+                    allowed: Vec::new(),
                 },
             )]),
             guide: "每回合報時間".to_owned(),
@@ -337,6 +338,7 @@ fn normalize_collapses_mirror_branch_with_shell_deciding_canon() {
         branch: None,
         formula: None,
         same_as: None,
+        allowed: Vec::new(),
     };
     let state_fields = serde_json::json!({
         "地點": "",

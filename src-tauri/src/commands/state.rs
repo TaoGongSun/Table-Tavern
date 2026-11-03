@@ -79,6 +79,14 @@ pub(crate) async fn set_state_path(
         {
             return Err(crate::ui_msg::UiMsg::StateEditDuringTurn.into_error());
         }
+        let write = match value.is_empty() {
+            true => mechanism::Write::Other,
+            false => mechanism::Write::Replace(&value),
+        };
+        let mechanism = data::read_state(tx.root, tx.world_id)?.mechanism;
+        if let Some(detail) = mechanism::write_refusal(&mechanism, &path, write) {
+            return Err(detail.into());
+        }
         let edited = data::message_vars::edit_effective_tree(tx, true, false, |tree| {
             data::set_tree_value(tree, &path, &value)
         })?;

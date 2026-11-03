@@ -36,24 +36,27 @@ pub(crate) async fn vn_reroll_choices(
     let root = data_root(&app)?;
     let tier = transport::gm_tier(&config);
     let path = crate::scene_budget::path_limits(&config_root(&app)?, &root, &config, tier);
-    let mut caller = RerollCaller {
+    let mut caller = GmOneshot {
         app: &app,
         config: &config,
         world_id: &world_id,
-        lang: &lang,
+        system: transport::vn_reroll_closing(&lang),
+        what: "choices reroll",
     };
     chat_turn::reroll_choices(&root, &world_id, &lang, &path, &mut caller).await
 }
 
-/// 換一組的那一下：GM 檔單發（同換幕摘要的一次性路徑），截斷算失敗。
-struct RerollCaller<'a> {
-    app: &'a tauri::AppHandle,
-    config: &'a data::AppConfig,
-    world_id: &'a str,
-    lang: &'a str,
+/// GM 檔單發（同換幕摘要的一次性路徑；換一組、聖經生成與秘密重骰共用），截斷算失敗。
+pub(crate) struct GmOneshot<'a> {
+    pub app: &'a tauri::AppHandle,
+    pub config: &'a data::AppConfig,
+    pub world_id: &'a str,
+    pub system: &'a str,
+    /// 截斷錯誤裡標明是哪一種呼叫
+    pub what: &'static str,
 }
 
-impl crate::scene_budget::summarize::SummaryCaller for RerollCaller<'_> {
+impl crate::scene_budget::summarize::SummaryCaller for GmOneshot<'_> {
     async fn call(&mut self, messages: Vec<transport::ChatMessage>) -> Result<String, String> {
         let (reply, truncated) = transport::dispatch::stream_turn_reporting_truncation(
             self.app,
@@ -64,7 +67,7 @@ impl crate::scene_budget::summarize::SummaryCaller for RerollCaller<'_> {
             Some(self.world_id),
             None,
             "GM",
-            transport::vn_reroll_closing(self.lang),
+            self.system,
             &messages,
             crate::usage::log::PromptShape::Oneshot,
             false,
@@ -72,7 +75,7 @@ impl crate::scene_budget::summarize::SummaryCaller for RerollCaller<'_> {
         )
         .await?;
         match truncated {
-            true => Err("AI_INCOMPLETE_RESPONSE: choices reroll truncated".to_owned()),
+            true => Err(format!("AI_INCOMPLETE_RESPONSE: {} truncated", self.what)),
             false => Ok(reply),
         }
     }

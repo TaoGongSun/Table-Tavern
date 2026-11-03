@@ -19,6 +19,7 @@ fn rule(kind: FieldKind, update: UpdateMode) -> FieldRule {
         branch: None,
         formula: None,
         same_as: None,
+        allowed: Vec::new(),
     }
 }
 

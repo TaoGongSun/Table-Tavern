@@ -86,6 +86,9 @@ pub struct FieldRule {
     /// `Mechanism::mirrors`（收圍欄的桌）或丟掉，不落在桌上的規則表。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub same_as: Option<String>,
+    /// 合法值清單（vn-mode 包 4 §2.3）：非空時這欄只收 `replace` 且新值須在清單內，其餘一律拒收並回饋可用值。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allowed: Vec<String>,
 }
 
 impl FieldRule {
@@ -108,6 +111,7 @@ impl FieldRule {
             branch: None,
             formula: None,
             same_as: None,
+            allowed: Vec::new(),
         }
     }
 }
@@ -229,6 +233,10 @@ pub struct Mechanism {
     /// 同義的欄位由 App 每回合從平欄抄過去，不要模型回報；條件與佔位照舊讀樹上這一欄。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub mirrors: BTreeMap<String, String>,
+    /// 受保護的頂層鍵（VN 桌的 flags／revealed／chapter）：底下只收表內欄位逐葉更新，不得整支替換、
+    /// 刪除、搬移或新增表外鍵（`mechanism::write_refusal`）。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub locked_roots: Vec<String>,
 }
 
 /// 退場桌開場格子補齊的附帶資料。
@@ -329,6 +337,7 @@ impl Default for Mechanism {
             guide: String::new(),
             numeric_update: NumericUpdate::default(),
             mirrors: BTreeMap::new(),
+            locked_roots: Vec::new(),
         }
     }
 }
@@ -343,6 +352,7 @@ impl Mechanism {
             && self.value_types.is_empty()
             && self.collections.is_empty()
             && self.mirrors.is_empty()
+            && self.locked_roots.is_empty()
     }
 }
 

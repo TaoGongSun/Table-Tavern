@@ -381,6 +381,9 @@ pub(crate) struct VnEventCells {
     pub event_id: Option<String>,
     pub kind: data::TranscriptKind,
     pub cells: Vec<VnCell>,
+    /// 格邊旗標提示（這則事件快照的旗標與揭露變動，`vn_bible::flag_hints`）
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub hints: Vec<crate::vn_bible::FlagHint>,
 }
 
 /// 一幕事件逐則解析：GM 旁白照 GM 線、角色台詞照該角色線；玩家句原樣一格旁白；系統事件略過。
@@ -392,6 +395,9 @@ pub(crate) fn read_scene(
 ) -> Result<(Vec<VnEventCells>, Vec<crate::vn_backgrounds::Backdrop>), String> {
     let roster = VnRoster::load(root, world_id)?;
     let events = data::read_transcript(root, world_id, scene).map_err(|error| error.to_string())?;
+    let bible = data::vn::read_vn(root, world_id)
+        .ok()
+        .and_then(|file| file.bible);
     let start = events
         .first()
         .and_then(|event| event.state.as_ref())
@@ -419,7 +425,12 @@ pub(crate) fn read_scene(
                 }],
                 data::TranscriptKind::System => return None,
             };
+            let hints = match (&bible, &event.state) {
+                (Some(bible), Some(state)) => crate::vn_bible::flag_hints(bible, state),
+                _ => Vec::new(),
+            };
             Some(VnEventCells {
+                hints,
                 event_id: event.id,
                 kind: event.kind,
                 cells,

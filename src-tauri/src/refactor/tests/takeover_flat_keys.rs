@@ -18,6 +18,7 @@ pub(super) fn rule(kind: FieldKind) -> FieldRule {
         branch: None,
         formula: None,
         same_as: None,
+        allowed: Vec::new(),
     }
 }
 

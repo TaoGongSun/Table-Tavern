@@ -924,6 +924,7 @@ fn mechanism_protocol_only_appears_when_table_is_incremental() {
         branch: None,
         formula: None,
         same_as: None,
+        allowed: Vec::new(),
     };
     let with_rules = Mechanism {
         rules: std::collections::BTreeMap::from([

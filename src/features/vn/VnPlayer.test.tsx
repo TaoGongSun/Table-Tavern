@@ -82,6 +82,8 @@ async function settle() {
   }
 }
 
+let flagHints = true;
+
 async function render(patch: Partial<ChatController> = {}) {
   chat = { ...chat, ...patch };
   await act(async () => {
@@ -97,6 +99,8 @@ async function render(patch: Partial<ChatController> = {}) {
         onError={() => {}}
         onShowChat={() => {}}
         onGoLobby={() => {}}
+        flagHints={flagHints}
+        onFlagHints={() => {}}
       />,
     );
   });
@@ -130,6 +134,28 @@ afterEach(() => {
 });
 
 describe("VnPlayer", () => {
+  it("shows an event's flag hints on its first cell only, and not when turned off", async () => {
+    backend.cells = [
+      {
+        ...gm("g1", [n("first"), n("second")]),
+        hints: [
+          { kind: "flag", label: "Trust", mark: "+1" },
+          { kind: "reveal", title: "Princess" },
+        ],
+      },
+    ];
+    const hints = () => [...host.querySelectorAll(".vn-flag-hints li")].map((li) => li.textContent);
+    flagHints = false;
+    await render({ events: [event("g1")] });
+    expect(text()).toBe("first");
+    expect(hints()).toEqual([]);
+    flagHints = true;
+    await render({ events: [event("g1")] });
+    expect(hints()).toEqual(["◆ Trust +1", `◆ ${t("vnFlagReveal", { title: "Princess" })}`]);
+    await advance();
+    expect(hints()).toEqual([]);
+  });
+
   it("plays from the last event and a choice goes to submitText exactly once", async () => {
     backend.cells = [gm("g0", [n("old")]), gm("g1", [n("hello"), choices("Go left", "Go right")])];
     let finish = () => {};

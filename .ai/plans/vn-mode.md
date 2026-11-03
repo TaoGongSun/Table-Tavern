@@ -56,13 +56,13 @@ VN 是同一引擎的另一種**桌型＋演出層**（M 筆記：VN 是 rendere
 | 步 | 內容 | 重用 |
 |---|---|---|
 | ① 起點 | 點子＋題材；或「我有角色卡」匯入；或「初始 VN 卡」（§15，聖經與風格指引都來自卡，跳過 ② 的生成、直接顯示）；主角＝玩家卡／只填名字／無名／卡定主角；問「要被劇情驚喜嗎」（劇透鎖，§5），第 ② 步展開畫面就已套遮罩 | `GenerateTableDialog` 大綱流程、匯入流程、`player_card_id` |
-| ② 展開 | 世界、角色（公開設定 `public_md`＋私設 `private_md`）、**劇本聖經**（新）：主線一句、**模型依劇情推薦的章數上限**（玩家可改；VN 卡可鎖）、`branching`、每章目標／節拍／結束條件／要埋與要收的伏筆／錨句、結局表、旗標表、每角色秘密與揭露時機；VN 卡的「重骰聖經」改成「恢復卡內原版」 | `genesis` expand 多一段 `## BIBLE`；解析失敗重試一次，再失敗＝沒有聖經（可玩、無結局表、章上限用保底值） |
+| ② 展開 | 世界、角色（公開設定 `public_md`＋私設 `private_md`）、**劇本聖經**（新）：主線一句、**模型依劇情推薦的章數上限**（玩家可改；VN 卡可鎖）、`branching`、每章目標／節拍／結束條件／要埋與要收的伏筆／錨句、結局表、旗標表、每角色秘密與揭露時機；VN 卡的「重骰聖經」改成「恢復卡內原版」 | 聖經另發一次呼叫（genesis、匯入卡、重骰共用，[包 4](vn-mode-pkg4.md)）；解析失敗重試一次，再失敗＝沒有聖經（可玩、無結局表、章上限用保底值） |
 | ③ 立繪 | 每角色生透明定稿（七分身、到小腿）→ 重骰挑選；五張表情差分（中性／喜／怒／哀／驚）在開演後背景補生；聖經可建議額外變體（服裝／姿態），玩家在立繪分頁增刪；表情是臉層、變體是身體層，分層疊圖（§9），每張可重骰或上傳替換（§6） | 既有 AI 生圖對話窗＋圖庫；管線見 [實測報告](vn-mode-image-spike.md) |
 | ④ 開演 | 定稿都挑好即可按開始；標題畫面（桌名＋開始；VN 卡用封面當標題背景）；第一幕背景與表情差分同時在背景生成 | §6 |
 
 - 匯入 ST 卡的 VN 桌：角色與世界書來自卡，聖經由 AI 讀卡生成；卡內 GM-only 世界書條目視為世界真相（§5 第三層）；立繪照第 ③ 步生（卡圖當定稿的參考圖）。
 - **編輯**：角色編輯頁沿用（公開／私設）＋新「立繪」分頁（§9）；聖經在世界編輯器新分頁「劇本」（主線、章數、結局表、旗標表、秘密與揭露時機），整個分頁在劇透區內（§5）。
-- 聖經分兩層注入：**常駐**（世界概要、文風、角色公開設定、主角檔、每章一行標題與目標、秘密表、旗標表、結局表）放 GM 線 system 穩定前綴；**當章包**（本章節拍、結束條件、要埋要收的伏筆、錨句、預期場景）在章邊界換入。幕中不動 system 是快取紅線，所以**解鎖後改聖經、改私設都是下一章才生效**，分頁上寫明。文字量上限：常駐 12,000 字、當章包 4,000 字／章、單角色私設 2,000 字〔模型判斷·未裁決，報告 §4〕。
+- 聖經分兩層注入：**常駐**（世界概要、文風、角色公開設定、主角檔、每章一行標題與目標、秘密表、旗標表、結局表）放 GM 線 system 穩定前綴；**當章包**（本章節拍、結束條件、要埋要收的伏筆、錨句、預期場景）在章邊界換入。幕中不動 system 是快取紅線，所以**解鎖後改聖經是下一幕才生效**（注入讀以幕號為鍵的凍結副本），分頁上寫明；私設改動照既有角色編輯立即生效，重骰只限未遊玩的桌。文字量上限：常駐 12,000 字、當章包 4,000 字／章、單角色私設 2,000 字〔模型判斷·未裁決，報告 §4〕。
 
 ## 5 秘密分層與劇透鎖
 
@@ -93,10 +93,10 @@ VN 是同一引擎的另一種**桌型＋演出層**（M 筆記：VN 是 rendere
 ## 7 事件旗標
 
 - **旗標＝狀態樹 `flags.*` 子樹**，照 [機制格式](../reference/MECHANISM-FORMAT.md)：聖經旗標表（id、型別、初值、說明、觸發情境）在開桌時寫成狀態樹初值＋機制規則（布林→`enum`、計數→數字 `delta`＋上下限、路線→`enum`），落 `state.json`。
-- **誰宣告、誰判定**：模型在正文後以 `<UpdateVariable>` 報變動（與介面接管桌同一協定）；引擎只收表內路徑與合法值，拒收走既有回饋句（`notes`）讓下一輪自癒；引擎**不從正文推斷旗標**（避開 M 的 tracker 當認知）。施工點：`gm_commit_apply` 目前以「介面接管」當增量協定的判定，要抽成「狀態協定＝圍欄／增量」由桌型決定。
+- **誰宣告、誰判定**：模型在正文後以 `<UpdateVariable>` 報變動（與介面接管桌同一協定）；引擎只收表內路徑與合法值，拒收走既有回饋句（`notes`）讓下一輪自癒；引擎**不從正文推斷旗標**（避開 M 的 tracker 當認知）。施工：有聖經的 VN 桌開 `mechanism.incremental`（VN 桌本來就同時收圍欄與 `<UpdateVariable>`，不另抽協定）；合法值用 `FieldRule.allowed`，`flags`／`revealed`／`chapter` 為受保護根（[包 4](vn-mode-pkg4.md)）。
 - 提示詞：GM system 帶旗標表與各旗標的觸發情境（穩定前綴）；回合尾帶現值（既有 `inject: turn`）。角色線不帶旗標（只看得到公開事件）。
 - 逐則快照（既有）＝回溯、分岔自動還原旗標。
-- UI：格邊小提示「◆ 好感 +1」，**預設顯示、設定可關**〔作者裁決 2026-11-01〕；log 側欄有旗標面板。
+- UI：格邊小提示「◆ 好感 +1」，**預設顯示、設定可關**〔作者裁決 2026-11-01〕；旗標現值列在「劇本」分頁。
 - 條件選項「可見不可點」（借 L）：v1.5，GM 在選項行尾寫 `(requires: 旗標 >= 值)`，引擎判定灰掉；歸 [vn-story-flags](../tasks/vn-story-flags.md)，不進 v1。
 
 ## 8 章、幕與故事完結
@@ -136,7 +136,7 @@ VN 是同一引擎的另一種**桌型＋演出層**（M 筆記：VN 是 rendere
 
 ## 10 資料與程式落點（照 [STRUCTURE](../../docs/STRUCTURE.md)）
 
-- Rust：`WorldState.table_kind` 與 `WorldState.replay`（作品包匯入的重播桌）；`chat_turn/vn_script.rs`（解析、退旁白、指令白名單、角色線過濾）；`transport/response.rs` 新 `GmTurnFormat::VnScript`＋ VN 導演指示（GM、角色各一份）；`data/vn.rs`（`vn.json` 只放定義與設定：bible、endings、flags 定義、spoiler_lock；`revealed`、`ended`、旗標現值都在狀態樹）；結局條件求值重用 `mechanism::triggers`；`genesis` 加 `## BIBLE` 段；`chat_turn/commit.rs` 狀態協定抽象；`vn_sprites.rs`（定稿與差分生成佇列、去背後備 `ort`＋BiRefNet-lite、檔案管理）；`vn_package.rs`（作品包匯出／匯入：zip、schema 驗證、資產嚴驗、分岔樹還原）；`commands/vn.rs` 薄殼（背景庫、立繪、劇透鎖、存檔槽、作品包、VN 卡）；`import/vn_card.rs`（VN 卡偵測與匯入：建角色、世界書、`vn.json`）與 `export/vn_card.rs`（VN 桌匯出成卡）。`generate_character_image` 的構圖加 `sprite`（七分身透明）。
+- Rust：`WorldState.table_kind` 與 `WorldState.replay`（作品包匯入的重播桌）；`chat_turn/vn_script.rs`（解析、退旁白、指令白名單、角色線過濾）；`transport/response.rs` 新 `GmTurnFormat::VnScript`＋ VN 導演指示（GM、角色各一份）；`data/vn.rs`（`vn.json` 只放定義與設定：bible、endings、flags 定義、spoiler_lock；`revealed`、`ended`、旗標現值都在狀態樹）；結局條件求值重用 `mechanism::triggers`；`vn_bible.rs`（聖經生成、套用、凍結注入）、`mechanism/write_guard.rs`（合法值與受保護根）；`vn_sprites.rs`（定稿與差分生成佇列、去背後備 `ort`＋BiRefNet-lite、檔案管理）；`vn_package.rs`（作品包匯出／匯入：zip、schema 驗證、資產嚴驗、分岔樹還原）；`commands/vn.rs` 薄殼（背景庫、立繪、劇透鎖、存檔槽、作品包、VN 卡）；`import/vn_card.rs`（VN 卡偵測與匯入：建角色、世界書、`vn.json`）與 `export/vn_card.rs`（VN 桌匯出成卡）。`generate_character_image` 的構圖加 `sprite`（七分身透明）。
 - 前端：`features/vn/`（`VnPlayer`、`Stage`、`DialogueBox`、`ChoicePanel`、`Backlog`、`TitleScreen`、`EndingScreen`、`themes/`、`vn-cells.ts` 斷格、`useVnPlayback`、`useBackground`、`useSprites`、`useReplay` 重播模式）；`features/lobby` 入口卡、桌型選擇與作品匯入；`features/worldbook` 「劇本」分頁；`features/characters` 劇透遮罩與「立繪」分頁；`App.tsx` `enterTable` 依桌型進 `VnPlayer`（vn-prestructure-split 明寫留到 VN 真要動時）。
 - 桌資料夾：`worlds/<id>/vn/{backgrounds,sprites}/`、`vn.json`、`vn-progress.json`。
 - 網頁版 `web/` v1 不做 VN。〔模型判斷·未裁決〕
@@ -190,7 +190,7 @@ VN 是同一引擎的另一種**桌型＋演出層**（M 筆記：VN 是 rendere
 ## 13 已知限制與範圍外
 
 - VN 桌匯出成 VN 卡（包 9）只帶文字與封面，不帶立繪、背景、遊玩紀錄；要帶美術走作品包（§14）。
-- 劇透鎖是君子鎖；解鎖後改聖經下一章才生效（快取紅線）。
+- 劇透鎖是君子鎖；解鎖後改聖經下一幕才生效（快取紅線）。
 - 幕中格級存檔不做、存檔＝分岔點〔模型判斷·未裁決〕。
 - 表情差分背景補生期間，該表情先以定稿顯示〔隨拍板 4 的「差分背景補」而來〕。
 - 純選項制、無自由輸入（拍板 5）；條件選項 v1.5。

@@ -11,6 +11,7 @@ use super::tree::{
 use super::types::{Outcome, Parsed, Patch, PatchOp, Record, RecordKind};
 use super::upstream_set::{is_vwd, upstream_set, TypedView, Val};
 use super::value_keys::fold_object_keys;
+use super::write_guard::{value_text, write_refusal, Write};
 
 mod array;
 mod hint;
@@ -187,6 +188,10 @@ fn apply_one(
         ));
         return false;
     }
+    if let Some(record) = guard_record(tree, mechanism, patch) {
+        records.push(record);
+        return false;
+    }
     // 集合（接管桌清單欄）：形狀、項目、改名在這裡；項目欄位折好路徑後照一般流程套規則
     let delegated;
     let patch = match collection::route(tree, mechanism, patch, records, changes) {
@@ -212,6 +217,27 @@ fn apply_one(
         PatchOp::Move => return apply_move(tree, mechanism, patch, view, records, changes),
     }
     false
+}
+
+/// 合法值與受保護根（`write_guard`）：排在集合與陣列分流之前，刪除、搬移、整支替換也擋得到。
+fn guard_record(
+    tree: &BTreeMap<String, StateNode>,
+    mechanism: &Mechanism,
+    patch: &Patch,
+) -> Option<Record> {
+    let value = value_text(patch.value.as_ref()).unwrap_or_default();
+    let onto_leaf = matches!(data::node_at(tree, &patch.path), Some(StateNode::Leaf(_)));
+    let write = match patch.op {
+        PatchOp::Delta => Write::Delta,
+        PatchOp::Replace | PatchOp::Insert if onto_leaf => Write::Replace(&value),
+        _ => Write::Other,
+    };
+    let (path, detail) = std::iter::once((&patch.path, write))
+        .chain((patch.op == PatchOp::Move).then_some((&patch.from, Write::Other)))
+        .find_map(|(path, write)| {
+            write_refusal(mechanism, path, write).map(|detail| (path, detail))
+        })?;
+    Some(Record::new(RecordKind::Rejected, path.join("."), detail))
 }
 
 /// delta 的變動標記：帶號數字，正數補 `+`（負數 `format_num` 本身就帶 `-`）。

@@ -153,6 +153,69 @@ export interface VnEventCells {
   event_id: string | null;
   kind: TranscriptEvent["kind"];
   cells: VnCell[];
+  /** 格邊旗標提示（Rust `vn_bible::FlagHint`）；沒有變動時省略 */
+  hints?: FlagHint[];
+}
+
+export type FlagHint =
+  | { kind: "flag"; label: string; mark?: string; value?: string }
+  | { kind: "reveal"; title: string };
+
+// VN 劇本聖經（Rust `data::vn`，plans/vn-mode-pkg4.md §2.1）
+export interface BibleChapter {
+  title: string;
+  goal: string;
+  beats: string;
+  end_condition: string;
+  plant: string[];
+  payoff: string[];
+  anchors: string[];
+}
+
+export type BibleReveal = { flag: string } | { chapter: number } | "never";
+
+export interface BibleSecret {
+  id: string;
+  holder: string | null;
+  title: string;
+  text: string;
+  reveal: BibleReveal;
+  hint: string;
+}
+
+export interface BibleFlag {
+  id: string;
+  label: string;
+  type: "bool" | "counter" | "route";
+  initial: string;
+  min?: number;
+  max?: number;
+  values?: string[];
+  trigger: string;
+}
+
+export interface Bible {
+  logline: string;
+  style: string;
+  branching: "none" | "light" | "full";
+  chapter_max: number;
+  chapter_reason: string;
+  chapters: BibleChapter[];
+  secrets: BibleSecret[];
+  flags: BibleFlag[];
+  endings: { id: string; title: string; when: Record<string, unknown>[] }[];
+}
+
+/** `vn_bible_read`：鎖、聖經、旗標現值、已揭露清單、能不能重骰 */
+export interface BibleView {
+  version: number;
+  spoiler_lock: boolean;
+  bible: Bible | null;
+  flagValues: Record<string, string>;
+  revealed: { id: string; chapter: number | null }[];
+  played: boolean;
+  /** 角色 id → 名字 */
+  names: Record<string, string>;
 }
 
 // VN 立繪（Rust `vn_sprites`，plans/vn-mode-pkg7.md §3）

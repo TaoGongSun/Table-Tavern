@@ -34,6 +34,9 @@ pub(crate) struct GmMaterials {
     pub party: Party,
     /// VN 桌各角色可用的立繪變體（角色名, label）；非 VN 桌為空
     pub vn_variants: Vec<(String, Vec<String>)>,
+    /// VN 桌的聖經凍結副本與補種初值（`vn_bible::turn_inputs`）；沒有聖經為空
+    pub vn_bible: Option<data::vn::Frozen>,
+    pub vn_seeds: Vec<(Vec<String>, String)>,
 }
 
 /// 多人房間的真人玩家（multiplayer-room 包 3，來源 `WorldState::player_card_ids`／`absent_card_ids`）：
@@ -199,6 +202,7 @@ pub(crate) fn gm_materials(root: &std::path::Path, world_id: &str) -> Result<GmM
     let mut greeting = greeting::policy(root, world_id, &state, &events, takeover);
     let regex = prompt_regex(root, world_id);
     let cards = active_cards_with(root, world_id, greeting.strip_cards)?;
+    let (vn_bible, vn_seeds) = crate::vn_bible::turn_inputs(root, world_id, &state);
     let vn_variants = match vn_table(&state) {
         true => crate::vn_sprites::variant_roster(root, world_id, &cards),
         false => Vec::new(),
@@ -214,6 +218,8 @@ pub(crate) fn gm_materials(root: &std::path::Path, world_id: &str) -> Result<GmM
         events,
         cards,
         vn_variants,
+        vn_bible,
+        vn_seeds,
         strip_greetings: greeting.strip_cards,
         opening: greeting.gm,
         prompt_regex: regex,
@@ -565,8 +571,7 @@ pub(crate) fn gm_lane_parts(
         &materials.opening,
     );
     if vn_table(&materials.state) {
-        frozen.push_str(&transport::vn_format_rules(lang));
-        frozen.push_str(&transport::vn_variant_note(lang, &materials.vn_variants));
+        frozen.push_str(&vn_system(materials, lang));
     }
     let turn = transport::gm_lane_turn(
         scan,
@@ -603,15 +608,20 @@ pub(crate) fn gm_messages(
         vn_table(&materials.state),
     );
     if vn_table(&materials.state) {
-        messages[0]
-            .content
-            .push_str(&transport::vn_format_rules(lang));
-        messages[0]
-            .content
-            .push_str(&transport::vn_variant_note(lang, &materials.vn_variants));
+        messages[0].content.push_str(&vn_system(materials, lang));
     }
     messages.push(instruction_message);
     messages
+}
+
+/// VN 桌 GM system 的附加段：劇本格式、立繪變體、聖經（常駐段＋當章包）。
+fn vn_system(materials: &GmMaterials, lang: &str) -> String {
+    let mut text = transport::vn_format_rules(lang);
+    text.push_str(&transport::vn_variant_note(lang, &materials.vn_variants));
+    if let Some(frozen) = &materials.vn_bible {
+        text.push_str(&crate::vn_bible::injection(lang, frozen, &materials.cards));
+    }
+    text
 }
 
 /// VN 桌（vn-mode）：GM 指示、system 附加段與送模型的歷史前綴都看這個。

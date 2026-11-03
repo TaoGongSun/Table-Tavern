@@ -296,6 +296,8 @@ pub(crate) async fn gm_narrate(
         None => turn.commit(
             main,
             |state, stat| {
+                // VN 桌補種：表內但樹上缺的旗標、揭露、章號補成初值（只補不覆蓋、不記變動）
+                data::vn::fill_missing(&mut state.state.tree, &materials.vn_seeds);
                 gm_commit_apply(
                     state,
                     stat,

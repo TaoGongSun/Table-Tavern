@@ -29,6 +29,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ revealItemInDir: vi.fn(async () => {}) }));
 
+import { confirm } from "@tauri-apps/plugin-dialog";
 import { WorldEditor } from "./WorldEditor";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -110,6 +111,52 @@ describe("WorldEditor", () => {
 
   const commands = (name: string) => backend.calls.filter((call) => call.command === name);
   const saveButton = () => host!.querySelector<HTMLButtonElement>(".edit-page-save")!;
+
+  it("keeps the script tab's draft across tab switches and asks before leaving with it unsaved", async () => {
+    function Script({ onDirty }: { onDirty: (dirty: boolean) => void }) {
+      return <input className="script-draft" onChange={() => onDirty(true)} />;
+    }
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    root = createRoot(host);
+    await act(async () => {
+      root?.render(
+        <WorldEditor
+          title={t("worldAria")}
+          world="w1"
+          worldName="Alpha"
+          onBack={() => {}}
+          leaveGuard={leaveGuard}
+          convertColor="#e07a5f"
+          onEntryConverted={async () => {}}
+          onRefactorApplied={async () => {}}
+          onRefreshReceipts={async () => {}}
+          isTurnRunning={() => false}
+          pendingRefactorCard={null}
+          onPendingRefactorCardTaken={taken}
+          worldChange={null}
+          onWorldChangeTaken={removalTaken}
+          bibleTab={(onDirty) => <Script onDirty={onDirty} />}
+        />,
+      );
+    });
+    const tab = (label: string) =>
+      [...host!.querySelectorAll<HTMLButtonElement>(".card-editor-tabs button")].find(
+        (button) => button.textContent === label,
+      )!;
+    await act(async () => tab(t("vnBibleTab")).click());
+    const draft = host!.querySelector<HTMLInputElement>(".script-draft")!;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+      setter.call(draft, "edited");
+      draft.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => tab(t("vnWorldTab")).click());
+    expect(host!.querySelector<HTMLInputElement>(".script-draft")!.value).toBe("edited");
+    vi.mocked(confirm).mockResolvedValueOnce(false);
+    expect(await leaveGuard.current!()).toBe(false);
+    expect(confirm).toHaveBeenCalled();
+  });
 
   it("saves only world.md from the top bar", async () => {
     await mount();

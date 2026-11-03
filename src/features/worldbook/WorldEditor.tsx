@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useId, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { t } from "../../i18n";
@@ -28,6 +28,8 @@ export function WorldEditor({
   worldChange,
   onWorldChangeTaken,
   transport,
+  bibleTab,
+  gmGuard,
 }: {
   title: string;
   world: string;
@@ -51,7 +53,13 @@ export function WorldEditor({
   onWorldChangeTaken: (worldId: string, generation: number) => void;
   /** 聊天 transport：重構初判失敗的錯誤分流用；不傳走中性文案 */
   transport?: string;
+  /** VN 桌的「劇本」分頁（features/vn/bible/BibleTab）；有給才出「世界｜劇本」切換。收回報未存與否的回呼 */
+  bibleTab?: (onDirtyChange: (dirty: boolean) => void) => ReactNode;
+  /** VN 桌 GM-only 條目內文的劇透遮罩 */
+  gmGuard?: (content: ReactNode) => ReactNode;
 }) {
+  const [bibleShown, setBibleShown] = useState(false);
+  const [bibleDirty, setBibleDirty] = useState(false);
   const [text, setText] = useState<string | null>(null);
   const [savedText, setSavedText] = useState("");
   const [message, setMessage] = useState("");
@@ -133,7 +141,8 @@ export function WorldEditor({
     );
   }
 
-  const unsavedCount = (text !== savedText ? 1 : 0) + (worldbook.newEntryDirty ? 1 : 0);
+  const unsavedCount =
+    (text !== savedText ? 1 : 0) + (worldbook.newEntryDirty ? 1 : 0) + (bibleDirty ? 1 : 0);
 
   async function saveWorldSettings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -174,26 +183,46 @@ export function WorldEditor({
       message={message}
       messageIsError={messageIsError}
     >
-      {/* world form 只包這一格：世界書區有自己的條目表單，不能巢狀；頂列儲存只寫 world.md */}
-      <form id={formId} onSubmit={saveWorldSettings} className="settings-form">
-        <label>
-          {t("worldSummary")}
-          <textarea
-            rows={6}
-            value={text}
-            onChange={(event) => setText(event.currentTarget.value)}
-          />
-        </label>
-      </form>
+      {bibleTab && (
+        <div className="card-editor-tabs">
+          {([false, true] as const).map((bible) => (
+            <button
+              key={String(bible)}
+              type="button"
+              className="btn btn-sm"
+              aria-pressed={bibleShown === bible}
+              onClick={() => setBibleShown(bible)}
+            >
+              {t(bible ? "vnBibleTab" : "vnWorldTab")}
+            </button>
+          ))}
+        </div>
+      )}
+      {/* 兩頁都保持掛載、只藏起來：world.md、條目與劇本草稿切頁都留著 */}
+      {bibleTab && <div hidden={!bibleShown}>{bibleTab(setBibleDirty)}</div>}
+      <div className="world-editor-page" hidden={Boolean(bibleTab) && bibleShown}>
+        {/* world form 只包這一格：世界書區有自己的條目表單，不能巢狀；頂列儲存只寫 world.md */}
+        <form id={formId} onSubmit={saveWorldSettings} className="settings-form">
+          <label>
+            {t("worldSummary")}
+            <textarea
+              rows={6}
+              value={text}
+              onChange={(event) => setText(event.currentTarget.value)}
+            />
+          </label>
+        </form>
 
-      <WorldbookSection
-        worldbook={worldbook}
-        refactorRunning={refactor.progress !== null}
-        refactorInputRef={refactor.inputRef}
-        onRunRefactor={refactor.runAiRefactor}
-        onPickRefactorOutcome={refactor.pickRefactorOutcome}
-        onExportSavedRefactorOutcome={refactor.exportSavedRefactorOutcome}
-      />
+        <WorldbookSection
+          worldbook={worldbook}
+          refactorRunning={refactor.progress !== null}
+          refactorInputRef={refactor.inputRef}
+          onRunRefactor={refactor.runAiRefactor}
+          onPickRefactorOutcome={refactor.pickRefactorOutcome}
+          onExportSavedRefactorOutcome={refactor.exportSavedRefactorOutcome}
+          gmGuard={gmGuard}
+        />
+      </div>
 
       <RefactorRunDialogs refactor={refactor} transport={transport} />
       <RefactorResultDialog refactor={refactor} entries={worldbook.entries} />

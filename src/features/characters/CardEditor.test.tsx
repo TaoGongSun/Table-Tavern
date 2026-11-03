@@ -2,7 +2,7 @@
 // 角色卡／玩家卡編輯頁（CardEditor）的頂列與 ⋯：驗按鈕搬家後的接線，不驗存檔細節。
 // 共用頁框 EditPage 的測試在 shared/ui/EditPage.test.tsx。
 
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { t } from "../../i18n";
@@ -54,6 +54,7 @@ interface MountOptions {
   isNew?: boolean;
   isPlayer?: boolean;
   color?: string;
+  privateGuard?: (field: ReactNode, take: (privateMd: string) => void) => ReactNode;
 }
 
 describe("CardEditor", () => {
@@ -97,6 +98,7 @@ describe("CardEditor", () => {
     isNew = false,
     isPlayer = false,
     color = "#e07a5f",
+    privateGuard,
   }: MountOptions) {
     return (
       <CardEditor
@@ -118,6 +120,7 @@ describe("CardEditor", () => {
         onOpenAiSettings={() => {}}
         onConverted={onConverted}
         isBusy={() => busy}
+        privateGuard={privateGuard}
       />
     );
   }
@@ -187,6 +190,39 @@ describe("CardEditor", () => {
     const writes = backend.calls.filter((call) => call.command === "write_character");
     expect(writes).toHaveLength(1);
     expect((writes[0].args.card as CharacterCard).id).toBe("c1");
+  });
+
+  it("takes a rerolled private profile into both the draft and the saved baseline", async () => {
+    backend.handlers.read_character = () => card("c1", "Alice", { private_md: "old" });
+    await mount({
+      privateGuard: (_field, take) => (
+        <button type="button" className="reroll-private" onClick={() => take("new secret")} />
+      ),
+    });
+    act(() => host!.querySelector<HTMLButtonElement>(".reroll-private")!.click());
+    expect(await leaveGuard.current!()).toBe(true);
+    expect(confirm).not.toHaveBeenCalled();
+    await act(async () => saveButton().click());
+    const writes = backend.calls.filter((call) => call.command === "write_character");
+    expect((writes[0].args.card as CharacterCard).private_md).toBe("new secret");
+  });
+
+  it("drops a rerolled private profile that lands after switching to another card", async () => {
+    backend.handlers.read_character = ({ characterId }) =>
+      card(characterId as string, "X", { private_md: `${characterId as string} secret` });
+    let pending: ((privateMd: string) => void) | null = null;
+    const privateGuard = (_field: ReactNode, take: (privateMd: string) => void) => (
+      <button type="button" className="reroll-private" onClick={() => (pending = take)} />
+    );
+    await mount({ privateGuard });
+    act(() => host!.querySelector<HTMLButtonElement>(".reroll-private")!.click());
+    await act(async () => {
+      root?.render(element({ characterId: "c2", privateGuard }));
+    });
+    act(() => pending!("c1 rerolled"));
+    await act(async () => saveButton().click());
+    const writes = backend.calls.filter((call) => call.command === "write_character");
+    expect((writes[0].args.card as CharacterCard).private_md).toBe("c2 secret");
   });
 
   it("keeps back usable when loading fails", async () => {

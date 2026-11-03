@@ -3,6 +3,9 @@
 // 刪除接線各不相同（新卡存完要留在編輯器、玩家卡走另一支善後、只有既有角色卡能真刪），
 // 原本的三元式逐條照抄過來，不合併。
 import { SpriteTab } from "../features/vn/SpriteTab";
+import { BibleTab } from "../features/vn/bible/BibleTab";
+import { PrivateMask } from "../features/vn/bible/PrivateMask";
+import { SpoilerMask } from "../features/vn/bible/SpoilerMask";
 import { ReactNode } from "react";
 import { t } from "../i18n";
 import { AppConfig } from "../shared/contracts/backend-contracts";
@@ -168,6 +171,15 @@ export function MainView({
               <SpriteTab worldId={world} characterId={cardId} name={cardName} />
             ) : undefined
           }
+          privateGuard={
+            vnTable && cardKind === "character"
+              ? (field, take) => (
+                  <PrivateMask worldId={world} characterId={cardId} onRerolled={take}>
+                    {field}
+                  </PrivateMask>
+                )
+              : undefined
+          }
         />
       ) : worldOpen ? (
         <WorldEditor
@@ -186,6 +198,14 @@ export function MainView({
           onWorldChangeTaken={onWorldChangeTaken}
           isTurnRunning={isBusy}
           transport={transport}
+          bibleTab={
+            vnTable
+              ? (onDirtyChange) => <BibleTab worldId={world} onDirtyChange={onDirtyChange} />
+              : undefined
+          }
+          gmGuard={
+            vnTable ? (content) => <SpoilerMask worldId={world}>{content}</SpoilerMask> : undefined
+          }
         />
       ) : (
         playView

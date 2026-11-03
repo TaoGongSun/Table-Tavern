@@ -1,4 +1,4 @@
-import type { FormEventHandler, RefObject } from "react";
+import type { FormEventHandler, ReactNode, RefObject } from "react";
 import type { CharacterMeta } from "../characters/card-model";
 import { t } from "../../i18n";
 import type { WorldbookDraft } from "./worldbook-model";
@@ -12,6 +12,8 @@ interface WorldbookEntryFormProps {
   onConvert: () => void | Promise<void>;
   onChange: (draft: WorldbookDraft) => void;
   onRefreshCharacters: () => void;
+  /** VN 桌 GM-only 條目的內文遮罩 */
+  contentGuard?: (content: ReactNode) => ReactNode;
 }
 
 // 條目表單就地展開：編輯取代原本那一列、新增排在清單底部（2026-07-30 使用者回饋——
@@ -25,6 +27,7 @@ export function WorldbookEntryForm({
   onConvert,
   onChange,
   onRefreshCharacters,
+  contentGuard = (content) => content,
 }: WorldbookEntryFormProps) {
   return (
     <form ref={formRef} className="settings-form worldbook-form" onSubmit={onSubmit}>
@@ -67,14 +70,16 @@ export function WorldbookEntryForm({
           onChange={(event) => onChange({ ...draft, keys: event.currentTarget.value })}
         />
       </label>
-      <label>
-        {t("worldbookContent")}
-        <textarea
-          rows={7}
-          value={draft.content}
-          onChange={(event) => onChange({ ...draft, content: event.currentTarget.value })}
-        />
-      </label>
+      {contentGuard(
+        <label>
+          {t("worldbookContent")}
+          <textarea
+            rows={7}
+            value={draft.content}
+            onChange={(event) => onChange({ ...draft, content: event.currentTarget.value })}
+          />
+        </label>,
+      )}
       <label className="inline">
         <input
           type="checkbox"

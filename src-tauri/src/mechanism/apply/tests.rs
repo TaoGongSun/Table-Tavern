@@ -346,6 +346,7 @@ fn notes_are_deduped_and_capped_at_five() {
             branch: None,
             formula: None,
             same_as: None,
+            allowed: Vec::new(),
         },
     )]);
     let patch = Patch {

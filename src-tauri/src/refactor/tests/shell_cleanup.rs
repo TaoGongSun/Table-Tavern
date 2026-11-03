@@ -389,6 +389,7 @@ fn unrelated_mechanism_values_survive_shell_cleanup() {
             branch: None,
             formula: None,
             same_as: None,
+            allowed: Vec::new(),
         },
     );
     data::write_state(root.path(), &world_id, &state).unwrap();
@@ -434,6 +435,7 @@ fn stale_rules_survive_rerun_and_insert_regrows_retired_field() {
             branch: None,
             formula: None,
             same_as: None,
+            allowed: Vec::new(),
         },
     );
     first.guide = "每回合報舊區.HP".to_owned();

@@ -749,10 +749,13 @@ describe("lobby and table navigation", () => {
         )!,
       );
       expect(calls("generate_table_expand")[0].args.tableKind).toBe("vn");
-      // ③ 立繪、④ 開演是佔位步驟；建好桌後精靈沒有被 GenerateTableDialog 的收尾關掉
-      expect(document.body.textContent).toContain(t("vnStepSpritesTitle"));
+      // 建好桌後精靈沒有被 GenerateTableDialog 的收尾關掉，接著進 ② 生成聖經（帶 ① 預設勾的劇透鎖）
+      expect(document.body.textContent).toContain(t("vnStepExpandTitle"));
+      expect(calls("vn_bible_generate")[0].args).toEqual({ worldId: "vn1", spoilerLock: true });
       expect(inLobby()).toBe(true);
       expect(document.querySelector(".table-badge")?.textContent).toBe(t("vnBadge"));
+      await click(buttonText(t("vnNext")));
+      expect(document.body.textContent).toContain(t("vnStepSpritesTitle"));
       await click(buttonText(t("vnNext")));
       await click(buttonText(t("vnStart")));
       expect(calls("open_world").map((call) => call.args.worldId)).toEqual(["vn1"]);
@@ -779,6 +782,8 @@ describe("lobby and table navigation", () => {
       backend.handlers.card_openings = () => [];
       await boot();
       await click(buttonText(t("vnEntryTitle")));
+      // ① 取消「讓劇情給我驚喜」：匯完回到 ② 生成時帶著這個選擇
+      await click(document.querySelector<HTMLInputElement>('.gen-table-dialog input[type="checkbox"]')!);
       const input = document.querySelector<HTMLInputElement>('.gen-table-dialog input[type="file"]')!;
       const file = new File([new Uint8Array([1, 2, 3])], "lia.png");
       Object.defineProperty(input, "files", { value: [file], configurable: true });
@@ -790,6 +795,7 @@ describe("lobby and table navigation", () => {
       expect(calls("import_character")).toHaveLength(1);
       await settle();
       expect(document.body.textContent).toContain(t("vnStepExpandTitle"));
+      expect(calls("vn_bible_generate")[0].args).toEqual({ worldId: "vn2", spoilerLock: false });
       await click(buttonText(t("vnNext")));
       await click(buttonText(t("vnNext")));
       await click(buttonText(t("vnStart")));

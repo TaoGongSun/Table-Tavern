@@ -1,12 +1,13 @@
 // VN 開桌精靈骨架：① 起點、② 展開重用一句話開桌（GenerateTableDialog＋genesis，建出 vn 桌）；
 // ① 也可以改選「我有角色卡」：交給匯入流程開 VN 桌，匯完回到這裡的 ②。
-// 從匯入來的桌角色與世界書已就位，直接從 ② 起（聖經生成在後續版本）。③ 立繪挑定稿（VnSpriteStep），
+// 從匯入來的桌角色與世界書已就位，直接從 ② 起。② 生成劇本聖經（VnBibleStep，帶 ① 選的劇透鎖）、③ 立繪挑定稿（VnSpriteStep），
 // ④ 開演（VnStartStep：一進來就預生首幕背景）＝進桌，進桌後背景補表情。
 // 精靈結束＝進那張 vn 桌；中途關掉時桌已建好、留在大廳清單裡。
 import { invoke } from "@tauri-apps/api/core";
 import { useRef, useState } from "react";
 import { VnSpriteStep } from "./VnSpriteStep";
 import { VnStartStep } from "./VnStartStep";
+import { VnBibleStep } from "./bible/VnBibleStep";
 import { t, type MsgKey } from "../../i18n";
 import { Dialog } from "../../shared/ui/Dialog";
 import { GenerateTableDialog } from "../lobby/GenerateTableDialog";
@@ -14,12 +15,14 @@ import { GenerateTableDialog } from "../lobby/GenerateTableDialog";
 /** worldId＝null 從一句話起點開始；有值＝桌已建好（匯入來的），從 ② 起 */
 export interface VnWizardStart {
   worldId: string | null;
+  /** ① 的「讓劇情給我驚喜」；匯入路由框直接進 ② 的沒有 ①，照預設鎖 */
+  spoilerLock?: boolean;
 }
 
 type PlaceholderStep = "expand" | "sprites" | "start";
 
 const STEPS = {
-  expand: { title: "vnStepExpandTitle", body: "vnStepExpandImported", next: "sprites" },
+  expand: { title: "vnStepExpandTitle", body: "vnBibleGenerating", next: "sprites" },
   sprites: { title: "vnStepSpritesTitle", body: "vnStepSpritesBody", next: "start" },
   start: { title: "vnStepStartTitle", body: "vnStepStartBody", next: null },
 } satisfies Record<PlaceholderStep, { title: MsgKey; body: MsgKey; next: PlaceholderStep | null }>;
@@ -36,8 +39,8 @@ export function VnWizard({
   transport?: string;
   /** ② 展開建好桌：大廳清單重讀 */
   onCreated: (worldId: string) => Promise<void>;
-  /** ①「我有角色卡」選了檔：開 VN 桌並匯入，匯完以該桌從 ② 重開精靈 */
-  onImportCard: (file: File) => void;
+  /** ①「我有角色卡」選了檔：開 VN 桌並匯入，匯完以該桌從 ② 重開精靈（帶 ① 的劇透鎖選擇） */
+  onImportCard: (file: File, spoilerLock: boolean) => void;
   /** ④ 按開始：進那張桌 */
   onFinish: (worldId: string) => void;
   onClose: () => void;
@@ -49,6 +52,7 @@ export function VnWizard({
   const worldId = useRef(start.worldId);
   const cardInput = useRef<HTMLInputElement>(null);
   const [spritesReady, setSpritesReady] = useState(false);
+  const [spoilerLock, setSpoilerLock] = useState(start.spoilerLock ?? true);
 
   if (step === "genesis") {
     return (
@@ -59,6 +63,15 @@ export function VnWizard({
         transport={transport}
         toolbar={(busy) => (
           <>
+            <label className="inline">
+              <input
+                type="checkbox"
+                checked={spoilerLock}
+                disabled={busy}
+                onChange={(event) => setSpoilerLock(event.currentTarget.checked)}
+              />
+              {t("vnSpoilerCheckbox")}
+            </label>
             <button
               type="button"
               className="btn"
@@ -75,14 +88,14 @@ export function VnWizard({
               onChange={(event) => {
                 const file = event.currentTarget.files?.[0];
                 event.currentTarget.value = "";
-                if (file) onImportCard(file);
+                if (file) onImportCard(file, spoilerLock);
               }}
             />
           </>
         )}
         onCreated={async (id) => {
           worldId.current = id;
-          setStep("sprites");
+          setStep("expand");
           await onCreated(id);
         }}
         onClose={() => {
@@ -127,7 +140,9 @@ export function VnWizard({
         </>
       }
     >
-      {sprites ? (
+      {step === "expand" && worldId.current !== null ? (
+        <VnBibleStep worldId={worldId.current} spoilerLock={spoilerLock} />
+      ) : sprites ? (
         <VnSpriteStep worldId={worldId.current!} onReady={setSpritesReady} />
       ) : step === "start" && worldId.current !== null ? (
         <VnStartStep worldId={worldId.current} />

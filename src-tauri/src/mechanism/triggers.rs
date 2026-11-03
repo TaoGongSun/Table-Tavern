@@ -31,7 +31,7 @@ pub fn evaluate_triggers(
     let mut outcome = TriggerOutcome::default();
     for trigger in &mechanism.triggers {
         let flag = match (&trigger.mode, &trigger.flag) {
-            (TriggerMode::Once, Some(flag)) => Some(flag_path(tree, flag, &trigger.id)),
+            (TriggerMode::Once, Some(flag)) => Some(flag_path(tree, mechanism, flag, &trigger.id)),
             _ => None,
         };
         if let Some(flag) = &flag {
@@ -72,10 +72,20 @@ pub fn evaluate_triggers(
 /// app 自管的一次性旗標分支：卡片給的旗標路徑寫不進樹時改釘在這底下。GM 寫不了 `_` 開頭的路徑，也不列給 GM 看。
 pub const ONCE_BRANCH: &str = "_once";
 
-/// 一次性觸發實際用的旗標路徑：卡片給的寫得進樹就照用，否則 `_once.<id>`（id 裡的 `.` 換成 `_`）。
-fn flag_path(tree: &BTreeMap<String, StateNode>, flag: &str, id: &str) -> String {
+/// 一次性觸發實際用的旗標路徑：卡片給的寫得進樹、也過得了合法值檢查（`write_refusal`）就照用，
+/// 否則 `_once.<id>`（id 裡的 `.` 換成 `_`）。
+fn flag_path(
+    tree: &BTreeMap<String, StateNode>,
+    mechanism: &Mechanism,
+    flag: &str,
+    id: &str,
+) -> String {
+    let segments: Vec<String> = flag.split('.').map(str::to_owned).collect();
+    let refused =
+        super::write_refusal(mechanism, &segments, super::Write::Replace("true")).is_some();
     match once_flag(tree, flag) {
         OnceFlag::Blocked => format!("{ONCE_BRANCH}.{}", id.replace('.', "_")),
+        _ if refused => format!("{ONCE_BRANCH}.{}", id.replace('.', "_")),
         _ => flag.to_owned(),
     }
 }
@@ -446,6 +456,7 @@ mod tests {
     #[test]
     fn evaluate_triggers_stops_at_the_first_matching_case_and_falls_back_to_else() {
         let mechanism = Mechanism {
+            locked_roots: Vec::new(),
             collections: Default::default(),
             value_types: Default::default(),
             display_formats: Default::default(),
@@ -499,6 +510,7 @@ mod tests {
     #[test]
     fn evaluate_triggers_produces_no_text_when_no_case_matches_and_there_is_no_fallback() {
         let mechanism = Mechanism {
+            locked_roots: Vec::new(),
             collections: Default::default(),
             value_types: Default::default(),
             display_formats: Default::default(),
@@ -530,6 +542,7 @@ mod tests {
     #[test]
     fn evaluate_triggers_replaces_state_placeholder_and_user_macro() {
         let mechanism = Mechanism {
+            locked_roots: Vec::new(),
             collections: Default::default(),
             value_types: Default::default(),
             display_formats: Default::default(),

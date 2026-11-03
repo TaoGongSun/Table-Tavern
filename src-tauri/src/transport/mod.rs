@@ -27,6 +27,7 @@ pub(crate) mod test_support;
 pub(crate) mod translate;
 mod turns;
 pub(crate) mod vn_background_prompts;
+pub(crate) mod vn_bible_prompts;
 mod vn_format;
 pub(crate) mod vn_sprite_prompts;
 mod worldbook;

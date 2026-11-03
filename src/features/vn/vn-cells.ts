@@ -2,6 +2,7 @@
 // 規則見 .ai/plans/vn-mode-pkg2.md §2–§4。
 import type {
   Backdrop,
+  FlagHint,
   TranscriptEvent,
   VnCell,
   VnEventCells,
@@ -18,6 +19,8 @@ export interface FlatCell {
   index: number;
   kind: TranscriptEvent["kind"] | "pending";
   cell: VnCell;
+  /** 這則事件的格邊旗標提示（同一則的格共用） */
+  hints?: FlagHint[];
 }
 
 export interface Cursor {
@@ -45,6 +48,7 @@ export function flatten(events: VnEventCells[]): FlatCell[] {
       index,
       kind: event.kind,
       cell,
+      hints: event.hints,
     }));
   });
 }

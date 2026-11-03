@@ -301,7 +301,8 @@ pub fn apply_block_typed(
 ) -> Outcome {
     let (scoped, scope_record) = scoped_block(world, block, scope);
     // 換字形寫既有欄位時先對回原鍵：舊值、清單替換、寫入、跳動記號都用對齊後的路徑
-    let aligned = block_paths::align(world, &scoped);
+    let mut aligned = block_paths::align(world, &scoped);
+    let guard_records = super::write_guard::guard_fence(&world.mechanism, &mut aligned);
     let block = &aligned.block;
     let jump_check = !world.mechanism.incremental;
     // 清單整支替換：底下的舊值當作沒有，不拿來比跳動
@@ -393,7 +394,9 @@ pub fn apply_block_typed(
         .map(|(_, value)| value.clone());
     let mut outcome =
         apply_updates_typed(&mut world.state.tree, &world.mechanism, &parsed, &mut view);
-    outcome.records.splice(0..0, list_records);
+    outcome
+        .records
+        .splice(0..0, guard_records.into_iter().chain(list_records));
     super::prefix::reconcile(
         &mut world.mechanism.display_prefixes,
         &world.state.tree,

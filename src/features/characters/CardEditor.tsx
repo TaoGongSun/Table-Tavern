@@ -52,6 +52,7 @@ export function CardEditor({
   onConverted,
   isBusy,
   spriteTab,
+  privateGuard,
 }: {
   /** 頂列標題：卡種與角色名由 MainView 決定 */
   title: string;
@@ -85,6 +86,8 @@ export function CardEditor({
   isBusy: () => boolean;
   /** VN 桌的立繪分頁（features/vn/SpriteTab）；有給才出分頁切換 */
   spriteTab?: ReactNode;
+  /** VN 桌的私設劇透遮罩（features/vn/bible/PrivateMask）：包住私設欄；重骰後的新私設經 `take` 寫回草稿與已存基線 */
+  privateGuard?: (field: ReactNode, take: (privateMd: string) => void) => ReactNode;
 }) {
   const [spritesShown, setSpritesShown] = useState(false);
   const [card, setCard] = useState<CharacterCard | null>(null);
@@ -327,6 +330,19 @@ export function CardEditor({
     } catch (reason) {
       if (current()) setMessage(String(reason));
     }
+  }
+
+  function guardPrivate(field: ReactNode) {
+    if (!privateGuard) return field;
+    // 重骰回來時已換卡（editTarget 前進）就丟掉，不動別張卡的草稿與基線
+    const editing = editTarget.current;
+    return privateGuard(field, (private_md) => {
+      if (editTarget.current !== editing) return;
+      setCard((shown) => (shown ? { ...shown, private_md } : shown));
+      setSavedCardJson((saved) =>
+        saved && JSON.stringify({ ...(JSON.parse(saved) as CharacterCard), private_md }),
+      );
+    });
   }
 
   // 匯出成 SillyTavern 角色卡：內容取自已存檔的那份，所以草稿沒存完先擋下
@@ -638,7 +654,7 @@ export function CardEditor({
             onChange={(e) => setCard({ ...card, public_md: e.currentTarget.value })}
           />
         </label>
-        {!isPlayer && !hidePrivate && (
+        {!isPlayer && !hidePrivate && guardPrivate(
           <label>
             {t("privateLabel")}
             <textarea
@@ -646,7 +662,7 @@ export function CardEditor({
               value={card.private_md}
               onChange={(e) => setCard({ ...card, private_md: e.currentTarget.value })}
             />
-          </label>
+          </label>,
         )}
         {shownImage && (
           <label className="inline">

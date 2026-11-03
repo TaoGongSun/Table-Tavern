@@ -145,6 +145,7 @@ mod tests {
                 branch: None,
                 formula: None,
                 same_as: None,
+                allowed: Vec::new(),
             },
         )]);
         let mut saw_change = false;

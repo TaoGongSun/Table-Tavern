@@ -159,6 +159,8 @@ function App() {
   // 桌型（開桌定死）：送出走 VN 推進迴圈；與 vnView（目前看哪個視圖）分開
   const [vnTable, setVnTable] = useState(false);
   const [vnWizard, setVnWizard] = useState<VnWizardStart | null>(null);
+  // 精靈 ①「我有角色卡」選的劇透鎖：匯完重開精靈 ② 時帶上（匯入路由框直接進來的照預設鎖）
+  const vnSpoilerLock = useRef(true);
 
   const {
     config,
@@ -439,7 +441,10 @@ function App() {
     adoptTableName: adoptImportName,
     focusSpeaker,
     openTableForImport,
-    onVnTableImported: (worldId) => setVnWizard({ worldId }),
+    onVnTableImported: (worldId) => {
+      setVnWizard({ worldId, spoilerLock: vnSpoilerLock.current });
+      vnSpoilerLock.current = true;
+    },
     openWebSaveTable,
     runTableOp,
     resetChatted,
@@ -1059,6 +1064,8 @@ function App() {
           onError={setError}
           onShowChat={() => setVnView(false)}
           onGoLobby={() => void goLobby()}
+          flagHints={config.preferences["vn_flag_hints"] !== false}
+          onFlagHints={(on) => void changePreference("vn_flag_hints", on)}
         />
       ) : (
         <AppWorkspace
@@ -1138,7 +1145,8 @@ function App() {
               start={vnWizard}
               transport={transport}
               onCreated={() => refreshWorlds().catch((reason) => setError(String(reason)))}
-              onImportCard={(file) => {
+              onImportCard={(file, spoilerLock) => {
+                vnSpoilerLock.current = spoilerLock;
                 setVnWizard(null);
                 void imports.importFileToVnTable(file);
               }}

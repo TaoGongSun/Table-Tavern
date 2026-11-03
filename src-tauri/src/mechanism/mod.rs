@@ -21,6 +21,7 @@ mod triggers;
 mod types;
 pub(crate) mod upstream_set;
 mod value_keys;
+mod write_guard;
 
 #[cfg(test)]
 mod block_scope_tests;
@@ -44,6 +45,8 @@ mod parse_feedback_tests;
 mod slash_key_tests;
 #[cfg(test)]
 mod test_support;
+#[cfg(test)]
+mod write_guard_tests;
 
 #[cfg(test)]
 pub use ledger::apply_block;
@@ -57,3 +60,4 @@ pub(crate) use tree::canonical_path;
 pub(crate) use triggers::evaluate_triggers;
 pub(crate) use triggers::map_state_placeholders;
 pub use types::{Outcome, Record, RecordKind};
+pub use write_guard::{write_refusal, Write};

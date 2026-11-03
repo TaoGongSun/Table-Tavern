@@ -1,4 +1,4 @@
-import { Fragment, type RefObject, useEffect, useRef } from "react";
+import { Fragment, type ReactNode, type RefObject, useEffect, useRef } from "react";
 import { t } from "../../i18n";
 import { useDragReorder } from "../../shared/ui/drag-reorder";
 import { IconDelete, IconPlus, IconSparkle } from "../../shared/ui/icons";
@@ -14,6 +14,8 @@ interface WorldbookSectionProps {
   onRunRefactor: () => void | Promise<void>;
   onPickRefactorOutcome: (file: File) => void | Promise<void>;
   onExportSavedRefactorOutcome: (withImages?: boolean) => void | Promise<void>;
+  /** VN 桌 GM-only 條目內文的劇透遮罩（標題照顯示）；新條目不遮 */
+  gmGuard?: (content: ReactNode) => ReactNode;
 }
 
 export function WorldbookSection({
@@ -23,6 +25,7 @@ export function WorldbookSection({
   onRunRefactor,
   onPickRefactorOutcome,
   onExportSavedRefactorOutcome,
+  gmGuard,
 }: WorldbookSectionProps) {
   const {
     entries,
@@ -58,9 +61,13 @@ export function WorldbookSection({
     draftFormRef.current?.scrollIntoView({ block: "nearest" });
   }, [draftSeq]);
 
+  const gmEntry = (uid: number | null) =>
+    entries.some((entry) => entry.uid === uid && entry.visibility.type === "gm");
+  const guard = (uid: number | null) => (gmGuard && gmEntry(uid) ? gmGuard : undefined);
   const entryForm = draft && (
     <WorldbookEntryForm
       draft={draft}
+      contentGuard={guard(draft.uid)}
       characters={characters}
       formRef={draftFormRef}
       onSubmit={saveEntry}
@@ -232,7 +239,9 @@ export function WorldbookSection({
                     return entry.locked ? (
                       <details className="worldbook-locked-view">
                         <summary>{head}</summary>
-                        <div className="worldbook-locked-content">{entry.content}</div>
+                        {(guard(entry.uid) ?? ((content: ReactNode) => content))(
+                          <div className="worldbook-locked-content">{entry.content}</div>,
+                        )}
                       </details>
                     ) : (
                       head

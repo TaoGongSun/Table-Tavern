@@ -10,6 +10,7 @@ import { Backlog } from "./Backlog";
 import { ChoicePanel } from "./ChoicePanel";
 import { DialogueBox } from "./DialogueBox";
 import { Stage } from "./Stage";
+import { FlagHints } from "./bible/FlagHints";
 import { useVnCells } from "./useVnCells";
 import { useSprites } from "./useSprites";
 import { backdropKey, useBackgrounds } from "./useBackgrounds";
@@ -42,6 +43,8 @@ export function VnPlayer({
   onError,
   onShowChat,
   onGoLobby,
+  flagHints,
+  onFlagHints,
 }: {
   worldId: string;
   scene: number;
@@ -56,6 +59,9 @@ export function VnPlayer({
   onError: (message: string) => void;
   onShowChat: () => void;
   onGoLobby: () => void;
+  /** 格邊旗標提示開關（app 設定，預設開） */
+  flagHints: boolean;
+  onFlagHints: (on: boolean) => void;
 }) {
   const realignRef = useRef<ReturnType<typeof useVnPlayback>["realign"]>(() => {});
   const vn = useVnCells({
@@ -163,6 +169,12 @@ export function VnPlayer({
   const choices = play.end === "choices" ? onChoices : null;
   // 停在選項格時對話框留著前一格文字
   const shownCell = onChoices ? play.playable[play.playable.indexOf(play.current!) - 1] : play.current;
+  // 播到一則事件的第一個可停格時亮它的旗標提示
+  const current = play.current;
+  const hints =
+    flagHints && current && play.playable.find((cell) => cell.eventKey === current.eventKey) === current
+      ? current.hints
+      : undefined;
   return (
     <main className="vn-player">
       <header className="vn-toolbar">
@@ -210,6 +222,14 @@ export function VnPlayer({
             {t("vnBackgroundRegenerate")}
           </button>
         )}
+        <button
+          type="button"
+          className="btn btn-ghost"
+          aria-pressed={flagHints}
+          onClick={() => onFlagHints(!flagHints)}
+        >
+          {t("vnFlagHintsToggle")}
+        </button>
         <button type="button" className="btn btn-ghost" onClick={() => setLogOpen(true)}>
           {t("vnLog")}
         </button>
@@ -226,6 +246,7 @@ export function VnPlayer({
         cellKey={play.current?.key ?? ""}
       />
       <div className="vn-bottom">
+        {hints && hints.length > 0 && <FlagHints hints={hints} />}
         {choices && (
           <ChoicePanel
             options={choices.options}

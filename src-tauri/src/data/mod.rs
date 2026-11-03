@@ -12,6 +12,7 @@ mod state;
 pub mod state_commit;
 #[cfg(test)]
 mod test_support;
+pub mod vn;
 mod world;
 mod world_file;
 pub mod world_info_store;

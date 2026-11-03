@@ -358,7 +358,8 @@ export function GenerateTableDialog({
           ) : (
             <>
               <p>{t(genResultMessage === "character" ? "genCharParseFail" : "genParseFail")}</p>
-              <pre>{genResultRaw}</pre>
+              {/* VN 桌的原始輸出含私設與劇情，不攤在畫面上（劇透鎖） */}
+              {tableKind !== "vn" && <pre>{genResultRaw}</pre>}
             </>
           )}
         </section>
