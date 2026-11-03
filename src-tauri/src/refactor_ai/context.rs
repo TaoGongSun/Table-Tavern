@@ -7,7 +7,9 @@ use std::path::Path;
 /// 組裝一次 AI 讀卡要看到的完整脈絡：world.md＋世界書全部條目（含 uid／constant／disabled
 /// 旗標／全文，讓 AI 好引用 uid）＋既有角色卡（唯讀，AI 不必重拆這些）＋機制帳本已接管／跳過
 /// 清單（唯讀，AI 不必再列這些條目）。
+/// 重播桌在這裡就拒：所有 `refactor_*` 模型入口都先組脈絡再派模型。
 pub fn assemble_card_context(root: &Path, world_id: &str) -> DataResult<String> {
+    data::vn::refuse_replay(&data::read_state(root, world_id)?)?;
     let world_md = data::read_world_md(root, world_id)?;
     let worldbook = data::read_worldbook(root, world_id)?;
     let characters = data::list_characters(root, world_id)?;

@@ -5,6 +5,7 @@ import { t } from "../../i18n";
 import type { WorldMeta } from "../../shared/contracts/backend-contracts";
 import { IconBook, IconPlus, IconSettings, IconSparkle, IconUsers } from "../../shared/ui/icons";
 import { TableCard } from "./TableCard";
+import { useWorkDrop } from "../vn/work/useWorkDrop";
 
 interface LobbyProps {
   worlds: WorldMeta[];
@@ -22,6 +23,8 @@ interface LobbyProps {
   onGenerateTable: () => void;
   /** 第三張入口卡：進 VN 開桌精靈 */
   onVnTable: () => void;
+  /** 把 .ttvn 拖進大廳：匯入 VN 作品 */
+  onImportWork: (path: string) => void;
   onEnterTable: (id: string) => void;
   onRenameTable: (id: string, raw: string) => void;
   onDeleteTable: (id: string) => void;
@@ -45,6 +48,7 @@ export function Lobby({
   onNewTable,
   onGenerateTable,
   onVnTable,
+  onImportWork,
   onEnterTable,
   onRenameTable,
   onDeleteTable,
@@ -54,6 +58,7 @@ export function Lobby({
   onReopenRoom,
   onEndRoom,
 }: LobbyProps) {
+  useWorkDrop(onImportWork);
   return (
     <div className="lobby">
       <header className="lobby-top">

@@ -18,6 +18,8 @@ pub struct WorldMeta {
     pub read_only: bool,
     pub needs_repair: bool,
     pub table_kind: TableKind,
+    /// VN 作品包匯入的重播桌：大廳桌卡標「作品」
+    pub replay: bool,
 }
 
 /// 最後活動時間＝transcript 內最新檔案 mtime，退而求其次用世界目錄 mtime
@@ -50,6 +52,10 @@ pub fn list_worlds(root: &Path) -> DataResult<Vec<WorldMeta>> {
             .as_ref()
             .map(|dir| super::format::loose_table_kind(dir))
             .unwrap_or_default();
+        let replay = listed
+            .name_dir
+            .as_ref()
+            .is_some_and(|dir| super::format::loose_replay(dir));
         let activity = listed
             .sort_dir
             .as_ref()
@@ -63,6 +69,7 @@ pub fn list_worlds(root: &Path) -> DataResult<Vec<WorldMeta>> {
                 read_only: listed.read_only,
                 needs_repair: listed.needs_repair,
                 table_kind,
+                replay,
             },
         ));
     }
@@ -97,6 +104,7 @@ fn blank_state(id: &str, name: &str, table_kind: TableKind) -> WorldState {
         statusbar_retired: false,
         regex_allowed: true,
         table_kind,
+        replay: false,
     }
 }
 
@@ -539,6 +547,7 @@ mod tests {
                 read_only: false,
                 needs_repair: false,
                 table_kind: TableKind::Chat,
+                replay: false,
             }]
         );
     }

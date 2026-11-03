@@ -630,7 +630,9 @@ pub fn ended_in(tree: &BTreeMap<String, StateNode>) -> Option<&str> {
 }
 
 /// 已完結的 VN 桌拒收續寫（GM、角色、玩家句、換一組、換幕；包 5 §2.6）；收回與分岔不擋。
+/// 重播桌（VN 作品包）一律拒（plans/vn-mode-pkg8.md §2.6.1）。
 pub fn refuse_ended(state: &super::WorldState) -> Result<(), String> {
+    refuse_replay(state).map_err(|error| error.to_string())?;
     match state.table_kind == super::TableKind::Vn && ended_in(&state.state.tree).is_some() {
         true => Err(crate::ui_msg::UiMsg::VnEnded.into()),
         false => Ok(()),
@@ -640,6 +642,26 @@ pub fn refuse_ended(state: &super::WorldState) -> Result<(), String> {
 /// 同 `refuse_ended`，從磁碟讀狀態（變數模式下 `read_state` 已以權威表覆蓋）。
 pub fn refuse_if_ended(root: &Path, world_id: &str) -> Result<(), String> {
     refuse_ended(&super::read_state(root, world_id).map_err(|error| error.to_string())?)
+}
+
+/// 重播桌拒收任何生成與逐字稿、幕的寫入（命令層在呼叫模型前、資料層在寫入前各判一次）。
+pub fn refuse_replay(state: &super::WorldState) -> DataResult<()> {
+    match state.replay {
+        true => Err(crate::ui_msg::UiMsg::VnReplayReadOnly.into_error()),
+        false => Ok(()),
+    }
+}
+
+/// 同 `refuse_replay`，從磁碟讀狀態（命令入口用）。
+pub fn refuse_if_replay(root: &Path, world_id: &str) -> Result<(), String> {
+    is_replay(root, world_id)
+        .then(|| crate::ui_msg::UiMsg::VnReplayReadOnly.to_string())
+        .map_or(Ok(()), Err)
+}
+
+/// 這桌是不是重播桌；讀不到狀態當不是（自動排生成的入口靜默略過用）。
+pub fn is_replay(root: &Path, world_id: &str) -> bool {
+    super::read_state(root, world_id).is_ok_and(|state| state.replay)
 }
 
 /// 換幕交易內的章結束那一步（包 5 §2.3）：回要寫進樹的葉子。完結的 VN 桌任何換幕都拒；

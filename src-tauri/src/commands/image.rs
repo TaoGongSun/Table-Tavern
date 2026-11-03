@@ -201,6 +201,7 @@ pub(crate) async fn generate_character_image(
 ) -> Result<String, String> {
     let _permit = data::world_write_permit_async(&world_id).await?;
     let root = data_root(&app)?;
+    data::vn::refuse_if_replay(&root, &world_id)?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     // 構圖二選一：half＝半身特寫，其餘一律全身（含舊前端沒傳的情況）
     let shot = match framing.as_deref() {

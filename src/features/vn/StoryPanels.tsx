@@ -61,18 +61,21 @@ export function EndingsPanel({ worldId, onClose }: { worldId: string; onClose: (
 
 /** 第 1 章到目前這章；選了就交給 `onPick` */
 export function ChapterPanel({
+  label = t("vnReplayPick"),
   chapter,
   disabled,
   onPick,
   onClose,
 }: {
+  /** 重播桌換成「從哪一章看起」 */
+  label?: string;
   chapter: number;
   disabled: boolean;
   onPick: (chapter: number) => void;
   onClose: () => void;
 }) {
   return (
-    <Panel label={t("vnReplayPick")} onClose={onClose}>
+    <Panel label={label} onClose={onClose}>
       <div className="vn-story-list">
         {Array.from({ length: chapter }, (_, index) => index + 1).map((n) => (
           <button key={n} type="button" className="btn" disabled={disabled} onClick={() => onPick(n)}>

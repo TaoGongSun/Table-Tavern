@@ -280,3 +280,26 @@
     transition: none !important;
   }
 }
+
+/* 重播桌（包 8）：作者沒走過的選項灰掉；「此路作者未完成」 */
+.vn-choice-unwalked {
+  opacity: 0.45;
+  border-style: dashed;
+  cursor: not-allowed;
+}
+.vn-unfinished {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+}
+.vn-unfinished-note {
+  margin: 0;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--vn-box-line);
+  border-radius: 6px;
+  background: var(--vn-box);
+  color: var(--vn-ink);
+  text-align: center;
+}

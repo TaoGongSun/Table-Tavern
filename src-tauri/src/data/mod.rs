@@ -56,13 +56,13 @@ pub use scene::{
     pop_transcript_floor, read_transcript, remove_transcript_event, replace_scene_summary,
     replace_transcript_text, replay_chapter, restore_transcript_events, revert_scene, scene_label,
     set_last_transcript_state, settle_pending_turn, sync_scene_state_tree, write_imported_scene,
-    ImportedEvent, ImportedScene, TranscriptEvent, TranscriptKind,
+    write_work_scene, ImportedEvent, ImportedScene, TranscriptEvent, TranscriptKind,
 };
 #[cfg(test)]
 pub use scene::{begin_next_scene, fail_publish};
 pub use scene::{
-    choice_state, fork_before, origin, scene_high, story_previous, switch_scene, tip_of, Beat,
-    ChoiceState, Transcripts,
+    choice_state, fork_before, origin, replay_goto, scene_high, story_previous, switch_scene,
+    tip_of, Beat, ChoiceState, Transcripts,
 };
 pub(crate) use scene::{
     fold_glyphs, glyph_equal, lang_key, match_present, match_present_with, name_matches,

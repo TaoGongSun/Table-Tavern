@@ -60,7 +60,7 @@ pub(crate) fn vn_background_regenerate(
     period: String,
 ) -> Result<(), String> {
     let root = data_root(&app)?;
-    data::read_state(&root, &world_id).map_err(|error| error.to_string())?;
+    data::vn::refuse_if_replay(&root, &world_id)?;
     let backdrop = Backdrop::new(
         &location,
         None,

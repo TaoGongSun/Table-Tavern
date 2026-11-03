@@ -10,7 +10,7 @@ mod mechanism;
 pub(crate) mod png_clean;
 pub(crate) mod png_image;
 mod source;
-mod vn_card;
+pub(crate) mod vn_card;
 mod web_save;
 
 #[cfg(test)]

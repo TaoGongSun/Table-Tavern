@@ -153,19 +153,41 @@ pub fn fork_before(root: &Path, world_id: &str, keep: usize, answer_id: &str) ->
 
 /// 切到另一條分支的尾幕（§2.4）：不碰任何逐字稿，只換目前幕與跟著幕走的狀態。
 pub fn switch_scene(root: &Path, world_id: &str, target: u64) -> DataResult<u64> {
-    let switched = with_commit(root, world_id, |tx| switch_scene_tx(tx, target));
+    let switched = with_commit(root, world_id, |tx| switch_scene_tx(tx, target, true));
     crate::data::bump_capacity_epoch();
     switched
 }
 
+/// 重播桌（VN 作品包）換到任一已發布幕（plans/vn-mode-pkg8.md §2.6）：不會往下寫，所以不要求尾幕；
+/// 已在那幕就不動。一般桌拒。
+pub fn replay_goto(root: &Path, world_id: &str, target: u64) -> DataResult<u64> {
+    let moved = with_commit(root, world_id, |tx| replay_goto_tx(tx, target));
+    crate::data::bump_capacity_epoch();
+    moved
+}
+
+pub(super) fn replay_goto_tx(tx: &CommitTx<'_>, target: u64) -> DataResult<u64> {
+    let state = read_state(tx.root, tx.world_id)?;
+    if !state.replay {
+        return Err(crate::data::invalid_data(
+            "replay goto needs a replay table",
+        ));
+    }
+    match target == state.current_scene {
+        true => Ok(target),
+        false => switch_scene_tx(tx, target, false),
+    }
+}
+
 /// 兩段提交照分岔：先落地被離開那幕的快照與 `pending_leave`，再照目標幕快照改卡；任一步失敗
 /// `current_scene` 不動，重試沿用那份快照。
-fn switch_scene_tx(tx: &CommitTx<'_>, target: u64) -> DataResult<u64> {
+fn switch_scene_tx(tx: &CommitTx<'_>, target: u64, require_tip: bool) -> DataResult<u64> {
     let (root, world_id) = (tx.root, tx.world_id);
     message_vars::refuse_during_turn(tx)?;
     let mut state = read_state(root, world_id)?;
     let current = state.current_scene;
-    if target == current || target > scene_high(&state) || !is_tip(&state, target) {
+    if target == current || target > scene_high(&state) || (require_tip && !is_tip(&state, target))
+    {
         return Err(UiMsg::VnBranchNotTip.into_error());
     }
     let events = read_transcript(root, world_id, target)?;

@@ -3,7 +3,7 @@
 use super::remap::{remap_book, remap_holders, IdMap};
 use super::schema::{FORMAT, VERSION};
 use crate::data::vn::{self, CardOrigin, Pov};
-use crate::data::vn_art::{ArtEntry, CastArt};
+use crate::data::vn_art::{ArtEntry, CardLocation, CastArt};
 use crate::data::{self, CharacterCard, DataResult};
 use crate::import::card::display_png;
 use crate::import::card_io::blank_png;
@@ -25,6 +25,7 @@ pub fn export_vn_card(
     lang: &str,
 ) -> DataResult<()> {
     data::refuse_if_updating()?;
+    data::vn::refuse_replay(&data::read_state(root, world_id)?)?;
     let card = vn_card_json(root, world_id, lang)?;
     let json = serde_json::to_vec_pretty(&card)?;
     if path
@@ -102,17 +103,7 @@ pub(super) fn vn_card_json(root: &Path, world_id: &str, lang: &str) -> DataResul
             object.insert("art".to_owned(), json!(art));
         }
         if !origin.locations.is_empty() {
-            // 卡上叫 `slug`
-            let locations = origin.locations.iter().map(|location| {
-                let mut value = json!(location);
-                if let Some(object) = value.as_object_mut() {
-                    if let Some(key) = object.remove("key") {
-                        object.insert("slug".to_owned(), key);
-                    }
-                }
-                value
-            });
-            object.insert("locations".to_owned(), Value::Array(locations.collect()));
+            object.insert("locations".to_owned(), locations_json(&origin.locations));
         }
     }
     let mut book =
@@ -171,6 +162,48 @@ fn cast_json(card: &CharacterCard, ids: &IdMap, origin: &CardOrigin) -> Value {
     Value::Object(member)
 }
 
+/// 卡內地點寫回卡上原名（`key` → `slug`）
+fn locations_json(locations: &[CardLocation]) -> Value {
+    let locations = locations.iter().map(|location| {
+        let mut value = json!(location);
+        if let Some(object) = value.as_object_mut() {
+            if let Some(key) = object.remove("key") {
+                object.insert("slug".to_owned(), key);
+            }
+        }
+        value
+    });
+    Value::Array(locations.collect())
+}
+
+/// VN 卡原件寫成卡 JSON 的形狀（作品包附設定用，plans/vn-mode-pkg8.md §2.1）：角色鍵是桌內 id，
+/// 匯回時走 `schema::origin_from` 同一套美術欄位驗證。
+pub(crate) fn origin_json(origin: &CardOrigin) -> Value {
+    let cast: Map<String, Value> = origin
+        .cast
+        .iter()
+        .map(|(id, cast)| {
+            let mut member = Map::new();
+            if let Some(role) = cast.role {
+                member.insert("role".to_owned(), json!(role));
+            }
+            member.insert("appears".to_owned(), json!(cast.appears));
+            cast_art_json(&cast.art, &mut member);
+            (id.clone(), Value::Object(member))
+        })
+        .collect();
+    json!({
+        "lang": origin.lang,
+        "rating": origin.rating,
+        "pov": origin.pov,
+        "protagonist_fixed": origin.protagonist_fixed,
+        "original_bible": origin.original_bible,
+        "art": origin.art,
+        "locations": locations_json(&origin.locations),
+        "cast": cast,
+    })
+}
+
 /// 逐角色美術欄位寫回卡上原名（`expressions` → `expressions_extra`）；沒有的不寫
 fn cast_art_json(art: &CastArt, member: &mut Map<String, Value>) {
     let entries = |list: &[ArtEntry]| json!(list);
@@ -190,7 +223,7 @@ fn cast_art_json(art: &CastArt, member: &mut Map<String, Value>) {
 
 /// 這桌世界書全部條目（GM 條目也帶：卡本來就是明文，匯回來才不遺失），轉回 V2 欄位並保留角色可見度
 /// （之後由 `remap_book` 換成卡內 id）。
-fn book_entries(root: &Path, world_id: &str) -> DataResult<Vec<Value>> {
+pub(crate) fn book_entries(root: &Path, world_id: &str) -> DataResult<Vec<Value>> {
     Ok(data::read_worldbook_raw(root, world_id)?
         .values()
         .map(|raw| {

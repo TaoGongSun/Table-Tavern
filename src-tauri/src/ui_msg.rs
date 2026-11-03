@@ -178,6 +178,24 @@ pub enum UiMsg {
     VnSaveNameInvalid {
         max: u32,
     },
+    /// VN 作品包匯入的重播桌：不生成、不寫逐字稿、不分岔（只能讀、存檔、換幕）
+    VnReplayReadOnly,
+    /// 匯出 VN 作品：還沒有任何一條分支到結局
+    VnWorkNoEnding,
+    /// 匯出 VN 作品：卡片變數模式的桌只能帶演出，不能附設定
+    VnWorkVarsMode,
+    /// 匯入 VN 作品：不是作品包（不是 zip、缺 manifest 或格式名不對）
+    VnWorkNotPack,
+    /// 匯入 VN 作品：格式版本不認得（比這版 app 新）
+    VnWorkVersion {
+        version: u32,
+    },
+    /// 匯入 VN 作品：檔案、條目數、解壓量、圖量或劇本量超過上限
+    VnWorkTooLarge,
+    /// 匯入 VN 作品：內容對不上或壞了（detail＝哪一處，原文）
+    VnWorkBroken {
+        detail: String,
+    },
     /// 介面接管桌只走 GM 敘事線：角色回合一律拒收，不寫樓、不打模型、不扣容量
     InterfaceTableGmOnly,
     /// 舞台卡只提供設定、不參與角色發言：它的角色回合一律拒收，不寫樓、不打模型、不扣容量

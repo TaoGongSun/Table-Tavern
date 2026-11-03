@@ -1,4 +1,5 @@
 // VN 桌的播放器：舞台＋對話框＋選項／繼續＋工具列（auto、skip、log、停止、聊天視圖）。
+// 重播桌（作品包，包 8 §2.6）不生成：選項走分支面板、章末與開始都只換幕（replay/replay-nav），收掉生成類入口。
 // 選項、換一組、繼續共用一把同步鎖：按下當下佔用，送出或換組連同其後的正式格重抓都完成才放。
 import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
@@ -6,9 +7,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { t, type MsgKey } from "../../i18n";
 import type { ChatController } from "../play/chat/useChatController";
 import type { VnAdvance } from "../play/scene/useSceneActions";
+import type { SceneLabel } from "../../shared/contracts/backend-contracts";
 import { ErrorNote } from "../../shared/ui/atoms";
 import { backendText } from "../../shared/ui/backend-text";
 import { exportVnCard } from "./card/vn-card";
+import { ExportWorkDialog } from "./work/ExportWorkDialog";
 import { Backlog } from "./Backlog";
 import { ChapterCardView } from "./ChapterCardView";
 import { EndingScreen } from "./EndingScreen";
@@ -28,6 +31,8 @@ import { useVnCells } from "./useVnCells";
 import { useSprites } from "./useSprites";
 import { backdropKey, useBackgrounds } from "./useBackgrounds";
 import { useVnPlayback } from "./useVnPlayback";
+import { replayNav } from "./replay/replay-nav";
+import { UnfinishedPath } from "./replay/UnfinishedPath";
 import { cellHash, isTerminal, rerollError, stageAt } from "./vn-cells";
 import "./vn-player.css";
 
@@ -66,6 +71,8 @@ export function VnPlayer({
   onFlagHints,
   title,
   onTitle,
+  replay,
+  sceneLabels,
 }: {
   worldId: string;
   scene: number;
@@ -98,9 +105,14 @@ export function VnPlayer({
   /** 標題畫面開著（從大廳進桌時，包 6 §2.8） */
   title: boolean;
   onTitle: (open: boolean) => void;
+  /** 作品包匯入的重播桌（`WorldMeta.replay`） */
+  replay: boolean;
+  /** 幕標籤（重播桌找換幕子幕與劇情前一幕） */
+  sceneLabels: Record<string, SceneLabel>;
 }) {
   const [logOpen, setLogOpen] = useState(false);
   const [panel, setPanel] = useState<"endings" | "chapters" | "saves" | "settings" | null>(null);
+  const [exporting, setExporting] = useState(false);
   // 標題畫面、面板、log 蓋著播放器時：游標不動、不登記已讀與位置、不觸發章末（收起後接著跑）
   const paused = title || panel !== null || logOpen;
   const realignRef = useRef<ReturnType<typeof useVnPlayback>["realign"]>(() => {});
@@ -208,18 +220,35 @@ export function VnPlayer({
     if (play.end === "choices") mark("vn:choices-ready");
   }, [play.end, play.current?.key]);
 
-  // 章結束流程：游標推進（點擊或 auto，不含 skip 與進桌定位）到章末格就自動開始；字卡蓋住整個播放器
+  const branch = useBranchOps({
+    worldId,
+    formalScene: vn.formalScene,
+    live: play.live !== undefined,
+    onBranch,
+    onReenter,
+    runLocked,
+    submit: (option) => void startTurn(() => chat.submitText(option)),
+    setEntry,
+    jump: play.jump,
+    scene,
+  });
+  const nav = replayNav({ worldId, scene, labels: sceneLabels, goto: branch.goto, jump: play.jump, setEntry, onBranch });
+  // 章結束流程：游標推進（點擊或 auto，不含 skip 與進桌定位）到章末格就自動開始；字卡蓋住整個播放器。
+  // 重播桌換到換幕子幕、字卡停一下就收（沒有首拍可等）；沒有子幕不開流程，改出「此路作者未完成」
   const chapter = useChapterEnd({
-    advance: onAdvanceScene,
+    advance: replay ? nav.advance : onAdvanceScene,
     reenter: onReenter,
     openBeat: async () => {
+      if (replay) return new Promise((resolve) => setTimeout(resolve, 1200));
       play.expectNext();
       await chat.gmAdvance();
     },
     runLocked,
   });
   const chapterNow = play.current?.chapter ?? vn.cells[vn.cells.length - 1]?.chapter ?? 1;
-  const endChapter = (chapterEnd: boolean) => void chapter.start(chapterEnd, chapterNow, scene);
+  const endChapter = (chapterEnd: boolean) => {
+    if (!replay || nav.next !== null) void chapter.start(chapterEnd, chapterNow, scene);
+  };
   const skipRef = useRef(play.skip);
   skipRef.current = play.skip;
   const landedKey = useRef<string | undefined>(undefined);
@@ -243,11 +272,16 @@ export function VnPlayer({
   useEffect(() => {
     if (chapter.card?.phase === "opening" && lastPlayable?.kind === "pending") closeCard();
   }, [chapter.card?.phase, lastPlayable, closeCard]);
-  const replay = (chapter: number) =>
-    runLocked(async () => {
+  const pickChapter = (chapter: number) => {
+    if (replay) {
+      setPanel(null);
+      return nav.chapter(chapter);
+    }
+    return runLocked(async () => {
       setPanel(null);
       await onReplayChapter(chapter);
     });
+  };
   const newPlaythrough = () =>
     runLocked(async () => {
       const ok = await confirm(t("vnNewPlaythroughConfirm"), {
@@ -263,18 +297,7 @@ export function VnPlayer({
         onError(backendText(reason));
       }
     });
-  const branch = useBranchOps({
-    worldId,
-    formalScene: vn.formalScene,
-    live: play.live !== undefined,
-    onBranch,
-    onReenter,
-    runLocked,
-    submit: (option) => void startTurn(() => chat.submitText(option)),
-    setEntry,
-    jump: play.jump,
-    scene,
-  });
+  const exportWork = () => setExporting(true);
   // 新幕的游標定位好就收回指定位置，之後換幕照一般進桌位置
   const positioned = play.current !== undefined;
   useEffect(() => {
@@ -311,13 +334,17 @@ export function VnPlayer({
     onTitle(false);
     await branch.load(id);
   };
-  // 標題「開始」：只有開場（還沒玩）＝繼續；玩過就從第 1 章重玩（原本的進度留在原分支）
+  // 標題「開始」：只有開場（還沒玩）＝繼續；玩過就從第 1 章重玩（原本的進度留在原分支）；重播桌回第 0 幕幕首
   const playedAny = scene > 0 || vn.cells.some((cell) => cell.kind === "player");
   const startOver = async () => {
+    if (replay) {
+      onTitle(false);
+      return nav.start();
+    }
     if (!playedAny) return onTitle(false);
     if (!(await confirm(t("vnTitleRestartConfirm"), { kind: "info", okLabel: t("vnTitleStart"), cancelLabel: t("dialogCancel") }))) return;
     onTitle(false);
-    await replay(1);
+    await pickChapter(1);
   };
   // 滾輪往上＝上一格（Ren'Py 慣例）；面板、log、可捲動的對話文字自己吃滾輪
   const wheelAt = useRef(0);
@@ -348,6 +375,20 @@ export function VnPlayer({
       ? { cell: play.current.cell, answered: play.current.choice.answered, eventId: play.current.eventKey }
       : null;
   const ending = play.end === "ended" && onTerminal?.cell.type === "ending" ? onTerminal.cell : null;
+  // 重播桌讀到幕末、不是結局、也沒有下一幕：作者沒寫完（選項點的情形由選項面板自己顯示）
+  const unfinished = replay && !chapter.card && nav.next === null && (play.end === "continue" || play.end === "chapter");
+  const choiceHere = play.playable.some((cell) => cell.cell.type === "choices" && cell.choice?.answered);
+  const unfinishedPath = (
+    <UnfinishedPath
+      disabled={actionsDisabled}
+      onBackToChoice={nav.canBack(choiceHere) ? () => nav.backToChoice(choiceHere) : undefined}
+      onTitle={() => onTitle(true)}
+    />
+  );
+  const chapterItems = [
+    { key: "endings", label: t("vnEndingsList"), onSelect: () => setPanel("endings") },
+    { key: "replay", label: t(replay ? "vnWorkChapterSelect" : "vnReplayChapter"), onSelect: () => setPanel("chapters") },
+  ];
   // 停在終止格（選項、章末、結局）時對話框留著前一格文字
   const shownCell = onTerminal ? play.playable[play.playable.indexOf(onTerminal) - 1] : play.current;
   // 播到一則事件的第一個可停格時亮它的旗標提示
@@ -363,7 +404,7 @@ export function VnPlayer({
         busy={busy}
         actionsDisabled={actionsDisabled}
         ended={ending !== null}
-        canStop={chat.canStop}
+        canStop={!replay && chat.canStop}
         onStop={chat.stopResponse}
         auto={play.auto}
         onAuto={() => play.setAuto(!play.auto)}
@@ -376,10 +417,10 @@ export function VnPlayer({
           setSaveError(null);
           setPanel("saves");
         }}
-        onNextChapter={() => void askNextChapter()}
-        onShowChat={onShowChat}
+        onNextChapter={replay ? undefined : () => void askNextChapter()}
+        onShowChat={replay ? undefined : onShowChat}
         onTitle={() => onTitle(true)}
-        more={[
+        more={replay ? chapterItems : [
           ...(backdrop
             ? [
                 {
@@ -390,13 +431,13 @@ export function VnPlayer({
                 },
               ]
             : []),
-          { key: "endings", label: t("vnEndingsList"), onSelect: () => setPanel("endings") },
-          { key: "replay", label: t("vnReplayChapter"), onSelect: () => setPanel("chapters") },
+          ...chapterItems,
           {
             key: "export-card",
             label: t("vnCardExport"),
             onSelect: () => void exportVnCard(worldId, tableName).catch((reason) => onError(backendText(reason))),
           },
+          { key: "export-work", label: t("vnWorkExport"), onSelect: exportWork },
         ]}
       />
       {error && (
@@ -411,7 +452,19 @@ export function VnPlayer({
       />
       <div className="vn-bottom">
         {hints && hints.length > 0 && <FlagHints hints={hints} />}
-        {choices && (
+        {choices && replay && play.live?.eventKey && (
+          <PastChoicePanel
+            worldId={worldId}
+            eventId={play.live.eventKey}
+            options={choices.options}
+            answered={null}
+            disabled={actionsDisabled}
+            onCurrent={advance}
+            onSwitch={(target) => void nav.choose(target)}
+            deadEnd={unfinishedPath}
+          />
+        )}
+        {choices && !replay && (
           <ChoicePanel
             options={choices.options}
             disabled={actionsDisabled}
@@ -428,8 +481,9 @@ export function VnPlayer({
             answered={past.answered}
             disabled={actionsDisabled}
             onCurrent={advance}
-            onSwitch={(tip) => void branch.switchTo(tip)}
-            onFork={(option) => void branch.forkAt(past.eventId, option)}
+            onSwitch={(target) => void (replay ? nav.choose(target) : branch.switchTo(target.tip))}
+            onFork={replay ? undefined : (option) => void branch.forkAt(past.eventId, option)}
+            deadEnd={unfinished ? <UnfinishedPath disabled={actionsDisabled} onTitle={() => onTitle(true)} /> : undefined}
           />
         )}
         {branch.reenter !== null && (
@@ -440,7 +494,8 @@ export function VnPlayer({
             </button>
           </p>
         )}
-        {play.end === "chapter" && !chapter.card && (
+        {unfinished && !past && <div className="vn-choices">{unfinishedPath}</div>}
+        {play.end === "chapter" && !chapter.card && !unfinished && (
           <button
             type="button"
             className="btn btn-primary vn-continue"
@@ -450,12 +505,12 @@ export function VnPlayer({
             {t("vnNextChapter")}
           </button>
         )}
-        {play.end === "continue" && (
+        {play.end === "continue" && !unfinished && (
           <button
             type="button"
             className="btn btn-primary vn-continue"
             disabled={actionsDisabled}
-            onClick={() => void startTurn(chat.gmAdvance)}
+            onClick={() => void (replay ? nav.forward() : startTurn(chat.gmAdvance))}
           >
             {t("vnContinue")}
           </button>
@@ -474,6 +529,7 @@ export function VnPlayer({
           nextChapter={vn.cells[0]?.chapter}
           onRetry={() => void chapter.retry()}
           onClose={chapter.close}
+          replay={replay}
         />
       )}
       {ending && !logOpen && !panel && (
@@ -482,7 +538,8 @@ export function VnPlayer({
           endingId={ending.id}
           disabled={actionsDisabled}
           onReplay={() => setPanel("chapters")}
-          onNewPlaythrough={() => void newPlaythrough()}
+          onNewPlaythrough={replay ? undefined : () => void newPlaythrough()}
+          onExport={replay ? undefined : exportWork}
           onEndings={() => setPanel("endings")}
           onTitle={() => onTitle(true)}
         />
@@ -525,14 +582,23 @@ export function VnPlayer({
       {panel === "endings" && <EndingsPanel worldId={worldId} onClose={() => setPanel(null)} />}
       {panel === "chapters" && (
         <ChapterPanel
+          label={replay ? t("vnWorkChapterPick") : undefined}
           chapter={chapterNow}
           disabled={actionsDisabled}
-          onPick={(n) => void replay(n)}
+          onPick={(n) => void pickChapter(n)}
           onClose={() => setPanel(null)}
         />
       )}
       {logOpen && (
         <Backlog cells={vn.cells.slice(0, play.flatIndex + 1)} onClose={() => setLogOpen(false)} />
+      )}
+      {exporting && (
+        <ExportWorkDialog
+          worldId={worldId}
+          tableName={tableName}
+          onClose={() => setExporting(false)}
+          onError={(reason) => onError(backendText(reason))}
+        />
       )}
     </main>
   );

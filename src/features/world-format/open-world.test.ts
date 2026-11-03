@@ -74,6 +74,7 @@ describe("deleteTableMessage", () => {
     read_only,
     needs_repair,
     table_kind: "chat" as const,
+    replay: false,
   });
 
   it("唯讀桌多一句警告，一般桌不出現", () => {

@@ -33,6 +33,7 @@ it("queues the first background on entering ④ and expression fills only when t
         start={{ worldId: "W" }}
         onCreated={async () => {}}
         onImportCard={() => {}}
+        onImportWork={() => {}}
         onFinish={onFinish}
         onClose={() => {}}
       />,

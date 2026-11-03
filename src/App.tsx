@@ -24,6 +24,7 @@ import {
   TableKind,
   TranscriptEvent,
   VnCardImport,
+  VnWorkProbe,
   WorldMeta,
   WorldState,
 } from "./shared/contracts/backend-contracts";
@@ -66,6 +67,15 @@ import { AppDialogs } from "./views/AppDialogs";
 import { VnPlayer } from "./features/vn/VnPlayer";
 import { VnWizard, type VnWizardStart } from "./features/vn/VnWizard";
 import { openVnCardTable as openVnCardTableFlow } from "./features/vn/card/vn-card";
+import { ImportWorkDialog } from "./features/vn/work/ImportWorkDialog";
+import {
+  canContinueWork,
+  confirmVnWork,
+  importVnWork,
+  pickVnWork,
+  probeVnWork,
+  type VnWorkMode,
+} from "./features/vn/work/vn-work";
 import type { SettingsTab } from "./features/settings/SettingsWindow";
 import { AppWorkspace, type EditingTableName } from "./views/AppWorkspace";
 import { aiReady, Onboarding } from "./features/ai-connection/Onboarding";
@@ -163,6 +173,8 @@ function App() {
   // 桌型（開桌定死）：送出走 VN 推進迴圈；與 vnView（目前看哪個視圖）分開
   const [vnTable, setVnTable] = useState(false);
   const [vnWizard, setVnWizard] = useState<VnWizardStart | null>(null);
+  // 附設定的作品包等玩家二選一（當作品玩／當可續寫的桌）
+  const [pendingWork, setPendingWork] = useState<{ path: string; probe: VnWorkProbe } | null>(null);
   // 精靈 ①「我有角色卡」選的劇透鎖：匯完重開精靈 ② 時帶上（匯入路由框直接進來的照預設鎖）
   const vnSpoilerLock = useRef(true);
 
@@ -693,6 +705,44 @@ function App() {
     });
   }
 
+  // 匯入 VN 作品（精靈 ① 選檔或拖進大廳）：只從大廳來，沒有編輯畫面要問；建好照從大廳進桌（先到標題畫面）。
+  // 附設定的包先停在二選一對話框，選完才建桌（chooseWork）
+  function runWork(job: () => Promise<string | null>) {
+    return runTableOp(async () => {
+      if (!config || chat.busy) return;
+      setError("");
+      try {
+        const id = await job();
+        if (id === null) return;
+        setVnWizard(null);
+        setVnTitle(true);
+        // 桌單先刷新：播放器第一次畫就要知道是不是重播桌
+        setWorlds(await invoke<WorldMeta[]>("list_worlds"));
+        await enterTable(id);
+      } catch (reason) {
+        // 拒收的原因顯示在大廳通知區：收起精靈，別讓它蓋住
+        setVnWizard(null);
+        setError(backendText(reason));
+      }
+    });
+  }
+
+  function importWork(path: string) {
+    return runWork(async () => {
+      const probe = await probeVnWork(path);
+      if (canContinueWork(probe)) {
+        setPendingWork({ path, probe });
+        return null;
+      }
+      return (await confirmVnWork(probe)) ? importVnWork(path, "replay", false) : null;
+    });
+  }
+
+  function chooseWork(path: string, mode: VnWorkMode, spoilerLock: boolean) {
+    setPendingWork(null);
+    return runWork(() => importVnWork(path, mode, spoilerLock));
+  }
+
   // 回大廳：先問未儲存；只有可玩的桌才試著回收空桌（唯讀與修復桌的回收會因寫入許可報錯）。
   // 回收或重讀清單失敗都照樣離桌，錯誤放在大廳的通知區。
   // 離桌那一刻 setTable("") 與 setGate("play") 必須在同一個同步區，拆開的話
@@ -1074,6 +1124,7 @@ function App() {
           onNewTable={() => void newTable()}
           onGenerateTable={() => setGenTableOpen(true)}
           onVnTable={() => setVnWizard({ worldId: null })}
+          onImportWork={(path) => void importWork(path)}
           onEnterTable={(id) => void switchTable(id)}
           onRenameTable={(id, raw) => void renameTable(id, raw)}
           onDeleteTable={(id) => void deleteTable(id)}
@@ -1098,6 +1149,8 @@ function App() {
           onEnterTable={(id) => void switchTable(id, false)}
           title={vnTitle}
           onTitle={setVnTitle}
+          replay={worlds.find((w) => w.id === table)?.replay === true}
+          sceneLabels={sceneLabels}
           flagHints={config.preferences["vn_flag_hints"] !== false}
           onFlagHints={(on) => void changePreference("vn_flag_hints", on)}
         />
@@ -1173,20 +1226,36 @@ function App() {
           />
         }
         vnWizard={
-          vnWizard && (
-            <VnWizard
-              key={vnWizard.worldId ?? ""}
-              start={vnWizard}
-              transport={transport}
-              onCreated={() => refreshWorlds().catch((reason) => setError(String(reason)))}
-              onImportCard={(file, spoilerLock) => {
-                vnSpoilerLock.current = spoilerLock;
-                setVnWizard(null);
-                void imports.importFileToVnTable(file, spoilerLock);
-              }}
-              onFinish={finishVnWizard}
-              onClose={() => setVnWizard(null)}
-            />
+          (vnWizard || pendingWork) && (
+            <>
+              {vnWizard && (
+                <VnWizard
+                  key={vnWizard.worldId ?? ""}
+                  start={vnWizard}
+                  transport={transport}
+                  onCreated={() => refreshWorlds().catch((reason) => setError(String(reason)))}
+                  onImportCard={(file, spoilerLock) => {
+                    vnSpoilerLock.current = spoilerLock;
+                    setVnWizard(null);
+                    void imports.importFileToVnTable(file, spoilerLock);
+                  }}
+                  onImportWork={() =>
+                    void pickVnWork().then((path) => {
+                      if (path) void importWork(path);
+                    })
+                  }
+                  onFinish={finishVnWizard}
+                  onClose={() => setVnWizard(null)}
+                />
+              )}
+              {pendingWork && (
+                <ImportWorkDialog
+                  probe={pendingWork.probe}
+                  onChoose={(mode, spoilerLock) => void chooseWork(pendingWork.path, mode, spoilerLock)}
+                  onCancel={() => setPendingWork(null)}
+                />
+              )}
+            </>
           )
         }
         turnFailureDialog={

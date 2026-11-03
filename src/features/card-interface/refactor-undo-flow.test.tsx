@@ -42,6 +42,7 @@ const world = (id: string, name: string, extra: Partial<WorldMeta> = {}): WorldM
   read_only: false,
   needs_repair: false,
   table_kind: "chat",
+  replay: false,
   ...extra,
 });
 

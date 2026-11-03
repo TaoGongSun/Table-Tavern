@@ -1,5 +1,5 @@
 // VN 播放器工具列（包 6 §2.8 重排）：回標題、桌名、停止、上一格、自動、快進、紀錄、存檔、下一章、聊天視圖、⋯。
-// 旗標提示搬到標題畫面的設定；重生成背景、結局一覽、從某一章重玩、匯出成 VN 卡在 ⋯。
+// 旗標提示搬到標題畫面的設定；重生成背景、結局一覽、從某一章重玩、匯出成 VN 卡在 ⋯。重播桌（包 8）不出下一章與聊天視圖。
 import { t } from "../../i18n";
 import { IconHome, IconStop } from "../../shared/ui/icons";
 import { MoreMenu, type MoreMenuItem } from "../../shared/ui/MoreMenu";
@@ -38,8 +38,8 @@ export function VnToolbar({
   onBack: () => void;
   onLog: () => void;
   onSaves: () => void;
-  onNextChapter: () => void;
-  onShowChat: () => void;
+  onNextChapter?: () => void;
+  onShowChat?: () => void;
   onTitle: () => void;
   more: MoreMenuItem[];
 }) {
@@ -78,12 +78,16 @@ export function VnToolbar({
       <button type="button" className="btn btn-ghost" disabled={busy} onClick={onSaves}>
         {t("vnSave")}
       </button>
-      <button type="button" className="btn btn-ghost" disabled={actionsDisabled || ended} onClick={onNextChapter}>
-        {t("vnNextChapter")}
-      </button>
-      <button type="button" className="btn btn-ghost" onClick={onShowChat}>
-        {t("vnShowChat")}
-      </button>
+      {onNextChapter && (
+        <button type="button" className="btn btn-ghost" disabled={actionsDisabled || ended} onClick={onNextChapter}>
+          {t("vnNextChapter")}
+        </button>
+      )}
+      {onShowChat && (
+        <button type="button" className="btn btn-ghost" onClick={onShowChat}>
+          {t("vnShowChat")}
+        </button>
+      )}
       <MoreMenu label={t("moreActions")} disabled={busy} items={more} />
     </header>
   );

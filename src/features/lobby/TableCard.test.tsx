@@ -18,6 +18,7 @@ const WORLD: WorldMeta = {
   read_only: false,
   needs_repair: false,
   table_kind: "chat",
+  replay: false,
 };
 
 describe("TableCard", () => {
@@ -79,6 +80,10 @@ describe("TableCard", () => {
     const badges = () => [...host!.querySelectorAll(".table-badge")].map((b) => b.textContent);
     mount({ ...WORLD, table_kind: "vn" });
     expect(badges()).toEqual([t("vnBadge")]);
+    act(() => root?.unmount());
+    // 作品包匯入的重播桌只標「作品」，不和 VN 擠在一起
+    mount({ ...WORLD, table_kind: "vn", replay: true });
+    expect(badges()).toEqual([t("vnWorkBadge")]);
     act(() => root?.unmount());
     mount();
     expect(badges()).toEqual([]);

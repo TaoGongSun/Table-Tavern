@@ -1,6 +1,6 @@
 //! VN 卡 `data.extensions.table_tavern.vn` 的型別、驗證與夾斷（plans/vn-mode-pkg9.md §2.1、§2.3 第 1 步）。
 //! 不信任輸入：逐欄取值、型別不對當沒填、未知欄位忽略；超量的夾斷或丟棄並記一條 notice，不拒收整張。
-use crate::data::vn::{self, Bible, CastRole, Pov, Rating};
+use crate::data::vn::{self, Bible, CardOrigin, CastOrigin, CastRole, Pov, Rating};
 use crate::data::vn_art::{CardArt, CardLocation, CastArt};
 use crate::data::{self, DataResult};
 use serde::Serialize;
@@ -198,11 +198,7 @@ pub(crate) fn parse(vn: &Value, notices: &mut Vec<Notice>) -> DataResult<VnCard>
         }
         _ => None,
     };
-    let bible = vn.get("bible").and_then(|value| {
-        let mut bible = vn::parse_bible(value)?;
-        bible.chapter_lock = value.get("chapter_lock").and_then(Value::as_bool) == Some(true);
-        Some(bible)
-    });
+    let bible = vn.get("bible").and_then(bible_from);
     let (art, locations) = super::art::card_art(&vn, notices);
     Ok(VnCard {
         title: title(&vn),
@@ -221,6 +217,59 @@ pub(crate) fn parse(vn: &Value, notices: &mut Vec<Notice>) -> DataResult<VnCard>
         art,
         locations,
     })
+}
+
+/// 聖經寬鬆讀進來（含章數鎖）；讀完還要 `normalize`
+pub(crate) fn bible_from(value: &Value) -> Option<Bible> {
+    let mut bible = vn::parse_bible(value)?;
+    bible.chapter_lock = value.get("chapter_lock").and_then(Value::as_bool) == Some(true);
+    Some(bible)
+}
+
+/// 作品包附設定的卡原件（`export::origin_json` 的形狀）：卡層級與逐角色美術欄位走同一套驗證夾斷，
+/// 角色只收 `cast`（桌內 id, 名字）裡有的，原版聖經照樣正規化。
+pub(crate) fn origin_from(
+    value: &Value,
+    cast: &[(String, String)],
+    notices: &mut Vec<Notice>,
+) -> CardOrigin {
+    let (art, locations) = super::art::card_art(value, notices);
+    let members = value.get("cast").and_then(Value::as_object);
+    CardOrigin {
+        lang: text(value, "lang")
+            .filter(|lang| lang.len() <= 35)
+            .unwrap_or_default(),
+        rating: rating(value),
+        pov: value
+            .get("pov")
+            .and_then(|pov| serde_json::from_value(pov.clone()).ok()),
+        protagonist_fixed: value.get("protagonist_fixed").and_then(Value::as_bool) == Some(true),
+        original_bible: value
+            .get("original_bible")
+            .and_then(bible_from)
+            .map(|bible| vn::normalize(bible, cast)),
+        cast: cast
+            .iter()
+            .filter_map(|(id, _)| Some((id, members?.get(id)?)))
+            .map(|(id, member)| {
+                let origin = CastOrigin {
+                    role: member
+                        .get("role")
+                        .and_then(|role| serde_json::from_value(role.clone()).ok()),
+                    appears: clipped(
+                        text(member, "appears"),
+                        APPEARS_CAP,
+                        &format!("{id}.appears"),
+                        notices,
+                    ),
+                    art: super::art::cast_art(member, id, notices),
+                };
+                (id.clone(), origin)
+            })
+            .collect(),
+        art,
+        locations,
+    }
 }
 
 fn chars_of(vn: &Value) -> DataResult<usize> {

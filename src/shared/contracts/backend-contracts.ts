@@ -10,6 +10,8 @@ export interface WorldMeta {
   read_only: boolean;
   needs_repair: boolean;
   table_kind: TableKind;
+  /** VN 作品包匯入的重播桌 */
+  replay: boolean;
 }
 
 export interface AppConfig {
@@ -207,6 +209,9 @@ export interface VnChoiceBranch {
   /** 可切過去的尾幕 */
   tip: number;
   ended: boolean;
+  /** 選了這句的那幕與那則玩家句（重播桌直接跳過去用） */
+  scene: number;
+  answer_event_id: string | null;
 }
 
 /** `vn_endings`：結局一覽與完結畫面的已達成 x／y（Rust `vn_bible::EndingsOverview`） */
@@ -282,6 +287,8 @@ export interface BibleView {
   card?: { protagonist_fixed: boolean; original_bible: Bible | null } | null;
   /** VN 卡匯入時存了封面 */
   cover: boolean;
+  /** 卡片變數模式的桌：匯出作品包不能附設定 */
+  vars_mode: boolean;
 }
 
 // 初始 VN 卡（Rust `import::vn_card`，plans/vn-mode-pkg9.md）
@@ -313,6 +320,30 @@ export type VnCardNoticeKind =
 export interface VnCardImport {
   world_id: string;
   notices: { kind: VnCardNoticeKind; target: string }[];
+}
+
+/** VN 作品包（Rust `vn_work`，plans/vn-mode-pkg8.md）的提示：夾斷、匯出時略過的圖 */
+export interface VnWorkNotice {
+  kind: "clipped" | "image_skipped" | "dropped";
+  target: string;
+}
+
+/** `probe_vn_work`：匯入前確認用 */
+export interface VnWorkProbe {
+  title: string;
+  lang: string;
+  chapters: number;
+  endings: number;
+  settings: boolean;
+  /** 卡片變數模式的桌匯出的：只能當作品玩 */
+  vars_mode: boolean;
+  rating: VnCardRating | null;
+}
+
+/** `import_vn_work`：新重播桌與夾斷提示；`export_vn_work` 只回提示 */
+export interface VnWorkImport {
+  world_id: string;
+  notices: VnWorkNotice[];
 }
 
 // VN 立繪（Rust `vn_sprites`，plans/vn-mode-pkg7.md §3）

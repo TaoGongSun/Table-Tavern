@@ -86,3 +86,22 @@ pub fn write_imported_scene(
             .collect())
     })
 }
+
+/// VN 作品包建桌的整幕落地（plans/vn-mode-pkg8.md §2.4）：快照由呼叫端逐則配好，這裡只配新 id 並一次原子寫。
+/// 只給剛建好、這一幕還沒有事件的新桌用；不經追加路徑（重播桌的寫入守門在那裡）。回落檔的事件。
+pub fn write_work_scene(
+    root: &Path,
+    world_id: &str,
+    scene: u64,
+    mut events: Vec<TranscriptEvent>,
+) -> DataResult<Vec<TranscriptEvent>> {
+    let path = transcript_path(root, world_id, scene)?;
+    if std::fs::metadata(&path).is_ok_and(|meta| meta.len() > 0) {
+        return Err(invalid_data("vn work: 這一幕已經有事件"));
+    }
+    for event in &mut events {
+        event.id = Some(message_vars::new_token());
+    }
+    super::super::world_file::commit_world_write_atomic(&path, &serialize_events(&events)?)?;
+    Ok(events)
+}

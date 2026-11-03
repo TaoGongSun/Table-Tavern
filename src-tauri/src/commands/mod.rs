@@ -18,6 +18,7 @@ pub(crate) mod vn_backgrounds;
 pub(crate) mod vn_bible;
 pub(crate) mod vn_card;
 pub(crate) mod vn_sprites;
+pub(crate) mod vn_work;
 pub(crate) mod world;
 
 // 三個以上子模組的測試共用這兩樣，放在模組根才不必各檔複製一份。

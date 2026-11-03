@@ -19,6 +19,8 @@ pub(crate) struct BibleView {
     names: BTreeMap<String, String>,
     /// VN 卡匯入時存了封面（匯出成卡時不必再挑）
     cover: bool,
+    /// 卡片變數模式的桌：匯出作品包不能附設定
+    vars_mode: bool,
 }
 
 #[tauri::command]
@@ -57,6 +59,10 @@ pub(crate) fn vn_bible_read(app: tauri::AppHandle, world_id: String) -> Result<B
         cover: data::vn::cover_path(&root, &world_id)
             .map_err(|error| error.to_string())?
             .is_file(),
+        vars_mode: data::message_vars::read_control(&root, &world_id)
+            .map_err(|error| error.to_string())?
+            .active(state.current_scene)
+            .is_some(),
     })
 }
 
@@ -71,6 +77,7 @@ async fn with_caller<T>(
     let config = data::read_config(&config_root(app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
     let root = data_root(app)?;
+    data::vn::refuse_if_replay(&root, world_id)?;
     let system = "Write the requested visual novel material exactly in the requested structure.";
     let mut caller = GmOneshot {
         app,

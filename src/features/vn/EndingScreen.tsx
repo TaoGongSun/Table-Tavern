@@ -1,4 +1,5 @@
-// 完結畫面（vn-mode 包 5 §2.7、包 6 §2.8）：「完」、結局標題、已達成 x／y；從某一章重玩、開新周目、結局一覽、回標題。
+// 完結畫面（vn-mode 包 5 §2.7、包 6 §2.8、包 8 §2.2）：「完」、結局標題、已達成 x／y；從某一章重玩、開新周目、
+// 匯出成 VN 作品、結局一覽、回標題。重播桌（包 8）不出開新周目與匯出，重玩改叫章節選擇。
 import { t } from "../../i18n";
 import { reachedCount, useEndings } from "./StoryPanels";
 import "./vn-story.css";
@@ -9,6 +10,7 @@ export function EndingScreen({
   disabled,
   onReplay,
   onNewPlaythrough,
+  onExport,
   onEndings,
   onTitle,
 }: {
@@ -16,7 +18,9 @@ export function EndingScreen({
   endingId: string;
   disabled: boolean;
   onReplay: () => void;
-  onNewPlaythrough: () => void;
+  /** 重播桌沒給：不出開新周目、匯出，重玩鈕改叫章節選擇 */
+  onNewPlaythrough?: () => void;
+  onExport?: () => void;
   onEndings: () => void;
   onTitle: () => void;
 }) {
@@ -33,11 +37,18 @@ export function EndingScreen({
       )}
       <div className="vn-chapter-actions">
         <button type="button" className="btn btn-primary" disabled={disabled} onClick={onReplay}>
-          {t("vnReplayChapter")}
+          {onNewPlaythrough ? t("vnReplayChapter") : t("vnWorkChapterSelect")}
         </button>
-        <button type="button" className="btn" disabled={disabled} onClick={onNewPlaythrough}>
-          {t("vnNewPlaythrough")}
-        </button>
+        {onNewPlaythrough && (
+          <button type="button" className="btn" disabled={disabled} onClick={onNewPlaythrough}>
+            {t("vnNewPlaythrough")}
+          </button>
+        )}
+        {onExport && (
+          <button type="button" className="btn" disabled={disabled} onClick={onExport}>
+            {t("vnWorkExport")}
+          </button>
+        )}
         <button type="button" className="btn" onClick={onEndings}>
           {t("vnEndingsList")}
         </button>

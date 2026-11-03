@@ -1,0 +1,18 @@
+/* VN 作品包的匯出與匯入對話框（plans/vn-mode-pkg8.md §2.2、§2.3） */
+.vn-work-dialog p {
+  margin: 0 0 0.75rem;
+  white-space: pre-line;
+}
+
+.vn-work-dialog .vn-work-note {
+  margin: 0.5rem 0 0;
+  color: var(--ink-3);
+  font-size: var(--fs-meta);
+}
+
+.vn-work-dialog .vn-work-continue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}

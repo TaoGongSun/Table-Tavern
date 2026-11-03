@@ -34,6 +34,7 @@ export function VnWizard({
   transport,
   onCreated,
   onImportCard,
+  onImportWork,
   onFinish,
   onClose,
 }: {
@@ -43,6 +44,8 @@ export function VnWizard({
   onCreated: (worldId: string) => Promise<void>;
   /** ①「我有角色卡」選了檔：開 VN 桌並匯入，匯完以該桌從 ② 重開精靈（帶 ① 的劇透鎖選擇） */
   onImportCard: (file: File, spoilerLock: boolean) => void;
+  /** ①「匯入 VN 作品」：選 .ttvn 開只能閱讀的作品桌（不走後面的步驟） */
+  onImportWork: () => void;
   /** ④ 按開始：進那張桌 */
   onFinish: (worldId: string) => void;
   onClose: () => void;
@@ -81,6 +84,9 @@ export function VnWizard({
               onClick={() => cardInput.current?.click()}
             >
               {t("vnHaveCard")}
+            </button>
+            <button type="button" className="btn" disabled={busy} onClick={onImportWork}>
+              {t("vnWorkImport")}
             </button>
             <input
               ref={cardInput}

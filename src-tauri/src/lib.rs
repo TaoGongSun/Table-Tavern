@@ -31,6 +31,7 @@ mod vn_backgrounds;
 mod vn_bible;
 mod vn_branches;
 mod vn_sprites;
+mod vn_work;
 mod world_info;
 mod world_scan;
 
@@ -138,6 +139,10 @@ pub fn run() {
             commands::character::import_web_save,
             commands::vn_card::import_vn_card,
             commands::vn_card::export_vn_card,
+            commands::vn_work::export_vn_work,
+            commands::vn_work::probe_vn_work,
+            commands::vn_work::import_vn_work,
+            commands::vn_work::vn_replay_goto,
             commands::character::confirm_web_save_import,
             commands::character::discard_web_save_import,
             commands::character::list_import_receipts,
@@ -375,6 +380,7 @@ mod command_classification {
         "import_character",
         "import_web_save",
         "import_vn_card",
+        "import_vn_work",
         "import_worldbook",
         "list_worlds",
         "mark_state_counter",
@@ -414,6 +420,7 @@ mod command_classification {
         "vn_save_delete",
         "vn_save_load",
         "vn_new_playthrough",
+        "vn_replay_goto",
         "vn_bible_generate",
         "vn_bible_save",
         "vn_spoiler_set",
@@ -448,6 +455,7 @@ mod command_classification {
         "export_scene",
         "export_transcript",
         "export_vn_card",
+        "export_vn_work",
         "export_worldbook",
         "gm_table_mode",
         "list_characters",
@@ -517,6 +525,7 @@ mod command_classification {
         "new_id",
         "openrouter_key_tier",
         "probe_import",
+        "probe_vn_work",
         "read_config",
         "read_model_catalog",
         "refactor_abort",

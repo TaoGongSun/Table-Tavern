@@ -46,6 +46,7 @@ pub(crate) fn new_playthrough_with(
     hook: &mut dyn FnMut(&str) -> DataResult<()>,
 ) -> DataResult<String> {
     let source = read_state(root, world_id)?;
+    vn::refuse_replay(&source)?;
     if source.table_kind != TableKind::Vn {
         return Err(invalid_data("new playthrough needs a VN table"));
     }

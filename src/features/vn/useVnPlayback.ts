@@ -6,6 +6,7 @@ import {
   autoDelay,
   cellText,
   charLen,
+  entryCell,
   entryKey,
   isPlayable,
   isTerminal,
@@ -13,6 +14,7 @@ import {
   liveChoice,
   realignCursor,
   type Cursor,
+  type EntryAt,
   type FlatCell,
 } from "./vn-cells";
 
@@ -45,8 +47,8 @@ export function useVnPlayback({
   scene: number | null;
   tail: boolean;
   generating: boolean;
-  /** 進新幕的指定位置（包 6）：key＝讀檔的那一格；null＝最後一格（選項點分岔、切換分支後直接回到面板） */
-  entry: { key: string | null } | null;
+  /** 進新幕的指定位置（包 6、包 8）：讀檔那一格、最後一格（分岔、切換分支後直接回到面板）、重播桌的幕首等 */
+  entry: { at: EntryAt } | null;
   /** 這幕上次讀到的格（`vn-progress.json`），沒有指定位置時用 */
   resumeKey: string | undefined;
   /** 進度還沒讀回來：先不定位，免得落在預設位置後續讀位置來不及用 */
@@ -78,8 +80,9 @@ export function useVnPlayback({
       if (hold) return null;
       const has = (key: string | null | undefined) => (key && playable.some((cell) => cell.key === key) ? key : null);
       if (entry) {
-        const key = has(entry.key) ?? lastFormal(playable)?.key;
-        if (key) return { key, shown: entry.key === key ? 0 : Infinity };
+        const exact = entryCell(cells, playable, entry.at);
+        const cell = exact ?? lastFormal(playable);
+        if (cell) return { key: cell.key, shown: exact && entry.at.kind !== "last" ? 0 : Infinity };
       }
       const resumed = has(resumeKey);
       if (resumed) return { key: resumed, shown: 0 };
@@ -192,11 +195,13 @@ export function useVnPlayback({
     playable,
     advance,
     back,
-    /** 跳到這一格（同一幕讀檔） */
-    jump: (key: string) => {
+    /** 跳到這一格（同一幕讀檔、重播桌同一幕換位置）；找不到就不動 */
+    jump: (at: EntryAt) => {
+      const cell = entryCell(cells, playable, at);
+      if (!cell) return;
       setSkip(false);
       setWantNext(false);
-      setCursor({ key, shown: 0 });
+      setCursor({ key: cell.key, shown: 0 });
     },
     canBack: previous !== undefined,
     /** 本幕還沒選的選項格 */

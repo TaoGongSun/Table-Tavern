@@ -64,12 +64,22 @@ pub(crate) fn fork_choice(root: &Path, world_id: &str, event_id: &str) -> Result
     data::fork_before(root, world_id, keep, &answer_id).map_err(text)
 }
 
-/// 選項點上玩過的一條分支：玩家選的那句、可切過去的尾幕、尾幕是否已完結。
+/// 選項點上玩過的一條分支：玩家選的那句、可切過去的尾幕、尾幕是否已完結；`scene`＋`answer_event_id`＝
+/// 選了這句的那幕與那則玩家句（重播桌從選項點直接跳過去用，plans/vn-mode-pkg8.md §2.6）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct ChoiceBranch {
     pub option: String,
     pub tip: u64,
     pub ended: bool,
+    pub scene: u64,
+    pub answer_event_id: Option<String>,
+}
+
+/// 同一句選項玩過幾次時留尾幕號大的那條
+struct Found {
+    tip: u64,
+    scene: u64,
+    answer: Option<String>,
 }
 
 /// 目前幕某個選項點上玩過的各條分支（§2.5）：源頭幕自己選的那條，加上在同一點截分岔、自己選了的分岔幕；
@@ -88,12 +98,17 @@ pub(crate) fn choice_branches(
         .ok_or_else(|| UiMsg::VnChoiceNotPast.to_string())?;
     let source =
         data::origin(root, world_id, &state, &mut book, state.current_scene, k).map_err(text)?;
-    let mut found: BTreeMap<String, u64> = BTreeMap::new();
+    let mut found: BTreeMap<String, Found> = BTreeMap::new();
     let mut take = |answer: Option<(usize, String, Option<String>)>, scene: u64| {
-        if let Some((_, option, _)) = answer {
+        if let Some((_, option, answer)) = answer {
             let tip = data::tip_of(&state, scene);
-            let slot = found.entry(option).or_insert(tip);
-            *slot = (*slot).max(tip);
+            let next = Found { tip, scene, answer };
+            match found.get(&option) {
+                Some(kept) if kept.tip >= tip => {}
+                _ => {
+                    found.insert(option, next);
+                }
+            }
         }
     };
     let origin_scene = load(root, world_id, &mut book, source)?;
@@ -116,7 +131,7 @@ pub(crate) fn choice_branches(
         }
     }
     let mut branches = Vec::new();
-    for (option, tip) in found {
+    for (option, Found { tip, scene, answer }) in found {
         let ended = book
             .get(root, world_id, tip)
             .map_err(text)?
@@ -125,7 +140,13 @@ pub(crate) fn choice_branches(
             .find_map(|event| event.state.as_ref())
             .and_then(|snapshot| data::vn::ended_in(&snapshot.tree))
             .is_some();
-        branches.push(ChoiceBranch { option, tip, ended });
+        branches.push(ChoiceBranch {
+            option,
+            tip,
+            ended,
+            scene,
+            answer_event_id: answer,
+        });
     }
     Ok(branches)
 }
@@ -207,6 +228,11 @@ pub(crate) fn load_save(root: &Path, world_id: &str, id: &str) -> Result<Loaded,
     };
     if save.scene == state.current_scene {
         return Ok(at(save.scene, save.event_id));
+    }
+    // 重播桌不分岔：直接換到存檔那幕（plans/vn-mode-pkg8.md §2.6）
+    if state.replay {
+        let scene = data::replay_goto(root, world_id, save.scene).map_err(text)?;
+        return Ok(at(scene, save.event_id));
     }
     if data::tip_of(&state, save.scene) == save.scene {
         let scene = data::switch_scene(root, world_id, save.scene).map_err(text)?;

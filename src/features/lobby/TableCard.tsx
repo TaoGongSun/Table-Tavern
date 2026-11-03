@@ -100,7 +100,9 @@ export function TableCard({ world, busy, onEnter, onRename, onDelete, room }: Ta
             {world.name}
           </span>
         )}
-        {world.table_kind === "vn" && <span className="table-badge">{t("vnBadge")}</span>}
+        {world.table_kind === "vn" && (
+          <span className="table-badge">{t(world.replay ? "vnWorkBadge" : "vnBadge")}</span>
+        )}
         {badge !== null && (
           <span className="table-badge" title={badgeLabel}>
             {badgeLabel}

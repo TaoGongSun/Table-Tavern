@@ -362,7 +362,12 @@ impl Backdrop {
 
 /// 排入庫裡還沒有的背景（冪等：佇列去重）
 pub(crate) fn fill(app: &tauri::AppHandle, world: &str, used: &[Backdrop]) -> Result<(), String> {
-    let library = Library::of(&data_root(app)?, world)?;
+    let root = data_root(app)?;
+    // 重播桌進桌也會打：靜默不排（plans/vn-mode-pkg8.md §2.6.1）
+    if data::vn::is_replay(&root, world) {
+        return Ok(());
+    }
+    let library = Library::of(&root, world)?;
     let missing: Vec<BgSlot> = used
         .iter()
         .filter(|backdrop| !library.has(&backdrop.slug, &backdrop.period))

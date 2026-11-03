@@ -107,6 +107,7 @@ pub(crate) async fn post_opening(
 ) -> Result<TranscriptEvent, String> {
     let held = data::world_exclusive_async(&world_id).await?;
     let root = data_root(&app)?;
+    data::vn::refuse_if_replay(&root, &world_id)?;
     let config = data::read_config(&config_root(&app)?).unwrap_or_default();
     let lang = transport::ui_language(&config);
     let (body, ops) = match crate::world_scan::opening::original_opening(
@@ -166,6 +167,7 @@ pub(crate) async fn translate_opening(
     tier: Option<String>,
 ) -> Result<String, String> {
     crate::data::refuse_if_updating()?;
+    data::vn::refuse_if_replay(&data_root(&app)?, &world_id)?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let messages = translate::opening_messages(&text, &lang);
     // 檔位由開場白視窗的挑選器帶來（省額度預設低檔，翻不出來的玩家自己調高再重翻）；

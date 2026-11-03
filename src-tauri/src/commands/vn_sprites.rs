@@ -186,6 +186,7 @@ pub(crate) async fn vn_sprite_generate(
     world_id: String,
     character_id: String,
 ) -> Result<String, String> {
+    crate::data::vn::refuse_if_replay(&data_root(&app)?, &world_id)?;
     vn_sprites::generate_candidate(&app, &world_id, &character_id).await
 }
 
@@ -259,6 +260,7 @@ pub(crate) fn vn_sprite_reroll(
     variant: Option<String>,
     expression: String,
 ) -> Result<(), String> {
+    crate::data::vn::refuse_if_replay(&data_root(&app)?, &world_id)?;
     if !faces_of(&app, &world_id, &character_id)?.contains(&expression) {
         return Err("VN_SPRITE_EXPRESSION".to_owned());
     }
@@ -306,6 +308,7 @@ pub(crate) async fn vn_sprite_variant_generate(
     key: Option<String>,
     label: String,
 ) -> Result<(), String> {
+    crate::data::vn::refuse_if_replay(&data_root(&app)?, &world_id)?;
     checked_key(key.as_deref())?;
     vn_sprites::generate_variant(&app, &world_id, &character_id, key, label.trim().to_owned()).await
 }

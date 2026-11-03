@@ -489,6 +489,9 @@ pub struct WorldState {
     /// 桌型：開桌時定死，不提供聊天桌轉 VN。舊存檔沒有這欄＝聊天桌。
     #[serde(default)]
     pub table_kind: TableKind,
+    /// VN 作品包匯入的重播桌（plans/vn-mode-pkg8.md §2.6）：不生成、不寫逐字稿，只讀與換目前幕；匯入時寫定、永不清。
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub replay: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

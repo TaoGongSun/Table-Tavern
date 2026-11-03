@@ -301,5 +301,18 @@ pub(crate) fn strip_card_text(bytes: &[u8]) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
+/// 作品包圖片的 chunk 白名單（plans/vn-mode-pkg8.md §2.5 #8）：只留繪圖必要的與色彩空間；文字、EXIF、ICC 一律剝。
+const PACK_CHUNKS: [&[u8; 4]; 7] = [
+    b"IHDR", b"PLTE", b"tRNS", b"IDAT", b"sRGB", b"gAMA", b"cHRM",
+];
+
+/// 作品包進出都過這一支：嚴驗（不縮、不剝動畫，不合格回錯）後照白名單重組。回（乾淨圖, 寬高）。
+pub(crate) fn sanitize_png(bytes: &[u8]) -> Result<(Vec<u8>, (u32, u32)), String> {
+    let size = classify_png_image(bytes, STORED_IMAGE_LIMITS).map_err(|error| error.to_string())?;
+    let (mut out, iend) = copy_chunks_before_iend(bytes, |kind, _| !PACK_CHUNKS.contains(&kind))?;
+    out.extend_from_slice(iend);
+    Ok((out, size))
+}
+
 #[cfg(test)]
 pub(crate) mod tests;

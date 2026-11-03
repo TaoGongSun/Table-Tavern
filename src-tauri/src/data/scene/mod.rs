@@ -10,12 +10,12 @@ mod transcript;
 mod visibility;
 
 pub use branches::{
-    choice_state, fork_before, origin, scene_high, story_previous, switch_scene, tip_of, Beat,
-    ChoiceState, Transcripts,
+    choice_state, fork_before, origin, replay_goto, scene_high, story_previous, switch_scene,
+    tip_of, Beat, ChoiceState, Transcripts,
 };
 pub use export::{export_scene_markdown, export_transcript_markdown};
 pub(crate) use glyph::{fold_glyphs, glyph_equal};
-pub use import::{write_imported_scene, ImportedEvent, ImportedScene};
+pub use import::{write_imported_scene, write_work_scene, ImportedEvent, ImportedScene};
 #[cfg(test)]
 pub use lifecycle::{begin_next_scene, fail_publish};
 pub use lifecycle::{

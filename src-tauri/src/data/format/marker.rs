@@ -145,11 +145,21 @@ pub fn loose_name(dir: &Path, fallback_id: &str) -> String {
 
 /// 列表用的桌型：跟 loose_name 一樣寬鬆讀，讀不到或沒有這欄就當聊天桌。
 pub fn loose_table_kind(dir: &Path) -> TableKind {
+    loose_state_field(dir, "table_kind")
+        .and_then(|value| serde_json::from_value(value).ok())
+        .unwrap_or_default()
+}
+
+/// 重播桌（VN 作品包匯入）：大廳列表照名稱同一套寬鬆讀法，讀不到＝不是
+pub fn loose_replay(dir: &Path) -> bool {
+    loose_state_field(dir, "replay").and_then(|value| value.as_bool()) == Some(true)
+}
+
+fn loose_state_field(dir: &Path, key: &str) -> Option<Value> {
     fs::read_to_string(dir.join("state.json"))
         .ok()
         .and_then(|text| serde_json::from_str::<Value>(&text).ok())
-        .and_then(|value| serde_json::from_value(value.get("table_kind")?.clone()).ok())
-        .unwrap_or_default()
+        .and_then(|value| value.get(key).cloned())
 }
 
 pub fn marker_json(version: u64) -> DataResult<String> {

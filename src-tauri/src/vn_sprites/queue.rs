@@ -236,6 +236,10 @@ pub(crate) fn fill(app: &tauri::AppHandle, world: &str, characters: &[String]) {
     let Ok(root) = data_root(app) else {
         return;
     };
+    // 重播桌進桌也會打：靜默不排（plans/vn-mode-pkg8.md §2.6.1）
+    if crate::data::vn::is_replay(&root, world) {
+        return;
+    }
     let mut added = Vec::new();
     {
         let mut queue = queue();

@@ -358,6 +358,8 @@ pub async fn regenerate_locked<C: SummaryCaller>(
     let _permit = crate::data::world_write_permit_async(world_id).await?;
     let text = |error: Box<dyn std::error::Error + Send + Sync>| error.to_string();
     let state = crate::data::read_state(root, world_id).map_err(text)?;
+    // 重播桌不重寫提要（plans/vn-mode-pkg8.md §2.6.1）：呼叫模型之前擋
+    crate::data::vn::refuse_replay(&state).map_err(text)?;
     let scene = state.current_scene;
     let label = crate::data::scene_label(&state, scene);
     let Some(previous_scene) = label.parent else {

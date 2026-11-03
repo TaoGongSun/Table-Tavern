@@ -108,6 +108,35 @@ export function entryKey(cells: FlatCell[], playable: FlatCell[]): string | null
   return (first ?? lastFormal(playable) ?? playable[0])?.key ?? null;
 }
 
+/**
+ * 進新幕的指定位置（包 6、包 8 §2.6）：last＝最後一個正式格；cell＝那一格；start＝幕首第一格；
+ * after＝那則事件（玩家句不可停）之後第一個可停格；lastChoice＝最後一個選過的選項格。找不到回 undefined。
+ */
+export type EntryAt =
+  | { kind: "last" }
+  | { kind: "cell"; key: string }
+  | { kind: "start" }
+  | { kind: "after"; eventKey: string }
+  | { kind: "lastChoice" };
+
+export function entryCell(cells: FlatCell[], playable: FlatCell[], at: EntryAt): FlatCell | undefined {
+  switch (at.kind) {
+    case "last":
+      return lastFormal(playable);
+    case "cell":
+      return playable.find((cell) => cell.key === at.key);
+    case "start":
+      return playable.find((cell) => cell.kind !== "pending");
+    case "lastChoice":
+      return [...playable].reverse().find((cell) => cell.cell.type === "choices" && cell.choice?.answered);
+    case "after": {
+      const from = cells.findIndex((cell) => cell.eventKey === at.eventKey);
+      if (from < 0) return undefined;
+      return cells.slice(from).find((cell) => cell.eventKey !== at.eventKey && playable.includes(cell));
+    }
+  }
+}
+
 /** 最後一個正式可停格：游標鍵不見時退到這裡，不跳進還在長的暫定格 */
 export const lastFormal = (playable: FlatCell[]) =>
   [...playable].reverse().find((cell) => cell.kind !== "pending");

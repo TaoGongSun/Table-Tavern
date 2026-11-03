@@ -90,6 +90,7 @@ pub(super) fn world_with(pairs: &[(&str, &str)], mechanism: Mechanism) -> data::
         statusbar_retired: false,
         regex_allowed: true,
         table_kind: data::TableKind::Chat,
+        replay: false,
     }
 }
 

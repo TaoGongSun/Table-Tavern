@@ -61,6 +61,7 @@ pub(super) fn fork_scene_tx(
     let (root, world_id) = (tx.root, tx.world_id);
     message_vars::refuse_during_turn(tx)?;
     let mut state = read_state(root, world_id)?;
+    crate::data::vn::refuse_replay(&state)?;
     let high = scene_high(&state);
     if from_scene > high || (keep.is_none() && from_scene == state.current_scene) {
         return Err(UiMsg::SceneForkNotEarlier.into_error());
@@ -188,6 +189,7 @@ fn begin_next_scene_tx(
     let (root, world_id) = (tx.root, tx.world_id);
     message_vars::refuse_during_turn(tx)?;
     let mut state = read_state(root, world_id)?;
+    crate::data::vn::refuse_replay(&state)?;
     // VN 章結束：新章號／強制收尾先寫進記憶體的樹，摘要事件明帶這份快照（補快照讀的是磁碟上的舊樹）
     let step = crate::data::vn::chapter_step(root, world_id, &state, chapter_end)?;
     for (path, value) in &step {
@@ -293,6 +295,7 @@ pub fn revert_scene(root: &Path, world_id: &str) -> DataResult<u64> {
 fn revert_scene_tx(tx: &CommitTx<'_>) -> DataResult<u64> {
     let (root, world_id) = (tx.root, tx.world_id);
     let mut state = read_state(root, world_id)?;
+    crate::data::vn::refuse_replay(&state)?;
     let scene = state.current_scene;
     let Some(previous_scene) = scene_label(&state, scene).parent else {
         return Err(UiMsg::SceneFirstNoPrevious.into_error());
@@ -349,6 +352,7 @@ pub fn replace_scene_summary(
     title: Option<&str>,
 ) -> DataResult<()> {
     let replaced = with_commit(root, world_id, |_| {
+        crate::data::vn::refuse_replay(&read_state(root, world_id)?)?;
         replace_scene_summary_locked(root, world_id, summary_text, title)
     });
     crate::data::bump_capacity_epoch();

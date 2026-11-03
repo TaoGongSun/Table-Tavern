@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { t } from "../../i18n";
 import type {
   TranscriptEvent,
+  SceneLabel,
   VnCell,
   VnEventCells,
 } from "../../shared/contracts/backend-contracts";
@@ -27,6 +28,7 @@ const backend = vi.hoisted(() => ({
   progress: null as unknown,
   loaded: null as unknown,
   args: {} as Record<string, Record<string, unknown>>,
+  chapterHead: 0,
 }));
 
 /** 照後端共用選項邊界標選項點：其後第一則玩家句＝已選，之前又出選項＝被取代（不標） */
@@ -63,6 +65,8 @@ vi.mock("@tauri-apps/api/core", () => ({
       return backend.branches;
     }
     if (command === "vn_new_playthrough") return `new:${String(args.nameTemplate)}`;
+    if (command === "vn_replay_goto") return args.scene;
+    if (command === "vn_replay_chapter") return backend.chapterHead;
     return null;
   }),
 }));
@@ -119,6 +123,8 @@ async function settle() {
 }
 
 let flagHints = true;
+let replayTable = false;
+let labels: Record<string, SceneLabel> = {};
 let titleOpen = false;
 const onTitle = vi.fn((open: boolean) => {
   titleOpen = open;
@@ -157,6 +163,8 @@ async function render(patch: Partial<ChatController> = {}) {
         onFlagHints={() => {}}
         title={titleOpen}
         onTitle={onTitle}
+        replay={replayTable}
+        sceneLabels={labels}
       />,
     );
   });
@@ -192,6 +200,8 @@ beforeEach(() => {
   titleOpen = false;
   onTitle.mockClear();
   sceneNo = 0;
+  replayTable = false;
+  labels = {};
   window.matchMedia = (() => ({ matches: true })) as unknown as typeof window.matchMedia;
   host = document.createElement("div");
   document.body.appendChild(host);
@@ -428,6 +438,8 @@ describe("VnPlayer", () => {
           onFlagHints={() => {}}
           title={false}
           onTitle={() => {}}
+          replay={false}
+          sceneLabels={{}}
         />,
       );
     });
@@ -732,5 +744,134 @@ describe("VnPlayer", () => {
       await wait(1400);
       expect(text()).toBe("b");
     }, 10000);
+  });
+
+  describe("replay table (imported work)", () => {
+    const label = (patch: Partial<SceneLabel>): SceneLabel => ({ base: 0, version: 1, parent: null, ...patch });
+    const wait = (ms: number) => act(async () => new Promise((resolve) => setTimeout(resolve, ms)));
+    beforeEach(() => {
+      replayTable = true;
+    });
+
+    it("drops generation entries: no next chapter, chat view, new playthrough or export", async () => {
+      backend.cells = [gm("g1", [n("farewell"), { type: "ending", id: "true_end" }])];
+      backend.endings = { endings: [{ id: "true_end", title: "Dawn", reached: true }], current: "true_end" };
+      await render({ events: [event("g1")] });
+      expect(button(t("vnNextChapter"))).toBeUndefined();
+      expect(button(t("vnShowChat"))).toBeUndefined();
+      const more = () => host.querySelector<HTMLButtonElement>(`[aria-label="${t("moreActions")}"]`)!.click();
+      await act(async () => more());
+      const items = [...document.querySelectorAll("[role=menuitem]")].map((item) => item.textContent);
+      expect(items).toEqual([t("vnEndingsList"), t("vnWorkChapterSelect")]);
+      await act(async () => more());
+      await advance();
+      expect(host.querySelector(".vn-ending-title")?.textContent).toBe("Dawn");
+      expect(button(t("vnNewPlaythrough"))).toBeUndefined();
+      expect(button(t("vnWorkExport"))).toBeUndefined();
+      // 章節選擇：章頭就是目前幕＝直接跳回幕首，不分岔
+      await act(async () => button(t("vnWorkChapterSelect"))!.click());
+      await act(async () => button(t("vnChapterStart", { n: 1 }))!.click());
+      await settle();
+      expect(backend.args["vn_replay_chapter"]).toMatchObject({ chapter: 1 });
+      expect(onReplayChapter).not.toHaveBeenCalled();
+      expect(text()).toBe("farewell");
+    });
+
+    it("a chapter end goes to the child scene's first cell without generating", async () => {
+      backend.cells = [{ ...gm("g1", [n("we arrive"), { type: "chapter" }]), chapter: 1 }];
+      labels = { "1": label({ parent: 0 }), "2": label({ parent: 0, forked: true, source: 0 }) };
+      await render({ events: [event("g1")] });
+      await advance();
+      expect(host.querySelector(".vn-chapter-heading")?.textContent).toBe(t("vnChapterDone", { n: 1 }));
+      await wait(1100);
+      await settle();
+      expect(onAdvanceScene).not.toHaveBeenCalled();
+      expect(backend.args["vn_replay_goto"]).toEqual({ worldId: "w1", scene: 1 });
+      sceneNo = 1;
+      backend.cells = [{ ...gm("s1", [n("first"), n("second")]), chapter: 2 }];
+      backend.progress = { version: 1, read: [], positions: { "1": "s1#1" }, saves: [] };
+      await render({ events: [event("s1")] });
+      expect(host.querySelector(".vn-chapter-heading")?.textContent).toBe(t("vnChapterStart", { n: 2 }));
+      await wait(1300);
+      await settle();
+      expect(host.querySelector(".vn-chapter-card")).toBeNull();
+      expect(chat.gmAdvance).not.toHaveBeenCalled();
+      expect(text()).toBe("first");
+    });
+
+    it("a dead end shows the unfinished path, and going back lands on the previous scene's last choice", async () => {
+      backend.cells = [gm("s1", [n("alone"), { type: "chapter" }])];
+      labels = { "1": label({ parent: 0 }) };
+      sceneNo = 1;
+      await render({ events: [event("s1")] });
+      await advance();
+      expect(host.querySelector(".vn-unfinished")?.textContent).toContain(t("vnWorkUnfinished"));
+      expect(onBranch).not.toHaveBeenCalled();
+      await act(async () => button(t("vnWorkBackToChoice"))!.click());
+      await settle();
+      expect(backend.args["vn_replay_goto"]).toEqual({ worldId: "w1", scene: 0 });
+      sceneNo = 0;
+      backend.cells = [gm("g1", [n("q"), choices("A", "B")]), player("p1", "A"), gm("g2", [n("after")])];
+      await render({ events: [event("g1"), event("p1"), event("g2")] });
+      expect(host.querySelector(".vn-choices-past")).not.toBeNull();
+      expect(host.querySelector(".vn-choice-current")).toBeNull();
+    });
+
+    it("an answered choice that ends the scene shows the unfinished note inside the same panel", async () => {
+      backend.cells = [gm("g1", [n("q"), choices("A", "B")]), player("p1", "A")];
+      await render({ events: [event("g1"), event("p1")] });
+      await advance();
+      expect(host.querySelectorAll(".vn-choices")).toHaveLength(1);
+      expect(host.querySelector(".vn-choices-past")?.textContent).toContain(t("vnWorkUnfinished"));
+      expect(button(t("vnWorkBackToChoice"))).toBeUndefined();
+    });
+
+    it("an open choice jumps to the author's branch and greys out the paths never taken", async () => {
+      backend.cells = [gm("g1", [n("q"), choices("A", "B", "C")])];
+      backend.branches = [{ option: "B", tip: 2, ended: true, scene: 2, answer_event_id: "p9" }];
+      await render({ events: [event("g1")] });
+      await advance();
+      const panel = choiceButtons();
+      expect(panel.map((b) => b.disabled)).toEqual([true, false, true]);
+      expect(panel[0].textContent).toContain(t("vnWorkNotWalked"));
+      expect(button(t("vnReroll"))).toBeUndefined();
+      await act(async () => panel[1].click());
+      await settle();
+      expect(backend.args["vn_replay_goto"]).toEqual({ worldId: "w1", scene: 2 });
+      expect(chat.submitText).not.toHaveBeenCalled();
+      sceneNo = 2;
+      backend.cells = [gm("g1", [n("q"), choices("A", "B", "C")]), player("p9", "B"), gm("g9", [n("reply")])];
+      await render({ events: [event("g1"), event("p9"), event("g9")] });
+      expect(text()).toBe("reply");
+    });
+
+    it("an open choice nobody took says the path is unfinished and can go back a scene", async () => {
+      backend.cells = [gm("g1", [n("q"), choices("A", "B")])];
+      labels = { "1": label({ parent: 0 }) };
+      sceneNo = 1;
+      await render({ events: [event("g1")] });
+      await advance();
+      expect(choiceButtons().slice(0, 2).every((b) => b.disabled)).toBe(true);
+      expect(host.querySelector(".vn-choices-past")?.textContent).toContain(t("vnWorkUnfinished"));
+      await act(async () => button(t("vnWorkBackToChoice"))!.click());
+      await settle();
+      expect(backend.args["vn_replay_goto"]).toEqual({ worldId: "w1", scene: 0 });
+    });
+
+    it("the title's start goes back to scene 0's first cell without asking", async () => {
+      backend.cells = [gm("s3", [n("late"), n("later")])];
+      sceneNo = 3;
+      titleOpen = true;
+      await render({ events: [event("s3")] });
+      await act(async () => button(t("vnTitleStart"))!.click());
+      await settle();
+      expect(backend.args["vn_replay_goto"]).toEqual({ worldId: "w1", scene: 0 });
+      expect(onReplayChapter).not.toHaveBeenCalled();
+      sceneNo = 0;
+      backend.cells = [gm("o1", [n("opening"), n("more")])];
+      backend.progress = { version: 1, read: [], positions: { "0": "o1#1" }, saves: [] };
+      await render({ events: [event("o1")] });
+      expect(text()).toBe("opening");
+    });
   });
 });

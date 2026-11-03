@@ -9,12 +9,15 @@ export function ChapterCardView({
   nextChapter,
   onRetry,
   onClose,
+  replay = false,
 }: {
   card: ChapterCard;
   /** 重進後新幕首則事件的章號；與結束的章相同＝轉收尾（尾聲） */
   nextChapter: number | undefined;
   onRetry: () => void;
   onClose: () => void;
+  /** 重播桌只是換幕、沒有在整理，不顯示「整理中」 */
+  replay?: boolean;
 }) {
   const opening = card.phase === "opening";
   const heading = opening
@@ -30,7 +33,7 @@ export function ChapterCardView({
   return (
     <div className="vn-chapter-card" role="status">
       {heading && <p className="vn-chapter-heading">{heading}</p>}
-      {(card.phase === "advancing" || (opening && !heading)) && (
+      {!replay && (card.phase === "advancing" || (opening && !heading)) && (
         <p className="vn-chapter-note">{t("vnSceneTidying")}</p>
       )}
       {card.phase === "reenter" && <p className="vn-chapter-note">{t("vnReenterFailed")}</p>}

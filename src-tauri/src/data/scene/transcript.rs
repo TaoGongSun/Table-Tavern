@@ -149,6 +149,8 @@ fn write_line_tx(
     publish: bool,
 ) -> DataResult<(u64, TranscriptEvent)> {
     let (root, world_id) = (tx.root, tx.world_id);
+    // 重播桌兜底（plans/vn-mode-pkg8.md §2.6.1）：所有追加都經這裡
+    crate::data::vn::refuse_replay(&read_state_cache(root, world_id)?)?;
     let mut event = event.clone();
     if event.id.is_none() {
         event.id = Some(message_vars::new_token());
@@ -505,6 +507,8 @@ fn edit_scene<T>(
     scene: u64,
     edit: impl FnOnce(Vec<TranscriptEvent>) -> DataResult<(T, Option<Vec<TranscriptEvent>>)>,
 ) -> DataResult<T> {
+    // 重播桌兜底：收回、改寫、刪則、還原都經這裡
+    crate::data::vn::refuse_replay(&read_state_cache(root, world_id)?)?;
     let path = transcript_path(root, world_id, scene)?;
     super::super::world_file::with_file_lock(&path, |file| {
         let events = match file.read()? {
@@ -693,6 +697,10 @@ pub fn discard_unanswered_player(
     text: &str,
 ) -> DataResult<bool> {
     with_commit(root, world_id, |tx| {
+        // 重播桌不收；狀態讀不到照舊收（收回不依賴狀態，見下方回捲）
+        if let Ok(state) = read_state_cache(root, world_id) {
+            crate::data::vn::refuse_replay(&state)?;
+        }
         // 回覆已產生、只是還沒落檔（後端會代落）：這句不是沒回成，不收
         if message_vars::has_unlanded_reply(tx) {
             return Ok(false);
