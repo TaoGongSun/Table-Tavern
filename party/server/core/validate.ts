@@ -38,11 +38,11 @@ const MEMBER_FRAMES: Record<string, string> = {
 const EXECUTOR_FRAMES: Record<string, string> = {
   hello: "protocol:i role:s roomCode:s executorToken:s lastSeq:i inflight:o~ client:o", hb: "",
   capabilities: "routes:a current:o maxRoundSpeakers:i", "room.seed": "part:i total:i cards?:a history?:a",
-  "roster.update": "cards:a", "dispatch.ack": "dispatchId:s", "gen.part.begin": "dispatchId:s part:i speaker:o",
+  "roster.update": "cards:a", "seat.reserve": "cardId:s~ deviceId:s", "invite.ack": "joinSecret:s", "dispatch.ack": "dispatchId:s", "gen.part.begin": "dispatchId:s part:i speaker:o",
   "gen.delta": "dispatchId:s part:i text:s", "gen.part.end": "dispatchId:s part:i text:s interrupted:b",
   "gen.done": "dispatchId:s aborted:b cardsArrived?:a", "gen.failed": "dispatchId:s atPart:i~ error:o",
   "job.ack": "jobId:s", "job.progress": "jobId:s", "job.result": "jobId:s ok:b result?:o error?:o",
-  "pair.create": "grantHost:b", "pair.revoke": "", status: "keepAwake:b~ busy:b",
+  "pair.create": "grantHost:b", "pair.revoke": "", status: "keepAwake:b~ busy:b paused?:b",
   quota: "route:s routeLabel:s window:s state:s usedRatio:n~ resetsAt:i~ creditsLeft:s~ observedAt:i",
   "ctl.result": "ctlId:s ok:b error?:o", "executor.leave": "",
 };

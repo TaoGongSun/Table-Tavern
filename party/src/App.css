@@ -1,5 +1,5 @@
 /* 手機優先：沿用網頁版（web/src/App.css）的配色 token，重新排版成單欄——16px 邊距、無橫向捲動、行動格固定在底部。 */
-:root {
+.app {
   --bg: #f6f1e8;
   --surface: #fffaf2;
   --surface-2: #efe6d6;
@@ -17,7 +17,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  .app {
     --bg: #17130f;
     --surface: #211b16;
     --surface-2: #2b241d;
@@ -31,21 +31,14 @@
     --user-text: #f2ede4;
     color-scheme: dark;
   }
+
 }
 
-* {
+.app * {
   box-sizing: border-box;
 }
 
-html,
-body,
-#root {
-  height: 100%;
-  margin: 0;
-  overflow-x: hidden;
-}
-
-body {
+.app {
   background: var(--bg);
   color: var(--text);
   font-family: "Noto Serif TC", "Songti TC", Georgia, serif;
@@ -54,15 +47,15 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 
-button,
-input,
-textarea,
-select {
+.app button,
+.app input,
+.app textarea,
+.app select {
   font: inherit;
   color: inherit;
 }
 
-button {
+.app button {
   min-height: 40px;
   padding: 6px 14px;
   border: 1px solid var(--line);
@@ -73,30 +66,30 @@ button {
   cursor: pointer;
 }
 
-button.primary {
+.app button.primary {
   border-color: var(--accent);
   background: var(--accent);
   color: var(--accent-text);
   font-weight: 600;
 }
 
-button.ghost {
+.app button.ghost {
   background: transparent;
 }
 
-button.danger {
+.app button.danger {
   color: var(--danger);
   border-color: var(--danger);
 }
 
-button:disabled {
+.app button:disabled {
   opacity: 0.45;
   cursor: default;
 }
 
-input,
-textarea,
-select {
+.app input,
+.app textarea,
+.app select {
   width: 100%;
   min-width: 0;
   padding: 8px 10px;
@@ -105,7 +98,7 @@ select {
   background: var(--surface);
 }
 
-textarea {
+.app textarea {
   resize: none;
 }
 
@@ -118,7 +111,7 @@ textarea {
   margin: 0 auto;
 }
 
-.topbar {
+.app .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -129,23 +122,23 @@ textarea {
   font-family: system-ui, -apple-system, "PingFang TC", sans-serif;
 }
 
-.brand {
+.app .brand {
   font-weight: 700;
   white-space: nowrap;
 }
 
-.lang-picker {
+.app .lang-picker {
   width: auto;
   padding: 4px 8px;
   font-size: 14px;
 }
 
-.muted {
+.app .muted {
   color: var(--muted);
   font-size: 14px;
 }
 
-.banner {
+.app .banner {
   display: block;
   width: 100%;
   min-height: 0;
@@ -157,25 +150,25 @@ textarea {
   text-align: left;
 }
 
-.center-note {
+.app .center-note {
   padding: 32px var(--gutter);
   text-align: center;
   color: var(--muted);
 }
 
-.join-form {
+.app .join-form {
   display: flex;
   flex-direction: column;
   gap: 14px;
   padding: 24px var(--gutter);
 }
 
-.join-form h1 {
+.app .join-form h1 {
   margin: 0;
   font-size: 22px;
 }
 
-.round-bar {
+.app .round-bar {
   padding: 8px var(--gutter);
   border-bottom: 1px solid var(--line);
   background: var(--surface);
@@ -183,34 +176,34 @@ textarea {
   font-size: 14px;
 }
 
-.round-line {
+.app .round-line {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 12px;
 }
 
-.round-no,
-.round-gm {
+.app .round-no,
+.app .round-gm {
   color: var(--muted);
 }
 
-.round-status {
+.app .round-status {
   font-weight: 600;
 }
 
-.round-actions,
-.panel-actions,
-.action-buttons {
+.app .round-actions,
+.app .panel-actions,
+.app .action-buttons {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.round-actions:not(:empty) {
+.app .round-actions:not(:empty) {
   margin-top: 6px;
 }
 
-.tabs {
+.app .tabs {
   display: flex;
   flex-shrink: 0;
   gap: 4px;
@@ -219,7 +212,7 @@ textarea {
   border-bottom: 1px solid var(--line);
 }
 
-.tab {
+.app .tab {
   min-height: 34px;
   padding: 4px 12px;
   border: 0;
@@ -228,36 +221,36 @@ textarea {
   white-space: nowrap;
 }
 
-.tab.on {
+.app .tab.on {
   background: var(--surface-2);
   color: var(--text);
   font-weight: 600;
 }
 
-.story {
+.app .story {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   padding: 12px var(--gutter);
 }
 
-.older {
+.app .older {
   display: block;
   margin: 0 auto 12px;
 }
 
-.part {
+.app .part {
   margin-bottom: 14px;
   padding-left: 10px;
   border-left: 3px solid var(--line);
   overflow-wrap: anywhere;
 }
 
-.part-gm {
+.app .part-gm {
   border-color: var(--accent);
 }
 
-.part-player {
+.app .part-player {
   padding: 8px 12px;
   border-radius: var(--radius);
   border-left-width: 6px;
@@ -265,29 +258,29 @@ textarea {
   color: var(--user-text);
 }
 
-.part-system {
+.app .part-system {
   color: var(--muted);
   font-size: 14px;
 }
 
-.part-name {
+.app .part-name {
   font-family: system-ui, -apple-system, "PingFang TC", sans-serif;
   font-size: 13px;
   font-weight: 600;
   opacity: 0.8;
 }
 
-.part-text {
+.app .part-text {
   white-space: pre-wrap;
 }
 
-.part-flag {
+.app .part-flag {
   font-size: 12px;
   opacity: 0.7;
 }
 
-.action-box,
-.seat-picker {
+.app .action-box,
+.app .seat-picker {
   position: sticky;
   bottom: 0;
   padding: 10px var(--gutter) calc(10px + env(safe-area-inset-bottom));
@@ -295,34 +288,34 @@ textarea {
   background: var(--surface);
 }
 
-.seat-picker {
+.app .seat-picker {
   max-height: 60%;
   overflow-y: auto;
 }
 
-.seat-picker h2 {
+.app .seat-picker h2 {
   margin: 0 0 8px;
   font-size: 17px;
 }
 
-.action-buttons {
+.app .action-buttons {
   justify-content: flex-end;
   margin-top: 8px;
 }
 
-.action-hint {
+.app .action-hint {
   margin-bottom: 6px;
   color: var(--muted);
   font-size: 14px;
 }
 
-.field-error {
+.app .field-error {
   margin-top: 4px;
   color: var(--danger);
   font-size: 14px;
 }
 
-.seat-card {
+.app .seat-card {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -330,58 +323,58 @@ textarea {
   border-bottom: 1px solid var(--line);
 }
 
-.seat-card img {
+.app .seat-card img {
   width: 44px;
   height: 44px;
   border-radius: 50%;
   object-fit: cover;
 }
 
-.seat-info {
+.app .seat-info {
   display: flex;
   flex: 1;
   min-width: 0;
   flex-direction: column;
 }
 
-.seat-info .muted {
+.app .seat-info .muted {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.panel {
+.app .panel {
   flex: 1;
   overflow-y: auto;
   padding: 12px var(--gutter) 24px;
 }
 
-.panel h2 {
+.app .panel h2 {
   margin: 0 0 10px;
   font-size: 18px;
 }
 
-.panel h3 {
+.app .panel h3 {
   margin: 18px 0 8px;
   font-size: 15px;
 }
 
-.panel label {
+.app .panel label {
   display: block;
   margin: 10px 0;
 }
 
-.panel label.check {
+.app .panel label.check {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.panel label.check input {
+.app .panel label.check input {
   width: auto;
 }
 
-.row {
+.app .row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -390,29 +383,29 @@ textarea {
   border-bottom: 1px solid var(--line);
 }
 
-.row select {
+.app .row select {
   width: auto;
   max-width: 100%;
 }
 
-.grow {
+.app .grow {
   flex: 1;
   min-width: 0;
 }
 
-.dot {
+.app .dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: var(--line);
 }
 
-.dot.on {
+.app .dot.on {
   background: #4c9a5a;
 }
 
-.badge,
-.chip {
+.app .badge,
+.app .chip {
   margin-left: 6px;
   padding: 1px 8px;
   border-radius: 999px;
@@ -421,23 +414,23 @@ textarea {
   font-size: 12px;
 }
 
-.facts {
+.app .facts {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 4px 12px;
   margin: 0 0 12px;
 }
 
-.facts dt {
+.app .facts dt {
   color: var(--muted);
 }
 
-.facts dd {
+.app .facts dd {
   margin: 0;
   overflow-wrap: anywhere;
 }
 
-.error-detail {
+.app .error-detail {
   margin: 8px 0;
   padding: 8px 12px;
   border-radius: 10px;
@@ -445,23 +438,23 @@ textarea {
   overflow-wrap: anywhere;
 }
 
-.route-picker {
+.app .route-picker {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.route-picker select,
-.route-picker input {
+.app .route-picker select,
+.app .route-picker input {
   flex: 1 1 140px;
 }
 
-.invite {
+.app .invite {
   margin-top: 8px;
   font-size: 13px;
 }
 
-.pair-form {
+.app .pair-form {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
@@ -469,7 +462,33 @@ textarea {
   margin-top: 12px;
 }
 
-.pair-form label {
+.app .pair-form label {
   flex: 1 1 200px;
   margin: 0;
+}
+
+.app .seat-create {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+}
+
+.app .seat-create h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.app .seat-create label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+}
+
+.app .round-waiting {
+  color: var(--muted);
+  font-size: 14px;
 }

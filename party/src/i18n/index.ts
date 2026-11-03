@@ -40,6 +40,11 @@ export function initialLang(): Lang {
   return detectLang();
 }
 
+/** 只換文案語系（桌面版嵌房間畫面用：不動桌面版的 <html lang>、視窗標題與儲存） */
+export function setLangOnly(lang: Lang): void {
+  current = lang;
+}
+
 /** 切語系：文案、<html lang>、標題；存不了就只在這次有效 */
 export function applyLang(lang: Lang): void {
   current = lang;

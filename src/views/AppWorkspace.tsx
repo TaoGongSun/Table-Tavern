@@ -1,4 +1,5 @@
-import { type Dispatch, type SetStateAction, useRef, useState } from "react";
+import { confirm } from "@tauri-apps/plugin-dialog";
+import { type Dispatch, type SetStateAction, useRef } from "react";
 import type { AppConfig } from "../shared/contracts/backend-contracts";
 import { PALETTE } from "../features/characters/card-model";
 import { FormatBanner, FormatRepair } from "../features/world-format/FormatNotice";
@@ -24,7 +25,8 @@ import { CastRail } from "../features/characters/CastRail";
 import { StateBar } from "../features/table-state/StateBar";
 import { useKnownPresentNames } from "../features/table-state/present-glyphs";
 import { TableToolbar } from "./TableToolbar";
-import { RoomPanel } from "../features/room/RoomPanel";
+import { DesktopRoom } from "../features/room/DesktopRoom";
+import type { DesktopRoomCtl } from "../features/room/useDesktopRoom";
 import type { SettingsTab } from "../features/settings/SettingsWindow";
 import type { PendingRefactorCard } from "../features/refactor/refactor-card";
 
@@ -79,6 +81,12 @@ interface AppWorkspaceProps {
   onOpenRepairFolder: () => void;
   /** 有沒被略過的新版：工具列齒輪掛紅點，點了直接開版本分頁 */
   updateDot: boolean;
+  /** 這桌的房間開著（room-host-desktop-play）：中間換成房間畫面 */
+  roomMode: boolean;
+  /** 電腦在房間裡的連線（app 最外層持有） */
+  deskRoom: DesktopRoomCtl;
+  /** 這張桌開過房（有房間憑證）：單人玩時提醒朋友看不到 */
+  hasRoom: boolean;
 }
 
 export function AppWorkspace({
@@ -121,6 +129,9 @@ export function AppWorkspace({
   updateDot,
   relayable,
   skipsNomination,
+  roomMode,
+  deskRoom,
+  hasRoom,
 }: AppWorkspaceProps) {
   const {
     leaveGuard,
@@ -173,7 +184,20 @@ export function AppWorkspace({
   // 一次改名只結算一次：Enter 送出後輸入框卸載會再引發 blur、Esc 取消後也一樣，
   // 不擋的話前者多送一次 rename_world、後者取消了還是存下去
   const renameSettled = useRef(true);
-  const [roomOpen, setRoomOpen] = useState(false);
+  // 房間畫面的現況：別人座位上的卡不顯示秘密情報段、動他的卡之前先確認〔作者裁決 2026-11-03〕
+  const roomView = deskRoom.view;
+  const seatHolder = (cardId: string) => {
+    if (!roomMode || !roomView) return null;
+    const holder = roomView.members.find((m) => m.cardId === cardId);
+    return holder && holder.memberId !== roomView.me.memberId ? holder.nickname : null;
+  };
+  const seatGuard = (cardId: string) => async () => {
+    const name = seatHolder(cardId);
+    return name === null || (await confirm(t("roomClaimedConfirm", { name }), { kind: "warning", okLabel: t("roomContinue"), cancelLabel: t("dialogCancel") }));
+  };
+  const deleteGuarded = async (id: string) => {
+    if (await seatGuard(id)()) await deleteCharacter(id);
+  };
   function startRename(name: string) {
     renameSettled.current = false;
     setEditingName({ value: name });
@@ -258,7 +282,7 @@ export function AppWorkspace({
         onEditCard={(id) => void editCard(id)}
         onRestore={(id) => void characters.restore(id)}
         onRestoreAutoHidden={(id) => void characters.restoreAutoHidden(id)}
-        onDeleteCharacter={(id) => void deleteCharacter(id)}
+        onDeleteCharacter={(id) => void deleteGuarded(id)}
         onCreateCard={() => void openNewCard()}
         onImportFile={(file) => void imports.importFile(file)}
         importLocked={tableOpBusy}
@@ -289,9 +313,8 @@ export function AppWorkspace({
           updateDot={updateDot}
           onOpenSettings={() => onOpenSettings("appearance")}
           onOpenVersions={() => onOpenSettings("versions")}
-          onOpenRoom={() => setRoomOpen(true)}
+          roomMode={roomMode}
         />
-        {roomOpen && <RoomPanel worldId={table} onClose={() => setRoomOpen(false)} />}
 
         {gate === "repair" && repairNotice ? (
           <FormatRepair notice={repairNotice} onOpenFolder={onOpenRepairFolder} />
@@ -364,7 +387,9 @@ export function AppWorkspace({
               onArchiveToggled={finishArchiveToggled}
               onStageToggled={finishStageToggled}
               onConverted={finishConverted}
-              onDeleteCharacter={deleteCharacter}
+              onDeleteCharacter={deleteGuarded}
+              hidePrivate={seatHolder(cardView?.id ?? "") !== null}
+              seatGuard={seatGuard(cardView?.id ?? "")}
               onDeletePlayerCard={deletePlayerCard}
               onClose={() => setMainView(null)}
               leaveGuard={leaveGuard}
@@ -382,8 +407,20 @@ export function AppWorkspace({
               worldChange={worldChange}
               onWorldChangeTaken={takeWorldChange}
               playView={
+                roomMode ? (
+                  <DesktopRoom ctl={deskRoom} />
+                ) : (
                 <PlayView
-                  onboarding={<Onboarding config={config} onSaved={onConfigSaved} />}
+                  onboarding={
+                    <>
+                      {hasRoom && (
+                        <p className="room-solo-note" role="note">
+                          {t("roomSoloNote")}
+                        </p>
+                      )}
+                      <Onboarding config={config} onSaved={onConfigSaved} />
+                    </>
+                  }
                   sceneLabel={sceneDisplayLabel(scene)}
                   storyKey={`${table}\u0000${scene}`}
                   events={chat.events}
@@ -433,6 +470,7 @@ export function AppWorkspace({
                   onAdvanceScene={() => void advanceScene()}
                   canAdvanceScene={canAdvanceScene}
                 />
+                )
               }
             />
           </>
@@ -442,7 +480,7 @@ export function AppWorkspace({
 
       {/* 卡片自帶介面整面取代對話；殼本身已含敘事畫面，不用再疊聊天記錄；且只在遊玩畫面出現——
           切去編輯畫面時 mainView 不再是 null，這裡直接不渲染，覆蓋層就跟著消失，不用另外清 cardUiOpen */}
-      {gate === "play" && mainView === null && cardInterface.uiOpen && cardInterface.shellReady && (
+      {gate === "play" && !roomMode && mainView === null && cardInterface.uiOpen && cardInterface.shellReady && (
         <CardInterfaceOverlay
           generatingName={
             chat.generating === null

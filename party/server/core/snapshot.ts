@@ -1,5 +1,6 @@
 // 重連快照（協定 §4.3）：整份換掉本地狀態用。草稿只給本人、額度細節只給出額度者，裝置碼與雜湊一律不出。
 import { execViewFor, isOnline } from "./round";
+import type { Tx } from "./tx";
 import type { ActionItem, ExecutorError, ExecutorView, Live, PublicCard, QuotaReport, RoomState, RouteOffer, RoundView, Speaker, StoredEvent, StoryPart } from "./types";
 
 export interface Snapshot {
@@ -67,4 +68,18 @@ export function buildSnapshot(s: RoomState, events: StoredEvent[], viewer: strin
     quota,
     ...(payer ? { quotaDetail: s.exec.quota, routes: s.exec.caps?.routes ?? null, errorDetail: s.lastError ?? null } : {}),
   };
+}
+
+/** 整份快照給一條連線（`welcome`）：重連與第一次加入，或身分變了要重給（新出額度者的專屬欄位） */
+export async function sendSnapshot(tx: Tx, conn: string, who: string, extra: Record<string, unknown> = {}) {
+  const s = tx.s;
+  const summaries = await Promise.all(s.summarySeqs.map((seq) => tx.ctx.store.eventsAfter(seq - 1, 1)));
+  const scene = [...(await tx.ctx.store.eventsAfter(s.sceneStartSeq, Number.MAX_SAFE_INTEGER)), ...tx.events];
+  const snapshot = buildSnapshot(s, [...summaries.flat(), ...scene.filter((e) => e.seq > s.sceneStartSeq)], who, tx.ctx.live);
+  tx.send(conn, "welcome", { ...(who !== "exec" ? { memberId: who } : {}), snapshot, ...extra });
+}
+
+/** 某位成員所有連線重給快照 */
+export async function resnapshot(tx: Tx, memberId: string) {
+  for (const [id, c] of Object.entries(tx.s.conns)) if (c.who === memberId) await sendSnapshot(tx, id, memberId);
 }

@@ -3,10 +3,10 @@
 // 所以單執行緒保證改由 RoomRunner 的每房序列化佇列提供；ctx 多帶 live（不落地的記憶體值）與 store 的讀取。
 import { EXECUTOR } from "./executor";
 import { toWebSave } from "./export";
-import { evFrame, MEMBER, pairClaim, rate } from "./member";
+import { closeRoom, evFrame, MEMBER, pairClaim, rate } from "./member";
 import { announceExec, nextAlarm, onAlarm, pushDispatch, setExecOnline, settle } from "./round";
 import { sameHash, secret, sha256Hex } from "./secrets";
-import { buildSnapshot, liveValues } from "./snapshot";
+import { liveValues, sendSnapshot } from "./snapshot";
 import { Fail, need, Tx } from "./tx";
 import type { CoreCtx, CoreInput, CoreOutput, ErrorCode, Frame, RoomState } from "./types";
 import { cleanName, shape, validateFrame } from "./validate";
@@ -18,7 +18,7 @@ export { validateFrame } from "./validate";
 const CLOSE: Partial<Record<ErrorCode, number>> = {
   E_BAD_FRAME: 4400, E_VERSION: 4426, E_AUTH_REQUIRED: 4401, E_AUTH_FAILED: 4401, E_ROOM_NOT_FOUND: 4404, E_BANNED: 4403,
 };
-const HTTP: Partial<Record<ErrorCode, number>> = { E_ROOM_NOT_FOUND: 404, E_FORBIDDEN: 403, E_STATE_CONFLICT: 409 };
+const HTTP: Partial<Record<ErrorCode, number>> = { E_ROOM_NOT_FOUND: 404, E_AUTH_FAILED: 401, E_FORBIDDEN: 403, E_STATE_CONFLICT: 409 };
 const READONLY = new Set(["ping", "history.page"]);
 const TOKEN = (n: number) => new RegExp(`^[A-Za-z0-9_-]{${n}}$`);
 const hashOf = (s: RoomState, secretText: string) => sha256Hex(`${s.code}:${secretText}`);
@@ -43,10 +43,7 @@ async function welcome(tx: Tx, lastSeq: number, extra: Record<string, unknown>) 
     for (const e of [...(await tx.ctx.store.eventsAfter(lastSeq, 500)), ...tx.events]) if (e.seq > lastSeq) tx.send(tx.conn, "ev", evFrame(e));
     return;
   }
-  const summaries = await Promise.all(s.summarySeqs.map((seq) => tx.ctx.store.eventsAfter(seq - 1, 1)));
-  const scene = [...(await tx.ctx.store.eventsAfter(s.sceneStartSeq, Number.MAX_SAFE_INTEGER)), ...tx.events];
-  const snapshot = buildSnapshot(s, [...summaries.flat(), ...scene.filter((e) => e.seq > s.sceneStartSeq)], who, tx.ctx.live);
-  tx.send(tx.conn, "welcome", { ...(who !== "exec" ? { memberId: who } : {}), snapshot, ...extra });
+  await sendSnapshot(tx, tx.conn, who, extra);
 }
 
 async function memberHello(tx: Tx, p: any) {
@@ -86,10 +83,11 @@ async function executorHello(tx: Tx, p: any) {
   need(p.protocol === 1, "E_VERSION");
   const token = p.role === "executor" && String(p.roomCode).toUpperCase() === s.code && TOKEN(43).test(p.executorToken);
   need(token && s.execHash && sameHash(await hashOf(s, p.executorToken), s.execHash), "E_AUTH_FAILED");
+  need(s.status !== "closed", "E_ROOM_CLOSED");
   const w = tx.w;
   if (w.execConn && w.execConn !== tx.conn) tx.shut(w.execConn, 4409, "E_EXECUTOR_REPLACED");
   w.conns[tx.conn].who = "exec";
-  Object.assign(w.exec, { online: true, since: tx.now, lastSeen: tx.now });
+  Object.assign(w.exec, { online: true, since: tx.now, lastSeen: tx.now, paused: false });
   w.execConn = tx.conn;
   const r = w.round;
   // 重連去重（§6.5）：同一回合的派工沿用原 dispatchId；執行端報告它已經接手（任何狀態）就視為 generating
@@ -146,6 +144,15 @@ async function exportRoom(tx: Tx, deviceId: string) {
   tx.http = { status: 200, body: toWebSave(s, await tx.ctx.store.eventsAfter(0, Number.MAX_SAFE_INTEGER), tx.now) };
 }
 
+/** 執行端憑證結束房間（桌面版桌卡「結束並刪除房間」，room-host-desktop-play）：跟房主 `room.close` 同一份收尾 */
+async function closeByExecutor(tx: Tx, token: string) {
+  need(tx.exists, "E_ROOM_NOT_FOUND");
+  const s = tx.s;
+  need(TOKEN(43).test(token) && s.execHash && sameHash(await hashOf(s, token), s.execHash), "E_AUTH_FAILED");
+  if (s.status !== "closed") closeRoom(tx); // 已結束：重送的請求照樣回成功
+  tx.http = { status: 200, body: { ok: true } };
+}
+
 function output(tx: Tx): CoreOutput {
   const state = tx.exists && !tx.deleteRoom ? tx.s : null;
   return { state, events: tx.events, sends: tx.sends, close: tx.close, alarmAt: nextAlarm(state), ...(tx.deleteRoom ? { deleteRoom: true } : {}), ...(tx.http ? { http: tx.http } : {}) };
@@ -167,7 +174,7 @@ export async function reduce(state: RoomState | null, input: CoreInput, ctx: Cor
       else if (who && who !== "exec" && !Object.values(tx.s.conns).some((c) => c.who === who)) tx.toAll("vol", { type: "presence", memberId: who, connected: false });
     }
     if (input.kind === "alarm" && tx.exists) onAlarm(tx);
-    if (input.kind === "http") await (input.route === "create" ? create(tx, input) : exportRoom(tx, input.deviceId));
+    if (input.kind === "http") await (input.route === "create" ? create(tx, input) : input.route === "close" ? closeByExecutor(tx, input.executorToken) : exportRoom(tx, input.deviceId));
     if (input.kind === "frame") {
       const v = validateFrame(input.raw, input.conn.role);
       if (!v.ok) throw new Fail(v.code);

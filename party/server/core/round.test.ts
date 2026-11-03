@@ -28,14 +28,14 @@ describe("房間生命週期（§2）", () => {
     expect(room.frames("x1", "vol", "delta")).toEqual([]);
   });
 
-  it("playing → closed：所有連線收 room.closed 後關閉、憑證撤銷；7 天後整房刪除", async () => {
+  it("playing → closed：所有連線收 room.closed 後關閉、執行端連不回來；7 天後整房刪除", async () => {
     const room = await playing();
     expect((await room.ask("b", "room.close"))?.p.code).toBe("E_FORBIDDEN");
     await room.send("a", "room.close");
     expect(room.s.status).toBe("closed");
     expect(room.frames("b", "ev", "room.closed")).toHaveLength(1);
     expect(room.closed).toMatchObject({ a: 4410, b: 4410, x1: 4410 });
-    expect((await room.exec("x2"))?.p.code).toBe("E_AUTH_FAILED");
+    expect((await room.exec("x2"))?.p.code).toBe("E_ROOM_CLOSED");
     // 既有成員可唯讀回來，寫入回 E_ROOM_CLOSED；新人進不來
     await room.connect("b2");
     await room.ask("b2", "hello", { protocol: 1, role: "member", deviceId: room.deviceId("b"), lastSeq: 0, client: {} });
@@ -45,6 +45,23 @@ describe("房間生命週期（§2）", () => {
     await room.tick(7 * 86_400_000);
     expect(room.store.state).toBeNull();
     expect(room.store.events).toEqual([]);
+  });
+
+  it("執行端憑證 HTTP 結束房間（桌卡「結束並刪除房間」）；錯憑證 401（已結束也一樣）、已結束再刪照樣 200；暫停狀態給成員看、重連解除", async () => {
+    const room = await playing();
+    await room.send("x1", "status", { keepAwake: null, busy: false, paused: true });
+    await room.disconnect("x1");
+    expect(room.frames("b", "vol", "executor").at(-1)?.p).toMatchObject({ online: false, paused: true });
+    await room.exec("x2");
+    expect(room.frames("b", "vol", "executor").at(-1)?.p).toMatchObject({ online: true, paused: false });
+    const wrong = await room.run({ kind: "http", route: "close", executorToken: "t".repeat(43) });
+    expect(wrong?.http?.status).toBe(401);
+    const out = await room.run({ kind: "http", route: "close", executorToken: room.executorToken });
+    expect(out?.http).toMatchObject({ status: 200 });
+    expect(room.s.status).toBe("closed");
+    expect(room.closed).toMatchObject({ b: 4410 });
+    expect((await room.run({ kind: "http", route: "close", executorToken: room.executorToken }))?.http?.status).toBe(200);
+    expect((await room.run({ kind: "http", route: "close", executorToken: "t".repeat(43) }))?.http?.status).toBe(401);
   });
 
   it("閒置 N 天（無持久事件、無新連線）整房刪除", async () => {

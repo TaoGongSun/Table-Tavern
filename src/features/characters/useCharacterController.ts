@@ -23,6 +23,8 @@ export interface CharacterController {
   /** 角色 id → 頭像 data URL */
   avatars: Record<string, string>;
   player: CharacterCard | null;
+  /** 桌上設定的玩家卡 id（state.player_card_id）；房間期間玩家卡區放的是電腦自己的座位，不一定是它 */
+  tablePlayerId: string | null;
   playerImage: string | null;
   playerAvatar: string | null;
   /** GM 卡的圖：世界書匯入的是 PNG 卡時後端存下的那張，null＝回退內建書本圖 */
@@ -37,6 +39,9 @@ export interface CharacterController {
   reloadGmImage: (worldId?: string) => Promise<void>;
   /** 玩家卡換人或存檔後重讀（同時記住這桌的玩家卡 id） */
   reloadPlayer: (playerCardId: string | null) => Promise<void>;
+  /** 桌面版房間：電腦自己坐的卡（null＝沒坐）；undefined＝不在房間，玩家卡區照桌上的設定。
+   *  房間期間名單連各座位的卡一起列，玩家卡區只放電腦自己那張〔§2.1〕 */
+  setRoomSeat: (cardId: string | null | undefined) => void;
   /** 這輪劇情帶出場的卡：併入本幕出場集合，auto_hidden 卡立刻從隱藏區移回主區 */
   onArrived: (ids: string[]) => void;
   reorder: (ordered: CharacterMeta[]) => Promise<void>;
@@ -65,7 +70,11 @@ export function useCharacterController(input: {
   onError: (message: string) => void;
 }): CharacterController {
   const { worldId, onError } = input;
-  const [characters, setCharacters] = useState<CharacterMeta[]>([]);
+  const [allCharacters, setCharacters] = useState<CharacterMeta[]>([]);
+  const [roomSeat, setRoomSeat] = useState<string | null | undefined>(undefined);
+  const inRoom = roomSeat !== undefined;
+  const roomSeatRef = useRef(roomSeat);
+  roomSeatRef.current = roomSeat;
   // 本幕出場集合：換桌／切幕由 enterTable 呼叫 scene_appearances 初始化，
   // 之後每次 gm_narrate 回傳的 arrived_characters 併入——auto_hidden 卡一登場就立刻從隱藏區移回主區
   const [sceneAppearances, setSceneAppearances] = useState<Set<string>>(new Set());
@@ -159,6 +168,11 @@ export function useCharacterController(input: {
     }
   }, []);
 
+  const shownPlayerId = inRoom ? roomSeat : playerCardId;
+  const characters = useMemo(
+    () => (inRoom ? allCharacters.filter((c) => c.id !== roomSeat) : allCharacters),
+    [allCharacters, inRoom, roomSeat],
+  );
   const active = useMemo(
     () => characters.filter((character) => !isCharacterHidden(character, sceneAppearances)),
     [characters, sceneAppearances],
@@ -187,8 +201,8 @@ export function useCharacterController(input: {
 
   useEffect(() => {
     if (!worldId) return;
-    void loadPlayerCard(worldId, playerCardId);
-  }, [worldId, playerCardId, hydration, loadPlayerCard]);
+    void loadPlayerCard(worldId, shownPlayerId);
+  }, [worldId, shownPlayerId, hydration, loadPlayerCard]);
 
   const hydrate = useCallback((cast: CharacterMeta[], appearances: Set<string>, playerCardId: string | null) => {
     // 上一桌還在飛的三份載入一律作廢，免得回應晚到、把舊桌的圖補進新桌
@@ -213,7 +227,7 @@ export function useCharacterController(input: {
     async (overrideWorldId?: string) => {
       const id = overrideWorldId ?? worldId;
       const mine = ++castLoad.current;
-      const cast = await invoke<CharacterMeta[]>("list_characters", { worldId: id });
+      const cast = await invoke<CharacterMeta[]>("list_characters", { worldId: id, withPlayer: roomSeatRef.current !== undefined });
       if (mine !== castLoad.current) return cast;
       setCharacters(cast);
       await loadCharacterImages(id, cast.map((c) => c.id));
@@ -222,8 +236,14 @@ export function useCharacterController(input: {
     [worldId, loadCharacterImages],
   );
 
-  // 房間模式（multiplayer-room）：Rust 執行端入座、退出或關房時改了這桌的玩家卡（set_party／clear_party），
-  // 落完發 room-table-changed；玩家卡換了就重讀名單（後端名單不含玩家卡）與玩家卡
+  // 進出房間：名單要不要連各座位的卡一起列跟著變，重讀一次
+  useEffect(() => {
+    if (worldId) void refresh().catch((reason) => onError(String(reason)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inRoom]);
+
+  // 房間模式（multiplayer-room）：Rust 執行端入座、退出、關房時改了這桌的玩家卡（set_party／clear_party），
+  // 或替手機玩家建了自建卡，落完發 room-table-changed：重讀名單（後端名單不含玩家卡）與玩家卡
   const playerCardRef = useRef(playerCardId);
   playerCardRef.current = playerCardId;
   useEffect(() => {
@@ -233,8 +253,8 @@ export function useCharacterController(input: {
       if (event.payload.worldId !== worldId) return;
       try {
         const next = (await invoke<WorldState>("read_state", { worldId })).player_card_id ?? null;
-        if (disposed || next === playerCardRef.current) return;
-        setPlayerCardId(next);
+        if (disposed) return;
+        if (next !== playerCardRef.current) setPlayerCardId(next);
         await refresh();
       } catch (reason) {
         if (!disposed) onError(String(reason));
@@ -262,7 +282,7 @@ export function useCharacterController(input: {
   const reloadPlayer = useCallback(
     async (nextPlayerCardId: string | null) => {
       setPlayerCardId(nextPlayerCardId);
-      await loadPlayerCard(worldId, nextPlayerCardId);
+      await loadPlayerCard(worldId, roomSeatRef.current === undefined ? nextPlayerCardId : roomSeatRef.current);
     },
     [worldId, loadPlayerCard],
   );
@@ -280,7 +300,9 @@ export function useCharacterController(input: {
       const here = sameTable();
       // 失敗不回捲到舊快照（期間可能有重讀加進新角色）：報錯後從磁碟重讀名單。換桌後、或之後又排過序就不動
       const mine = ++reorderSeq.current;
-      setCharacters([...ordered, ...archived]);
+      // 房間期間電腦自己那張不在側欄（在玩家卡區）：接在最後留著
+      const shown = new Set([...ordered, ...archived].map((c) => c.id));
+      setCharacters((all) => [...ordered, ...archived, ...all.filter((c) => !shown.has(c.id))]);
       try {
         await invoke("reorder_characters", {
           worldId,
@@ -421,6 +443,7 @@ export function useCharacterController(input: {
       images: characterImages,
       avatars: characterAvatars,
       player: playerCard,
+      tablePlayerId: playerCardId,
       playerImage,
       playerAvatar,
       gmImage,
@@ -430,6 +453,7 @@ export function useCharacterController(input: {
       reloadImages,
       reloadGmImage,
       reloadPlayer,
+      setRoomSeat,
       onArrived,
       reorder,
       restore,
@@ -446,6 +470,7 @@ export function useCharacterController(input: {
       characterImages,
       characterAvatars,
       playerCard,
+      playerCardId,
       playerImage,
       playerAvatar,
       gmImage,

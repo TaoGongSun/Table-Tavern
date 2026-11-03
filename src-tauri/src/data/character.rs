@@ -274,6 +274,15 @@ fn display_index_for(root: &Path, world_id: &str, path: &Path) -> DataResult<u32
 
 /// 解析失敗（含缺 id 的舊卡）一律略過該檔，不中斷整份清單（舊資料不遷移、不偵測）。
 pub fn list_characters(root: &Path, world_id: &str) -> DataResult<Vec<CharacterMeta>> {
+    list_characters_with(root, world_id, false)
+}
+
+/// `with_player`：連主玩家卡一起列（桌面版房間畫面：各座位的卡都在側欄，自己的座位由前端放進玩家卡區）
+pub fn list_characters_with(
+    root: &Path,
+    world_id: &str,
+    with_player: bool,
+) -> DataResult<Vec<CharacterMeta>> {
     let directory = world_dir(root, world_id)?.join("characters");
     if !directory.exists() {
         return Ok(Vec::new());
@@ -281,7 +290,8 @@ pub fn list_characters(root: &Path, world_id: &str) -> DataResult<Vec<CharacterM
 
     let player_card_id = read_state(root, world_id)
         .ok()
-        .and_then(|state| state.player_card_id);
+        .and_then(|state| state.player_card_id)
+        .filter(|_| !with_player);
     let mut characters = Vec::new();
     for entry in fs::read_dir(directory)? {
         let entry = entry?;

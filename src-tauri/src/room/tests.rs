@@ -428,6 +428,8 @@ async fn dispatch_runs_gm_chain_and_resent_dispatch_is_not_landed_twice() {
         "私設、GM 專屬、原文不得上送：{seed}"
     );
     assert!(seeded.contains("雨下著。"), "公開旁白照送");
+    // 配對碼只在房間畫面進房時發（不在 welcome 自動發）
+    link::request_pair(&running.room, true);
     assert_eq!(conn.expect("pair.create").await["p"]["grantHost"], true);
 
     conn.send("dispatch", dispatch("d1", &tao, act(&tao, "我推門進去。")))
@@ -484,7 +486,7 @@ async fn dispatch_runs_gm_chain_and_resent_dispatch_is_not_landed_twice() {
     conn.quiet(200).await;
     running.stop().await;
     assert!(
-        read_saved(&root).queue.is_empty(),
+        read_saved(&root, &world).queue.is_empty(),
         "全部收到 ok 後佇列是空的"
     );
 }
@@ -898,9 +900,62 @@ async fn closed_room_restores_solo_table() {
         "單人時期的玩家卡回來"
     );
     assert_eq!(*lock(&fake.settings), None, "覆寫槽清掉");
-    let left = read_saved(&root);
-    assert!(!left.active && left.executor_token.is_empty() && left.world_id.is_empty());
+    let left = read_saved(&root, &world);
+    assert!(!left.active && left.executor_token.is_empty() && left.gone && left.world_id == world);
     assert_eq!(left.server, server, "伺服器網址留著");
+}
+
+/// 房主重生邀請連結：電腦把新密語存進那張桌的憑證，存好才回 `invite.ack`
+#[tokio::test]
+async fn invite_is_stored_before_ack() {
+    let (root, world, _, _) = table("invite");
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let server = format!("http://{}", listener.local_addr().unwrap());
+    let fake = Fake::new(&root, Vec::new());
+    let mut first = saved(&server, &world);
+    first.seeded = true;
+    first.invite_url = format!("{server}/r/ROOM#k=old");
+    let running = start(fake.clone(), first, FAST, false).await;
+    let mut conn = accept(&listener).await;
+    conn.welcome(false, Value::Null, Value::Null).await;
+    conn.send("invite", json!({ "joinSecret": "fresh" })).await;
+    assert_eq!(conn.expect("invite.ack").await["p"]["joinSecret"], "fresh");
+    let stored = read_saved(&root, &world);
+    assert_eq!(stored.join_secret, "fresh");
+    assert_eq!(stored.invite_url, format!("{server}/r/ROOM#k=fresh"));
+    assert_eq!(running.room.panel().invite_url, Some(stored.invite_url));
+}
+
+/// 伺服器回壞訊框關閉（4400，多半是伺服器比 app 舊）：不照原樣一直重連，停下來；憑證留著，面板看得到原因
+#[tokio::test]
+async fn bad_frame_close_stops_instead_of_looping() {
+    let (root, world, _, _) = table("outdated");
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let server = format!("http://{}", listener.local_addr().unwrap());
+    let fake = Fake::new(&root, Vec::new());
+    let mut first = saved(&server, &world);
+    first.seeded = true;
+    let running = start(fake.clone(), first, FAST, false).await;
+    let mut conn = accept(&listener).await;
+    conn.welcome(false, Value::Null, Value::Null).await;
+    let close = tokio_tungstenite::tungstenite::protocol::CloseFrame {
+        code: 4400.into(),
+        reason: "".into(),
+    };
+    conn.ws.close(Some(close)).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while !running.task.is_finished() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("4400 後連線迴圈要停");
+    let left = read_saved(&root, &world);
+    assert!(
+        !left.active && !left.executor_token.is_empty() && !left.gone,
+        "憑證留著，修好伺服器後可重連"
+    );
+    assert_eq!(stop_reason(&world).as_deref(), Some("E_SERVER_OUTDATED"));
 }
 
 /// 系統代理：有 http 代理時先送 CONNECT 打通，再在上面做 WebSocket 握手
@@ -969,4 +1024,66 @@ async fn desktop_commands_refuse_the_room_table() {
     let running = lock(&RUNNING).take().unwrap();
     running.stop().await;
     assert!(refuse_if_active(&world).is_ok(), "退出後照常");
+}
+
+/// 每桌一份憑證：舊版 `room.json` 開程式時作廢（那張桌還原成單人桌、檔案刪掉）；開過房的桌列得出來、
+/// 沒有 active 的不會被自動接回
+#[tokio::test]
+async fn legacy_credentials_are_dropped_and_rooms_are_per_table() {
+    let (root, world, tao, boss) = table("legacy");
+    data::set_player_card(&root, &world, Some(boss.clone())).unwrap();
+    data::set_party(&root, &world, std::slice::from_ref(&tao), &[], &[]).unwrap();
+    let legacy = root.join(LEGACY_FILE);
+    std::fs::write(
+        &legacy,
+        serde_json::to_vec(&saved("https://x", &world)).unwrap(),
+    )
+    .unwrap();
+    let mut paused = saved("https://x", &world);
+    paused.active = false;
+    write_saved(&saved_path(&root, &world).unwrap(), &paused).unwrap();
+    resume(Fake::new(&root, Vec::new())).await;
+    assert!(!legacy.exists(), "舊憑證檔刪掉");
+    assert!(running().is_none(), "沒有 active 的房間不自動接回");
+    assert!(
+        data::read_state(&root, &world)
+            .unwrap()
+            .player_card_ids
+            .is_empty(),
+        "舊房間那桌回單人"
+    );
+    assert!(has_room(&root, &world));
+    assert_eq!(room_tables(&root), vec![(world.clone(), CODE.to_owned())]);
+    assert!(!has_room(&root, &data::new_id()));
+}
+
+/// 名冊重送要含玩家卡：單人時期的玩家卡（房主認領用）與入座後的真人玩家卡（不然一重送座位就沒了）
+#[test]
+fn roster_keeps_player_cards() {
+    let (root, world, tao, boss) = table("roster-players");
+    data::set_player_card(&root, &world, Some(boss.clone())).unwrap();
+    let ids = seed::card_ids(&seed::roster(&root, &world).unwrap());
+    assert!(ids.contains(&boss), "單人玩家卡在名冊裡");
+    data::set_party(&root, &world, std::slice::from_ref(&tao), &[], &[]).unwrap();
+    let ids = seed::card_ids(&seed::roster(&root, &world).unwrap());
+    assert!(
+        ids.contains(&tao) && ids.contains(&boss),
+        "入座的卡與原玩家卡都在：{ids:?}"
+    );
+}
+
+/// 保留給電腦的卡＝房主進房前的玩家卡；朋友先入座（主玩家換成朋友的卡）也照舊保留那張
+#[test]
+fn reserve_keeps_host_card() {
+    let (root, world, tao, boss) = table("roster-reserve");
+    data::set_player_card(&root, &world, Some(boss.clone())).unwrap();
+    let device = "d".repeat(22);
+    assert_eq!(
+        seed::reserve_frame(&root, &world, &device).unwrap()["p"]["cardId"],
+        boss.as_str()
+    );
+    data::set_party(&root, &world, std::slice::from_ref(&tao), &[], &[]).unwrap();
+    let frame = seed::reserve_frame(&root, &world, &device).unwrap();
+    assert_eq!(frame["p"]["cardId"], boss.as_str());
+    assert_eq!(frame["p"]["deviceId"], device.as_str());
 }

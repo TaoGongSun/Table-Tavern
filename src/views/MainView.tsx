@@ -38,6 +38,10 @@ interface MainViewProps {
   /** 轉成條目（卡確定已刪）後的善後：同上，另通知開著的世界設定 */
   onConverted: (id: string) => Promise<void>;
   onDeleteCharacter: (id: string) => Promise<void>;
+  /** 房間裡別人座位上的卡：卡片編輯不顯示秘密情報段 */
+  hidePrivate?: boolean;
+  /** 房間裡別人座位上的卡：封存、改舞台卡前先確認 */
+  seatGuard?: () => Promise<boolean>;
   onDeletePlayerCard: (id: string) => Promise<void>;
   /** 關掉編輯畫面回到遊玩 */
   onClose: () => void;
@@ -82,6 +86,8 @@ export function MainView({
   onStageToggled,
   onConverted,
   onDeleteCharacter,
+  hidePrivate = false,
+  seatGuard,
   onDeletePlayerCard,
   onClose,
   leaveGuard,
@@ -151,6 +157,8 @@ export function MainView({
           onOpenAiSettings={onOpenAiSettings}
           onConverted={() => onConverted(cardId)}
           isBusy={isBusy}
+          hidePrivate={hidePrivate}
+          seatGuard={seatGuard}
         />
       ) : worldOpen ? (
         <WorldEditor

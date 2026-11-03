@@ -8,7 +8,8 @@ import { RoutePicker } from "./RoutePicker";
 
 const yesNo = (v: boolean | null) => t(v === null ? "unknown" : v ? "yes" : "no");
 
-export function PayerPanel({ view, act, resumed }: { view: RoomView; act: Act; resumed: (round: number) => void }) {
+/** `desktop`：桌面版自己就是執行端，不給「更新額度」「解除配對」（額度在資訊列、交出去走「交給手機」） */
+export function PayerPanel({ view, act, resumed, desktop = false }: { view: RoomView; act: Act; resumed: (round: number) => void; desktop?: boolean }) {
   const { run, error, setError } = useRun(act);
   const x = view.executor;
   const q = view.quotaDetail;
@@ -52,7 +53,7 @@ export function PayerPanel({ view, act, resumed }: { view: RoomView; act: Act; r
       <div className="panel-actions">
         {held && actions.includes("retry") && <button type="button" className="primary" onClick={() => ctl({ kind: "retry" })}>{t("payerRetry")}</button>}
         {r?.phase === "generating" && <button type="button" onClick={() => ctl({ kind: "abort" })}>{t("roundAbort")}</button>}
-        <button type="button" className="ghost" onClick={() => ctl({ kind: "refresh_quota" })}>{t("payerRefreshQuota")}</button>
+        {!desktop && <button type="button" className="ghost" onClick={() => ctl({ kind: "refresh_quota" })}>{t("payerRefreshQuota")}</button>}
       </div>
       {held && (actions.includes("switch_route") || actions.includes("switch_model")) && (
         <>
@@ -68,7 +69,7 @@ export function PayerPanel({ view, act, resumed }: { view: RoomView; act: Act; r
       <h3>{t("payerSetNext")}</h3>
       <RoutePicker routes={view.routes} current={view.room.sceneSettings} label={t("payerSetNextApply")} onPick={(c) => ctl({ kind: "set_next", ...c })} />
       {error && <div className="field-error" data-testid="payer-error">{error}</div>}
-      <button type="button" className="ghost danger" onClick={() => run("pair.leave")}>{t("payerUnpair")}</button>
+      {!desktop && <button type="button" className="ghost danger" onClick={() => run("pair.leave")}>{t("payerUnpair")}</button>}
     </div>
   );
 }

@@ -89,6 +89,11 @@ export class RoomDO implements DurableObject {
       const out = await this.runner.run({ kind: "http", route: "export", deviceId });
       return json(out?.http?.body ?? { code: "E_INTERNAL" }, out?.http?.status ?? 500);
     }
+    if (req.method === "DELETE") {
+      const executorToken = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+      const out = await this.runner.run({ kind: "http", route: "close", executorToken });
+      return json(out?.http?.body ?? { code: "E_INTERNAL" }, out?.http?.status ?? 500);
+    }
     if (req.headers.get("Upgrade")?.toLowerCase() !== "websocket") return new Response("Expected WebSocket", { status: 426 });
     const pair = new WebSocketPair();
     await this.accept(pair[1], url.searchParams.get("role") === "executor" ? "executor" : "member");

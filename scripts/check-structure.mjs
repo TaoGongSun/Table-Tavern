@@ -1,11 +1,11 @@
 // 目錄結構關卡：`npm run check:structure`，由 verify 呼叫。規範全文見 docs/STRUCTURE.md。
-// 只擋機器判得準的五件事；「這支檔案該屬哪個 feature」是語意問題，交給 review，
+// 只擋機器判得準的幾件事；「這支檔案該屬哪個 feature」是語意問題，交給 review，
 // 不讓 checker 假裝判得出來。
 //
 // 清單只列架構上的固定位置（根層入口、組合外殼），禁止逐檔豁免違規：一旦清單變成例外收容所，
 // 紅燈的預設解法就會是「把新檔加進清單」，關卡退化成橡皮圖章。要改就得改這個檔，
 // 讓架構變更在 review 裡藏不住。
-import { readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, basename, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -101,6 +101,11 @@ function walk(tree, dir = tree.dir, depth = 0) {
           `${at(full)} ：測試要跟著它測的東西住，放進 features/<name>/ 或 shared/<area>/。`,
         );
       }
+    }
+
+    // party 元件也嵌在桌面版房間畫面裡（room-host-desktop-play），那個 webview 拿得到 IPC：伺服器來的文字一律走 React 跳脫
+    if (tree.label === "party/src" && !entry.includes(".test.") && /dangerouslySetInnerHTML|\.(inner|outer)HTML\b|insertAdjacentHTML/.test(readFileSync(full, "utf8"))) {
+      problems.push(`${at(full)} ：party/src 不得直接插 HTML（dangerouslySetInnerHTML／innerHTML）。房間畫面也跑在桌面版裡。`);
     }
 
     if (entry.endsWith(".tsx") && /^use[A-Z]/.test(entry)) {

@@ -15,7 +15,7 @@ export const cardName = (s: RoomState, cardId: string) => s.cards.find((c) => c.
 export const isOnline = (s: RoomState, who: string) => Object.values(s.conns).some((c) => c.who === who);
 
 export const execView = (s: RoomState): ExecutorView => ({
-  label: s.exec.label, online: s.exec.online, since: s.exec.since, keepAwake: s.exec.keepAwake,
+  label: s.exec.label, online: s.exec.online, since: s.exec.since, keepAwake: s.exec.keepAwake, paused: !s.exec.online && s.exec.paused === true,
   modelLabel: (s.nextSettings ?? s.sceneSettings ?? s.exec.caps?.current)?.modelLabel ?? null,
 });
 /** 給某位成員看的執行端狀態：出額度者另帶路線與模型清單（遠端控制要選） */
@@ -121,6 +121,10 @@ export function setExecOnline(tx: Tx, online: boolean) {
   Object.assign(s.exec, { online, since: tx.now, lastSeen: tx.now });
   if (!online) s.execConn = null;
   if (!online) for (const c of Object.values(s.ctls)) revertCtl(tx, c);
+  if (!online && s.inviteRegen) {
+    tx.err(s.inviteRegen.conn, "E_EXECUTOR_OFFLINE", { id: s.inviteRegen.id }); // 舊連結照常有效
+    s.inviteRegen = null;
+  }
   announceExec(tx);
 }
 
@@ -146,6 +150,7 @@ const generating = (s: RoomState) => s.exec.online && (s.round?.phase === "gener
 export function nextAlarm(s: RoomState | null): number | null {
   if (!s) return null;
   const at = [idleAt(s), ...Object.values(s.ctls).map((c) => c.at + CTL_TIMEOUT_MS)];
+  if (s.inviteRegen) at.push(s.inviteRegen.at + CTL_TIMEOUT_MS);
   for (const c of Object.values(s.conns)) if (c.who === null) at.push(c.at + HELLO_MS);
   if (s.exec.online) at.push(s.exec.lastSeen + HB_TIMEOUT_MS);
   if (s.round?.deadline != null) at.push(s.round.deadline);
@@ -167,6 +172,11 @@ export function onAlarm(tx: Tx) {
     tx.err(c.conn, "E_EXECUTOR_TIMEOUT", { id: c.id });
     revertCtl(tx, c);
     delete tx.w.ctls[ctlId];
+  }
+  const regen = tx.s.inviteRegen;
+  if (regen && now >= regen.at + CTL_TIMEOUT_MS) {
+    tx.err(regen.conn, "E_EXECUTOR_TIMEOUT", { id: regen.id }); // 電腦沒存成：不換，舊連結照常有效
+    tx.w.inviteRegen = null;
   }
   const execConn = tx.s.execConn;
   if (tx.s.exec.online && now >= tx.s.exec.lastSeen + HB_TIMEOUT_MS) {

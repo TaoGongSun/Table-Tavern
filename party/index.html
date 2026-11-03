@@ -6,6 +6,27 @@
     <!-- 加入密鑰在網址片段，不經 Referer 外流 -->
     <meta name="referrer" content="no-referrer" />
     <title>桌面酒館 Table Tavern｜多人房間</title>
+    <!-- 整頁的 html／body：寫在這裡不寫進 App.css，桌面版嵌房間畫面時只載 App.css（全部收在 .app 底下），不會蓋到桌面版 -->
+    <style>
+      html,
+      body,
+      #root {
+        height: 100%;
+        margin: 0;
+        overflow-x: hidden;
+      }
+
+      /* 配色 token 收在 .app 裡；整頁底色照同一組值（亮／暗） */
+      body {
+        background: #f6f1e8;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body {
+          background: #17130f;
+        }
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

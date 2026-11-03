@@ -151,6 +151,15 @@ export function IconHome(props: IconProps) {
 }
 
 /** 四向星芒：一句話開桌（AI 幫你擺好桌） */
+/** 兩個人：多人房間 */
+export function IconUsers(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M6 7.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM1.5 14c0-2.5 2-4.5 4.5-4.5s4.5 2 4.5 4.5M11 2.6a2.4 2.4 0 0 1 0 4.8M12.5 9.8c1.2.6 2 2 2 4.2" />
+    </Icon>
+  );
+}
+
 export function IconSparkle(props: IconProps) {
   return (
     <Icon {...props}>

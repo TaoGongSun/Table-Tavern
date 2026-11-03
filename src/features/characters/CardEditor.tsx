@@ -47,6 +47,8 @@ export function CardEditor({
   onPreference,
   onOpenAiSettings,
   isPlayer = false,
+  hidePrivate = false,
+  seatGuard,
   onConverted,
   isBusy,
 }: {
@@ -73,6 +75,10 @@ export function CardEditor({
   onPreference: (key: string, value: unknown) => Promise<void>;
   onOpenAiSettings: () => void;
   isPlayer?: boolean;
+  /** 房間裡別人座位上的卡（room-host-desktop-play）：不顯示秘密情報段，存檔照原值 */
+  hidePrivate?: boolean;
+  /** 房間裡別人座位上的卡：封存、改舞台卡會讓他失去角色，先確認 */
+  seatGuard?: () => Promise<boolean>;
   onConverted: () => Promise<void>;
   /** 回合或換幕進行中：轉條目會刪卡，這段期間不轉 */
   isBusy: () => boolean;
@@ -274,6 +280,7 @@ export function CardEditor({
   // 同一顆鈕雙向切換：隱藏區進來的卡按它就是還原，免得編輯器裡出現按了沒意義的「隱藏角色」
   // 隱藏／還原後編輯器會關，未存的改動先過離開詢問〔作者裁決 2026-10-11〕
   async function toggleArchived() {
+    if (seatGuard && !(await seatGuard())) return;
     if (!(await confirmLeave())) return;
     setMessage("");
     try {
@@ -293,6 +300,7 @@ export function CardEditor({
   // 同一個編輯器沿用到別張卡，晚到的結果會改到別張卡的開關與基準；名單善後照做（旗標確實寫了）
   async function toggleStage() {
     if (!card) return;
+    if (seatGuard && !(await seatGuard())) return;
     const editing = editTarget.current;
     const current = () => editTarget.current === editing;
     setMessage("");
@@ -610,7 +618,7 @@ export function CardEditor({
             onChange={(e) => setCard({ ...card, public_md: e.currentTarget.value })}
           />
         </label>
-        {!isPlayer && (
+        {!isPlayer && !hidePrivate && (
           <label>
             {t("privateLabel")}
             <textarea

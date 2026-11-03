@@ -41,8 +41,8 @@ interface TableToolbarProps {
   updateDot: boolean;
   onOpenSettings: () => void;
   onOpenVersions: () => void;
-  /** 多人房間模式面板（multiplayer-room 包 2） */
-  onOpenRoom: () => void;
+  /** 這桌的房間開著：換幕由房間（房主面板）做，工具列不給換幕 */
+  roomMode?: boolean;
 }
 
 export function TableToolbar({
@@ -65,7 +65,7 @@ export function TableToolbar({
   updateDot,
   onOpenSettings,
   onOpenVersions,
-  onOpenRoom,
+  roomMode = false,
 }: TableToolbarProps) {
   return (
     <header className="table-toolbar">
@@ -122,7 +122,7 @@ export function TableToolbar({
       )}
       <span className="toolbar-spacer" />
       {/* 沒有可用殼的桌完全不出現這顆鈕——不是每張卡都帶介面；且只在遊玩畫面出現 */}
-      {showCardInterface && (
+      {showCardInterface && !roomMode && (
         <button
           type="button"
           className="btn btn-ghost btn-shrink"
@@ -134,16 +134,18 @@ export function TableToolbar({
           <span className="btn-label">{t("cardInterfaceOpen")}</span>
         </button>
       )}
-      <button
-        type="button"
-        className="btn btn-shrink"
-        title={t("sceneAdvanceHint")}
-        disabled={locked || busy || !hasEvents}
-        onClick={onAdvanceScene}
-      >
-        <IconSceneAdvance />
-        <span className="btn-label">{t("sceneAdvance")}</span>
-      </button>
+      {!roomMode && (
+        <button
+          type="button"
+          className="btn btn-shrink"
+          title={t("sceneAdvanceHint")}
+          disabled={locked || busy || !hasEvents}
+          onClick={onAdvanceScene}
+        >
+          <IconSceneAdvance />
+          <span className="btn-label">{t("sceneAdvance")}</span>
+        </button>
+      )}
       <span className="toolbar-sep" aria-hidden="true" />
       <button
         type="button"
@@ -165,12 +167,6 @@ export function TableToolbar({
             icon: <IconExport />,
             disabled: locked,
             onSelect: onExportTranscript,
-          },
-          {
-            key: "room",
-            label: t("roomOpen"),
-            disabled: locked,
-            onSelect: onOpenRoom,
           },
         ]}
       />

@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { t } from "../../i18n";
 import type { WorldMeta } from "../../shared/contracts/backend-contracts";
-import { IconPlus, IconSettings, IconSparkle } from "../../shared/ui/icons";
+import { IconPlus, IconSettings, IconSparkle, IconUsers } from "../../shared/ui/icons";
 import { TableCard } from "./TableCard";
 
 interface LobbyProps {
@@ -23,6 +23,13 @@ interface LobbyProps {
   onEnterTable: (id: string) => void;
   onRenameTable: (id: string, raw: string) => void;
   onDeleteTable: (id: string) => void;
+  /** 開過房的桌 → 房間碼 */
+  rooms: Record<string, string>;
+  /** 房間正開著的桌 */
+  activeRoom: string | null;
+  onOpenRoom: () => void;
+  onReopenRoom: (id: string) => void;
+  onEndRoom: (id: string) => void;
 }
 
 export function Lobby({
@@ -38,6 +45,11 @@ export function Lobby({
   onEnterTable,
   onRenameTable,
   onDeleteTable,
+  rooms,
+  activeRoom,
+  onOpenRoom,
+  onReopenRoom,
+  onEndRoom,
 }: LobbyProps) {
   return (
     <div className="lobby">
@@ -94,6 +106,16 @@ export function Lobby({
               <span>{t("lobbyGenTableHint")}</span>
             </span>
           </button>
+          <button type="button" className="lobby-new-card" disabled={busy} onClick={onOpenRoom}>
+            <span className="lobby-new-icon">
+              <IconUsers />
+            </span>
+            <span className="lobby-new-text">
+              {/* 一次只開一間房：另一間開著時這格帶回那間 */}
+              <b>{t(activeRoom ? "roomBack" : "roomOpen")}</b>
+              <span>{t(activeRoom ? "roomActive" : "roomOpenHint")}</span>
+            </span>
+          </button>
         </div>
         <div className="lobby-heading">
           <h2>{t("lobbyYourTables")}</h2>
@@ -108,6 +130,17 @@ export function Lobby({
               onEnter={onEnterTable}
               onRename={onRenameTable}
               onDelete={onDeleteTable}
+              room={
+                world.id in rooms
+                  ? {
+                      code: rooms[world.id],
+                      active: activeRoom === world.id,
+                      otherActive: activeRoom !== null && activeRoom !== world.id,
+                      onReopen: () => onReopenRoom(world.id),
+                      onEnd: () => onEndRoom(world.id),
+                    }
+                  : undefined
+              }
             />
           ))}
         </section>

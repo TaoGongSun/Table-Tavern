@@ -54,26 +54,43 @@ pub(super) fn roster(root: &Path, world: &str) -> Result<Vec<Value>, String> {
     let events = data::read_transcript(root, world, state.current_scene)
         .map_err(|error| error.to_string())?;
     let appeared = data::appeared_card_names(&events);
-    let metas = data::list_characters(root, world).map_err(|error| error.to_string())?;
-    let mut cards: Vec<Value> = metas
+    // (卡 id, 自動隱藏)：名單本身不含玩家卡（單人時期的玩家卡、入座後的真人玩家卡），那幾張另外補上——
+    // 不補的話名冊一重送，已入座的卡就從名冊消失（伺服器照「離座」處理），房主的玩家卡也沒法認領
+    let mut entries: Vec<(String, bool)> = data::list_characters(root, world)
+        .map_err(|error| error.to_string())?
         .into_iter()
-        .filter(|meta| !meta.archived && valid_id(&meta.id))
-        .filter_map(|meta| {
-            let card = data::read_character(root, world, &meta.id).ok()?;
+        .filter(|meta| !meta.archived)
+        .map(|meta| (meta.id, meta.auto_hidden))
+        .collect();
+    let players = state
+        .player_card_id
+        .iter()
+        .chain(&state.player_card_ids)
+        .chain(&state.solo_player_card_id);
+    for id in players {
+        if !entries.iter().any(|(known, _)| known == id) {
+            entries.push((id.clone(), false));
+        }
+    }
+    let mut cards: Vec<Value> = entries
+        .into_iter()
+        .filter(|(id, _)| valid_id(id))
+        .filter_map(|(id, auto_hidden)| {
+            let card = data::read_character(root, world, &id).ok()?;
             let name = clip(card.name.trim(), 64);
-            let hidden = meta.auto_hidden
+            let hidden = auto_hidden
                 && !appeared
                     .iter()
-                    .any(|seen| data::name_matches(seen, &meta.name));
-            let color = (meta.color.len() == 7
-                && meta.color.starts_with('#')
-                && meta.color[1..].chars().all(|c| c.is_ascii_hexdigit()))
-            .then_some(meta.color.clone());
-            (!name.is_empty()).then(|| {
+                    .any(|seen| data::name_matches(seen, &card.name));
+            let color = (card.color.len() == 7
+                && card.color.starts_with('#')
+                && card.color[1..].chars().all(|c| c.is_ascii_hexdigit()))
+            .then_some(card.color.clone());
+            (!name.is_empty() && !card.archived).then(|| {
                 json!({
-                    "cardId": meta.id, "name": name, "color": color,
-                    "avatar": avatar(root, world, &meta.id), "blurb": clip(card.public_md.trim(), 1000),
-                    "playable": !meta.stage, "hidden": hidden,
+                    "cardId": id, "name": name, "color": color,
+                    "avatar": avatar(root, world, &id), "blurb": clip(card.public_md.trim(), 1000),
+                    "playable": !card.stage, "hidden": hidden,
                 })
             })
         })
@@ -86,6 +103,21 @@ pub(super) fn roster(root: &Path, world: &str) -> Result<Vec<Value>, String> {
         cards[index]["avatar"] = Value::Null;
     }
     Ok(cards)
+}
+
+/// 電腦自己的玩家卡（進房前那張；房間期間存在 `solo_player_card_id`）：保留給電腦那台裝置（協定外加 `seat.reserve`）；
+/// 沒有這張卡就不送
+pub(super) fn reserve_frame(root: &Path, world: &str, device_id: &str) -> Option<Value> {
+    let state = data::read_state(root, world).ok()?;
+    let card = state
+        .solo_player_card_id
+        .or(if state.player_card_ids.is_empty() {
+            state.player_card_id
+        } else {
+            None
+        });
+    let card = card.filter(|id| valid_id(id))?;
+    Some(json!({ "t": "seat.reserve", "p": { "cardId": card, "deviceId": device_id } }))
 }
 
 pub(super) fn card_ids(cards: &[Value]) -> Vec<String> {

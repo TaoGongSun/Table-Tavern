@@ -1,0 +1,114 @@
+/* 多人房間（features/room/）：開房對話窗、房間畫面的房主資訊列、頂欄「回房間」。房間本體的樣式是 party/ 那份，收在 .app 底下 */
+.room-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+}
+.room-label {
+  flex: 0 0 9em;
+  color: var(--ink-2);
+}
+.room-value {
+  flex: 1 1 12em;
+  min-width: 0;
+}
+.room-qr-box {
+  flex-basis: 100%;
+}
+.room-qr {
+  display: block;
+  width: 180px;
+  height: 180px;
+}
+
+/* 房間畫面佔滿主欄：上方資訊列、下面 party 的房間元件自己捲動 */
+.desktop-room {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0 -2rem;
+}
+.room-bar {
+  flex: none;
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: 0.5rem 2rem;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-ui);
+}
+.room-stopped {
+  padding: 1rem 2rem;
+}
+.app.party-embedded {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  max-width: none;
+  width: 100%;
+  margin: 0;
+}
+
+.room-active-banner {
+  position: fixed;
+  top: 0.4rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.25rem 0.5rem 0.25rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  font-family: var(--font-ui);
+}
+
+/* party 的配色 token 換成桌面版目前主題的值（亮暗與主題包都跟著桌面版走）。
+   兩邊有同名變數（--surface-2、--line、--accent、--danger），先在外層取出桌面版的值再交給 .app */
+.desktop-room {
+  --tt-bg: var(--surface-0);
+  --tt-surface: var(--surface-1);
+  --tt-surface-2: var(--surface-2);
+  --tt-text: var(--ink-1);
+  --tt-muted: var(--ink-3);
+  --tt-line: var(--line);
+  --tt-accent: var(--accent);
+  --tt-accent-ink: var(--accent-ink);
+  --tt-danger: var(--danger);
+}
+.app.party-embedded {
+  --bg: var(--tt-bg);
+  --surface: var(--tt-surface);
+  --surface-2: var(--tt-surface-2);
+  --text: var(--tt-text);
+  --muted: var(--tt-muted);
+  --line: var(--tt-line);
+  --accent: var(--tt-accent);
+  --accent-text: var(--tt-accent-ink);
+  --danger: var(--tt-danger);
+  --user-bubble: var(--tt-surface-2);
+  --user-text: var(--tt-text);
+  color-scheme: inherit;
+}
+
+/* 開過房的桌在單人模式玩：朋友看不到這段 */
+.room-solo-note {
+  margin: 8px 16px 0;
+  padding: 6px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  color: var(--ink-2);
+  font-size: 0.9em;
+}
+
+/* 開房對話窗的「進階」：自架伺服器網址收在這裡 */
+.room-advanced summary {
+  cursor: pointer;
+  color: var(--ink-2);
+}

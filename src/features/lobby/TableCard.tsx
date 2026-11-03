@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { t } from "../../i18n";
 import { listBadge } from "../world-format/open-world";
 import type { WorldMeta } from "../../shared/contracts/backend-contracts";
-import { IconDelete, IconEdit } from "../../shared/ui/icons";
+import { IconDelete, IconEdit, IconUsers } from "../../shared/ui/icons";
 import { MoreMenu } from "../../shared/ui/MoreMenu";
 import gmBook from "../../assets/gm-book.png";
 import { coverLayout } from "./table-cover";
@@ -18,9 +18,11 @@ interface TableCardProps {
   onEnter: (id: string) => void;
   onRename: (id: string, raw: string) => void;
   onDelete: (id: string) => void;
+  /** 開過房的桌（room-host-desktop-play）：徽章與「重開房間／回房間」「結束並刪除房間」 */
+  room?: { code: string; active: boolean; otherActive: boolean; onReopen: () => void; onEnd: () => void };
 }
 
-export function TableCard({ world, busy, onEnter, onRename, onDelete }: TableCardProps) {
+export function TableCard({ world, busy, onEnter, onRename, onDelete, room }: TableCardProps) {
   const { ref, images } = useTableCover(world.id);
   const [draft, setDraft] = useState<string | null>(null);
   const settled = useRef(false);
@@ -103,10 +105,33 @@ export function TableCard({ world, busy, onEnter, onRename, onDelete }: TableCar
             {badgeLabel}
           </span>
         )}
+        {/* 桌名本來就是「房間 <碼>」時不重複掛徽章 */}
+        {room && room.code && !world.name.includes(room.code) && (
+          <span className="table-badge">{t("roomBadge", { code: room.code })}</span>
+        )}
         <MoreMenu
           label={t("itemOptionsAria", { name: world.name })}
           disabled={busy}
           items={[
+            ...(room
+              ? [
+                  {
+                    key: "room",
+                    label: t(room.active ? "roomBack" : "roomReopen"),
+                    icon: <IconUsers />,
+                    disabled: badge !== null || room.otherActive,
+                    hint: room.otherActive ? t("roomOtherTable") : undefined,
+                    onSelect: room.active ? () => onEnter(world.id) : room.onReopen,
+                  },
+                  {
+                    key: "room-end",
+                    label: t("roomEnd"),
+                    icon: <IconDelete />,
+                    danger: true,
+                    onSelect: room.onEnd,
+                  },
+                ]
+              : []),
             {
               key: "rename",
               label: t("lobbyRename"),

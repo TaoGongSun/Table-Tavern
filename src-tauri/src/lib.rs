@@ -219,6 +219,13 @@ pub fn run() {
             commands::room::room_enter,
             commands::room::room_exit,
             commands::room::room_pair_code,
+            commands::room::room_tables,
+            commands::room::room_close,
+            commands::room::room_identity,
+            commands::room::room_roster_refresh,
+            commands::room::room_member_open,
+            commands::room::room_member_send,
+            commands::room::room_member_close,
             commands::settings::usage_report,
             commands::scene::advance_scene,
             commands::scene::scene_budget,
@@ -276,6 +283,11 @@ pub fn run() {
         .run(|_handle, event| {
             // app 退出：殺全部在途 CLI 子程序，避免孤兒繼續跑、繼續燒錢。
             if let tauri::RunEvent::Exit = event {
+                // 房間：盡力送「房主暫停」再斷，送不到就算；本機視同關房（下次開不自動接回）
+                tauri::async_runtime::block_on(async {
+                    let _ =
+                        tokio::time::timeout(std::time::Duration::from_secs(3), room::exit()).await;
+                });
                 inflight::kill_all_children();
                 #[cfg(feature = "test-harness")]
                 harness::shutdown();
@@ -437,8 +449,15 @@ mod command_classification {
         "delete_version",
         "list_versions",
         "rollback_install",
+        "room_close",
+        "room_identity",
+        "room_member_close",
+        "room_member_open",
+        "room_member_send",
         "room_pair_code",
+        "room_roster_refresh",
         "room_status",
+        "room_tables",
         "update_check",
         "update_cli",
         "update_config",

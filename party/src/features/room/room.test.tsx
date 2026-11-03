@@ -45,7 +45,9 @@ function phone(hub: Hub, hash: string, extra: Partial<RoomEnv> = {}) {
   const env = { href: `https://party.example/r/${hub.room.code}#${hash}`, storage: new MemoryStorage(), open, fetch, userAgent: "Mozilla/5.0", replaceHref: (h: string) => void hrefs.push(h), retryDelays: [0], ...extra };
   act(() => root.render(<App env={env} lang="zh-TW" />));
   const q = <T extends Element = HTMLElement>(sel: string) => el.querySelector<T>(sel);
-  const button = (label: string) => [...el.querySelectorAll("button")].find((b) => b.textContent === label) ?? null;
+  const buttons = () => [...el.querySelectorAll("button")];
+  // 結算鈕會帶「（N 人還沒送）」：找不到完全相同的就認開頭
+  const button = (label: string) => buttons().find((b) => b.textContent === label) ?? buttons().find((b) => b.textContent?.startsWith(`${label}（`)) ?? null;
   return {
     el, env, hrefs, q, button,
     text: () => el.textContent ?? "",
@@ -102,6 +104,59 @@ async function table(bEnv: Partial<RoomEnv> = {}) {
 }
 
 describe("手機客戶端對真伺服器核心", () => {
+  it("保留給電腦的玩家卡：手機選角清單不列", async () => {
+    const room = await Room.create();
+    await room.exec();
+    await room.send("x1", "roster.update", { cards: CARDS });
+    await room.send("x1", "seat.reserve", { cardId: "c1", deviceId: room.deviceId("pc") });
+    const hub = new Hub(room);
+    hub.wrap = (fn) => act(fn);
+    const B = phone(hub, `k=${room.joinSecret}`);
+    B.type('[data-testid="nickname"]', "小華");
+    await act(async () => B.q<HTMLFormElement>("form")!.requestSubmit());
+    await until(() => B.q('[data-testid="seat-picker"]'));
+    expect(B.text()).not.toContain("角色1");
+    expect(B.text()).toContain("角色2");
+  });
+
+  it("空房：沒人入座時開始鈕停用並說原因；自建角色名字預填暱稱、執行端建卡後入座就能開始；回合列列出還沒送的人；房主暫停跟離線分開顯示", async () => {
+    const room = await Room.create();
+    await room.exec();
+    const hub = new Hub(room);
+    hub.wrap = (fn) => act(fn);
+    const A = phone(hub, `k=${room.joinSecret}&p=${await room.pairCode(true)}`);
+    A.type('[data-testid="nickname"]', "阿明");
+    await act(async () => A.q<HTMLFormElement>("form")!.requestSubmit());
+    await until(() => A.q('[data-testid="seat-create"]'));
+    expect((A.button("開始") as HTMLButtonElement).disabled).toBe(true);
+    expect(A.q('[data-testid="start-blocked"]')!.textContent).toBe("至少一位玩家入座才能開始");
+    expect(A.q<HTMLInputElement>('[data-testid="seat-create"] input')!.value).toBe("阿明");
+    await act(async () => A.q<HTMLFormElement>('[data-testid="seat-create"]')!.requestSubmit());
+    await until(() => room.s.jobs.length > 0);
+    const jobId = room.s.jobs[0].job.jobId;
+    const card = { cardId: "mine", name: "阿明", color: null, avatar: null, blurb: "", playable: true, hidden: false };
+    await hub.exec("roster.update", { cards: [card] });
+    await hub.exec("job.result", { jobId, ok: true, result: { cardId: "mine" } });
+    await until(() => A.q('[data-testid="action-box"]'));
+    expect((A.button("開始") as HTMLButtonElement).disabled).toBe(false);
+    A.click("開始");
+    await until(() => room.s.round?.dispatchId);
+    const dispatchId = room.dispatchId();
+    await hub.exec("dispatch.ack", { dispatchId });
+    await hub.exec("gen.part.begin", { dispatchId, part: 0, speaker: { kind: "gm" } });
+    await hub.exec("gen.part.end", { dispatchId, part: 0, text: "開場。", interrupted: false });
+    await hub.exec("gen.done", { dispatchId, aborted: false });
+    await until(() => A.q('[data-testid="round-waiting"]'));
+    expect(A.q('[data-testid="round-waiting"]')!.textContent).toBe("還在等：阿明");
+    expect(A.button("結算這回合")!.textContent).toBe("結算這回合（1 人還沒送）");
+    await hub.exec("status", { keepAwake: null, busy: false, paused: true });
+    await act(async () => {
+      await room.disconnect("x1");
+      await hub.flush();
+    });
+    await until(() => A.text().includes("房主暫時關房，等他重開"));
+  });
+
   it("加入、選角、開場串流；一回合：草稿不公開、送出即公開、跳過、全員到齊自動結算", async () => {
     const { room, A, B, a } = await table();
     // 加入時配對碼一次性：成功後從網址拿掉；這台裝置記得加入過、下次不再問暱稱
@@ -190,8 +245,11 @@ describe("手機客戶端對真伺服器核心", () => {
     await until(() => true, 3);
     expect(hub.sockets.length).toBe(sockets); // 被移出不自動重連
 
-    vi.stubGlobal("confirm", () => true);
-    A.click("關閉房間");
+    // 結束房間只在桌面版桌卡（執行端憑證 HTTP）
+    await act(async () => {
+      await room.run({ kind: "http", route: "close", executorToken: room.executorToken });
+      await hub.flush();
+    });
     await until(() => A.text().includes("房間已結束"));
     expect(A.q('[data-testid="story"]') ?? A.q('[data-testid="host-panel"]')).toBeTruthy(); // 留著畫面，房主還能匯出
     A.tab("story");

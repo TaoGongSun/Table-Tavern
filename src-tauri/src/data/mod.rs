@@ -20,9 +20,9 @@ mod worldbook;
 
 pub use character::{
     character_card_gone, character_files_present, character_stage_flags, delete_character,
-    list_characters, read_character, read_player_card, reorder_characters, restore_stage_flags,
-    set_character_archived, set_character_auto_hidden, set_character_stage, write_character,
-    CastRole, CharacterCard, CharacterMeta, StageChange, StageFlags,
+    list_characters, list_characters_with, read_character, read_player_card, reorder_characters,
+    restore_stage_flags, set_character_archived, set_character_auto_hidden, set_character_stage,
+    write_character, CastRole, CharacterCard, CharacterMeta, StageChange, StageFlags,
 };
 #[cfg(test)]
 pub(crate) use config::apply_play_override;

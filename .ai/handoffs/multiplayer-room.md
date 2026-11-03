@@ -1,11 +1,11 @@
 # Task
 Task-ID: multiplayer-room
-Title: 多人跑團房間：AI 當 GM、全員手機玩、出額度者的桌面版當 GM 執行端
+Title: 多人跑團房間：AI 當 GM、玩家用手機加入、房主可在電腦上直接玩、出額度者的桌面版當 GM 執行端
 Status: 等實機驗收（v1 包 0–7 全部通過驗收、2026-11-03 已進 main；剩作者本人實機項目）
 Created: 2026-11-02
 
 ## Summary
-v1＝出額度者家裡的桌面版當 GM 執行端，所有人（含出額度者）用手機瀏覽器玩；伺服器只做中繼與回合裁判、不碰金鑰。規格與裁決見 [plans/multiplayer-room.md](../plans/multiplayer-room.md)（§11 拍板、§12 觀察、§13 Node 殼），協定見 [plans/multiplayer-room-protocol.md](../plans/multiplayer-room-protocol.md)（§14 Workers 實作差異、§15 Node 殼差異，以這兩節與程式為準）。v2（伺服器代打、純手機群）另行立案；APK 屬 [cn-apk-shell](../tasks/cn-apk-shell.md)，不在本案。
+v1＝出額度者家裡的桌面版當 GM 執行端，玩家用手機瀏覽器加入，房主可在電腦上直接玩〔作者裁決 2026-11-03，施工見 [room-host-desktop-play](room-host-desktop-play.md)〕；伺服器只做中繼與回合裁判、不碰金鑰。規格與裁決見 [plans/multiplayer-room.md](../plans/multiplayer-room.md)（§11 拍板、§12 觀察、§13 Node 殼），協定見 [plans/multiplayer-room-protocol.md](../plans/multiplayer-room-protocol.md)（§14 Workers 實作差異、§15 Node 殼差異，以這兩節與程式為準）。v2（伺服器代打、純手機群）另行立案；APK 屬 [cn-apk-shell](../tasks/cn-apk-shell.md)，不在本案。
 
 ## 落點
 - 伺服器：`party/server/core/`（純 TS）、`party/server/workers/`（DO 殼）、`party/server/node/`（自架殼，用法見 `main.ts` 檔頭）。

@@ -1,4 +1,5 @@
 // 客戶端 → 伺服器指令（協定 §5.1）：每則先查角色再查狀態，失敗拋 Fail、狀態不動。
+import { resnapshot } from "./snapshot";
 import { announceExec, MIN, offered, openRound, resolve, seatedMembers, unseat } from "./round";
 import { CROCKFORD8, secret, sameHash, sha256Hex, ulid } from "./secrets";
 import { Fail, need, type Tx } from "./tx";
@@ -40,6 +41,7 @@ export function claim(tx: Tx, m: Member, cardId: unknown) {
   need(!m.cardId, "E_STATE_CONFLICT");
   const card = s.cards.find((c) => c.cardId === cardId);
   need(card && card.playable && !card.hidden && card.claimedBy === null, "E_SEAT_TAKEN");
+  need(!card.reserved || (s.reserved && sameHash(m.dev, s.reserved.dev)), "E_SEAT_TAKEN");
   need(seatedMembers(s).length < s.settings.maxPlayers, "E_ROOM_FULL");
   const w = tx.w;
   Object.assign(m, { cardId: card.cardId, seat: ++w.seatNo });
@@ -52,6 +54,17 @@ export function claim(tx: Tx, m: Member, cardId: unknown) {
   r.roster.push({ memberId: m.id, cardId: card.cardId, status: w.drafts[m.id] ? "drafting" : "pending", text: null });
   r.arrivals.push(card.cardId);
   tx.toAll("vol", { type: "roster_status", round: r.round, memberId: m.id, status: r.roster[0].status });
+}
+
+/** 結束房間（房主 `room.close` 或執行端憑證 HTTP）：關連線；執行端憑證雜湊留著給重送的結束請求驗身分，執行端連線另擋 */
+export function closeRoom(tx: Tx) {
+  need(tx.s.status !== "closed", "E_ROOM_CLOSED");
+  const w = tx.w;
+  Object.assign(w, { status: "closed", closedAt: tx.now, transition: null, jobs: [], pair: null, execConn: null });
+  w.exec.online = false;
+  if (w.round) Object.assign(w.round, { deadline: null, pausedRemainingMs: null }); // 關房後倒數不再到期
+  tx.emit("room.closed");
+  for (const id of Object.keys(w.conns)) tx.shut(id, 4410);
 }
 
 /** 配對碼（§1.2）：全房錯 5 次鎖 10 分鐘；錯誤計數要落地，所以不拋 Fail 而是回錯誤後照常提交 */
@@ -70,10 +83,13 @@ export async function pairClaim(tx: Tx, m: Member, raw: string): Promise<"later"
   need(!s.payerId || p.grantHost, "E_STATE_CONFLICT");
   const w = tx.w;
   Object.assign(w, { pair: null, pairFails: 0 });
-  if (!s.payerId) {
+  // grantHost 碼只有執行端那台電腦發得出來：拿到它＝GM 機器授權，房主連同出額度者一起轉（房主交給手機、接回電腦）
+  if (s.payerId !== m.id && (!s.payerId || p.grantHost)) {
+    if (s.payerId) tx.emit("pair.unbound", { memberId: s.payerId });
     w.payerId = m.id;
     tx.emit("pair.bound", { memberId: m.id });
     announceExec(tx); // 新的出額度者拿到路線與模型清單
+    await resnapshot(tx, m.id); // 快照裡出額度者專屬的額度明細與錯誤細節（hello 時那份是配對前的）
   }
   if (p.grantHost) {
     w.hostId = m.id;
@@ -220,13 +236,16 @@ export const MEMBER: Record<string, Handler> = {
     tx.w.settings = next as unknown as RoomState["settings"];
     tx.emit("room.settings_changed", { settings: next });
   },
+  // 新密語要先存進房主電腦（執行端）才生效：電腦不在線就不給重生；伺服器只存雜湊，不存明文（協定外加 `invite`／`invite.ack`）
   "invite.regenerate": async (tx, _p, m) => {
     host(tx, m);
+    need(tx.s.exec.online, "E_EXECUTOR_OFFLINE");
+    const prev = tx.s.inviteRegen;
+    if (prev) tx.err(prev.conn, "E_STATE_CONFLICT", { id: prev.id }); // 上一次還在等：作廢，以這次為準
     const joinSecret = secret(tx.ctx.rng, 16);
-    tx.w.joinHash = await sha256Hex(`${tx.s.code}:${joinSecret}`);
-    tx.emit("invite.regenerated");
-    tx.ok({ joinSecret }); // 只回給房主，不廣播
-    return "later" as const;
+    tx.w.inviteRegen = { hash: await sha256Hex(`${tx.s.code}:${joinSecret}`), conn: tx.conn, id: tx.reqId, at: tx.now };
+    tx.toExec("invite", { joinSecret });
+    return "later" as const; // 執行端 ack 之後才回房主
   },
   "host.transfer": (tx, p, m) => {
     host(tx, m);
@@ -312,13 +331,8 @@ export const MEMBER: Record<string, Handler> = {
   },
   "room.close": (tx, _p, m) => {
     host(tx, m);
-    const w = tx.w;
-    Object.assign(w, { status: "closed", closedAt: tx.now, execHash: null, transition: null, jobs: [], pair: null, execConn: null });
-    w.exec.online = false;
-    if (w.round) Object.assign(w.round, { deadline: null, pausedRemainingMs: null }); // 關房後倒數不再到期
-    tx.emit("room.closed");
     tx.ok();
-    for (const id of Object.keys(w.conns)) tx.shut(id, 4410);
+    closeRoom(tx);
     return "later" as const;
   },
   "pair.claim": (tx, p, m) => pairClaim(tx, m, p.code),

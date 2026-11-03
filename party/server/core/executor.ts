@@ -1,10 +1,10 @@
 // 執行端 → 伺服器訊息（協定 §6.2）：派工結果以 dispatchId／(dispatchId, part)／jobId 冪等收下。
 import { claim, type Handler } from "./member";
 import { announceExec, hold, MIN, openRound, unseat } from "./round";
-import { crockford, sha256Hex } from "./secrets";
+import { crockford, sameHash, sha256Hex } from "./secrets";
 import { Fail, need, type Tx } from "./tx";
 import type { ErrorCode, Job, PendingJob, PublicCard, PublicExecutorError } from "./types";
-import { cleanCapabilities, cleanCards, cleanError, cleanHistory, cleanQuota, cleanSpeaker } from "./validate";
+import { cleanCapabilities, cleanCards, cleanError, cleanHistory, cleanQuota, cleanSpeaker, ID64 } from "./validate";
 
 const OTHER: PublicExecutorError = { kind: "other", actions: ["retry", "continue"], resetsAt: null };
 const pub = (e: { kind: PublicExecutorError["kind"]; actions: PublicExecutorError["actions"]; resetsAt: number | null } | null): PublicExecutorError =>
@@ -24,7 +24,7 @@ function replaceCards(tx: Tx, incoming: PublicCard[]) {
   need(JSON.stringify(incoming).length <= 1 << 20, "E_STATE_CONFLICT", "roster_too_large"); // 不關連線，免得執行端重連再送又被關
   const w = tx.w;
   const owner = new Map(w.cards.map((c) => [c.cardId, c.claimedBy]));
-  w.cards = incoming.map((c) => ({ ...c, claimedBy: owner.get(c.cardId) ?? null }));
+  w.cards = incoming.map((c) => ({ ...c, claimedBy: owner.get(c.cardId) ?? null, ...(w.reserved?.cardId === c.cardId ? { reserved: true } : {}) }));
   for (const m of w.members) if (m.cardId && !w.cards.some((c) => c.cardId === m.cardId && c.playable)) unseat(tx, m);
   tx.emit("roster.updated", { cards: w.cards });
 }
@@ -97,6 +97,24 @@ export const EXECUTOR: Record<string, (tx: Tx, p: any) => ReturnType<Handler>> =
     history.forEach((h, part) => tx.emit("story.part", { ...h, part }));
   },
   "roster.update": (tx, p) => replaceCards(tx, cleanCards(p.cards) ?? Fail.throw("E_BAD_FRAME")),
+  // 執行端存好了重生的邀請密語：這時才換掉入場雜湊並回房主（舊連結到此作廢）；不是等著的那份就不理
+  "invite.ack": async (tx, p) => {
+    const r = tx.s.inviteRegen;
+    if (!r || !sameHash(await sha256Hex(`${tx.s.code}:${p.joinSecret}`), r.hash)) return;
+    const w = tx.w;
+    Object.assign(w, { joinHash: r.hash, inviteRegen: null });
+    tx.emit("invite.regenerated");
+    tx.send(r.conn, "ok", { id: r.id, result: { joinSecret: p.joinSecret } }); // 只回給房主，不廣播
+  },
+  // 電腦自己的玩家卡（桌面版）保留給電腦那台裝置：朋友不能先認走〔作者裁決 2026-11-03〕
+  "seat.reserve": async (tx, p) => {
+    need(p.cardId === null || ID64.test(p.cardId), "E_BAD_FRAME");
+    need(/^[A-Za-z0-9_-]{22}$/.test(p.deviceId), "E_BAD_FRAME");
+    const w = tx.w;
+    w.reserved = p.cardId === null ? null : { cardId: p.cardId, dev: await sha256Hex(`${w.code}:${p.deviceId}`) };
+    w.cards = w.cards.map(({ reserved: _, ...c }) => (c.cardId === p.cardId ? { ...c, reserved: true } : c));
+    tx.emit("roster.updated", { cards: w.cards });
+  },
   "dispatch.ack": (tx, p) => void live(tx, p.dispatchId),
   "gen.part.begin": (tx, p) => {
     const r = live(tx, p.dispatchId);
@@ -176,7 +194,7 @@ export const EXECUTOR: Record<string, (tx: Tx, p: any) => ReturnType<Handler>> =
     tx.emit("pair.unbound", { memberId: payer });
   },
   status: (tx, p) => {
-    Object.assign(tx.w.exec, { keepAwake: p.keepAwake, busy: p.busy });
+    Object.assign(tx.w.exec, { keepAwake: p.keepAwake, busy: p.busy, paused: p.paused === true });
     announceExec(tx);
   },
   quota: (tx, p) => {

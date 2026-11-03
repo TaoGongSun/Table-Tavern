@@ -27,12 +27,25 @@ pub(crate) fn reclaim_world_if_empty(
     app: tauri::AppHandle,
     world_id: String,
 ) -> Result<bool, String> {
+    // 開過房的桌（room-host-desktop-play）：零內容也不收，「重開房間」要接得回
+    if crate::room::has_room(&config_root(&app)?, &world_id) {
+        return Ok(false);
+    }
     let _permit = data::world_write_permit(&world_id)?;
     data::reclaim_world_if_empty(&data_root(&app)?, &world_id).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-pub(crate) fn delete_world(app: tauri::AppHandle, world_id: String) -> Result<(), String> {
+pub(crate) async fn delete_world(app: tauri::AppHandle, world_id: String) -> Result<(), String> {
+    // 開過房的桌：一併結束房間、清本機憑證（伺服器打不到也清），免得留下指向不存在的桌的房間
+    if crate::room::has_room(&config_root(&app)?, &world_id) {
+        crate::room::close(
+            crate::room::AppEngine::shared(&app)?,
+            world_id.clone(),
+            true,
+        )
+        .await?;
+    }
     // 獨占在 data::delete_world（try_world_exclusive）。這裡不再拿共用鎖，避免跟自己搶、也避免跟在途寫入交錯。
     data::delete_world(&data_root(&app)?, &world_id).map_err(|error| error.to_string())
 }

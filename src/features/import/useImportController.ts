@@ -182,6 +182,8 @@ export interface ImportController {
   /** 陣容欄「匯入卡」選了檔：探測身分後分流 */
   importFile: (file: File) => Promise<void>;
   answerChoice: (choice: "character" | "worldbook" | "cancel") => Promise<void>;
+  /** 身分框或路由框答完、那張卡還在匯（路由判定、寫檔）：框已收但還沒結束 */
+  answering: boolean;
   answerRoute: (choice: "this_table" | "new_table" | "cancel") => Promise<void>;
   /** 翻好的那一則；null＝翻譯失敗或面板已關。force＝重新翻譯（忽略已有回覆，用原文重打） */
   translateOpening: (index: number, force?: boolean) => Promise<string | null>;
@@ -253,6 +255,7 @@ export function useImportController(input: {
   const [choice, setChoice] = useState<PendingImportChoice | null>(null);
   // 第二張卡路由框：身分已定、桌上已有匯入紀錄才會跳出來；ask＝一般第二張卡、merge_worldbook＝第二本世界書會合成一本
   const [route, setRoute] = useState<PendingImportRoute | null>(null);
+  const [answering, setAnswering] = useState(false);
   const [openings, setOpenings] = useState<string[] | null>(null);
   // 開場白面板屬於哪張桌：貼出前要確認人還在那張桌
   const [openingsWorldId, setOpeningsWorldId] = useState<string | null>(null);
@@ -583,10 +586,13 @@ export function useImportController(input: {
       setChoice(null);
       if (!pending || answer === "cancel" || pending.worldId !== worldRef.current) return;
       onError("");
+      setAnswering(true);
       try {
         await routeImport(answer, pending.data, pending.name);
       } catch (reason) {
         onError(String(reason));
+      } finally {
+        setAnswering(false);
       }
     },
     [choice, routeImport, onError],
@@ -600,6 +606,7 @@ export function useImportController(input: {
       setRoute(null);
       if (!pending || answer === "cancel" || pending.worldId !== worldRef.current) return;
       onError("");
+      setAnswering(true);
       try {
         if (answer === "this_table") {
           await runTableOp(() =>
@@ -612,6 +619,8 @@ export function useImportController(input: {
         }
       } catch (reason) {
         onError(String(reason));
+      } finally {
+        setAnswering(false);
       }
     },
     [
@@ -696,6 +705,7 @@ export function useImportController(input: {
       refreshReceipts,
       importFile,
       answerChoice,
+      answering,
       answerRoute,
       translateOpening,
       translateAllOpenings,
@@ -721,6 +731,7 @@ export function useImportController(input: {
       refreshReceipts,
       importFile,
       answerChoice,
+      answering,
       answerRoute,
       translateOpening,
       translateAllOpenings,

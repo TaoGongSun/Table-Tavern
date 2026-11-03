@@ -1,5 +1,6 @@
 // 房主面板（協定 §5.1 H 欄）：邀請重生、房間設定、換幕（自己是出額度者可同時定下一幕路線／模型）、成員管理
-// （移出、封鎖、轉讓房主、把座位指派給換了裝置的人）、離席處置、匯出、關房。回合級的結算／中止在回合列。
+// （移出、封鎖、轉讓房主、把座位指派給換了裝置的人）、離席處置、匯出。回合級的結算／中止在回合列。結束房間只在桌面版桌卡
+// （房間要能重開，room-host-desktop-play）。
 import { useState } from "react";
 import { t } from "../../i18n";
 import type { RoomView } from "../room/room-state";
@@ -8,7 +9,7 @@ import { RoutePicker } from "./RoutePicker";
 
 const TIMEOUTS = [null, 60, 120, 300, 900];
 
-export function HostPanel({ view, act, origin, exportRoom }: { view: RoomView; act: Act; origin: string; exportRoom: () => Promise<boolean> }) {
+export function HostPanel({ view, act, origin, exportRoom }: { view: RoomView; act: Act; origin: string; exportRoom: (() => Promise<boolean>) | null }) {
   const { run, error, setError } = useRun(act);
   const [invite, setInvite] = useState<string | null>(null);
   const r = view.round;
@@ -21,8 +22,11 @@ export function HostPanel({ view, act, origin, exportRoom }: { view: RoomView; a
     <div className="panel" data-testid="host-panel">
       <h2>{t("hostTitle")}</h2>
       <div className="panel-actions">
+        {/* 新連結要先存進電腦才生效：電腦離線時不給重生 */}
         <button
           type="button"
+          disabled={!view.executor.online}
+          title={view.executor.online ? undefined : t("hostInviteNeedsExecutor")}
           onClick={async () => {
             const res = await run("invite.regenerate");
             if (res) setInvite(`${origin}/r/${view.room.code}#k=${res.joinSecret}`);
@@ -30,8 +34,9 @@ export function HostPanel({ view, act, origin, exportRoom }: { view: RoomView; a
         >
           {t("hostInvite")}
         </button>
-        <button type="button" onClick={async () => setError((await exportRoom()) ? null : t("errInternal"))}>{t("hostExport")}</button>
+        {exportRoom && <button type="button" onClick={async () => setError((await exportRoom()) ? null : t("errInternal"))}>{t("hostExport")}</button>}
       </div>
+      {!view.executor.online && <p className="muted">{t("hostInviteNeedsExecutor")}</p>}
       {invite && <input className="invite" readOnly value={invite} onFocus={(e) => e.currentTarget.select()} data-testid="invite" />}
       <label>
         {t("hostTimeout")}
@@ -76,9 +81,6 @@ export function HostPanel({ view, act, origin, exportRoom }: { view: RoomView; a
         </div>
       ))}
       {error && <div className="field-error" data-testid="host-error">{error}</div>}
-      {view.room.status !== "closed" && (
-        <button type="button" className="danger" onClick={() => confirm(t("hostCloseConfirm")) && run("room.close")}>{t("hostClose")}</button>
-      )}
     </div>
   );
 }

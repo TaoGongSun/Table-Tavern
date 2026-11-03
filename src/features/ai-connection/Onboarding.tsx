@@ -14,20 +14,19 @@ import { AppConfig } from "../../shared/contracts/backend-contracts";
 
 type Busy = "oauth" | "manual" | null;
 
+/** 有可用的 AI 路線（命令列工具、矽基流動，或存了 OpenRouter 金鑰）：開房間前要先有 */
+export function aiReady(config: AppConfig): boolean {
+  const transport = config.preferences["transport"] ?? "api";
+  return transport !== "api" || isSiliconFlow(config.preferences["base_url"]) || (config.api_keys["openrouter"] ?? "").trim() !== "";
+}
+
 export function Onboarding({ config, onSaved }: { config: AppConfig; onSaved: (c: AppConfig) => void }) {
   const [apiKey, setApiKey] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState<Busy>(null);
-  const transport = config.preferences["transport"] ?? "api";
   const keyWarning = checkApiKey(apiKey, String(config.preferences["base_url"] ?? ""));
 
-  if (
-    transport !== "api" ||
-    isSiliconFlow(config.preferences["base_url"]) ||
-    (config.api_keys["openrouter"] ?? "").trim()
-  ) {
-    return null;
-  }
+  if (aiReady(config)) return null;
 
   async function connect() {
     setMessage("");

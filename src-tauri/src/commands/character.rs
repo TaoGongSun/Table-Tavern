@@ -5,8 +5,10 @@ use crate::{config_root, data, data_root, import, receipts, transport};
 pub(crate) fn list_characters(
     app: tauri::AppHandle,
     world_id: String,
+    with_player: Option<bool>,
 ) -> Result<Vec<CharacterMeta>, String> {
-    data::list_characters(&data_root(&app)?, &world_id).map_err(|error| error.to_string())
+    data::list_characters_with(&data_root(&app)?, &world_id, with_player == Some(true))
+        .map_err(|error| error.to_string())
 }
 
 /// 刪角色或轉條目回錯時，前端問卡檔是否確定已不在；查詢錯誤（含 id 不合法）回錯＝不確認。

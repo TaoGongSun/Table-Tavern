@@ -48,11 +48,29 @@ pub(super) async fn create_room(server: &str) -> Result<Saved, String> {
     })
 }
 
-fn ws_url(server: &str, code: &str) -> String {
-    let base = server
+/// `DELETE /api/rooms/<碼>`（執行端憑證）：伺服器照 `room.close` 結束房間。房間已不在（404）也算成功
+pub(super) async fn close_room(saved: &Saved) -> Result<(), String> {
+    let response = reqwest::Client::new()
+        .delete(format!("{}/api/rooms/{}", saved.server, saved.room_code))
+        .bearer_auth(&saved.executor_token)
+        .timeout(Duration::from_secs(20))
+        .send()
+        .await
+        .map_err(|error| format!("ROOM_CLOSE_FAILED: {error}"))?;
+    match response.status().as_u16() {
+        200..=299 | 404 => Ok(()),
+        code => Err(format!("ROOM_CLOSE_FAILED: HTTP {code}")),
+    }
+}
+
+pub(super) fn ws_base(server: &str) -> String {
+    server
         .replacen("https://", "wss://", 1)
-        .replacen("http://", "ws://", 1);
-    format!("{base}/api/rooms/{code}/ws?role=executor")
+        .replacen("http://", "ws://", 1)
+}
+
+fn ws_url(server: &str, code: &str) -> String {
+    format!("{}/api/rooms/{code}/ws?role=executor", ws_base(server))
 }
 
 /// 連 WebSocket。tokio-tungstenite 不吃系統代理（建房的 reqwest 會）：有 http 代理就先開 TCP 送
@@ -155,6 +173,7 @@ pub(super) async fn run(
             // 房間關了、憑證失效或被取代：照退出收尾（還原單人桌、清覆寫槽），再停用；房間不在了才清憑證
             End::Fatal { message, forget } => {
                 room.note_error(message);
+                super::note_stop(&room.world(), message);
                 if let Err(error) = super::release_table(&room, &room.world()) {
                     room.note_error(&error);
                 }
@@ -163,6 +182,8 @@ pub(super) async fn run(
                     if forget {
                         *saved = Saved {
                             server: saved.server.clone(),
+                            world_id: saved.world_id.clone(),
+                            gone: true,
                             ..Saved::default()
                         }
                     }
@@ -266,11 +287,17 @@ fn closed(code: Option<u16>, welcomed: bool) -> End {
             message: "E_ROOM_NOT_FOUND",
             forget: true,
         },
+        // 壞訊框：多半是伺服器比 app 舊、不認得新訊框（例：`seat.reserve`）；照原樣重連只會一直被關，停下來說原因
+        Some(4400) => End::Fatal {
+            message: "E_SERVER_OUTDATED",
+            forget: false,
+        },
         _ => End::Lost(welcomed),
     }
 }
 
-/// 連上了：重送佇列 → capabilities／狀態／額度 → 還沒送過就送公開名冊與歷史 → 沒有出額度者就發配對碼
+/// 連上了：重送佇列 → capabilities／狀態／額度 → 還沒送過就送公開名冊與歷史 → 保留電腦的玩家卡
+/// （出額度者的配對碼由房間畫面進房時發，只留這一條路，免得兩張碼互相作廢）
 /// → 照 `welcome` 帶的派工與工作續跑或開工（協定 §6.5、§14-14）
 fn welcome(room: &Arc<Room>, p: &Value) -> Vec<Value> {
     let snapshot = &p["snapshot"];
@@ -310,8 +337,9 @@ fn welcome(room: &Arc<Room>, p: &Value) -> Vec<Value> {
             .filter_map(|card| card["cardId"].as_str().map(str::to_owned))
             .collect();
     }
-    if snapshot["room"]["payerId"].is_null() && room.status().pair_code.is_none() {
-        frames.push(pair_frame(snapshot["room"]["hostId"].is_null()));
+    match super::device_id(room) {
+        Ok(device) => frames.extend(seed::reserve_frame(&root, &saved.world_id, &device)),
+        Err(error) => room.note_error(&error),
     }
     if p["dispatch"].is_object() {
         run::on_dispatch(room, &p["dispatch"]);
@@ -340,6 +368,25 @@ fn on_frame(room: &Arc<Room>, frame: &Value) {
         "job.cancel" => run::on_cancel(room, p),
         "ok" => on_reply(room, p, None),
         "err" => on_reply(room, p, p["code"].as_str()),
+        // 房主重生了邀請連結（協定外加 `invite`，只送執行端；電腦離線時伺服器不給重生）：資訊列、QR、重開房間都改用新連結
+        "invite" => {
+            if let Some(secret) = p["joinSecret"].as_str().filter(|s| !s.is_empty()) {
+                let stored = room.try_update(|saved| {
+                    saved.join_secret = secret.to_owned();
+                    let base = saved
+                        .invite_url
+                        .split('#')
+                        .next()
+                        .unwrap_or_default()
+                        .to_owned();
+                    saved.invite_url = format!("{base}#k={secret}");
+                });
+                // 存進磁碟才 ack：伺服器收到 ack 才換掉入場密語；沒存成就不 ack，房主那邊逾時、舊連結照常
+                if stored.is_ok() {
+                    room.send("invite.ack", json!({ "joinSecret": secret }));
+                }
+            }
+        }
         // 出額度者配對好了：配對碼用掉，面板不再顯示
         "ev" if p["e"]["type"] == "pair.bound" => {
             let mut status = room.status();

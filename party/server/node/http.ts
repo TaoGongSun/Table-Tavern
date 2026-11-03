@@ -16,7 +16,7 @@ export interface ServerConfig {
   staticDir: string;
 }
 
-const ROOM_PATH = /^\/api\/rooms\/([0-9A-Za-z]{8})\/(ws|export)$/;
+const ROOM_PATH = /^\/api\/rooms\/([0-9A-Za-z]{8})(?:\/(ws|export))?$/;
 const CREATE_PER_HOUR = 10; // 協定 §6.1：同 IP 每小時 10 次（Workers 只能近似每分鐘 1 次）
 const HOUR = 3_600_000;
 const MIME: Record<string, string> = {
@@ -83,6 +83,12 @@ export function createPartyServer(rooms: Rooms, cfg: ServerConfig) {
       const code = m?.[1].toUpperCase() ?? "";
       if (!m || !CROCKFORD8.test(code)) return json(res, 404, { code: "E_ROOM_NOT_FOUND" });
       if (m[2] === "ws") return json(res, 426, { code: "E_BAD_FRAME" });
+      const bearer = String(req.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
+      if (m[2] === undefined) {
+        if (req.method !== "DELETE") return json(res, 405, { code: "E_BAD_FRAME" });
+        const out = await rooms.with(code, (r) => r.run({ kind: "http", route: "close", executorToken: bearer }));
+        return json(res, out?.http?.status ?? 500, out?.http?.body ?? { code: "E_INTERNAL" });
+      }
       if (req.method !== "GET") return json(res, 405, { code: "E_BAD_FRAME" });
       const deviceId = String(req.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
       const out = await rooms.with(code, (r) => r.run({ kind: "http", route: "export", deviceId }));

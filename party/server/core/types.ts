@@ -40,6 +40,8 @@ export interface PublicCard {
   playable: boolean;
   hidden: boolean;
   claimedBy: string | null;
+  /** 房主保留給電腦自己的那張（桌面版開房前的玩家卡）：只有電腦那台裝置能認領 */
+  reserved?: boolean;
 }
 export type SystemMarker = "scene_summary" | "card_arrival" | "person_arrival" | "state_update";
 export type Speaker =
@@ -127,6 +129,8 @@ export interface ExecutorView {
   online: boolean;
   since: number;
   keepAwake: boolean | null;
+  /** 房主暫時關房（執行端下線前報的）；跟「GM 主機離線」分開顯示 */
+  paused: boolean;
   modelLabel: string | null;
 }
 
@@ -180,7 +184,7 @@ export interface RoomState {
   closedAt: number | null;
   joinHash: string;
   execHash: string | null;
-  exec: { label: string; online: boolean; since: number; lastSeen: number; keepAwake: boolean | null; busy: boolean; caps: Capabilities | null; quota: QuotaReport | null };
+  exec: { label: string; online: boolean; since: number; lastSeen: number; keepAwake: boolean | null; busy: boolean; paused?: boolean; caps: Capabilities | null; quota: QuotaReport | null };
   execConn: string | null;
   seq: number;
   roundNo: number;
@@ -194,6 +198,8 @@ export interface RoomState {
   cards: PublicCard[]; // 換名冊時整個換新陣列（殼靠參照判斷要不要重寫）
   drafts: Record<string, string>;
   pair: { hash: string; expiresAt: number; grantHost: boolean } | null;
+  inviteRegen?: { hash: string; conn: string; id?: string; at: number } | null; // 重生邀請等執行端 ack（只存雜湊）
+  reserved?: { cardId: string; dev: string } | null; // 電腦保留的玩家卡（執行端 seat.reserve）；dev＝電腦裝置雜湊
   pairFails: number;
   pairLockUntil: number;
   departures: Array<{ cardId: string; mode: "npc" | "absent" }>;
@@ -223,7 +229,8 @@ export type CoreInput =
   | { kind: "connect" | "disconnect"; conn: ConnInfo }
   | { kind: "alarm" }
   | { kind: "http"; route: "create"; body: unknown; code: string; origin: string; idleDays: number }
-  | { kind: "http"; route: "export"; deviceId: string };
+  | { kind: "http"; route: "export"; deviceId: string }
+  | { kind: "http"; route: "close"; executorToken: string };
 /** 寄給執行端的訊框用這個收件者，由殼的 ExecutorPort 轉送（v1 WebSocket、v2 程序內） */
 export const TO_EXECUTOR = "@executor";
 export interface CoreOutput {

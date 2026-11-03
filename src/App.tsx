@@ -63,7 +63,11 @@ import {
 import { AppDialogs } from "./views/AppDialogs";
 import type { SettingsTab } from "./features/settings/SettingsWindow";
 import { AppWorkspace, type EditingTableName } from "./views/AppWorkspace";
-import { Onboarding } from "./features/ai-connection/Onboarding";
+import { aiReady, Onboarding } from "./features/ai-connection/Onboarding";
+import { OpenRoomDialog } from "./features/room/OpenRoomDialog";
+import { RoomSession } from "./features/room/RoomSession";
+import { useDesktopRoom } from "./features/room/useDesktopRoom";
+import { useRoomFlows } from "./features/room/useRoomFlows";
 import { SmartFreeNewModelBanner } from "./features/ai-connection/SmartFreeNewModelBanner";
 import { SmartFreeNoticeToast } from "./features/ai-connection/SmartFreeNoticeToast";
 import { ClaudeOverageToast } from "./features/ai-connection/ClaudeOverageToast";
@@ -713,7 +717,9 @@ function App() {
   function deleteTable(id: string) {
     return runTableOp(async () => {
       if (!config || chat.busy) return;
-      const accepted = await confirm(deleteTableMessage(worlds.find((w) => w.id === id), id), {
+      const message = deleteTableMessage(worlds.find((w) => w.id === id), id);
+      const withRoom = id in room.host.rooms ? `${message}\n\n${t("roomDeleteNote")}` : message;
+      const accepted = await confirm(withRoom, {
         title: t("deleteTableTitle"),
         kind: "warning",
         okLabel: t("dialogDelete"),
@@ -920,6 +926,34 @@ function App() {
     });
   }
 
+  // 多人房間（room-host-desktop-play）：首頁開房、桌卡重開／結束、頂欄「回房間」
+  const room = useRoomFlows({
+    table,
+    busy: tableOp.busy,
+    runTableOp,
+    enterTable,
+    refreshWorlds,
+    setError,
+    importFile: imports.importFile,
+    importPending: imports.route !== null || imports.choice !== null || imports.answering,
+    openingPending: imports.openings !== null || openingPost.busy,
+    aiReady: config !== null && aiReady(config),
+    openAiSettings: () => openSettings("ai"),
+  });
+  // 電腦在房間裡的連線跟著房間走：在大廳、別桌、編輯卡時都不斷〔§2.1〕
+  const roomWorld = room.host.activeWorld ?? (room.isRoomTable(table) ? table : null);
+  const deskRoom = useDesktopRoom(roomWorld, {
+    cast: characters.list,
+    playerId: characters.tablePlayerId,
+    onPaused: () => {
+      room.paused();
+      void goLobby();
+    },
+  });
+  const roomSeat = roomWorld !== null && roomWorld === liveWorldId ? deskRoom.seat : undefined;
+  const { setRoomSeat } = characters;
+  useEffect(() => setRoomSeat(roomSeat), [setRoomSeat, roomSeat]);
+
   if (!config || !bootReady) {
     return (
       <main className="container">
@@ -929,6 +963,15 @@ function App() {
   }
 
   const updateDot = showUpdateDot(versionCenter.update.offer, config.preferences);
+  const roomBanner = room.host.activeWorld !== null && room.host.activeWorld !== table && (
+    <div className="room-active-banner" role="status">
+      <span>{t("roomActive")}</span>
+      <button type="button" className="btn btn-sm" disabled={tableOp.busy} onClick={() => void switchTable(room.host.activeWorld!)}>
+        {t("roomBack")}
+      </button>
+    </div>
+  );
+
   const lockedChat: ChatController = {
     ...chat,
     send: async (event) => {
@@ -948,8 +991,16 @@ function App() {
 
   return (
     <div className="app-shell">
+      <RoomSession ctl={deskRoom} />
+      {roomBanner}
+      {room.dialog && <OpenRoomDialog server={room.dialog.server} onCancel={room.closeDialog} onOpen={(files, server) => void room.open(files, server)} />}
       {table === "" ? (
         <Lobby
+          rooms={room.host.rooms}
+          activeRoom={room.host.activeWorld}
+          onOpenRoom={() => void room.start()}
+          onReopenRoom={(id) => void room.reopen(id)}
+          onEndRoom={(id) => void room.end(id)}
           worlds={worlds}
           busy={tableOp.busy || chat.busy}
           notices={
@@ -1016,6 +1067,9 @@ function App() {
           updateDot={updateDot}
           relayable={gmOnlyTable.nominates}
           skipsNomination={gmOnlyTable.skipsNomination}
+          roomMode={room.isRoomTable(table)}
+          deskRoom={deskRoom}
+          hasRoom={table in room.host.rooms}
         />
       )}
 

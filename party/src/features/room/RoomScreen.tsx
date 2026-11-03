@@ -13,7 +13,7 @@ import { useRun, type Act } from "./useRoom";
 
 const STATUS: Record<string, MsgKey> = { pending: "statusPending", drafting: "statusDrafting", submitted: "statusSubmitted", skipped: "statusSkipped" };
 
-function MemberList({ view, act, onLeave }: { view: RoomView; act: Act; onLeave: () => void }) {
+function MemberList({ view, act, c }: { view: RoomView; act: Act; c: RoomControls }) {
   const { run, error } = useRun(act);
   const roster = new Map(view.round?.roster.map((e) => [e.memberId, e.status]));
   return (
@@ -31,11 +31,12 @@ function MemberList({ view, act, onLeave }: { view: RoomView; act: Act; onLeave:
         </div>
       ))}
       <p className="muted">{t("idleNotice", { days: view.room.idleDays })}</p>
-      {view.room.payerId !== view.me.memberId && view.room.status !== "closed" && <PairForm act={act} />}
+      {c.pairForm !== false && view.room.payerId !== view.me.memberId && view.room.status !== "closed" && <PairForm act={act} />}
       {error && <div className="field-error">{error}</div>}
       <div className="panel-actions">
         {view.me.cardId && view.room.status !== "closed" && <button type="button" onClick={() => run("seat.release")}>{t("seatRelease")}</button>}
-        <button type="button" className="ghost danger" onClick={async () => (await run("member.leave")) && onLeave()}>{t("leaveRoom")}</button>
+        {/* 暫時離開＝只斷線（座位與角色保留）；桌面版換成「關房（暫停）」 */}
+        <button type="button" className="ghost danger" onClick={c.onLeave}>{c.leaveLabel ?? t("leaveRoom")}</button>
       </div>
     </div>
   );
@@ -47,8 +48,13 @@ export interface RoomControls {
   cancelDraft: () => void;
   loadOlder: (beforeSeq: number) => Promise<number>;
   resumed: (round: number) => void;
-  exportRoom: () => Promise<boolean>;
+  /** null＝不提供匯出（桌面版：那張桌本機就有） */
+  exportRoom: (() => Promise<boolean>) | null;
   onLeave: () => void;
+  /** 桌面版換掉「暫時離開」的字樣 */
+  leaveLabel?: string;
+  /** false＝桌面版：不顯示輸入配對碼（接回房主在資訊列）、選角看得到保留給電腦的卡 */
+  pairForm?: boolean;
   origin: string;
 }
 
@@ -58,6 +64,9 @@ export function RoomScreen({ view, c }: { view: RoomView; c: RoomControls }) {
   const isPayer = view.room.payerId === view.me.memberId;
   const tabs: Array<typeof tab> = ["story", "members", ...(isHost ? ["host" as const] : []), ...(isPayer ? ["payer" as const] : [])];
   const canSit = view.room.status === "lobby" || view.room.status === "playing";
+  // 遊戲中沒座位的房主多半只當主持：選角收成一行，要入座再展開
+  const [picking, setPicking] = useState(false);
+  const folded = isHost && view.room.status === "playing" && !picking;
   return (
     <>
       <RoundBar view={view} act={c.act} />
@@ -71,12 +80,16 @@ export function RoomScreen({ view, c }: { view: RoomView; c: RoomControls }) {
       {tab === "story" && (
         <>
           <StoryView view={view} loadOlder={c.loadOlder} />
-          {view.me.cardId && view.room.status !== "closed" ? <ActionBox view={view} act={c.act} sendDraft={c.sendDraft} cancelDraft={c.cancelDraft} /> : canSit && <SeatPicker view={view} act={c.act} />}
+          {view.me.cardId && view.room.status !== "closed" ? <ActionBox view={view} act={c.act} sendDraft={c.sendDraft} cancelDraft={c.cancelDraft} /> : canSit && (folded ? (
+            <button type="button" className="ghost" data-testid="seat-unfold" onClick={() => setPicking(true)}>{t("seatShowPicker")}</button>
+          ) : (
+            <SeatPicker view={view} act={c.act} desktop={c.pairForm === false} />
+          ))}
         </>
       )}
-      {tab === "members" && <MemberList view={view} act={c.act} onLeave={c.onLeave} />}
+      {tab === "members" && <MemberList view={view} act={c.act} c={c} />}
       {tab === "host" && isHost && <HostPanel view={view} act={c.act} origin={c.origin} exportRoom={c.exportRoom} />}
-      {tab === "payer" && isPayer && <PayerPanel view={view} act={c.act} resumed={c.resumed} />}
+      {tab === "payer" && isPayer && <PayerPanel view={view} act={c.act} resumed={c.resumed} desktop={c.pairForm === false} />}
     </>
   );
 }
