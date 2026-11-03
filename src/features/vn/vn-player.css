@@ -67,8 +67,26 @@
   align-items: flex-end;
   transform-origin: bottom center;
   transition: filter 0.25s, transform 0.25s, opacity 0.25s, left 0.25s;
+  container-type: size;
 }
-.vn-sprite img,
+/* 兩層立繪：外框照定稿比例塞進槽位（contain），身體層鋪滿、臉層以臉框百分比定位 */
+.vn-layers {
+  position: relative;
+  height: min(100cqh, calc(100cqw * var(--h) / var(--w)));
+  aspect-ratio: var(--w) / var(--h);
+}
+.vn-layers img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.vn-layers .vn-face {
+  right: auto;
+  bottom: auto;
+}
+.vn-sprite > img,
+.vn-layers,
 .vn-silhouette {
   max-height: 100%;
   max-width: 100%;

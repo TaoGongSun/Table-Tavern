@@ -104,6 +104,22 @@ describe("stageAt", () => {
     expect(moved.location).toBe("Inn");
   });
 
+  it("each character keeps their last expression until they speak again", () => {
+    const stage = at([
+      d("a", "1", { expression: "happy" }),
+      d("b", "2", { expression: "angry" }),
+      n("x"),
+    ]);
+    expect(stage.expressions).toEqual({ a: "happy", b: "angry" });
+    expect(at([d("a", "1", { expression: "sad" }), d("a", "2")]).expressions.a).toBe("neutral");
+  });
+
+  it("@variant sticks until switched, across a location change", () => {
+    const stage = at([d("a", "1", { variant: "armor" }), bg("Inn"), d("a", "2"), d("b", "3")]);
+    expect(stage.variants).toEqual({ a: "armor" });
+    expect(at([d("a", "1", { variant: "armor" }), d("a", "2", { variant: "base" })]).variants.a).toBe("base");
+  });
+
   it("narration has no speaker; directives belong to the current cell only", () => {
     expect(at([d("a", "1"), n("x")]).speaker).toBeNull();
     const cells = [d("a", "1", { directive: "closeup" }), d("b", "2")];

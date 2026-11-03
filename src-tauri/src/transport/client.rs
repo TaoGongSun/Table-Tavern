@@ -843,6 +843,16 @@ fn image_base(config: &AppConfig) -> String {
 
 /// OpenRouter 專用 Images API（POST {base}/images）；回傳 data URL 或遠端圖片網址。
 pub async fn generate_image(config: &AppConfig, prompt: &str) -> Result<String, String> {
+    generate_image_with(config, prompt, "2:3", None).await
+}
+
+/// `generate_image` 帶長寬比與參考圖（data URL，送 `/images` 的 `input_references`；VN 立繪的變體與表情差分用）
+pub async fn generate_image_with(
+    config: &AppConfig,
+    prompt: &str,
+    aspect_ratio: &str,
+    reference: Option<&str>,
+) -> Result<String, String> {
     let api_key = config
         .api_keys
         .get("openrouter")
@@ -862,12 +872,19 @@ pub async fn generate_image(config: &AppConfig, prompt: &str) -> Result<String, 
     let request = client
         .post(format!("{}/images", image_base(config)))
         .bearer_auth(api_key)
-        .json(&serde_json::json!({
-            "model": model,
-            "prompt": prompt,
-            "aspect_ratio": "2:3",
-            "resolution": "1K",
-        }));
+        .json(&{
+            let mut body = serde_json::json!({
+                "model": model,
+                "prompt": prompt,
+                "aspect_ratio": aspect_ratio,
+                "resolution": "1K",
+            });
+            if let Some(url) = reference {
+                body["input_references"] =
+                    serde_json::json!([{ "type": "image_url", "image_url": { "url": url } }]);
+            }
+            body
+        });
     let reply = tokio::time::timeout(IMAGE_TIMEOUT, image_reply(request))
         .await
         .map_err(|_| format!("image request timed out after {IMAGE_TIMEOUT:?}"))??;

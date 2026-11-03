@@ -2,6 +2,7 @@
 // mainView 的所有權留在 App，這裡只依 App 判定好的值分派——四種卡片畫面的儲存、封存、
 // 刪除接線各不相同（新卡存完要留在編輯器、玩家卡走另一支善後、只有既有角色卡能真刪），
 // 原本的三元式逐條照抄過來，不合併。
+import { SpriteTab } from "../features/vn/SpriteTab";
 import { ReactNode } from "react";
 import { t } from "../i18n";
 import { AppConfig } from "../shared/contracts/backend-contracts";
@@ -64,6 +65,8 @@ interface MainViewProps {
   onWorldChangeTaken: (worldId: string, generation: number) => void;
   /** 遊玩畫面（messages＋composer）；元素在 App 建好傳進來 */
   playView: ReactNode;
+  /** VN 桌：角色卡編輯多一個立繪分頁 */
+  vnTable: boolean;
 }
 
 export function MainView({
@@ -105,6 +108,7 @@ export function MainView({
   worldChange,
   onWorldChangeTaken,
   playView,
+  vnTable,
 }: MainViewProps) {
   return (
     <div className="chat-body">
@@ -159,6 +163,11 @@ export function MainView({
           isBusy={isBusy}
           hidePrivate={hidePrivate}
           seatGuard={seatGuard}
+          spriteTab={
+            vnTable && cardKind === "character" ? (
+              <SpriteTab worldId={world} characterId={cardId} name={cardName} />
+            ) : undefined
+          }
         />
       ) : worldOpen ? (
         <WorldEditor

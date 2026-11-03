@@ -1,3 +1,4 @@
+use crate::generated_image::cli_fetch::CliJob;
 use crate::transport::responses as responses_transport;
 use crate::ui_msg::UiMsg;
 use crate::usage::log as usage_log;
@@ -464,8 +465,10 @@ pub(crate) async fn stream_turn_reporting_truncation(
     .await
 }
 
-/// 生圖呼叫：開 CLI 工具、帳本記 Image 形狀。`grok_session` 是呼叫端指定的 grok session id
-/// （帶 `-s`），圖進圖庫後由呼叫端憑它刪掉 grok-home 裡那份 session（含原始圖檔）；其他 CLI 忽略。
+/// 帶圖片的 CLI 呼叫（generated_image::cli_fetch）：工作在 `job.dir` 跑、參考圖走 `-i`，
+/// codex thread id／agy 對話 id 回填進 job 供取圖。`tools`＝生圖（開工具、帳本記 Image）；
+/// false＝看圖回文字（臉框），工具照聊天鎖死。
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn stream_image_via_transport(
     app: &tauri::AppHandle,
     config: &data::AppConfig,
@@ -473,22 +476,26 @@ pub(crate) async fn stream_image_via_transport(
     tier: data::Tier,
     world: Option<&str>,
     messages: &[transport::ChatMessage],
-    grok_session: Option<&str>,
+    job: &CliJob,
+    tools: bool,
 ) -> Result<String, String> {
     stream_turn_inner(
         app,
         config,
         transport_override,
-        true,
+        tools,
         tier,
         world,
         None,
         "",
         "",
         messages,
-        usage_log::PromptShape::Image,
+        match tools {
+            true => usage_log::PromptShape::Image,
+            false => usage_log::PromptShape::Oneshot,
+        },
         false,
-        grok_session,
+        Some(job),
         |_| {},
     )
     .await
@@ -509,7 +516,7 @@ async fn stream_turn_inner(
     messages: &[transport::ChatMessage],
     shape: usage_log::PromptShape,
     thinking_to_delta: bool,
-    grok_session: Option<&str>,
+    job: Option<&CliJob>,
     emit: impl FnMut(&str),
 ) -> Result<(String, bool), String> {
     // transport_override：生圖等功能可指定與聊天不同的連線（None＝跟隨 preferences.transport）。
@@ -618,7 +625,11 @@ async fn stream_turn_inner(
         }
         .into());
     }
-    let cli_working_dir = cli_workspace(app)?;
+    let cli_working_dir = match job {
+        Some(job) => job.dir.clone(),
+        None => cli_workspace(app)?,
+    };
+    let grok_session = job.and_then(|job| job.grok_session.as_deref());
     let prompt_dir = cli_prompt_dir(app)?;
 
     // 換幕摘要那次要拿實報的總輸入做估計校正（scene_budget）；其他單發沒有探針
@@ -671,11 +682,16 @@ async fn stream_turn_inner(
         "codex" => {
             // codex 沒有 system prompt 旗標，併進 prompt 開頭；未覆寫時模型用 CLI 預設
             let model = cli::tier_override(&config.tier_models, "codex", tier);
-            let args = cli::codex_args(model, cli::codex_effort_for(tier), allow_cli_tools);
+            let mut args = cli::codex_args(model, cli::codex_effort_for(tier), allow_cli_tools);
+            if let Some(reference) = job.and_then(|job| job.reference.as_ref()) {
+                // 參考圖旗標要在 stdin 的 `-` 之前
+                let at = args.len() - 1;
+                args.splice(at..at, ["-i".to_owned(), reference.display().to_string()]);
+            }
             let combined = format!("{system}\n\n{prompt}");
             let envs = cli_envs(app, "codex")?;
             codex_require_auth()?;
-            cli::run_cli(
+            cli::run_cli_watched(
                 &program,
                 &cli_working_dir,
                 &args,
@@ -702,6 +718,10 @@ async fn stream_turn_inner(
                     identity_out: summary_probe.as_ref().map(|probe| &probe.identity),
                 }),
                 emit,
+                cli::SessionWatch {
+                    id_out: job.map(|job| &job.codex_thread),
+                    ..Default::default()
+                },
             )
             .await
         }
@@ -752,6 +772,11 @@ async fn stream_turn_inner(
                 emit,
             )
             .await;
+            if let (Some(job), Ok(id)) = (job, conversation_id.lock()) {
+                if let Ok(mut slot) = job.agy_conversation.lock() {
+                    slot.clone_from(&id);
+                }
+            }
             result
         }
         "grok" => {

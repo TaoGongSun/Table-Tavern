@@ -1,5 +1,5 @@
+use crate::generated_image::cli_fetch::run_cli_image;
 use crate::generated_image::{self, GeneratedImage};
-use crate::transport::dispatch::{cli_workspace, grok_home_dir, stream_image_via_transport};
 use crate::ui_msg::UiMsg;
 use crate::{config_root, data, data_root, import, transport};
 use std::path::PathBuf;
@@ -77,112 +77,6 @@ pub(crate) fn read_gm_image(
     world_id: String,
 ) -> Result<Option<String>, String> {
     import::gm_image(&data_root(&app)?, &world_id).map_err(|error| error.to_string())
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ImageRef {
-    DataUrl(String),
-    Path(PathBuf),
-}
-
-/// 一行裡從路徑起點（POSIX 的「/」或 Windows 的「C:\」）切到最後一個圖片副檔名結尾。
-/// 兩邊的工作資料夾都可能帶空格（macOS 的「Application Support」、Windows 帶空格的使用者名），
-/// 逐詞切會把路徑攔腰切斷，改用這個切法連空格與尾隨標點一起處理。
-fn path_span(line: &str) -> Option<&str> {
-    let bytes = line.as_bytes();
-    // 磁碟機字母前不接英數，才不會把「https://…」的「s:/」當成路徑開頭
-    let drive = (0..bytes.len()).find(|&index| {
-        bytes[index].is_ascii_alphabetic()
-            && (index == 0 || !bytes[index - 1].is_ascii_alphanumeric())
-            && bytes.get(index + 1) == Some(&b':')
-            && matches!(bytes.get(index + 2), Some(b'\\' | b'/'))
-    });
-    let start = [drive, line.find('/')].into_iter().flatten().min()?;
-    let lowered = line.to_ascii_lowercase();
-    let end = [".png", ".jpg", ".jpeg", ".webp"]
-        .into_iter()
-        .filter_map(|extension| lowered.rfind(extension).map(|at| at + extension.len()))
-        .filter(|end| *end > start)
-        .max()?;
-    Some(&line[start..end])
-}
-
-/// 回覆裡的圖片候選，依出現順序去重；呼叫端挑第一個真的讀得到的。
-/// 先整行切（吃得下含空格的路徑），再退回逐詞切；
-/// 前導說明可能緊貼著路徑（「…浮水印。/Users/…png」），所以每個詞另外補一個「從斜線起算」的切法。
-pub fn extract_image_refs(text: &str) -> Vec<ImageRef> {
-    if let Some(start) = text.find("data:image/") {
-        let data_url = text[start..]
-            .split(|character: char| {
-                character.is_whitespace() || matches!(character, '\'' | '"' | '`')
-            })
-            .next()
-            .unwrap_or("");
-        if !data_url.is_empty() {
-            return vec![ImageRef::DataUrl(data_url.to_owned())];
-        }
-    }
-    let mut refs = Vec::new();
-    for candidate in text
-        .lines()
-        .filter_map(path_span)
-        .chain(text.split_whitespace())
-        .flat_map(|token| {
-            let token = token.trim_matches(|character: char| {
-                matches!(
-                    character,
-                    '\'' | '"' | '`' | '(' | ')' | '[' | ']' | '{' | '}' | '<' | '>' | ',' | ';'
-                )
-            });
-            let from_slash = token
-                .find('/')
-                .filter(|start| *start > 0)
-                .map(|start| &token[start..]);
-            [Some(token), from_slash].into_iter().flatten()
-        })
-        .filter(|candidate| is_image_extension(std::path::Path::new(candidate)))
-    {
-        let found = ImageRef::Path(PathBuf::from(candidate));
-        if !refs.contains(&found) {
-            refs.push(found);
-        }
-    }
-    refs
-}
-
-/// 沒抓到圖時附上 CLI 的最後一句（截 200 字）：模型不照暗號時，拒絕理由通常寫在那裡
-fn last_sentence(reply: &str) -> Option<String> {
-    let line = reply
-        .lines()
-        .map(str::trim)
-        .rfind(|line| !line.is_empty())?;
-    Some(line.chars().take(200).collect())
-}
-
-fn is_image_extension(path: &std::path::Path) -> bool {
-    path.extension()
-        .and_then(|extension| extension.to_str())
-        .map(str::to_ascii_lowercase)
-        .is_some_and(|extension| matches!(extension.as_str(), "png" | "jpg" | "jpeg" | "webp"))
-}
-
-/// CLI 沙盒只能寫工作目錄，生圖時會把圖搬進來，只為了回一個 app 讀得到的路徑。
-/// 圖讀進圖庫後這份就沒用了：三家 CLI 一律在生圖收尾清掉（含失敗那次留下的），免得越堆越多。
-/// CLI 會自己開子目錄（codex 的 output/imagegen/），所以往下遞迴；清空的目錄順手移除。
-fn clear_cli_workspace_images(workspace: &std::path::Path) {
-    let Ok(entries) = std::fs::read_dir(workspace) else {
-        return;
-    };
-    for path in entries.flatten().map(|entry| entry.path()) {
-        if path.is_dir() {
-            clear_cli_workspace_images(&path);
-            // world-write-exempt: 清的是 CLI 工作目錄裡的空資料夾，不是桌目錄
-            let _ = std::fs::remove_dir(&path); // 只有真的空了才成功，留有其他檔案的目錄不動
-        } else if is_image_extension(&path) {
-            // world-write-exempt: 清的是 CLI 工作目錄裡的中轉圖，不是桌目錄
-            let _ = std::fs::remove_file(path);
-        }
-    }
 }
 
 fn encode_base64(bytes: &[u8]) -> String {
@@ -345,107 +239,17 @@ pub(crate) async fn generate_character_image(
         )
         .await;
     }
-    // CLI 一律照送：能生圖的家（codex $imagegen／agy／grok）會存檔回路徑，其餘掃不到圖就失敗
-    // 兩個暗號分開問：生不出（沒能力／沒額度）與不肯生（內容規範）要給玩家不同的下一步
-    prompt.push_str(
-        "\nIf you are able to generate images, generate it now, save it as a PNG file, and reply with the absolute file path of the saved image. If you cannot generate images at all, reply exactly: NO_IMAGE. If you decline this particular request, reply exactly: REFUSED",
-    );
-    if transport_kind == "codex" {
-        prompt = format!("$imagegen {prompt}");
-    }
-    let messages = [transport::ChatMessage {
-        role: "user".to_owned(),
-        content: prompt,
-    }];
-    // grok 會把原圖連同整份 session 存在 grok-home，生圖 session 不會續用：自己給 id，圖進圖庫後刪掉
-    let grok_session = (transport_kind == "grok").then(crate::lanes::new_session_id);
-    let reply = stream_image_via_transport(
+    // CLI 一律照送：能生圖的家（codex $imagegen／agy／grok）存檔，取圖層從各家落點拿；其餘拿不到圖就失敗
+    let image = run_cli_image(
         &app,
         &config,
-        Some(&transport_kind),
-        transport::gm_tier(&config),
+        &transport_kind,
         Some(&world_id),
-        &messages,
-        grok_session.as_deref(),
+        &prompt,
+        None,
     )
     .await?;
-    let workspace = cli_workspace(&app)?;
-    let grok_home = grok_home_dir(&config_root(&app)?);
-    let grok = grok_session.as_deref().map(|id| (grok_home.as_path(), id));
-    store_cli_image_then_discard(&root, &world_id, &character_id, &reply, &workspace, grok).await
-}
-
-/// CLI 的圖進圖庫；成功才刪掉 grok 那份生圖 session。失敗不刪：原圖可能還沒複製走，
-/// 留給 grok-home 的定期清理〔作者裁決 2026-10-28〕。
-async fn store_cli_image_then_discard(
-    root: &std::path::Path,
-    world_id: &str,
-    character_id: &str,
-    reply: &str,
-    workspace: &std::path::Path,
-    grok: Option<(&std::path::Path, &str)>,
-) -> Result<String, String> {
-    let stored = store_cli_reply_image(root, world_id, character_id, reply, workspace).await;
-    if let (Ok(_), Some((grok_home, session_id))) = (&stored, grok) {
-        discard_grok_image_session(grok_home, session_id);
-    }
-    stored
-}
-
-/// 圖已經進圖庫：刪掉這次生圖的整份 grok session（含 images/ 裡的原始檔）。
-/// 刪不掉或找不到只記一行，不影響生圖結果；找不到多半是 grok 改了存放位置，記下來才看得出來。
-fn discard_grok_image_session(grok_home: &std::path::Path, session_id: &str) {
-    match crate::lanes::grok_session::remove_session(grok_home, session_id) {
-        Ok(0) => log::warn!("找不到 grok 生圖 session {session_id}，沒有可清的目錄"),
-        Ok(_) => {}
-        Err(error) => log::warn!("刪不掉 grok 生圖 session {session_id}：{error}"),
-    }
-}
-
-/// CLI 回話裡的圖：找出來讀進記憶體 → 清掉工作目錄的中轉檔 → 轉 PNG 進圖庫。
-async fn store_cli_reply_image(
-    root: &std::path::Path,
-    world_id: &str,
-    character_id: &str,
-    reply: &str,
-    workspace: &std::path::Path,
-) -> Result<String, String> {
-    let found = extract_image_refs(&reply)
-        .into_iter()
-        .find_map(|found| match found {
-            ImageRef::DataUrl(data_url) => Some(Ok(GeneratedImage::Encoded(data_url))),
-            // CLI 常回相對於自己工作目錄的路徑（codex 的 imagegen 存進 output/imagegen/）；
-            // 補上基準才讀得到，絕對路徑 join 後維持原樣
-            ImageRef::Path(path) => {
-                let path = workspace.join(path);
-                // 下面會清工作目錄，這裡就把檔案讀進記憶體
-                std::fs::metadata(&path).is_ok().then(|| {
-                    std::fs::read(&path)
-                        .map(GeneratedImage::Bytes)
-                        .map_err(|error| error.to_string())
-                })
-            }
-        })
-        // REFUSED／NO_IMAGE 是上面 prompt 跟 CLI 約好的暗號，前端據此各換一句人話；
-        // 兩個都沒對上時附最後一句原話，模型不照暗號時的拒絕理由通常就寫在那
-        .unwrap_or_else(|| {
-            Err(if reply.contains("REFUSED") {
-                "REFUSED".to_owned()
-            } else if reply.contains("NO_IMAGE") {
-                "NO_IMAGE".to_owned()
-            } else {
-                match last_sentence(reply) {
-                    Some(tail) => UiMsg::ImageMissingInReplyTail {
-                        tail: tail.to_owned(),
-                    }
-                    .into(),
-                    None => UiMsg::ImageMissingInReply.into(),
-                }
-            })
-        });
-    // 圖已經讀進記憶體，中轉檔失去用途；成功與失敗都清
-    clear_cli_workspace_images(workspace);
-    store_generated_image(root, world_id, character_id, found?).await
+    store_generated_image(&root, &world_id, &character_id, image).await
 }
 
 #[tauri::command]
@@ -485,9 +289,8 @@ pub(crate) fn delete_gallery_image(
 #[cfg(test)]
 mod tests {
     use super::{
-        clear_cli_workspace_images, encode_base64, extract_image_refs, image_file_data_url,
-        list_gallery_image_files, store_cli_image_then_discard, store_cli_reply_image,
-        store_generated_image, validate_gallery_component, ImageRef,
+        encode_base64, image_file_data_url, list_gallery_image_files, store_generated_image,
+        validate_gallery_component,
     };
     use crate::commands::NEXT_TEMP_ID;
     use crate::data;
@@ -496,93 +299,7 @@ mod tests {
     use std::sync::atomic::Ordering;
 
     #[test]
-    fn extract_image_refs_returns_data_url() {
-        assert_eq!(
-            extract_image_refs("圖片：`data:image/png;base64,cG5n`"),
-            vec![ImageRef::DataUrl("data:image/png;base64,cG5n".to_owned())]
-        );
-    }
-
-    #[test]
-    fn extract_image_refs_returns_existing_temp_file_path() {
-        let path = std::env::temp_dir().join(format!(
-            "table-tavern-image-{}-{}.png",
-            std::process::id(),
-            NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::write(&path, b"png").unwrap();
-        assert_eq!(
-            extract_image_refs(&format!("已生成 {}", path.display())),
-            vec![ImageRef::Path(path.clone())]
-        );
-        std::fs::remove_file(path).unwrap();
-    }
-
-    /// 真實 codex 輸出：前導說明與路徑之間沒有空白，整段當路徑會讀不到檔
-    #[test]
-    fn extract_image_refs_recovers_path_glued_to_preceding_sentence() {
-        assert!(
-            extract_image_refs("不含浮水印。/Users/me/.codex/generated_images/abc/call_x.png")
-                .contains(&ImageRef::Path(PathBuf::from(
-                    "/Users/me/.codex/generated_images/abc/call_x.png"
-                )))
-        );
-    }
-
-    /// macOS 的 CLI 工作資料夾在「Application Support」底下，逐詞切會把路徑攔腰切斷
-    #[test]
-    fn extract_image_refs_keeps_path_with_spaces() {
-        assert!(extract_image_refs(
-            "已存到 /Users/me/Library/Application Support/TableTavern/cli-workspace/fox.png，請查收"
-        )
-        .contains(&ImageRef::Path(PathBuf::from(
-            "/Users/me/Library/Application Support/TableTavern/cli-workspace/fox.png"
-        ))));
-    }
-
-    /// codex 的 imagegen 把圖存進工作目錄的子目錄，回覆給的是相對路徑
-    #[test]
-    fn extract_image_refs_keeps_relative_path() {
-        assert!(extract_image_refs("Saved to output/imagegen/fox.png")
-            .contains(&ImageRef::Path(PathBuf::from("output/imagegen/fox.png"))));
-    }
-
-    /// Windows 路徑沒有斜線可切，使用者名稱帶空格時同樣會斷
-    #[test]
-    fn extract_image_refs_keeps_windows_path_with_spaces() {
-        assert!(extract_image_refs(
-            "Saved to C:\\Users\\John Smith\\AppData\\Roaming\\TableTavern\\cli-workspace\\fox.PNG"
-        )
-        .contains(&ImageRef::Path(PathBuf::from(
-            "C:\\Users\\John Smith\\AppData\\Roaming\\TableTavern\\cli-workspace\\fox.PNG"
-        ))));
-    }
-
-    /// 中轉檔清理連 CLI 自開的子目錄一起掃，非圖片與還有東西的目錄留著
-    #[test]
-    fn clear_cli_workspace_images_removes_images_and_empty_dirs() {
-        let workspace = std::env::temp_dir().join(format!(
-            "table-tavern-workspace-{}-{}",
-            std::process::id(),
-            NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(workspace.join("output/imagegen")).unwrap();
-        std::fs::create_dir_all(workspace.join("keep")).unwrap();
-        std::fs::write(workspace.join("fox.PNG"), b"png").unwrap();
-        std::fs::write(workspace.join("output/imagegen/deep.png"), b"png").unwrap();
-        std::fs::write(workspace.join("note.txt"), b"keep").unwrap();
-        std::fs::write(workspace.join("keep/data.txt"), b"keep").unwrap();
-        clear_cli_workspace_images(&workspace);
-        assert!(!workspace.join("fox.PNG").exists());
-        assert!(!workspace.join("output").exists());
-        assert!(workspace.join("note.txt").exists());
-        assert!(workspace.join("keep/data.txt").exists());
-        std::fs::remove_dir_all(workspace).unwrap();
-    }
-
-    #[test]
-    fn extract_image_refs_returns_empty_without_image() {
-        assert_eq!(extract_image_refs("沒有附圖。"), Vec::new());
+    fn encode_base64_matches_standard_alphabet() {
         assert_eq!(encode_base64(b"png"), "cG5n");
     }
 
@@ -710,111 +427,5 @@ mod tests {
             .unwrap()
             .is_empty());
         let _ = std::fs::remove_dir_all(root);
-    }
-
-    /// CLI 存檔這條路：相對路徑讀進記憶體 → 清掉工作目錄 → 依位元組轉 PNG（副檔名說 png、
-    /// 實際是 JPEG）→ 進圖庫，從圖庫重讀與回傳值一致
-    #[tokio::test]
-    async fn cli_file_is_read_cleared_converted_and_stored() {
-        const JPEG: &[u8] = include_bytes!("../generated_image/fixtures/opaque.jpg");
-        let root = temp_root("gallery-cli");
-        let workspace = temp_root("cli-workspace");
-        std::fs::create_dir_all(workspace.join("output/imagegen")).unwrap();
-        std::fs::write(workspace.join("output/imagegen/fox.png"), JPEG).unwrap();
-        let world_id = data::create_world(&root, "生圖").unwrap();
-        let character_id = data::new_id();
-        let returned = store_cli_reply_image(
-            &root,
-            &world_id,
-            &character_id,
-            "Saved to output/imagegen/fox.png",
-            &workspace,
-        )
-        .await
-        .unwrap();
-        assert!(!workspace.join("output").exists());
-        let files = list_gallery_image_files(&root, &world_id, &character_id).unwrap();
-        assert_eq!(files.len(), 1);
-        let stored = root
-            .join("worlds")
-            .join(&world_id)
-            .join("gen-gallery")
-            .join(&character_id)
-            .join(&files[0]);
-        assert!(std::fs::read(&stored)
-            .unwrap()
-            .starts_with(b"\x89PNG\r\n\x1a\n"));
-        assert_eq!(image_file_data_url(&stored).unwrap(), returned);
-        std::fs::remove_dir_all(root).unwrap();
-        let _ = std::fs::remove_dir_all(workspace);
-    }
-
-    /// grok 生圖：模型直接回報 session 裡的原圖路徑也讀得到；圖進圖庫後整份 session 刪掉，群組留著
-    #[tokio::test]
-    async fn grok_image_session_is_removed_after_gallery_write() {
-        const JPEG: &[u8] = include_bytes!("../generated_image/fixtures/opaque.jpg");
-        let root = temp_root("gallery-grok");
-        let workspace = temp_root("grok-workspace");
-        let grok_home = temp_root("grok-home");
-        let session_id = crate::lanes::new_session_id();
-        let group = grok_home.join("sessions").join("%2Ftmp%2Fcli-workspace");
-        let session = group.join(&session_id);
-        std::fs::create_dir_all(session.join("images")).unwrap();
-        std::fs::write(session.join("images/1.jpg"), JPEG).unwrap();
-        std::fs::write(session.join("chat_history.jsonl"), b"{}\n").unwrap();
-        std::fs::write(group.join("prompt_history.jsonl"), b"{}\n").unwrap();
-        std::fs::create_dir_all(&workspace).unwrap();
-        let world_id = data::create_world(&root, "生圖").unwrap();
-        let character_id = data::new_id();
-        let reply = format!("Saved: {}", session.join("images/1.jpg").display());
-        store_cli_image_then_discard(
-            &root,
-            &world_id,
-            &character_id,
-            &reply,
-            &workspace,
-            Some((&grok_home, &session_id)),
-        )
-        .await
-        .unwrap();
-        assert_eq!(
-            list_gallery_image_files(&root, &world_id, &character_id)
-                .unwrap()
-                .len(),
-            1
-        );
-        assert!(!session.exists(), "生圖 session 整份刪掉");
-        assert!(group.join("prompt_history.jsonl").exists(), "群組層不動");
-        for dir in [root, workspace, grok_home] {
-            let _ = std::fs::remove_dir_all(dir);
-        }
-    }
-
-    /// grok 生圖失敗（沒拿到圖）：session 不刪，留給定期清理
-    #[tokio::test]
-    async fn grok_image_session_is_kept_when_generation_fails() {
-        let root = temp_root("gallery-grok-fail");
-        let workspace = temp_root("grok-workspace-fail");
-        let grok_home = temp_root("grok-home-fail");
-        let session_id = crate::lanes::new_session_id();
-        let session = grok_home.join("sessions").join("group").join(&session_id);
-        std::fs::create_dir_all(session.join("images")).unwrap();
-        std::fs::create_dir_all(&workspace).unwrap();
-        let (world_id, character_id) = (data::new_id(), data::new_id());
-        let error = store_cli_image_then_discard(
-            &root,
-            &world_id,
-            &character_id,
-            "REFUSED",
-            &workspace,
-            Some((&grok_home, &session_id)),
-        )
-        .await
-        .unwrap_err();
-        assert_eq!(error, "REFUSED");
-        assert!(session.exists());
-        for dir in [root, workspace, grok_home] {
-            let _ = std::fs::remove_dir_all(dir);
-        }
     }
 }

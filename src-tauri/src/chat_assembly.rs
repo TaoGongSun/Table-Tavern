@@ -32,6 +32,8 @@ pub(crate) struct GmMaterials {
     pub prompt_regex: transport::PromptRegex,
     /// 多人房間的真人玩家（multiplayer-room 包 3）；一般桌是空的
     pub party: Party,
+    /// VN 桌各角色可用的立繪變體（角色名, label）；非 VN 桌為空
+    pub vn_variants: Vec<(String, Vec<String>)>,
 }
 
 /// 多人房間的真人玩家（multiplayer-room 包 3，來源 `WorldState::player_card_ids`／`absent_card_ids`）：
@@ -196,6 +198,11 @@ pub(crate) fn gm_materials(root: &std::path::Path, world_id: &str) -> Result<GmM
     let takeover = data::is_interface_takeover(root, world_id, state.refactor_mode.as_deref());
     let mut greeting = greeting::policy(root, world_id, &state, &events, takeover);
     let regex = prompt_regex(root, world_id);
+    let cards = active_cards_with(root, world_id, greeting.strip_cards)?;
+    let vn_variants = match vn_table(&state) {
+        true => crate::vn_sprites::variant_roster(root, world_id, &cards),
+        false => Vec::new(),
+    };
     greeting.gm.example = greeting
         .gm
         .example
@@ -205,7 +212,8 @@ pub(crate) fn gm_materials(root: &std::path::Path, world_id: &str) -> Result<GmM
         book: TableBook::load(root, world_id)?,
         state,
         events,
-        cards: active_cards_with(root, world_id, greeting.strip_cards)?,
+        cards,
+        vn_variants,
         strip_greetings: greeting.strip_cards,
         opening: greeting.gm,
         prompt_regex: regex,
@@ -558,6 +566,7 @@ pub(crate) fn gm_lane_parts(
     );
     if vn_table(&materials.state) {
         frozen.push_str(&transport::vn_format_rules(lang));
+        frozen.push_str(&transport::vn_variant_note(lang, &materials.vn_variants));
     }
     let turn = transport::gm_lane_turn(
         scan,
@@ -597,6 +606,9 @@ pub(crate) fn gm_messages(
         messages[0]
             .content
             .push_str(&transport::vn_format_rules(lang));
+        messages[0]
+            .content
+            .push_str(&transport::vn_variant_note(lang, &materials.vn_variants));
     }
     messages.push(instruction_message);
     messages

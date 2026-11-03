@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useId, useRef, useState } from "react";
+import { FormEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm, message as showMessage, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -51,6 +51,7 @@ export function CardEditor({
   seatGuard,
   onConverted,
   isBusy,
+  spriteTab,
 }: {
   /** 頂列標題：卡種與角色名由 MainView 決定 */
   title: string;
@@ -82,7 +83,10 @@ export function CardEditor({
   onConverted: () => Promise<void>;
   /** 回合或換幕進行中：轉條目會刪卡，這段期間不轉 */
   isBusy: () => boolean;
+  /** VN 桌的立繪分頁（features/vn/SpriteTab）；有給才出分頁切換 */
+  spriteTab?: ReactNode;
 }) {
+  const [spritesShown, setSpritesShown] = useState(false);
   const [card, setCard] = useState<CharacterCard | null>(null);
   const [savedCardJson, setSavedCardJson] = useState("");
   // 圖像操作一律暫存，按儲存才落地（2026-07-27 使用者拍板）：
@@ -481,7 +485,23 @@ export function CardEditor({
       message={message}
       messageIsError={messageIsError}
     >
-      <form id={formId} onSubmit={save} className="settings-form">
+      {spriteTab && (
+        <div className="card-editor-tabs">
+          {([false, true] as const).map((sprites) => (
+            <button
+              key={String(sprites)}
+              type="button"
+              className="btn btn-sm"
+              aria-pressed={spritesShown === sprites}
+              onClick={() => setSpritesShown(sprites)}
+            >
+              {t(sprites ? "vnSpriteTab" : "cardSettingsTab")}
+            </button>
+          ))}
+        </div>
+      )}
+      {spriteTab && spritesShown && spriteTab}
+      <form id={formId} onSubmit={save} className="settings-form" hidden={Boolean(spriteTab) && spritesShown}>
         {/* 頂部「圖＋名字」一塊：左圖、右欄名字與圖片操作；欄寬不夠時右欄自動折到圖下方。
             其餘打字欄位維持全寬在下方 */}
         <div className="card-editor-top">

@@ -27,6 +27,7 @@ pub(crate) mod test_support;
 pub(crate) mod translate;
 mod turns;
 mod vn_format;
+pub(crate) mod vn_sprite_prompts;
 mod worldbook;
 
 #[cfg(test)]
@@ -47,9 +48,9 @@ pub(crate) use client::set_openrouter_origin;
 #[cfg(feature = "test-harness")]
 pub(crate) use client::DEFAULT_IMAGE_MODEL;
 pub use client::{
-    base_url, generate_image, gm_tier, refactor_expand_tier, resolve_model, stream_chat,
-    stream_chat_models, tier_model, ui_language, PromptCacheUsage, SmartChatResult, SseParser,
-    StreamChatResult, TierModel, DEFAULT_BASE_URL,
+    base_url, generate_image, generate_image_with, gm_tier, refactor_expand_tier, resolve_model,
+    stream_chat, stream_chat_models, tier_model, ui_language, PromptCacheUsage, SmartChatResult,
+    SseParser, StreamChatResult, TierModel, DEFAULT_BASE_URL,
 };
 pub(crate) use client::{describe, http_error};
 pub use context::{gm_prompt_full_entries, PromptEntry};
@@ -85,5 +86,5 @@ pub use turns::{
 };
 pub use vn_format::{
     vn_character_rules, vn_closing, vn_format_rules, vn_narrate_instruction, vn_reroll_closing,
-    vn_reroll_instruction, VN_EXPRESSIONS,
+    vn_reroll_instruction, vn_variant_note, VN_EXPRESSIONS,
 };

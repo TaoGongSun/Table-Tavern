@@ -120,6 +120,13 @@ pub(crate) async fn chat_with_character(
     // 模型照歷史格式自加的本輪「名字：」：畫面串流、落檔與 lane 預期回聲都剝掉（char-line-prefix）。
     // VN 桌不剝（空字串）：`名字: 「台詞」` 本身就是對白行，歷史也不加前綴
     let vn = chat_assembly::vn_table(&state);
+    let variant_note = match vn {
+        true => transport::vn_variant_note(
+            &lang,
+            &crate::vn_sprites::variant_roster(&root, &world_id, &cards),
+        ),
+        false => String::new(),
+    };
     let own_prefix = match vn {
         true => String::new(),
         false => transport::speaker_prefix(&card.name, &transport::ui_language(&config)),
@@ -150,7 +157,7 @@ pub(crate) async fn chat_with_character(
         let sole = provider == lanes::LaneProvider::Claude
             && chat_assembly::sole_present_character(&root, &world_id, &card.id, &events)?;
         let shape = lanes::chars_lane_shape(provider, sole);
-        let (frozen, turn) = chat_assembly::character_lane_parts(
+        let (mut frozen, turn) = chat_assembly::character_lane_parts(
             &card,
             &cards,
             player.as_ref(),
@@ -160,6 +167,7 @@ pub(crate) async fn chat_with_character(
             &lang,
             shape.hoist_private,
         );
+        frozen.push_str(&variant_note);
         let call = prepare_play_lane_call(&app, &config, card.tier, provider).await?;
         world_scan::landing::land(&root, &world_id, scene, &turn_id, &perspective, &scan)?;
         // 串流過濾在 lane 內按 attempt 做，這裡收的已是過濾後的字
@@ -213,7 +221,7 @@ pub(crate) async fn chat_with_character(
     // api／codex 走共線組裝（api-shared-lane 包 B）：全角色共用一份與「這輪是誰」
     // 無關的前綴，本輪指定在尾端那則 user。attendant_label 與 closing 傳空字串，因為這份
     // messages 已經自足——台詞自帶名字前綴、指示已在尾端，補了會重複（見 cli::flatten_messages）。
-    let messages = transport::assemble_shared_messages_with(
+    let mut messages = transport::assemble_shared_messages_with(
         &card,
         &cards,
         player.as_ref(),
@@ -226,6 +234,7 @@ pub(crate) async fn chat_with_character(
         &prompt_regex,
         vn,
     );
+    messages[0].content.push_str(&variant_note);
     // roster 記的是套用策略前的有效角色數，不是實際帶進組裝器的張數——沒有這個數字，
     // 日後零命中退回（no-cache-model-optout）產生的 solo 就跟天然單角色桌長得一樣
     // buffer 收原文（中止半截再從原文剝一次）；畫面只收過濾後的字

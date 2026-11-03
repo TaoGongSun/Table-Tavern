@@ -137,6 +137,37 @@ pub async fn run_cli(
     usage_log: Option<UsageLog<'_>>,
     on_delta: impl FnMut(&str),
 ) -> DataResult<String> {
+    run_cli_watched(
+        program,
+        working_dir,
+        args,
+        stdin_data,
+        envs,
+        protocol,
+        thinking_to_delta,
+        policy,
+        usage_log,
+        on_delta,
+        SessionWatch::default(),
+    )
+    .await
+}
+
+/// `run_cli` 加上 thread id 觀測：生圖要拿 codex 的 thread id 去讀 `generated_images/<thread>/`。
+#[allow(clippy::too_many_arguments)]
+pub async fn run_cli_watched(
+    program: &Path,
+    working_dir: &Path,
+    args: &[String],
+    stdin_data: &str,
+    envs: &[(String, String)],
+    protocol: &CliProtocol,
+    thinking_to_delta: bool,
+    policy: RunawayPolicy,
+    usage_log: Option<UsageLog<'_>>,
+    on_delta: impl FnMut(&str),
+    session: SessionWatch<'_>,
+) -> DataResult<String> {
     match run_cli_cancellable(
         program,
         working_dir,
@@ -149,7 +180,7 @@ pub async fn run_cli(
         usage_log,
         on_delta,
         None,
-        SessionWatch::default(),
+        session,
     )
     .await?
     {

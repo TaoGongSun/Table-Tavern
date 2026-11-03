@@ -106,6 +106,10 @@ export interface Stage {
   /** 槽位：[左, 右, 中]，值是角色 id */
   slots: (string | null)[];
   names: Record<string, string>;
+  /** 每位角色最近一句的表情，沿用到下次說話 */
+  expressions: Record<string, string>;
+  /** 每位角色目前的 `@變體`，沿用到下次切換（換地點清場也保留） */
+  variants: Record<string, string>;
   speaker: string | null;
   directive: "closeup" | "shake" | null;
   location: string | null;
@@ -120,6 +124,8 @@ export function stageAt(cells: FlatCell[], index: number): Stage {
   const stage: Stage = {
     slots: [null, null, null],
     names: {},
+    expressions: {},
+    variants: {},
     speaker: null,
     directive: null,
     location: null,
@@ -139,6 +145,8 @@ export function stageAt(cells: FlatCell[], index: number): Stage {
     if (cell.type !== "dialogue" || !cell.speaker_id || cell.speaker_id === PLAYER_ID) continue;
     const id = cell.speaker_id;
     stage.names[id] = cell.speaker_name;
+    stage.expressions[id] = cell.expression;
+    if (cell.variant) stage.variants[id] = cell.variant;
     if (!stage.slots.includes(id)) {
       const free = SLOT_ORDER.find((slot) => stage.slots[slot] === null);
       const idle = recent.find((who) => stage.slots.includes(who));

@@ -147,6 +147,51 @@ export interface VnEventCells {
   cells: VnCell[];
 }
 
+// VN 立繪（Rust `vn_sprites`，plans/vn-mode-pkg7.md §3）
+export interface FaceBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface SpriteMeta {
+  version: number;
+  face: FaceBox;
+  /** 臉框是預設框：立繪分頁提示手調 */
+  face_fallback: boolean;
+  variants: { key: string; label: string; face: FaceBox | null }[];
+  default: string;
+  revs: Record<string, number>;
+}
+
+/** `vn_sprites_read_all`／`vn_sprite_read`：定稿與已生好的臉層（data URL） */
+export interface SpriteView {
+  meta: SpriteMeta;
+  width: number;
+  height: number;
+  body: string;
+  faces: Record<string, string>;
+  /** 變體鍵 → 身體圖（共用組已縮成定稿尺寸）與獨立表情組的臉層 */
+  variant_layers: Record<string, { body: string; width: number; height: number; faces: Record<string, string> }>;
+}
+
+export interface SpriteState {
+  sprite: SpriteView | null;
+  candidates: string[];
+}
+
+/** `vn-sprite-status` 事件與 `vn_sprites_status` */
+export interface SpriteSlotStatus {
+  worldId: string;
+  characterId: string;
+  /** null＝定稿與共用表情組；變體鍵＝該變體的獨立表情組 */
+  variant: string | null;
+  expression: string;
+  state: "queued" | "running" | "done" | "failed";
+  reason: string | null;
+}
+
 /** 串流中的暫定格：最後一格可能還在長 */
 export interface VnText {
   cells: VnCell[];

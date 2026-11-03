@@ -44,6 +44,23 @@ pub fn vn_format_rules(lang: &str) -> String {
     }
 }
 
+/// 可用立繪變體（plans/vn-mode-pkg7.md §5）：GM 與角色線都附在 VN 規範後；沒變體的角色不列，全都沒有回空字串。
+pub fn vn_variant_note(lang: &str, roster: &[(String, Vec<String>)]) -> String {
+    let lines: Vec<String> = roster
+        .iter()
+        .filter(|(_, labels)| !labels.is_empty())
+        .map(|(name, labels)| format!("- {name}: {}", labels.join(", ")))
+        .collect();
+    if lines.is_empty() {
+        return String::new();
+    }
+    let head = match scaffold_en(lang) {
+        true => "\n## Sprite variants\nWhen a character changes outfit or pose, add `@variant` after the expression, e.g. `Name (happy @variant): \"line\"`; it stays until switched, and `@base` switches back. Use only these:\n",
+        false => "\n## 立繪變體\n角色換裝或換姿態時，在表情後加 `@變體`，例如 `名字 (happy @變體): 「台詞」`；沿用到下次切換，寫 `@base` 換回。只能用下列：\n",
+    };
+    format!("{head}{}\n", lines.join("\n"))
+}
+
 /// 角色線 system 附加段（全卡共用的穩定前綴，不帶名字；這一輪演誰在回合尾指定）。
 pub fn vn_character_rules(lang: &str) -> String {
     let expressions = VN_EXPRESSIONS.join(", ");

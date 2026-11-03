@@ -19,7 +19,12 @@
 - 包 1 已知限制：聊天視圖看 VN 桌會看到原始標記；名單外名字沒加括號的「X：台詞」算旁白；`[bg]` 與圍欄 place 以指示要求一致、不強制；改名後舊對白對不到 id；有介面殼的卡匯進 VN 桌仍被 `reject_character_turn_on_takeover` 擋角色回合；換一組錯誤碼（`VN_REROLL_BUSY`／`STALE`／`FAILED`／`UNAVAILABLE`）未進 i18n，包 2 接按鈕時補；`[chapter]`／`[ending]` 寫法未進給模型的規範（包 5）。
 - 包 2（大案，核心估 600）2026-11-01 完成，在分支 `vn-mode`（commit 5ff4f199、b09f8f37、7327c23c）：方案 [plans/vn-mode-pkg2.md](../plans/vn-mode-pkg2.md)（Sol 方案審 2 輪必改 3 全採納、驗收 1 輪 PASS 無必改；方案串 01a19548、驗收串 01a1957a）。落地 `features/vn/`：`VnPlayer`（工具列、共用動作鎖、換一組錯誤碼、效能標記）、`Stage`、`DialogueBox`、`ChoicePanel`、`Backlog`、`useVnCells`（整幕重抓＋串流暫定格＋凍結快照換手）、`useVnPlayback`（游標、打字機、auto、skip、結尾狀態）、`vn-cells.ts`（攤平、可播判定、`realignCursor`、`stageAt`）、`vn-player.css`；`VnTableView` 刪除；包 0 限制 (a)(b)(d) 已解（精靈開著不出開場白面板、聊天頂列「VN 視圖」鈕、主題）。實測修正連帶改包 1 的 `vn_script.rs`（卡名括號註記對名、剝「旁白：」）與角色規範一句。實作核心約 1050（含 CSS，1.75 倍）、測試約 430；verify 13 步綠；測試通道真模型實測三個時間見方案 §7。
 - 包 2 已知限制：進桌從最後一則非玩家事件開頭播、不記讀到哪；skip 不分已讀；打字速度與 auto 時間固定；立繪是角色卡原圖（可能帶背景）、表情不換圖；背景只有地點字卡；單角色桌 GM 常自己寫名單角色台詞（Haiku 遵守度低，包 1 指示已要求不替名單角色說話）。
-- **開包 7**（立繪管線，大案，核心估 800；方案審＋驗收，真生圖實測含接縫目視）：開工前先照總綱 §11 末條補實測報告「定案前還缺」三項。順序之後：3 → 4 → 9 → 5 → 6 → 8。
+- 包 7（大案，立繪管線）2026-11-01 完成，在分支 `vn-mode`：前置補測見 [實測報告](../plans/vn-mode-image-spike.md)「包 7 前補測」（裁頭重繪勝出、CLI 抓圖改讀 thread 目錄）；方案 [plans/vn-mode-pkg7.md](../plans/vn-mode-pkg7.md)（Sol 方案審 2 輪 PASS；作者裁決：權重首次下載、來源 Codex／agy／API、拆 7a／7b、`ort` 靜態連結）。
+  - 7a（commit aeee6713、22747c73、0c330bb7；驗收 2 輪 PASS）：取圖層改讀 codex thread／agy brain 目錄（既有角色生圖一併修）、`vn_sprites/`（sprite.json、裁頭重繪臉層＋對齊門檻＋定稿 alpha 裁剪、背景佇列可續生、定稿世代號）、Stage 兩層疊圖與退路鏈、精靈 ③、立繪分頁。
+  - 7b（commit 9397bab6、e78256c9、4390ccef、eb9b3062；驗收 2 輪 PASS，串 01a19650）：變體（共用／獨立表情組，換定稿前共用組自動轉獨立組）、`@變體` 上台沿用與 GM／角色線提示詞注入、去背（`ort` 靜態連結＋BiRefNet 首用下載、SHA-256 驗證，執行檔 +27 MB）、立繪來源偏好 `vn_sprite_source`（Codex／agy／API）、變體鍵路徑驗證兩層擋。
+  - 核心 7a 約 2000–2300、7b 約 1035（高於估計，收尾審過無不必要程式碼，見 process-log 第 3 次檢討）。通道真生圖共約 29 張：雙角色、closeup、重開續生、改臉框、變體、換定稿、去背，接縫目視皆過。
+  - 已知限制：對齊門檻沒有真位移樣本；臉框不合格退預設框（獨立組退預設框時分頁不提示）；agy 生圖與 API 來源未實生（API 排實機驗收佇列，agy 撞 429）；新增變體改角色線固定前段、resume 線斷一次快取；ort 共用環境第二次推論與 Windows DirectML 連結待驗（看第一次 CI）；`AI_IMAGE_FREE_KEY` 在立繪分頁顯示原文；預算量測未算變體那段提示詞。
+- **下一步：開包 3**（背景管線，中案，核心估 250，只驗收 1 次）。之後順序：4 → 9 → 5 → 6 → 8。
 - 整案結案才進 main：分支歷史整理成一包一筆（以 commit 訊息前綴「包 N」分包，含立案、方案、施工、驗收修正、收尾各筆，各壓成一筆；子代理 commit 署名是 Opus 5.5，壓縮時統一）。
 
 ## 立案摘要〔作者裁決 2026-08-07〕

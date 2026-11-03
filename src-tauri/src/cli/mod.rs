@@ -35,7 +35,9 @@ pub use request::{
     claude_session_args, codex_args, codex_effort_for, codex_session_args, flatten_messages,
     grok_args, grok_envs, grok_payload, grok_session_args, tier_override,
 };
-pub use runner::{is_stall_error, is_updating_error, run_cli, run_cli_cancellable, CliFinish};
+pub use runner::{
+    is_stall_error, is_updating_error, run_cli, run_cli_cancellable, run_cli_watched, CliFinish,
+};
 #[cfg(target_os = "windows")]
 pub(crate) use spawn::auto_update_off;
 #[cfg(unix)]

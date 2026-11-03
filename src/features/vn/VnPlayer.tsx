@@ -11,6 +11,7 @@ import { ChoicePanel } from "./ChoicePanel";
 import { DialogueBox } from "./DialogueBox";
 import { Stage } from "./Stage";
 import { useVnCells } from "./useVnCells";
+import { useSprites } from "./useSprites";
 import { useVnPlayback } from "./useVnPlayback";
 import { rerollError, stageAt } from "./vn-cells";
 import "./vn-player.css";
@@ -73,6 +74,7 @@ export function VnPlayer({
   });
   realignRef.current = play.realign;
   const stage = useMemo(() => stageAt(vn.cells, play.flatIndex), [vn.cells, play.flatIndex]);
+  const sprites = useSprites(worldId);
   const [logOpen, setLogOpen] = useState(false);
   const [rerollMessage, setRerollMessage] = useState<string | null>(null);
 
@@ -193,7 +195,7 @@ export function VnPlayer({
         </button>
       </header>
       {notice}
-      <Stage stage={stage} images={images} cellKey={play.current?.key ?? ""} />
+      <Stage stage={stage} sprites={sprites} images={images} cellKey={play.current?.key ?? ""} />
       <div className="vn-bottom">
         {choices && (
           <ChoicePanel

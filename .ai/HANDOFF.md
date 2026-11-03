@@ -6,7 +6,7 @@
 
 ## 進行中
 - [multiplayer-friends-test](handoffs/multiplayer-friends-test.md) — 給朋友測試的多人連線版：房間預設正式伺服器、簡中下載頁以多人連線為主軸（已上線，等朋友實機測試）
-- [vn-mode](handoffs/vn-mode.md) — VN 桌型（大案、分包 0–9，分支 `vn-mode`）：包 0、1、2 完成（Sol 驗收 PASS，2026-11-01）；下一步包 7 立繪管線（大案，方案先送審）
+- [vn-mode](handoffs/vn-mode.md) — VN 桌型（大案、分包 0–9，分支 `vn-mode`）：包 0、1、2 完成（Sol 驗收 PASS，2026-11-01）；包 7 完成（7a／7b 驗收 PASS），下一步包 3 背景管線（中案）
 - [card-mvu-shim](handoffs/card-mvu-shim.md) — 卡片介面沙盒墊 MVU 讀寫變數：全部已合併 main，剩實測佇列梯 1 項目（含 iframe 內按鈕實際互動）
 
 ## 等實機驗收（順序見[實測佇列](reference/verification-queue.md)）

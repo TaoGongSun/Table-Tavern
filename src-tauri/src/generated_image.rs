@@ -2,6 +2,8 @@
 //! 依 magic bytes 認格式（不信宣稱的 MIME）。PNG 走嚴格版（合格原樣、APNG 留預設靜態圖、過大縮圖，
 //! 壞檔拒收不修）；JPEG／WebP 解碼重編 PNG，過大一樣縮。
 //! 失敗一律回帶穩定前綴的錯誤，呼叫端失敗就不寫圖庫。
+pub(crate) mod cli_fetch;
+
 use crate::import::png_clean::{self, Stored, CLEAN_LIMITS};
 use base64::Engine;
 use std::time::Duration;

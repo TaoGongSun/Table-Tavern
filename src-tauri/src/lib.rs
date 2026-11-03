@@ -27,6 +27,7 @@ mod transport;
 mod ui_msg;
 mod updater;
 mod usage;
+mod vn_sprites;
 mod world_info;
 mod world_scan;
 
@@ -229,6 +230,20 @@ pub fn run() {
             commands::vn::read_vn_cells,
             commands::vn::parse_vn_text,
             commands::vn::vn_reroll_choices,
+            commands::vn_sprites::vn_sprites_read_all,
+            commands::vn_sprites::vn_sprite_read,
+            commands::vn_sprites::vn_sprite_candidate,
+            commands::vn_sprites::vn_sprite_generate,
+            commands::vn_sprites::vn_sprite_pick,
+            commands::vn_sprites::vn_sprite_upload,
+            commands::vn_sprites::vn_sprite_set_face,
+            commands::vn_sprites::vn_sprite_reroll,
+            commands::vn_sprites::vn_sprite_delete,
+            commands::vn_sprites::vn_sprites_fill,
+            commands::vn_sprites::vn_sprites_status,
+            commands::vn_sprites::vn_sprite_variant_generate,
+            commands::vn_sprites::vn_sprite_variant_upload,
+            commands::vn_sprites::vn_sprite_variant_delete,
             commands::settings::usage_report,
             commands::scene::advance_scene,
             commands::scene::scene_budget,
@@ -364,6 +379,16 @@ mod command_classification {
         "undo_last_import",
         "upsert_worldbook_entry",
         "vn_reroll_choices",
+        "vn_sprite_delete",
+        "vn_sprite_generate",
+        "vn_sprite_pick",
+        "vn_sprite_reroll",
+        "vn_sprite_set_face",
+        "vn_sprite_upload",
+        "vn_sprite_variant_delete",
+        "vn_sprite_variant_generate",
+        "vn_sprite_variant_upload",
+        "vn_sprites_fill",
         "worldbook_entry_to_character",
         "write_character",
         "write_state",
@@ -398,6 +423,10 @@ mod command_classification {
         "read_state",
         "read_transcript",
         "read_vn_cells",
+        "vn_sprite_candidate",
+        "vn_sprite_read",
+        "vn_sprites_read_all",
+        "vn_sprites_status",
         "read_world_md",
         "rollback_preview",
         "read_world_readonly",

@@ -410,6 +410,7 @@ export function AppWorkspace({
               onPendingRefactorCardTaken={onPendingRefactorCardTaken}
               worldChange={worldChange}
               onWorldChangeTaken={takeWorldChange}
+              vnTable={onShowVn !== undefined}
               playView={
                 roomMode ? (
                   <DesktopRoom ctl={deskRoom} />

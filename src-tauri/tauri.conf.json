@@ -50,7 +50,12 @@
       "src/data/scene/opencc/NOTICE.txt": "licenses/OpenCC/NOTICE.txt",
       "../node_modules/opencc-js/LICENSE": "licenses/opencc-js/LICENSE",
       "../node_modules/opencc-js/LICENSES/Apache-2.0.txt": "licenses/opencc-js/Apache-2.0.txt",
-      "../node_modules/opencc-js/THIRD_PARTY_LICENSES.md": "licenses/opencc-js/THIRD_PARTY_LICENSES.md"
+      "../node_modules/opencc-js/THIRD_PARTY_LICENSES.md": "licenses/opencc-js/THIRD_PARTY_LICENSES.md",
+      "src/vn_sprites/licenses/onnxruntime-LICENSE.txt": "licenses/onnxruntime/LICENSE.txt",
+      "src/vn_sprites/licenses/onnxruntime-ThirdPartyNotices.txt": "licenses/onnxruntime/ThirdPartyNotices.txt",
+      "src/vn_sprites/licenses/ort-LICENSE-MIT.txt": "licenses/ort/LICENSE-MIT.txt",
+      "src/vn_sprites/licenses/ort-LICENSE-APACHE.txt": "licenses/ort/LICENSE-APACHE.txt",
+      "src/vn_sprites/licenses/BiRefNet-LICENSE.txt": "licenses/BiRefNet/LICENSE.txt"
     },
     "icon": [
       "icons/32x32.png",

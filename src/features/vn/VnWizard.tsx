@@ -1,8 +1,11 @@
 // VN 開桌精靈骨架：① 起點、② 展開重用一句話開桌（GenerateTableDialog＋genesis，建出 vn 桌）；
 // ① 也可以改選「我有角色卡」：交給匯入流程開 VN 桌，匯完回到這裡的 ②。
-// 從匯入來的桌角色與世界書已就位，直接從 ② 起（聖經生成在後續版本）。③ 立繪、④ 開演目前只是佔位步驟。
+// 從匯入來的桌角色與世界書已就位，直接從 ② 起（聖經生成在後續版本）。③ 立繪挑定稿（VnSpriteStep），
+// ④ 開演＝進桌，進桌後背景補表情。
 // 精靈結束＝進那張 vn 桌；中途關掉時桌已建好、留在大廳清單裡。
+import { invoke } from "@tauri-apps/api/core";
 import { useRef, useState } from "react";
+import { VnSpriteStep } from "./VnSpriteStep";
 import { t, type MsgKey } from "../../i18n";
 import { Dialog } from "../../shared/ui/Dialog";
 import { GenerateTableDialog } from "../lobby/GenerateTableDialog";
@@ -44,6 +47,7 @@ export function VnWizard({
   // GenerateTableDialog 建好桌後會接著呼叫 onClose：用 ref 同步記下，別讓那一下把整個精靈關掉
   const worldId = useRef(start.worldId);
   const cardInput = useRef<HTMLInputElement>(null);
+  const [spritesReady, setSpritesReady] = useState(false);
 
   if (step === "genesis") {
     return (
@@ -89,6 +93,15 @@ export function VnWizard({
 
   const current = STEPS[step];
   const next: PlaceholderStep | null = current.next;
+  const advance = () => {
+    if (next !== null) setStep(next);
+    else if (worldId.current !== null) {
+      // ④ 開演：開始在背景補表情（播放器可能早已掛著，不能只靠它掛載時排）
+      invoke("vn_sprites_fill", { worldId: worldId.current }).catch(() => {});
+      onFinish(worldId.current);
+    }
+  };
+  const sprites = step === "sprites" && worldId.current !== null;
   return (
     <Dialog
       title={t(current.title)}
@@ -96,19 +109,28 @@ export function VnWizard({
       onDismiss={onClose}
       closeButton
       end={
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={() => {
-            if (next !== null) setStep(next);
-            else if (worldId.current !== null) onFinish(worldId.current);
-          }}
-        >
-          {t(next !== null ? "vnNext" : "vnStart")}
-        </button>
+        <>
+          {sprites && (
+            <button type="button" className="btn" onClick={advance}>
+              {t("vnSpriteSkipStep")}
+            </button>
+          )}
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={sprites && !spritesReady}
+            onClick={advance}
+          >
+            {t(next !== null ? "vnNext" : "vnStart")}
+          </button>
+        </>
       }
     >
-      <p>{t(current.body)}</p>
+      {sprites ? (
+        <VnSpriteStep worldId={worldId.current!} onReady={setSpritesReady} />
+      ) : (
+        <p>{t(current.body)}</p>
+      )}
     </Dialog>
   );
 }

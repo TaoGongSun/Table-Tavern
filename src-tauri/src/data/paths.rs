@@ -139,6 +139,19 @@ pub(crate) fn gallery_dir(root: &Path, world_id: &str, character_id: &str) -> Da
         .join(character_id))
 }
 
+/// VN 立繪目錄：worlds/<world_id>/vn/sprites/<character_id>（plans/vn-mode-pkg7.md §3）。
+pub(crate) fn vn_sprite_dir(
+    root: &Path,
+    world_id: &str,
+    character_id: &str,
+) -> DataResult<PathBuf> {
+    validate_id(character_id)?;
+    Ok(world_dir(root, world_id)?
+        .join("vn")
+        .join("sprites")
+        .join(character_id))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::data::test_support::*;

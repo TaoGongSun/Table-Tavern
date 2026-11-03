@@ -54,6 +54,9 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 rquickjs = { version = "=0.14.0", features = ["loader"] }
 # GM 回覆端剝除判斷某行是否在程式碼區塊內，照 CommonMark 規則（transport/reply_cleanup.rs）；只用解析器。
 pulldown-cmark = { version = "=0.13.4", default-features = false }
+# VN 立繪去背（vn_sprites/matting.rs）：BiRefNet-lite。ONNX Runtime 由 build 時下載的預編靜態庫連進執行檔，不附動態庫；
+# rc 版鎖版，升版要重跑去背實測。
+ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "download-binaries", "tls-rustls", "api-17"] }
 
 # CLI 更新：程序群組整組殺、在途 pid 存活檢查（cli/update）；已在依賴樹內
 [target.'cfg(unix)'.dependencies]

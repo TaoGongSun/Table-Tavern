@@ -1,0 +1,203 @@
+/* VN 立繪：精靈 ③ 的定稿挑選、角色編輯頁的立繪分頁 */
+.card-editor-tabs {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.8rem;
+}
+/* 立繪分頁開著時藏起角色設定表單（表單類別自帶 display，hidden 屬性蓋不過） */
+.card-editor-tabs ~ form[hidden] {
+  display: none;
+}
+.card-editor-tabs .btn[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--ink-1);
+}
+
+/* 立繪透明：棋盤底才看得出去背邊緣 */
+.vn-picker-image,
+.vn-face-frame,
+.vn-expr-view,
+.vn-picker-thumb img {
+  background: repeating-conic-gradient(var(--surface-2) 0 25%, var(--surface-3) 0 50%) 0 0 / 16px 16px;
+}
+.vn-picker {
+  display: grid;
+  gap: 0.5rem;
+}
+.vn-picker-main {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+.vn-picker-image {
+  max-height: 340px;
+  max-width: 100%;
+  object-fit: contain;
+}
+.vn-picker-empty {
+  display: grid;
+  place-items: center;
+  width: 180px;
+  aspect-ratio: 2 / 3;
+  border: 1px dashed var(--line);
+  color: var(--ink-3);
+}
+.vn-picker-busy {
+  position: absolute;
+  top: 0.5rem;
+  padding: 0.15rem 0.6rem;
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  color: var(--ink-2);
+}
+.vn-picker-actions,
+.vn-picker-strip,
+.vn-sprite-tab-actions,
+.vn-face-actions,
+.vn-expr-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+.vn-picker-thumb {
+  padding: 0;
+  border: 2px solid transparent;
+  background: none;
+  cursor: pointer;
+}
+.vn-picker-thumb[aria-pressed="true"] {
+  border-color: var(--accent);
+}
+.vn-picker-thumb img {
+  display: block;
+  height: 72px;
+}
+
+.vn-sprite-step {
+  display: grid;
+  gap: 1rem;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.vn-sprite-row h3 {
+  margin: 0 0 0.4rem;
+}
+.vn-sprite-done {
+  margin-left: 0.6rem;
+  color: var(--ok);
+  font-size: var(--fs-ui);
+}
+
+.vn-sprite-tab {
+  display: grid;
+  gap: 1rem;
+}
+.vn-sprite-tab-top {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+.vn-sprite-tab-base h3 {
+  margin: 0 0 0.4rem;
+}
+.vn-face-editor {
+  display: grid;
+  gap: 0.4rem;
+}
+.vn-face-frame {
+  position: relative;
+  /* 臉框外壓暗的陰影只留在這張圖裡，不蓋到頁面上其他編輯器 */
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+}
+.vn-face-frame > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.vn-face-box {
+  position: absolute;
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 0 9999px rgb(0 0 0 / 0.35);
+  cursor: move;
+}
+.vn-face-handle {
+  position: absolute;
+  right: -7px;
+  bottom: -7px;
+  width: 14px;
+  height: 14px;
+  background: var(--accent);
+  cursor: nwse-resize;
+}
+
+.vn-expr-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 0.8rem;
+}
+.vn-expr-cell {
+  margin: 0;
+  display: grid;
+  align-content: start;
+  gap: 0.3rem;
+}
+.vn-expr-view {
+  position: relative;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+.vn-expr-figure {
+  position: relative;
+  width: 100%;
+  aspect-ratio: var(--w) / var(--h);
+}
+.vn-expr-figure img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.vn-expr-figure .vn-face {
+  right: auto;
+  bottom: auto;
+}
+.vn-expr-state {
+  margin-left: 0.4rem;
+  color: var(--ink-3);
+  font-size: var(--fs-ui);
+}
+.vn-expr-failed {
+  color: var(--danger);
+}
+.vn-sprite-step > .btn {
+  justify-self: start;
+}
+
+.vn-source {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+.vn-variants,
+.vn-variant {
+  display: grid;
+  gap: 0.5rem;
+}
+.vn-variants h3 {
+  margin: 0;
+}
+.vn-expr-figure.vn-variant-figure {
+  width: 120px;
+}
+/* 說明小字放進按鈕列時不吃全域的負上邊距（會往上凸、被捲動邊界切掉） */
+.vn-face-actions .field-note,
+.vn-picker-actions .field-note,
+.vn-source .field-note {
+  margin: 0;
+}
