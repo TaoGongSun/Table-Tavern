@@ -39,7 +39,7 @@
 - `scripts/check-structure.mjs` 目前只走 `src/`（第 12 行 `SRC`）：改成同一套規則也走 `web/src/`，根層允許清單分開列。
 - `scripts/verify.mjs` 加 web 步驟（web 的 vitest＋build）；`.github/workflows/verify.yml` 多一步 `npm ci --prefix web`。
 - `docs/STRUCTURE.md` 補一節「web/」。
-- 部署在包 9 才設，手動觸發（D12、D42）。
+- 部署在包 9 才設；正式分支 main 推送即自動部署（D12、D42）。
 
 ### 2.3 資料流
 - 瀏覽器直連 `openrouter.ai/api/v1`（CORS `*`，見 4.1）；沒有自家後端、沒有代理。
@@ -125,7 +125,7 @@
 ### 部署與上線檢查（包 9）
 - 已備：`web/site-headers.ts` 建置時寫出 `dist/_headers`（宿主 CSP 只給 `/`、不放 meta；`/sandbox`、`/sandbox.html` 只給 `frame-ancestors 'self'`；`/assets/*` 一年 immutable，其餘用 Pages 預設 `max-age=0, must-revalidate`）；`web/public/404.html` 讓缺檔回 404（不退回首頁，免得缺檔資產拿到首頁 HTML 又被長快取）。不需要 `_redirects`（下載頁走 `#download`，沒有路徑路由）。端點：只有 e2e 模式吃 `VITE_TT_*`，正式建置一律官方網址。OAuth 回呼網址＝執行時的 `location.origin`，OpenRouter 不必預先登記。
 - Cloudflare Pages 專案（Git 連接，D42）：專案 `table-tavern`、正式分支 `web-version`（結案後改 `main`）、root directory `web`、build command `npm ci --prefix .. && npm run build`、output `dist`、環境變數 `NODE_VERSION=26`；網址 `table-tavern.pages.dev`（D43）。Pages 在 root（`web/`）有 lockfile 就自動裝 web 的依賴，但 `@desktop/*` 共用的桌面版模組要根目錄的 mathjs、dompurify、marked 等，所以 build command 先 `npm ci --prefix ..` 裝根目錄依賴。
-- 手動部署（D12）：建好後在專案 Settings › Builds 關掉正式分支自動部署、Preview branches 設 None；每次上線由作者在儀表板 Deployments 對正式分支手動建立部署。
+- 自動部署（D12）：Settings › Builds › Branch control 開啟正式分支 main 自動部署、Preview branches 設 None；推上 main 即上線。
 - 主線可機械驗：`cd web && npm run e2e`（產物照 Pages 行為託管、套 `_headers`）、`npm run smoke:dist`（正式建置：CSP 用官方端點、宿主開站無 CSP 攔截、外連被擋、沙盒行內腳本與 eval 可跑）。
 - 部署後實開（要真網域）：OpenRouter 授權回呼成功並清網址、模型清單與 `/key` 讀得到（CORS）、回應標頭與上面一致、卡片介面掛得起來、下載頁版本與連結。
 
@@ -256,7 +256,7 @@
 - **D9 試打**：不試打。理由：不額外佔每日免費次數。
 - **D10 下載提示**：固定節點提示（額度用完、匯出存檔、碰到桌面版才有的功能），加上頁首常駐、隨時可點的下載連結——常駐連結是裁決內容，不是可省細節。理由：干擾少、隨時找得到。
 - **D11 額度用完文案**：只導向下載。理由：引流到桌面版。
-- **D12 部署**：手動觸發 workflow。理由：CI 打包等作者說了才觸發。落實方式＝Cloudflare 儀表板手動部署（D42）。
+- **D12 部署**：推上 main 即自動部署〔作者裁決 2026-11-03〕。理由：一案驗完才進 main，進 main 就可上線。
 - **D13 桌面版匯入入口**：併進既有匯入、依檔案內容自動辨識。理由：玩家不用找新按鈕。
 - **D14 首發語言**：十語系。理由：與桌面版一致。
 - **D15 反向通用**：不做桌面→網頁。理由：桌面桌一桌多角色、GM、多幕、狀態樹，對不回一桌一卡。
@@ -312,7 +312,7 @@
 
 ### 包 9 拍板（D42–D43）
 全部〔作者裁決 2026-10-07〕。
-- **D42 部署方式**：Cloudflare Pages 用 Git 連接，關掉正式分支自動部署、Preview branches 設 None，每次上線由作者在儀表板手動部署，不走 GitHub Actions；設定見「部署與上線檢查」。理由：設定在儀表板點完、不用管 API token 與 secrets，關掉自動部署就守得住 D12。
+- **D42 部署方式**：Cloudflare Pages 用 Git 連接，Preview branches 設 None；正式分支 main 自動部署，不走 GitHub Actions；設定見「部署與上線檢查」。理由：設定在儀表板點完、不用管 API token 與 secrets。
 - **D43 正式網域**：先用 `table-tavern.pages.dev`，要自訂網域再加。理由：不用買網域、立刻能用；換網域不用改程式（OAuth 回呼取執行時網址），只是舊網域瀏覽器裡的存檔與金鑰帶不過去。
 
 ## 六、驗收方式

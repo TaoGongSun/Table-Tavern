@@ -19,7 +19,7 @@ const browser = await webkit.launch();
 try {
   step("宿主頁的 CSP 標頭用正式端點");
   const csp = (await fetch(server.url)).headers.get("content-security-policy");
-  assert.match(csp, /connect-src https:\/\/openrouter\.ai https:\/\/api\.github\.com;/);
+  assert.match(csp, /connect-src https:\/\/openrouter\.ai https:\/\/api-inference\.modelscope\.cn https:\/\/api\.siliconflow\.cn https:\/\/api\.github\.com;/);
   assert.match(csp, /script-src 'self';/);
   assert.equal((await fetch(new URL("sandbox", server.url))).headers.get("content-security-policy"), "frame-ancestors 'self'");
 
@@ -36,7 +36,7 @@ try {
     return route.abort();
   });
   await page.goto(server.url);
-  await page.getByText("連接 OpenRouter 就能開始玩").waitFor();
+  await page.getByText("選一張角色卡開始").waitFor();
   await page.getByTestId("download-link").click();
   await page.getByText("桌面版還沒有正式版").waitFor();
   assert.ok(external.some((url) => url.startsWith("https://api.github.com/repos/TaoGongSun/Table-Tavern/releases/latest")));

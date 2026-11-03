@@ -54,18 +54,30 @@ export default function App({ callback, lang: initialLang }: { callback: OAuthCa
   const release = useLatestRelease(!cn);
   const downloadPage = useDownloadPage();
   const [game, setGame] = useState<GameSetup | null>(null);
+  // 首開就是選卡畫面，按開始才要金鑰：沒金鑰就記下這桌、帶去連線面板，連好自動進桌〔作者裁決 2026-11-03〕
+  const [pendingGame, setPendingGame] = useState<GameSetup | null>(null);
+  const [connectOpen, setConnectOpen] = useState(false);
+  const showConnect = !session.apiKey && (pendingGame !== null || connectOpen);
+  const closeConnect = () => {
+    setPendingGame(null);
+    setConnectOpen(false);
+  };
+  const startGame = (next: GameSetup) => (session.apiKey ? setGame(next) : setPendingGame(next));
+  useEffect(() => {
+    if (!session.apiKey) return;
+    setConnectOpen(false);
+    if (pendingGame) {
+      setGame(pendingGame);
+      setPendingGame(null);
+    }
+  }, [session.apiKey, pendingGame]);
   // 回合進行中不能換供應商或模型（舊回合收尾前不換 session）
   const [chatBusy, setChatBusy] = useState(false);
   const busy = game !== null && chatBusy;
   // 換到一家沒存金鑰的供應商＝離開這張桌（同登出）：不然貼完金鑰聊天畫面會從開桌時的快照重掛，
-  // 自動存檔還會拿那份舊快照蓋掉較新的存檔。桌都在存檔庫，從「接著玩」回來
-  const [leftTable, setLeftTable] = useState(false);
+  // 自動存檔還會拿那份舊快照蓋掉較新的存檔。桌都在存檔庫，回到選卡畫面從「接著玩」回來
   useEffect(() => {
-    if (session.apiKey) setLeftTable(false);
-    else if (game) {
-      setLeftTable(true);
-      setGame(null);
-    }
+    if (!session.apiKey && game) setGame(null);
   }, [session.apiKey, game]);
   const [quotaDismissed, setQuotaDismissed] = useState(false);
   const exhausted = session.quota.kind === "exhausted";
@@ -118,7 +130,7 @@ export default function App({ callback, lang: initialLang }: { callback: OAuthCa
             />
           )}
           <DownloadLink release={release} />
-          {session.apiKey && (
+          {session.apiKey ? (
             <button
               type="button"
               className="ghost"
@@ -129,6 +141,12 @@ export default function App({ callback, lang: initialLang }: { callback: OAuthCa
             >
               {t("logout")}
             </button>
+          ) : (
+            !showConnect && (
+              <button type="button" className="ghost" data-testid="topbar-connect" onClick={() => setConnectOpen(true)}>
+                {t("topConnect")}
+              </button>
+            )
           )}
         </div>
       </header>
@@ -143,29 +161,26 @@ export default function App({ callback, lang: initialLang }: { callback: OAuthCa
       )}
 
       <main className="stage">
-        {!session.apiKey ? (
+        {showConnect && (
           <div className="connect-stack">
-            {connection.previous && (
-              <button type="button" className="ghost connect-back" data-testid="connect-back" onClick={connection.back}>
-                {t("connectBack", { provider: providerName(connection.previous) })}
-              </button>
-            )}
+            <button type="button" className="ghost connect-back" data-testid="connect-back" onClick={closeConnect}>
+              {t("connectBack")}
+            </button>
             {isCn(connection.provider) ? (
               // 依供應商重掛：貼到一半的草稿不會跟著換到另一家、送去那家
-              <KeyPanel key={connection.provider} provider={connection.provider} session={connection.keyed} />
+              <KeyPanel
+                key={connection.provider}
+                provider={connection.provider}
+                session={connection.keyed}
+                choices={connection.choices}
+                onSwitch={connection.choose}
+              />
             ) : (
               <ConnectPanel session={connection.openrouter} />
             )}
-            {leftTable && (
-              <p className="key-note" data-testid="left-table">
-                {t("leftTableHint")}
-              </p>
-            )}
-            {hasSettings && (
-              <SettingsMenu className="connect-more" summary={t("settingsToggle")} connection={connection} busy={false} />
-            )}
           </div>
-        ) : !globalsReady ? null : game ? (
+        )}
+        {!globalsReady ? null : game ? (
           <ChatView
             game={game}
             session={session}
@@ -175,7 +190,10 @@ export default function App({ callback, lang: initialLang }: { callback: OAuthCa
             onBusyChange={setChatBusy}
           />
         ) : (
-          <CardPicker onStart={setGame} saves={saves} persisted={persisted} release={release} />
+          // 連線面板開著時只藏起來不卸載：匯入到一半的卡、填的名字，按返回都還在
+          <div style={{ display: showConnect ? "none" : "contents" }}>
+            <CardPicker onStart={startGame} saves={saves} persisted={persisted} release={release} />
+          </div>
         )}
       </main>
 

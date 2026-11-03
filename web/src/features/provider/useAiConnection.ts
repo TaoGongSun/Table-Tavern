@@ -21,9 +21,6 @@ export interface AiConnection {
   /** 目前語系列出的供應商 */
   choices: ProviderId[];
   choose: (id: ProviderId) => void;
-  /** 這次從哪一家換過來（給「返回」用）；沒換過或那家這個語系沒列就是 null */
-  previous: ProviderId | null;
-  back: () => void;
   /** 換到這個語系會用哪一家 */
   providerFor: (lang: Lang) => ProviderId;
   /** 中國供應商的手選模型；null＝自動（寫死名單） */
@@ -38,7 +35,6 @@ export interface AiConnection {
 export function useAiConnection(callback: OAuthCallback | null, lang: Lang): AiConnection {
   // OpenRouter 授權回來＝玩家選了 OpenRouter。實際用哪家跟著目前語系算，換語系就跟著換
   const [chosen, setChosen] = useState<ProviderId | null>(() => (callback ? "openrouter" : storedProvider()));
-  const [previous, setPrevious] = useState<ProviderId | null>(null);
   const choices = providersFor(lang);
   const provider = effectiveProvider(lang, chosen);
   const [models, setModels] = useState<Record<CnProviderId, string | null>>(() => ({
@@ -55,20 +51,11 @@ export function useAiConnection(callback: OAuthCallback | null, lang: Lang): AiC
 
   const choose = useCallback(
     (id: ProviderId) => {
-      if (id === provider) return;
       rememberProvider(id);
-      setPrevious(provider);
       setChosen(id);
     },
-    [provider],
+    [],
   );
-
-  const back = useCallback(() => {
-    if (!previous) return;
-    rememberProvider(previous);
-    setPrevious(null);
-    setChosen(previous);
-  }, [previous]);
 
   const chooseModel = useCallback(
     (model: string | null) => {
@@ -97,8 +84,6 @@ export function useAiConnection(callback: OAuthCallback | null, lang: Lang): AiC
     provider,
     choices,
     choose,
-    previous: previous && previous !== provider && choices.includes(previous) ? previous : null,
-    back,
     providerFor: (next) => effectiveProvider(next, chosen),
     model: isCn(provider) ? models[cnId] : null,
     chooseModel,

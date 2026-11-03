@@ -2,10 +2,22 @@
 import { useState } from "react";
 import { checkApiKey } from "@desktop/features/ai-connection/api-key-check";
 import { t } from "../../i18n";
-import { CN_PROVIDERS, type CnProviderId } from "./providers";
+import { providerName } from "./ProviderSettings";
+import { CN_PROVIDERS, type CnProviderId, type ProviderId } from "./providers";
 import type { KeyedSession } from "./useKeyedSession";
 
-export function KeyPanel({ provider, session }: { provider: CnProviderId; session: KeyedSession }) {
+export function KeyPanel({
+  provider,
+  session,
+  choices,
+  onSwitch,
+}: {
+  provider: CnProviderId;
+  session: KeyedSession;
+  /** 這個語系列出的供應商，面板頂端做成分頁 */
+  choices: ProviderId[];
+  onSwitch: (id: ProviderId) => void;
+}) {
   const config = CN_PROVIDERS[provider];
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
@@ -14,6 +26,21 @@ export function KeyPanel({ provider, session }: { provider: CnProviderId; sessio
 
   return (
     <section className="connect panel" data-testid="key-panel">
+      {choices.length > 1 && (
+        <div className="key-tabs" role="group">
+          {choices.map((id) => (
+            <button
+              key={id}
+              type="button"
+              className={id === provider ? "key-tab active" : "key-tab"}
+              aria-pressed={id === provider}
+              onClick={() => onSwitch(id)}
+            >
+              {providerName(id)}
+            </button>
+          ))}
+        </div>
+      )}
       <h1>{t("cnConnectTitle", { provider: name })}</h1>
       <p>{t("cnConnectBody", { provider: name })}</p>
       <ol className="key-steps">

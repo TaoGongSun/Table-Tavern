@@ -1,6 +1,8 @@
 // 簡中情境（cn-web-provider）：首開預設魔搭貼令牌面板、頂欄沒有下載鈕也不打 GitHub；矽基流動貼錯金鑰當場擋；
 // 回合中供應商／模型切換停用、按停止收尾後才能換，換了下一句打新的一家、帶那家自己的金鑰；手選模型失敗只報錯
-// 不換別支；換家後有返回鈕；其他語系只有 OpenRouter；整段沒有任何請求帶付費模型。TT_E2E_SHOTS＝資料夾：手機尺寸截圖存到那裡。
+// 不換別支；首開是選卡畫面、按開始才要令牌、返回回選卡；簡中碰不到 OpenRouter、兩家用分頁切；換到其他語系
+// 只有 OpenRouter、沒金鑰就離開桌；
+// 整段沒有任何請求帶付費模型。TT_E2E_SHOTS＝資料夾：手機尺寸截圖存到那裡。
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { devices } from "playwright";
@@ -24,9 +26,15 @@ export async function runCnScenario({ browser, base, fake, step, consoleErrors }
   const requestsBefore = fake.state.cnRequests.length;
   const input = page.getByPlaceholder("输入你的行动或对话…");
 
-  step("簡中首開：預設魔搭的貼令牌面板（四步、各開官方頁），沒有下載鈕、不打 GitHub");
+  step("簡中首開：選卡畫面；按開始才到預設魔搭的貼令牌面板（兩家分頁、四步各開官方頁），返回回選卡；下載頁只給 pCloud、不打 GitHub");
   await page.goto(base);
+  await page.getByText("选一张角色卡开始").waitFor();
+  await page.getByRole("button", { name: "开始", exact: true }).click();
   await page.getByTestId("key-panel").getByText("连接魔搭 ModelScope就能开始玩").waitFor();
+  assert.equal(await page.getByTestId("key-panel").getByRole("button", { name: "OpenRouter" }).count(), 0, "簡中碰不到 OpenRouter");
+  await page.getByTestId("connect-back").click();
+  await page.getByText("选一张角色卡开始").waitFor();
+  await page.getByTestId("topbar-connect").click();
   assert.equal(await page.getByTestId("key-panel").locator("ol li").count(), 4);
   await page.getByTestId("download-link").click();
   const cta = page.getByTestId("download-cta").locator("a");
@@ -38,16 +46,16 @@ export async function runCnScenario({ browser, base, fake, step, consoleErrors }
   step("貼到一半的草稿不跟著換家（兩個方向）：換到矽基流動輸入框是空的、送不出");
   const draftBox = page.getByPlaceholder("粘贴令牌或密钥");
   await draftBox.fill(MS_KEY);
-  await page.getByText("更多设置").click();
-  await page.getByLabel("硅基流动 SiliconFlow").click();
+  const tab = (name) => page.getByTestId("key-panel").getByRole("button", { name, exact: true });
+  await tab("硅基流动 SiliconFlow").click();
   await page.getByTestId("key-panel").getByText("连接硅基流动 SiliconFlow就能开始玩").waitFor();
   assert.equal(await draftBox.inputValue(), "", "魔搭的草稿不帶到矽基流動");
   assert.ok(await page.getByRole("button", { name: "使用这把密钥" }).isDisabled());
   await draftBox.fill(SF_KEY);
-  await page.getByLabel("魔搭 ModelScope").click();
+  await tab("魔搭 ModelScope").click();
   await page.getByTestId("key-panel").getByText("连接魔搭 ModelScope就能开始玩").waitFor();
   assert.equal(await draftBox.inputValue(), "", "矽基流動的草稿不帶到魔搭");
-  await page.getByLabel("硅基流动 SiliconFlow").click();
+  await tab("硅基流动 SiliconFlow").click();
   assert.equal(await draftBox.inputValue(), "");
   assert.ok(!fake.state.cnRequests.slice(requestsBefore).some((request) => request.auth), "沒按送出就沒有帶金鑰的請求");
 
@@ -60,13 +68,14 @@ export async function runCnScenario({ browser, base, fake, step, consoleErrors }
   await page.getByRole("button", { name: "使用这把密钥" }).click();
   await page.getByText("选一张角色卡开始").waitFor();
 
-  step("頂欄換回魔搭：沒存令牌就回到面板，貼上後開桌聊天，打寫死名單第 1 支、不帶 X-Title");
+  step("頂欄換回魔搭：沒存令牌就留在選卡畫面，按開始才要令牌，貼上後自動進那桌聊天，打寫死名單第 1 支、不帶 X-Title");
   await page.getByTestId("provider-menu").click();
   await page.getByLabel("魔搭 ModelScope").click();
+  await page.getByTestId("topbar-connect").waitFor();
+  await page.getByRole("button", { name: "开始", exact: true }).click();
   await page.getByTestId("key-panel").waitFor();
   await page.getByPlaceholder("粘贴令牌或密钥").fill(MS_KEY);
   await page.getByRole("button", { name: "使用这把密钥" }).click();
-  await page.getByRole("button", { name: "开始", exact: true }).click();
   await input.fill("你好");
   await page.getByRole("button", { name: "发送" }).click();
   await page.getByText("雪還在下，先喝口湯暖暖身子吧。").waitFor();
@@ -126,23 +135,18 @@ export async function runCnScenario({ browser, base, fake, step, consoleErrors }
 
   assert.equal(fake.state.githubHits, githubBefore, "中國供應商模式不打 GitHub");
 
-  step("桌上換到沒存金鑰的 OpenRouter＝離開桌：換回魔搭後落在選卡畫面，不從舊快照重掛桌");
+  step("簡中供應商選單沒有 OpenRouter；桌上換到繁中＝OpenRouter 沒金鑰＝離開桌回選卡畫面、沒有供應商設定；換回簡中用魔搭，不從舊快照重掛桌");
   await page.getByTestId("provider-menu").click();
-  await page.getByLabel("OpenRouter").click();
-  await page.getByRole("button", { name: "用 OpenRouter 登录" }).waitFor();
-  await page.getByTestId("left-table").getByText("接着玩", { exact: false }).waitFor();
-  await page.getByTestId("connect-back").getByText("返回魔搭 ModelScope").click();
-  await page.getByText("选一张角色卡开始").waitFor();
-  assert.equal(await page.getByTestId("message-user").count(), 0, "沒有重掛舊桌");
-
-  step("換語系分流：繁中只有 OpenRouter、沒有供應商設定；換回簡中回到魔搭");
+  assert.equal(await page.getByLabel("OpenRouter").count(), 0, "簡中碰不到 OpenRouter");
+  await page.getByTestId("provider-menu").click();
   await page.getByTestId("lang-picker").selectOption("zh-TW");
-  await page.getByRole("button", { name: "用 OpenRouter 登入" }).waitFor();
-  assert.equal(await page.getByText("更多設定").count(), 0, "其他語系不列魔搭、矽基流動");
+  await page.getByText("選一張角色卡開始").waitFor();
+  await page.getByTestId("topbar-connect").waitFor();
   assert.equal(await page.getByTestId("provider-menu").count(), 0);
   await page.getByTestId("lang-picker").selectOption("zh-CN");
   await page.getByText("选一张角色卡开始").waitFor();
   assert.equal(await page.getByTestId("provider-menu").textContent(), "魔搭 ModelScope");
+  assert.equal(await page.getByTestId("message-user").count(), 0, "沒有重掛舊桌");
 
   step("整段：沒有請求帶付費模型；每家只收到自己的金鑰");
   const all = fake.state.cnRequests.slice(requestsBefore);

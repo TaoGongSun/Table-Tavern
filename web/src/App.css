@@ -262,10 +262,6 @@ button:disabled {
   margin-top: 0;
 }
 
-.connect-back {
-  margin-bottom: 10px;
-}
-
 .key-steps {
   padding-left: 22px;
   line-height: 1.6;
@@ -285,11 +281,21 @@ button:disabled {
   font-size: 14px;
 }
 
-.connect-more {
-  margin-top: 14px;
+.connect-back {
+  margin-bottom: 10px;
 }
 
-.connect-more summary,
+.key-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.key-tab.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .provider-menu summary {
   cursor: pointer;
   color: var(--muted);

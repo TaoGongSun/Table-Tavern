@@ -5,7 +5,8 @@ import { MODELSCOPE_API, SILICONFLOW_API } from "../../shared/endpoints/origins"
 
 export type ProviderId = "openrouter" | "modelscope" | "siliconflow";
 export type CnProviderId = Exclude<ProviderId, "openrouter">;
-export const PROVIDER_IDS: ProviderId[] = ["modelscope", "siliconflow", "openrouter"];
+export const CN_PROVIDER_IDS: CnProviderId[] = ["modelscope", "siliconflow"];
+export const PROVIDER_IDS: ProviderId[] = [...CN_PROVIDER_IDS, "openrouter"];
 
 export interface LineupModel {
   id: string;

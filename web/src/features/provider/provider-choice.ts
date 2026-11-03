@@ -1,9 +1,9 @@
 // 玩家選的供應商、手選模型、各家金鑰都存在這個瀏覽器（localStorage）；存不了就只在這次有效。
-// 供應商跟著目前語系分流：簡中列魔搭、矽基流動、OpenRouter，其他語系只有 OpenRouter（作者裁決 2026-11-03）。
-// 選過且這個語系有列就以選的為準；否則已有 OpenRouter 金鑰的舊玩家照用 OpenRouter，簡中預設魔搭。
+// 供應商跟著目前語系分流：簡中只有魔搭、矽基流動（碰不到 OpenRouter），其他語系只有 OpenRouter〔作者裁決 2026-11-03〕。
+// 選過且這個語系有列就以選的為準；否則簡中挑存了金鑰的那家，都沒有就魔搭。
 import type { Lang } from "../../i18n";
-import { browserStorage, loadKey } from "../openrouter/key-store";
-import { PROVIDER_IDS, type CnProviderId, type ProviderId } from "./providers";
+import { browserStorage } from "../openrouter/key-store";
+import { CN_PROVIDER_IDS, PROVIDER_IDS, type CnProviderId, type ProviderId } from "./providers";
 
 const PROVIDER = "tt-web:provider";
 const modelKey = (id: CnProviderId) => `tt-web:model:${id}`;
@@ -30,7 +30,7 @@ export function write(name: string, value: string | null, storage = browserStora
 }
 
 /** 這個語系列出的供應商，依顯示順序 */
-export const providersFor = (lang: Lang): ProviderId[] => (lang === "zh-CN" ? PROVIDER_IDS : ["openrouter"]);
+export const providersFor = (lang: Lang): ProviderId[] => (lang === "zh-CN" ? CN_PROVIDER_IDS : ["openrouter"]);
 
 export function storedProvider(storage = browserStorage("local")): ProviderId | null {
   const stored = read(PROVIDER, storage);
@@ -39,8 +39,8 @@ export function storedProvider(storage = browserStorage("local")): ProviderId | 
 
 export function effectiveProvider(lang: Lang, chosen: ProviderId | null, storage = browserStorage("local")): ProviderId {
   if (chosen && providersFor(lang).includes(chosen)) return chosen;
-  if (lang === "zh-CN" && !loadKey(storage)) return "modelscope";
-  return "openrouter";
+  if (lang !== "zh-CN") return "openrouter";
+  return CN_PROVIDER_IDS.find((id) => read(keyName(id), storage)) ?? "modelscope";
 }
 
 export const rememberProvider = (id: ProviderId) => write(PROVIDER, id);

@@ -71,9 +71,9 @@ try {
   assert.equal((await fetch(`${base}/`)).status, 404, "// 應回 404");
   assert.equal((await fetch(new URL("download", base))).status, 404, "導覽頁走 #download，/download 不是頁面");
 
-  step("未登入：常駐下載連結打開下載頁（桌面版導覽）——沒有正式版就說明，上下兩組都只給發佈頁，附特色、安裝繞過說明與功能對照；只有一顆關閉鈕，關掉回原畫面");
+  step("未登入：首開就是選卡畫面；常駐下載連結打開下載頁（桌面版導覽）——沒有正式版就說明，上下兩組都只給發佈頁，附特色、安裝繞過說明與功能對照；只有一顆關閉鈕，關掉回原畫面");
   await page.goto(base);
-  await page.getByText("連接 OpenRouter 就能開始玩").waitFor();
+  await page.getByText("選一張角色卡開始").waitFor();
   await page.getByTestId("download-link").click();
   await page.getByTestId("download-page").waitFor();
   assert.ok(page.url().endsWith("#download"));
@@ -89,7 +89,7 @@ try {
   await page.getByRole("button", { name: "回到遊戲" }).click();
   assert.equal(await page.getByTestId("download-page").count(), 0);
   assert.ok(!page.url().includes("#"));
-  await page.getByText("連接 OpenRouter 就能開始玩").waitFor();
+  await page.getByText("選一張角色卡開始").waitFor();
   // 分享的網址 /#download 直接打開導覽頁；Esc 關掉、網址清乾淨
   await page.goto(new URL("/#download", base).href);
   await page.getByTestId("download-page").waitFor();
@@ -97,6 +97,14 @@ try {
   await page.keyboard.press("Escape");
   assert.equal(await page.getByTestId("download-page").count(), 0);
   assert.ok(!page.url().includes("#"));
+  await page.getByText("選一張角色卡開始").waitFor();
+
+  step("沒金鑰按開始才帶去連線面板，返回回選卡畫面；頂欄連線鈕也開得到");
+  await page.getByRole("button", { name: "開始", exact: true }).click();
+  await page.getByText("連接 OpenRouter 就能開始玩").waitFor();
+  await page.getByTestId("connect-back").click();
+  await page.getByText("選一張角色卡開始").waitFor();
+  await page.getByTestId("topbar-connect").click();
   await page.getByText("連接 OpenRouter 就能開始玩").waitFor();
 
   step("PKCE 授權：回呼後網址清乾淨、金鑰只進 localStorage");
@@ -494,9 +502,10 @@ try {
   assert.match(await files.nth(1).getAttribute("href"), /_aarch64\.dmg$/);
   await page.getByRole("button", { name: "回到遊戲" }).click();
 
-  step("登出：清掉金鑰、回到登入畫面");
+  step("登出：清掉金鑰、回到選卡畫面，頂欄換成連線鈕");
   await page.getByRole("button", { name: "登出" }).click();
-  await page.getByText("連接 OpenRouter 就能開始玩").waitFor();
+  await page.getByTestId("topbar-connect").waitFor();
+  await page.getByText("選一張角色卡開始").waitFor();
   assert.equal(await page.evaluate(() => localStorage.getItem("tt-web:openrouter-key")), null);
 
   step("十語系：英文瀏覽器首開就是英文（含 <html lang> 與標題）；登入、額度面板、開始畫面、範例卡、下載頁都是英文；桌上換成日文不丟桌、不丟草稿");
@@ -505,13 +514,15 @@ try {
   const english = await englishContext.newPage();
   english.on("console", (message) => message.type() === "error" && consoleErrors.push(message.text()));
   await english.goto(base);
-  await english.getByText("Connect OpenRouter to start playing").waitFor();
+  await english.getByText("Pick a character card to start").waitFor();
   assert.equal(await english.evaluate(() => document.documentElement.lang), "en");
   assert.equal(await english.title(), "Table Tavern | Web version");
   await english.getByTestId("download-link").click();
   await english.getByText("Current version v0.3.0").waitFor();
   await english.getByText("How the web and desktop versions differ").waitFor();
   await english.getByRole("button", { name: "Back to the game" }).click();
+  await english.getByTestId("topbar-connect").click();
+  await english.getByText("Connect OpenRouter to start playing").waitFor();
   await english.getByRole("button", { name: "Sign in with OpenRouter" }).click();
   await english.getByText("Pick a character card to start").waitFor();
   // 這時 /key 回報今日已用完（上一段的設定）：導流面板也是英文
@@ -537,6 +548,8 @@ try {
   const overflow = () => english.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   for (const lang of ["zh-TW", "zh-CN", "en", "ja", "ko", "es", "pt-BR", "de", "fr", "ru"]) {
     await english.getByTestId("lang-picker").selectOption(lang);
+    // 經過簡中會換成魔搭再換回 OpenRouter，額度已用完的提示會再跳一次
+    if (await english.getByTestId("quota-panel").isVisible()) await english.getByTestId("quota-panel").locator("button.ghost").click();
     assert.ok((await overflow()) <= 0, `${lang} 開始畫面在 375px 寬橫向溢出`);
     await english.getByTestId("download-link").click();
     await english.getByTestId("download-page").waitFor();

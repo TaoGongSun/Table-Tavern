@@ -18,20 +18,21 @@ const pool = (ids: string[] | null, chosen: string | null = null) =>
   new FixedPool(CN_PROVIDERS.modelscope, { fetch: modelsFetch(ids), apiBase: "http://fake/ms/v1" }, chosen);
 
 describe("provider by language", () => {
-  it("lists ModelScope and SiliconFlow only in Simplified Chinese, OpenRouter last", () => {
-    expect(providersFor("zh-CN")).toEqual(["modelscope", "siliconflow", "openrouter"]);
+  it("lists only ModelScope and SiliconFlow in Simplified Chinese, only OpenRouter elsewhere", () => {
+    expect(providersFor("zh-CN")).toEqual(["modelscope", "siliconflow"]);
     for (const lang of ["zh-TW", "en", "ja"] as const) expect(providersFor(lang)).toEqual(["openrouter"]);
   });
 
-  it("defaults Simplified Chinese to ModelScope, keeps OpenRouter players, and drops choices the language does not list", () => {
+  it("never lands on OpenRouter in Simplified Chinese, even with an OpenRouter key stored", () => {
     const storage = new MemoryStorage();
-    expect(effectiveProvider("zh-CN", null, storage)).toBe("modelscope");
-    expect(effectiveProvider("zh-TW", null, storage)).toBe("openrouter");
-    expect(effectiveProvider("zh-CN", "siliconflow", storage)).toBe("siliconflow");
-    expect(effectiveProvider("en", "siliconflow", storage)).toBe("openrouter");
-    expect(effectiveProvider("zh-CN", "openrouter", storage)).toBe("openrouter");
     storage.setItem("tt-web:openrouter-key", "sk-or-v1-old");
-    expect(effectiveProvider("zh-CN", null, storage)).toBe("openrouter");
+    expect(effectiveProvider("zh-CN", null, storage)).toBe("modelscope");
+    expect(effectiveProvider("zh-CN", "openrouter", storage)).toBe("modelscope");
+    expect(effectiveProvider("zh-TW", null, storage)).toBe("openrouter");
+    expect(effectiveProvider("en", "siliconflow", storage)).toBe("openrouter");
+    storage.setItem("tt-web:key:siliconflow", "sk-sf");
+    expect(effectiveProvider("zh-CN", "openrouter", storage)).toBe("siliconflow");
+    expect(effectiveProvider("zh-CN", "modelscope", storage)).toBe("modelscope");
   });
 });
 describe("never auto-picks a paid model", () => {
