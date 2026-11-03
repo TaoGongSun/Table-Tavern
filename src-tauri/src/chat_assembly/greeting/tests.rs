@@ -280,7 +280,7 @@ fn takeover_and_retired_only_strip_cards() {
 
 /// API 實送的訊息逐字：system＝lane 那份、第 0 則＝開場原文（一般桌）或顯示文字（接管、退場桌）。
 #[test]
-fn api_request_carries_opening_verbatim_by_table_kind() {
+fn api_request_carries_opening_verbatim_by_takeover_mode() {
     for kind in ["plain", "takeover", "retired"] {
         let (root, world_id) = table(kind);
         post_opening(&root.0, &world_id, 0, OPENING);

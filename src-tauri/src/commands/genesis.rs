@@ -98,6 +98,7 @@ pub(crate) async fn generate_table_expand(
     genres: Vec<String>,
     title: String,
     outline_raw: String,
+    table_kind: data::TableKind,
 ) -> Result<ExpandOutcome, String> {
     crate::data::refuse_if_updating()?;
     let input = input.trim();
@@ -124,7 +125,7 @@ pub(crate) async fn generate_table_expand(
     )
     .await?;
     let world_id = genesis::parse_expand(&raw)
-        .map(|expanded| genesis::materialize(&data_root(&app)?, title, &expanded))
+        .map(|expanded| genesis::materialize(&data_root(&app)?, title, &expanded, table_kind))
         .transpose()
         .map_err(|error| error.to_string())?;
     // 開桌這幾次呼叫的額度就是為這桌花的：桌一建好就把剛才那些行認領回來（見 usage_log）

@@ -205,6 +205,7 @@ fn rebuild(
         world_id,
         &state.name,
         state.model_bindings.clone(),
+        state.table_kind,
         world_md,
     )?;
     let raw_text = |event: &data::TranscriptEvent| event.raw.clone().unwrap_or(event.text.clone());

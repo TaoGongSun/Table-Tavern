@@ -12,7 +12,7 @@ pub(crate) use commit::{
     live_dir, remove_reset_build_root, replace_world_from_build, reset_build_root,
 };
 pub(crate) use lane_scan::readonly_lane_scan;
-pub use marker::{loose_name, read_format, FormatVersion, CURRENT_FORMAT};
+pub use marker::{loose_name, loose_table_kind, read_format, FormatVersion, CURRENT_FORMAT};
 
 #[cfg(test)]
 pub(crate) use commit::StepOverride;

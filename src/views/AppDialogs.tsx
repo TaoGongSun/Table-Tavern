@@ -20,6 +20,8 @@ interface AppDialogsProps {
   updateDialog: ReactNode;
   /** 回合沒完成的攔截式彈窗（App 層，卡片覆蓋層開著時一樣蓋在上面） */
   turnFailureDialog: ReactNode;
+  /** VN 開桌精靈（App 組好，沒開時是 null） */
+  vnWizard: ReactNode;
   config: AppConfig;
   onConfigSaved: (config: AppConfig) => void;
   onSettingPreference: (key: string, value: unknown) => Promise<void>;
@@ -48,6 +50,7 @@ export function AppDialogs({
   versionTab,
   updateDialog,
   turnFailureDialog,
+  vnWizard,
   config,
   onConfigSaved,
   onSettingPreference,
@@ -72,6 +75,7 @@ export function AppDialogs({
         onCreated={onGeneratedTable}
         transport={transport}
       />
+      {vnWizard}
 
       {/* 設定視窗要蓋在主工作區與生桌對話框之上。 */}
       {settingsOpen !== false && (

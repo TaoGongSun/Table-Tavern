@@ -5,10 +5,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { message as showMessage } from "@tauri-apps/plugin-dialog";
 import { Lang, t } from "../../i18n";
-import { decideImportRoute, type ImportReceiptKind } from "./import-routing";
+import { decideImportRoute, type ImportReceiptKind, type ImportRouteAnswer } from "./import-routing";
 import { hasRefactorCardChunk } from "../refactor/refactor-card";
 import { useTurnWait } from "../play/useTurnWait";
-import { type WorldbookEntry } from "../../shared/contracts/backend-contracts";
+import { type TableKind, type WorldbookEntry } from "../../shared/contracts/backend-contracts";
 import { PALETTE, type CharacterMeta } from "../characters/card-model";
 import { cardCarriesPage, type CardInterface } from "../card-interface/interface-card";
 import { looksLikeWebSave } from "../../shared/contracts/web-save/web-save";
@@ -181,13 +181,30 @@ export interface ImportController {
   refreshReceipts: (worldId: string) => Promise<void>;
   /** 陣容欄「匯入卡」選了檔：探測身分後分流 */
   importFile: (file: File) => Promise<void>;
+  /** VN 精靈 ①「我有角色卡」：探測身分後開新 VN 桌並匯入（不問身分、不過路由框） */
+  importFileToVnTable: (file: File) => Promise<void>;
   answerChoice: (choice: "character" | "worldbook" | "cancel") => Promise<void>;
   /** 身分框或路由框答完、那張卡還在匯（路由判定、寫檔）：框已收但還沒結束 */
   answering: boolean;
-  answerRoute: (choice: "this_table" | "new_table" | "cancel") => Promise<void>;
+  answerRoute: (choice: ImportRouteAnswer) => Promise<void>;
   /** 翻好的那一則；null＝翻譯失敗或面板已關。force＝重新翻譯（忽略已有回覆，用原文重打） */
   translateOpening: (index: number, force?: boolean) => Promise<string | null>;
   translateAllOpenings: () => Promise<void>;
+}
+
+// 探測失敗不擋匯入：舊版後端或格式未知時照原流程走（當成解析不了）
+async function probeImport(data: number[]): Promise<ImportProbe> {
+  try {
+    return await invoke<ImportProbe>("probe_import", { data });
+  } catch {
+    return {
+      lorebook_heavy: false,
+      parsed: false,
+      book_entries: 0,
+      book_shaped: false,
+      alternate_greetings: 0,
+    };
+  }
 }
 
 export function useImportController(input: {
@@ -205,7 +222,9 @@ export function useImportController(input: {
   /** 匯完把對話目標指過去；null＝指到 GM */
   focusSpeaker: (characterId: string | null) => void;
   /** 開一張新桌並進去，回傳新桌 id；null＝現在開不了（沒 config、正在生成、或新桌進不去／不可寫） */
-  openTableForImport: (label: string) => Promise<string | null>;
+  openTableForImport: (label: string, kind: TableKind) => Promise<string | null>;
+  /** 開新 VN 桌並匯完：進 VN 開桌精靈第 ② 步 */
+  onVnTableImported: (worldId: string) => void;
   /** 照網頁存檔建一張新桌並進去；null＝現在開不了或新桌進不去（同 openTableForImport） */
   openWebSaveTable: (data: number[]) => Promise<WebSaveImport | null>;
   /** 進出桌互斥：匯入現桌與開新桌並匯入整段要拿到鎖；等玩家在身分框／路由框作答時不持鎖 */
@@ -233,6 +252,7 @@ export function useImportController(input: {
     adoptTableName,
     focusSpeaker,
     openTableForImport,
+    onVnTableImported,
     openWebSaveTable,
     runTableOp,
     resetChatted,
@@ -247,6 +267,13 @@ export function useImportController(input: {
   // 讀檔、探測都是 await：回來時人可能已經離桌或進了別張桌，那一輪匯入就整個作廢
   const worldRef = useRef(worldId);
   worldRef.current = worldId;
+  // 狀態重讀綁的是「現在這桌」：開新桌並匯入時匯入函式還握著舊閉包（從大廳開＝空桌 id），
+  // 所以經 ref 叫最新一輪的 refreshState，而且只在匯入的那桌已經是現在這桌時才讀（否則拿空 id 去讀會報錯）
+  const refreshStateRef = useRef(refreshState);
+  refreshStateRef.current = refreshState;
+  const refreshStateOf = useCallback(async (worldId: string) => {
+    if (worldRef.current === worldId) await refreshStateRef.current();
+  }, []);
 
   // 這桌的匯入收據摘要：非空、且還沒開始跟 AI 對話，才顯示「復原上次匯入」按鈕
   const [receipts, setReceipts] = useState<ImportReceiptSummary[]>([]);
@@ -391,7 +418,7 @@ export function useImportController(input: {
           okLabel: t("dialogAck"),
         });
       }
-      await refreshState();
+      await refreshStateOf(worldId);
       await offerOpeningLine(worldId, data, source);
       await tellAboutInterface(worldId, meta.id);
     },
@@ -403,7 +430,7 @@ export function useImportController(input: {
       focusSpeaker,
       adoptTableName,
       refreshReceipts,
-      refreshState,
+      refreshStateOf,
       offerOpeningLine,
       tellAboutInterface,
     ],
@@ -428,7 +455,7 @@ export function useImportController(input: {
       focusSpeaker(null);
       if (adoptName) await adoptTableName(label);
       await refreshReceipts(worldId);
-      await refreshState();
+      await refreshStateOf(worldId);
       await offerOpeningLine(worldId, data, book.source);
       // 這桌等級的介面殼 character_id 是空字串（角色卡的是那張卡的 id）
       await tellAboutInterface(worldId, "");
@@ -440,7 +467,7 @@ export function useImportController(input: {
       focusSpeaker,
       adoptTableName,
       refreshReceipts,
-      refreshState,
+      refreshStateOf,
       offerOpeningLine,
       tellAboutInterface,
     ],
@@ -494,17 +521,21 @@ export function useImportController(input: {
   // adoptTableName 不需要跑：新桌從一開始就用 label 命名。
   // 開桌到匯完是一整段換桌級操作，鎖在這裡一次取到底（內層不得再取鎖）。
   const openNewTableAndImport = useCallback(
-    (pending: { data: number[]; identity: "character" | "worldbook"; label: string }) =>
+    (
+      pending: { data: number[]; identity: "character" | "worldbook"; label: string },
+      kind: TableKind,
+    ) =>
       runTableOp(async () => {
-        const id = await openTableForImport(pending.label);
+        const id = await openTableForImport(pending.label, kind);
         if (id === null) return;
         if (pending.identity === "worldbook") {
           await importAsWorldbook(id, pending.data, pending.label, false);
         } else {
           await importAsCharacter(id, pending.data, false);
         }
+        if (kind === "vn") onVnTableImported(id);
       }),
-    [runTableOp, openTableForImport, importAsWorldbook, importAsCharacter],
+    [runTableOp, openTableForImport, importAsWorldbook, importAsCharacter, onVnTableImported],
   );
 
   // 網頁存檔：一律開新桌（不問身分、不過第二張卡路由——身分存檔裡就有），進去後講清楚世界書規則的差異
@@ -516,7 +547,7 @@ export function useImportController(input: {
         const id = imported.world_id;
         await refreshCharacters(id);
         focusSpeaker(imported.character_id);
-        await refreshState();
+        await refreshStateOf(id);
         const notices = [
           t("importWebSaveDone"),
           imported.image_dropped ? t("importCardImageNotSaved") : "",
@@ -526,7 +557,7 @@ export function useImportController(input: {
         await showMessage(notices.join("\n\n"), { title: t("importCard"), okLabel: t("dialogAck") });
         await tellAboutInterface(id, imported.character_id ?? "");
       }),
-    [runTableOp, openWebSaveTable, refreshCharacters, focusSpeaker, refreshState, tellAboutInterface],
+    [runTableOp, openWebSaveTable, refreshCharacters, focusSpeaker, refreshStateOf, tellAboutInterface],
   );
 
   // 匯入 SillyTavern 角色卡（V2 PNG 或 JSON）：讀 bytes 交後端探測，依探測結果分流——
@@ -547,18 +578,7 @@ export function useImportController(input: {
           return;
         }
         const data = Array.from(bytes);
-        let probe: ImportProbe = {
-          lorebook_heavy: false,
-          parsed: false,
-          book_entries: 0,
-          book_shaped: false,
-          alternate_greetings: 0,
-        };
-        try {
-          probe = await invoke<ImportProbe>("probe_import", { data });
-        } catch {
-          // 探測失敗不擋匯入：舊版後端或格式未知時照原流程走。
-        }
+        const probe = await probeImport(data);
         if (worldRef.current !== worldId) return;
         if (probe.parsed && (!probe.name || probe.book_shaped)) {
           // 純世界書檔（含自帶書名的 V2 獨立書）：沒有角色可建，「匯入成角色卡」是假選項，不問
@@ -577,6 +597,26 @@ export function useImportController(input: {
       }
     },
     [routeImport, importAsCharacter, importWebSave, runTableOp, worldId, onError, onRefactorCard],
+  );
+
+  // VN 精靈 ①：純世界書檔照探測走世界書，其餘（含帶書的角色卡）當角色卡匯，卡內書跟著進
+  const importFileToVnTable = useCallback(
+    async (file: File) => {
+      onError("");
+      try {
+        const data = Array.from(new Uint8Array(await file.arrayBuffer()));
+        const probe = await probeImport(data);
+        const book = probe.parsed && (!probe.name || probe.book_shaped);
+        const label = probe.name ?? file.name.replace(/\.[^.]+$/, "");
+        await openNewTableAndImport(
+          { data, identity: book ? "worldbook" : "character", label },
+          "vn",
+        );
+      } catch (reason) {
+        onError(String(reason));
+      }
+    },
+    [openNewTableAndImport, onError],
   );
 
   // 三鍵對話框的作答：取消什麼都不做，另外兩個選項答出身分後都要過第二張卡路由
@@ -601,7 +641,7 @@ export function useImportController(input: {
   // 路由框作答：取消什麼都不做；匯進這桌走現行匯入函式（第二本世界書走同一條，後端會接在既有條目後面並去重）；
   // 開新桌並匯入另開一桌後再匯，見 openNewTableAndImport
   const answerRoute = useCallback(
-    async (answer: "this_table" | "new_table" | "cancel") => {
+    async (answer: ImportRouteAnswer) => {
       const pending = route;
       setRoute(null);
       if (!pending || answer === "cancel" || pending.worldId !== worldRef.current) return;
@@ -615,7 +655,7 @@ export function useImportController(input: {
               : importAsCharacter(worldId, pending.data),
           );
         } else {
-          await openNewTableAndImport(pending);
+          await openNewTableAndImport(pending, answer === "new_vn_table" ? "vn" : "chat");
         }
       } catch (reason) {
         onError(String(reason));
@@ -704,6 +744,7 @@ export function useImportController(input: {
       loadReceipts,
       refreshReceipts,
       importFile,
+      importFileToVnTable,
       answerChoice,
       answering,
       answerRoute,
@@ -730,6 +771,7 @@ export function useImportController(input: {
       loadReceipts,
       refreshReceipts,
       importFile,
+      importFileToVnTable,
       answerChoice,
       answering,
       answerRoute,

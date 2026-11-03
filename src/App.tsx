@@ -21,6 +21,7 @@ import { prefetchModelCatalogs } from "./features/ai-connection/model-catalog-st
 import {
   AppConfig,
   SceneLabel,
+  TableKind,
   TranscriptEvent,
   WorldMeta,
   WorldState,
@@ -61,6 +62,8 @@ import {
   useWorkspaceNavigationController,
 } from "./controllers/useWorkspaceNavigationController";
 import { AppDialogs } from "./views/AppDialogs";
+import { VnTableView } from "./features/vn/VnTableView";
+import { VnWizard, type VnWizardStart } from "./features/vn/VnWizard";
 import type { SettingsTab } from "./features/settings/SettingsWindow";
 import { AppWorkspace, type EditingTableName } from "./views/AppWorkspace";
 import { aiReady, Onboarding } from "./features/ai-connection/Onboarding";
@@ -151,6 +154,9 @@ function App() {
   const [pendingRefactorCard, setPendingRefactorCard] = useState<PendingRefactorCard | null>(null);
   // 生成對話框只留開關在 App：草稿與三支生成流程都在 GenerateTableDialog 自己身上
   const [genTableOpen, setGenTableOpen] = useState(false);
+  // VN 桌進桌先看佔位視圖；false＝聊天視圖（聊天桌一律 false）
+  const [vnView, setVnView] = useState(false);
+  const [vnWizard, setVnWizard] = useState<VnWizardStart | null>(null);
 
   const {
     config,
@@ -367,12 +373,12 @@ function App() {
   // 新桌進不去、或進了唯讀／修復桌（不能寫入）就回 null，匯入不往下走。
   // 原桌完全不動（不回收、不改名）。外層 openNewTableAndImport 已持鎖。
   const openTableForImport = useCallback(
-    async (label: string) => {
+    async (label: string, tableKind: TableKind) => {
       if (!config || chat.busy) return null;
       if (!(await canLeaveRef.current())) return null;
       return openImportTable(
         {
-          createWorld: (name) => invoke<string>("create_world", { name }),
+          createWorld: (name) => invoke<string>("create_world", { name, tableKind }),
           refreshWorlds,
           enterTable,
         },
@@ -430,6 +436,7 @@ function App() {
     adoptTableName: adoptImportName,
     focusSpeaker,
     openTableForImport,
+    onVnTableImported: (worldId) => setVnWizard({ worldId }),
     openWebSaveTable,
     runTableOp,
     resetChatted,
@@ -505,6 +512,7 @@ function App() {
       setGate("repair");
       setRepairNotice({ reason: opened.reason, error: opened.error, directory: opened.directory });
       setReadOnlyNotice(null);
+      setVnView(false);
       return { entered: true, writable: false };
     }
     if (route === "readonly") {
@@ -518,6 +526,7 @@ function App() {
         backupAvailable: opened.backup_available,
       });
       setRepairNotice(null);
+      setVnView(false);
       setScene(loose.scene);
       chat.hydrate(looseTranscript(loose.events));
       setSkippedLines(loose.skipped);
@@ -547,6 +556,7 @@ function App() {
     const gmHasContent = worldMd.trim().length > 0 || worldbook.length > 0;
     setTable(id);
     setGate("play");
+    setVnView(state.table_kind === "vn");
     setReadOnlyNotice(null);
     setRepairNotice(null);
     setSkippedLines(0);
@@ -690,7 +700,7 @@ function App() {
         const base = t("newTableName");
         let name = base;
         for (let n = 2; existingNames.includes(name); n += 1) name = `${base} ${n}`;
-        const id = await invoke<string>("create_world", { name });
+        const id = await invoke<string>("create_world", { name, tableKind: "chat" });
         setWorlds(await invoke<WorldMeta[]>("list_worlds"));
         await enterTable(id);
       } catch (reason) {
@@ -710,6 +720,12 @@ function App() {
         setError(String(reason));
       }
     });
+  }
+
+  // VN 精靈按開始：匯入來的桌已經在裡面，只關精靈；從大廳建的才進桌
+  function finishVnWizard(worldId: string) {
+    setVnWizard(null);
+    if (worldId !== table) void enterGeneratedTable(worldId);
   }
 
   // 刪桌：整桌的角色、紀錄、世界設定一起沒，故確認框把後果講白。
@@ -1020,9 +1036,18 @@ function App() {
           onOpenVersions={() => openSettings("versions")}
           onNewTable={() => void newTable()}
           onGenerateTable={() => setGenTableOpen(true)}
+          onVnTable={() => setVnWizard({ worldId: null })}
           onEnterTable={(id) => void switchTable(id)}
           onRenameTable={(id, raw) => void renameTable(id, raw)}
           onDeleteTable={(id) => void deleteTable(id)}
+        />
+      ) : vnView ? (
+        <VnTableView
+          tableName={tableName}
+          notice={error && <ErrorNote text={error} transport={transport} />}
+          busy={tableOp.busy || chat.busy}
+          onShowChat={() => setVnView(false)}
+          onGoLobby={() => void goLobby()}
         />
       ) : (
         <AppWorkspace
@@ -1093,6 +1118,22 @@ function App() {
             preferences={config.preferences}
             onView={() => openSettings("versions")}
           />
+        }
+        vnWizard={
+          vnWizard && (
+            <VnWizard
+              key={vnWizard.worldId ?? ""}
+              start={vnWizard}
+              transport={transport}
+              onCreated={() => refreshWorlds().catch((reason) => setError(String(reason)))}
+              onImportCard={(file) => {
+                setVnWizard(null);
+                void imports.importFileToVnTable(file);
+              }}
+              onFinish={finishVnWizard}
+              onClose={() => setVnWizard(null)}
+            />
+          )
         }
         turnFailureDialog={
           turnFailure && (

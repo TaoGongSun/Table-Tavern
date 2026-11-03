@@ -6,7 +6,7 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use super::super::state::WorldState;
+use super::super::state::{TableKind, WorldState};
 use super::super::DataResult;
 
 /// 這個程式認得、也會寫進新桌的格式。轉換鏈目前是空的。
@@ -141,6 +141,15 @@ pub fn loose_name(dir: &Path, fallback_id: &str) -> String {
                 .map(str::to_owned)
         })
         .unwrap_or_else(|| fallback_id.to_owned())
+}
+
+/// 列表用的桌型：跟 loose_name 一樣寬鬆讀，讀不到或沒有這欄就當聊天桌。
+pub fn loose_table_kind(dir: &Path) -> TableKind {
+    fs::read_to_string(dir.join("state.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .and_then(|value| serde_json::from_value(value.get("table_kind")?.clone()).ok())
+        .unwrap_or_default()
 }
 
 pub fn marker_json(version: u64) -> DataResult<String> {

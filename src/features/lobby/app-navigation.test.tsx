@@ -39,6 +39,7 @@ const world = (id: string, name: string, extra: Partial<WorldMeta> = {}): WorldM
   name,
   read_only: false,
   needs_repair: false,
+  table_kind: "chat",
   ...extra,
 });
 
@@ -57,13 +58,11 @@ function install(fixture: Fixture) {
   });
   h.list_worlds = () => fixture.worlds;
   h.open_world = ({ worldId }) => fixture.open[worldId as string] ?? { status: "ready" };
-  h.read_state = () => ({
-    state: {},
-    current_scene: 0,
-    scene_titles: {},
-    scene_labels: {},
-    player_card_id: null,
-  });
+  // 空桌 id 照真後端報錯：抓「開新桌並匯入」拿舊閉包的桌 id 去重讀的回歸
+  h.read_state = ({ worldId }) => {
+    if (!worldId) throw new Error('invalid id: ""');
+    return { state: {}, current_scene: 0, scene_titles: {}, scene_labels: {}, player_card_id: null };
+  };
   h.read_transcript = () => [];
   // 回新陣列：同一個參照 React 會當沒變
   h.list_characters = () => fixture.characters.map((c) => ({ ...c }));
@@ -695,6 +694,105 @@ describe("lobby and table navigation", () => {
       // 不是取消：再點才是取消
       await click(cardButton("Bob"));
       expect(pressed("Bob")).toBe("false");
+    });
+  });
+
+  describe("VN table entry", () => {
+    // 大廳入口卡的文字含說明，用開頭比對；精靈的鈕是整串相等
+    const buttonText = (text: string) =>
+      [...document.querySelectorAll<HTMLButtonElement>("button")].find(
+        (b) => b.textContent === text || b.querySelector("b")?.textContent === text,
+      )!;
+    const vnView = () => document.querySelector(".vn-table-view");
+
+    function installVn(fixture: Fixture) {
+      install(fixture);
+      const state = backend.handlers.read_state;
+      backend.handlers.read_state = (args) => ({
+        ...(state(args) as object),
+        table_kind: fixture.worlds.find((w) => w.id === args.worldId)?.table_kind,
+      });
+    }
+
+    it("new table and the plain AI table stay chat tables", async () => {
+      const fixture: Fixture = { worlds: [world("w1", "Alpha")], open: {}, characters: [] };
+      installVn(fixture);
+      backend.handlers.create_world = () => {
+        fixture.worlds = [...fixture.worlds, world("w2", t("newTableName"))];
+        return "w2";
+      };
+      await boot();
+      await click(buttonText(t("newTable")));
+      expect(calls("create_world")[0].args.tableKind).toBe("chat");
+      expect(vnView()).toBeNull();
+      expect(homeButton()).not.toBeNull();
+    });
+
+    it("the lobby VN card runs the wizard, builds a vn table and lands on the placeholder view", async () => {
+      const fixture: Fixture = { worlds: [world("w1", "Alpha")], open: {}, characters: [] };
+      installVn(fixture);
+      backend.handlers.generate_table_outline = () => ({
+        parsed: { title: "Harbor", world: "Fog.", characters: [] },
+        raw: "raw",
+      });
+      backend.handlers.generate_table_expand = () => {
+        fixture.worlds = [...fixture.worlds, world("vn1", "Harbor", { table_kind: "vn" })];
+        return { worldId: "vn1", raw: "" };
+      };
+      await boot();
+      await click(buttonText(t("vnEntryTitle")));
+      await typeInto(document.querySelector<HTMLTextAreaElement>("textarea[data-autofocus]")!, "fog");
+      await click(document.querySelector(".gen-generate-row button")!);
+      await click(
+        [...document.querySelectorAll(".gen-table-dialog button")].find((b) =>
+          b.textContent?.includes(t("genCreateBtn")),
+        )!,
+      );
+      expect(calls("generate_table_expand")[0].args.tableKind).toBe("vn");
+      // ③ 立繪、④ 開演是佔位步驟；建好桌後精靈沒有被 GenerateTableDialog 的收尾關掉
+      expect(document.body.textContent).toContain(t("vnStepSpritesTitle"));
+      expect(inLobby()).toBe(true);
+      expect(document.querySelector(".table-badge")?.textContent).toBe(t("vnBadge"));
+      await click(buttonText(t("vnNext")));
+      await click(buttonText(t("vnStart")));
+      expect(calls("open_world").map((call) => call.args.worldId)).toEqual(["vn1"]);
+      expect(vnView()?.textContent).toContain("Harbor");
+      await click(buttonText(t("vnShowChat")));
+      expect(vnView()).toBeNull();
+      expect(homeButton()).not.toBeNull();
+    });
+
+    it("wizard step ① can start from a character card: builds a vn table, imports, then resumes at ②", async () => {
+      const fixture: Fixture = { worlds: [world("w1", "Alpha")], open: {}, characters: [] };
+      installVn(fixture);
+      backend.handlers.probe_import = () => ({ parsed: true, name: "Lia", book_shaped: false });
+      backend.handlers.create_world = () => {
+        fixture.worlds = [...fixture.worlds, world("vn2", "Lia", { table_kind: "vn" })];
+        return "vn2";
+      };
+      backend.handlers.import_character = () => ({
+        meta: character("c1", "Lia"),
+        book: { imported: 0, skipped: 0 },
+      });
+      backend.handlers.card_openings = () => [];
+      await boot();
+      await click(buttonText(t("vnEntryTitle")));
+      const input = document.querySelector<HTMLInputElement>('.gen-table-dialog input[type="file"]')!;
+      const file = new File([new Uint8Array([1, 2, 3])], "lia.png");
+      Object.defineProperty(input, "files", { value: [file], configurable: true });
+      await act(async () => {
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      await settle();
+      expect(calls("create_world")[0].args).toEqual({ name: "Lia", tableKind: "vn" });
+      expect(calls("import_character")).toHaveLength(1);
+      await settle();
+      expect(document.body.textContent).toContain(t("vnStepExpandTitle"));
+      await click(buttonText(t("vnNext")));
+      await click(buttonText(t("vnNext")));
+      await click(buttonText(t("vnStart")));
+      expect(calls("open_world").map((call) => call.args.worldId)).toEqual(["vn2"]);
+      expect(vnView()?.textContent).toContain("Lia");
     });
   });
 });

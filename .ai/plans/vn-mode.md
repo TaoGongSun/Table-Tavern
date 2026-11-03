@@ -1,6 +1,6 @@
 # vn-mode — VN 模式整體計畫（2026-11-01 作者拍板版）
 
-立案說明見 [tasks/vn-mode.md](../tasks/vn-mode.md)（八項拍板〔作者裁決 2026-08-07〕、生圖管線〔作者裁決 2026-10-27〕）；參考整理見 [vn-ref-larch](../reference/vn-ref-larch.md)（L＝larch.ink、M＝Marinara）與 [Marinara 筆記](marinara_reference_notes.md)。本檔是整個 VN 模式的設計總綱；2026-11-01 十九項拍板見 §12；初始 VN 卡（以 SunSmell 為範例）的研究報告在 [vn-card-sunsmell](vn-card-sunsmell.md)，其餘新設計標〔模型判斷·未裁決〕。大案：每包方案與驗收依 §11 送 Sol。
+立案說明見 [handoffs/vn-mode.md](../handoffs/vn-mode.md)（八項拍板〔作者裁決 2026-08-07〕、生圖管線〔作者裁決 2026-10-27〕）；參考整理見 [vn-ref-larch](../reference/vn-ref-larch.md)（L＝larch.ink、M＝Marinara）與 [Marinara 筆記](marinara_reference_notes.md)。本檔是整個 VN 模式的設計總綱；2026-11-01 十九項拍板見 §12；初始 VN 卡（以 SunSmell 為範例）的研究報告在 [vn-card-sunsmell](vn-card-sunsmell.md)，其餘新設計標〔模型判斷·未裁決〕。大案：每包方案與驗收依 §11 送 Sol。
 
 ## 0 定位
 

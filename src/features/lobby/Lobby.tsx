@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { t } from "../../i18n";
 import type { WorldMeta } from "../../shared/contracts/backend-contracts";
-import { IconPlus, IconSettings, IconSparkle, IconUsers } from "../../shared/ui/icons";
+import { IconBook, IconPlus, IconSettings, IconSparkle, IconUsers } from "../../shared/ui/icons";
 import { TableCard } from "./TableCard";
 
 interface LobbyProps {
@@ -20,6 +20,8 @@ interface LobbyProps {
   onOpenVersions: () => void;
   onNewTable: () => void;
   onGenerateTable: () => void;
+  /** 第三張入口卡：進 VN 開桌精靈 */
+  onVnTable: () => void;
   onEnterTable: (id: string) => void;
   onRenameTable: (id: string, raw: string) => void;
   onDeleteTable: (id: string) => void;
@@ -42,6 +44,7 @@ export function Lobby({
   onOpenVersions,
   onNewTable,
   onGenerateTable,
+  onVnTable,
   onEnterTable,
   onRenameTable,
   onDeleteTable,
@@ -114,6 +117,15 @@ export function Lobby({
               {/* 一次只開一間房：另一間開著時這格帶回那間 */}
               <b>{t(activeRoom ? "roomBack" : "roomOpen")}</b>
               <span>{t(activeRoom ? "roomActive" : "roomOpenHint")}</span>
+            </span>
+          </button>
+          <button type="button" className="lobby-new-card" disabled={busy} onClick={onVnTable}>
+            <span className="lobby-new-icon">
+              <IconBook />
+            </span>
+            <span className="lobby-new-text">
+              <b>{t("vnEntryTitle")}</b>
+              <span>{t("vnEntryHint")}</span>
             </span>
           </button>
         </div>

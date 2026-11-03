@@ -1,6 +1,6 @@
 # vn-mode-image-spike — VN 立繪／CG 生圖實測（2026-10-27）
 
-[vn-mode](../tasks/vn-mode.md) 前置實測 a／b／c 的結果。原創角色 Mira Ashwell，三家（Codex／agy／Grok）同一份提示詞與規格塊，全走 CLI 訂閱、付費 API 0 張，共 20 張（Codex 8、agy 5、Grok 7，含代理自行重試）。比較圖（三列＝Codex／agy／Grok；欄＝定稿／喜／怒／透明或去背／CG）不入版控，在本機 `/private/tmp/claude-501/-Users-<user>--claude-spares-spare-yfWgps/853b218d-0b3d-4f00-b3b6-0b81bbbd6996/scratchpad/vn-image-spike/comparison.png`（暫存目錄，可能被清掉）。
+[vn-mode](../handoffs/vn-mode.md) 前置實測 a／b／c 的結果。原創角色 Mira Ashwell，三家（Codex／agy／Grok）同一份提示詞與規格塊，全走 CLI 訂閱、付費 API 0 張，共 20 張（Codex 8、agy 5、Grok 7，含代理自行重試）。比較圖（三列＝Codex／agy／Grok；欄＝定稿／喜／怒／透明或去背／CG）不入版控，在本機 `/private/tmp/claude-501/-Users-<user>--claude-spares-spare-yfWgps/853b218d-0b3d-4f00-b3b6-0b81bbbd6996/scratchpad/vn-image-spike/comparison.png`（暫存目錄，可能被清掉）。
 
 ## 結論
 - **a 去背**：可行。rembg 2.0.86＋官方權重。birefnet-general（928MB，12–19 秒）最乾淨；birefnet-general-lite（224MB，5–6 秒）接近，建議 app 內建（Rust 用 ort）；isnet-anime（0.9 秒）邊緣軟、髮尾滲底色。授權：BiRefNet MIT、isnet-anime Apache-2.0（實作前再核）；BRIA RMBG-2.0 不可商用。

@@ -34,6 +34,8 @@ let log: string[] = [];
 let notices: [string, number[]][] = [];
 let failCharacters = false;
 let failGmImage = false;
+let opened: string[] = [];
+let vnImported: string[] = [];
 
 function Harness() {
   imports = useImportController({
@@ -53,7 +55,11 @@ function Harness() {
     openIfDrawable: () => {},
     adoptTableName: async () => {},
     focusSpeaker: () => {},
-    openTableForImport: async () => "W2",
+    openTableForImport: async (_label, kind) => {
+      opened.push(kind);
+      return "W2";
+    },
+    onVnTableImported: (worldId) => vnImported.push(worldId),
     openWebSaveTable: async () => null,
     runTableOp: async (fn) => fn(),
     resetChatted: () => {},
@@ -96,6 +102,8 @@ async function importFile(name: string) {
 beforeEach(async () => {
   log = [];
   notices = [];
+  opened = [];
+  vnImported = [];
   failCharacters = false;
   failGmImage = false;
   errors.length = 0;
@@ -189,5 +197,19 @@ describe("匯入通知世界設定", () => {
     expect(imports!.route).not.toBeNull();
     await act(async () => imports!.answerRoute("new_table"));
     expect(notices).toEqual([["W2", [4]]]);
+    expect(opened).toEqual(["chat"]);
+    expect(vnImported).toEqual([]);
+  });
+
+  it("開 VN 桌並匯入：建 vn 桌，匯完交給 VN 精靈", async () => {
+    await act(async () =>
+      imports!.hydrate([{ kind: "character", label: "甲", timestamp: "t", character_id: "c0" }]),
+    );
+    await importFile("莉亞.json");
+    await act(async () => imports!.answerChoice("character"));
+    await act(async () => imports!.answerRoute("new_vn_table"));
+    expect(opened).toEqual(["vn"]);
+    expect(log).toContain("import_character");
+    expect(vnImported).toEqual(["W2"]);
   });
 });

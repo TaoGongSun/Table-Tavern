@@ -10,6 +10,7 @@ import {
   TierModel,
 } from "./useImportController";
 import { Dialog, SwapLabel } from "../../shared/ui/Dialog";
+import type { ImportRouteAnswer } from "./import-routing";
 import { StoryText } from "../../shared/ui/atoms";
 
 /** 檔位選項的字：「低 · claude-haiku-4-5」。同一家的不同世代對同樣內容的容忍度不一樣，
@@ -41,7 +42,7 @@ interface ImportDialogsProps {
   onAnswerChoice: (answer: "character" | "worldbook" | "cancel") => void;
   /** 第二張卡路由框：null＝沒開 */
   route: PendingImportRoute | null;
-  onAnswerRoute: (answer: "this_table" | "new_table" | "cancel") => void;
+  onAnswerRoute: (answer: ImportRouteAnswer) => void;
   /** 開場白清單；null＝面板沒開 */
   openings: string[] | null;
   /** 面板裡展開的那一則（一次只展開一條）；null＝全部收著 */
@@ -157,14 +158,24 @@ export function ImportDialogs({
             </>
           }
           end={
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => onAnswerRoute("new_table")}
-              disabled={busy}
-            >
-              {t("importRouteNewTable")}
-            </button>
+            <>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => onAnswerRoute("new_vn_table")}
+                disabled={busy}
+              >
+                {t("importRouteNewVnTable")}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => onAnswerRoute("new_table")}
+                disabled={busy}
+              >
+                {t("importRouteNewTable")}
+              </button>
+            </>
           }
         >
           <p>

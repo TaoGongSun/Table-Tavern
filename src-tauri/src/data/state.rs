@@ -476,6 +476,17 @@ pub struct WorldState {
     /// 的卡都不套（介面顯示腳本清空）；其餘桌一律 true，舊桌沒有這欄也是 true。
     #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub regex_allowed: bool,
+    /// 桌型：開桌時定死，不提供聊天桌轉 VN。舊存檔沒有這欄＝聊天桌。
+    #[serde(default)]
+    pub table_kind: TableKind,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TableKind {
+    #[default]
+    Chat,
+    Vn,
 }
 
 fn default_true() -> bool {

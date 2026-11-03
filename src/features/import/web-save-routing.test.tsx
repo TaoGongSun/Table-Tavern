@@ -57,6 +57,7 @@ function Harness() {
     adoptTableName: noop,
     focusSpeaker: (id) => focused.push(id),
     openTableForImport: async () => null,
+    onVnTableImported: () => {},
     openWebSaveTable: async (data) => {
       opened.push(data);
       return result;

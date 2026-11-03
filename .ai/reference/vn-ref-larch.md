@@ -1,6 +1,6 @@
 # VN 模式參考：larch.ink 與 Marinara 對照
 
-VN 模式（[vn-mode](../tasks/vn-mode.md)）開工前的參考資料。調查日 2026-10-28；Larch 只讀公開頁（首頁、wiki、changelog）與社群 repo `yazelin/larch-vn-skill`（MIT，`4e725f4`，2026-09-09；作者讀平台前端 bundle 與市集作品整理的欄位實測，Larch 開發者 yayapipi 帳號有 fork；**Larch 引擎本身未找到公開原始碼**），Marinara 讀 `e5ead06`（2026-10-23）的 docs 與原始碼，只記做法、不抄碼（AGPL，照 [marinara_reference_notes §21](../plans/marinara_reference_notes.md)）。
+VN 模式（[vn-mode](../handoffs/vn-mode.md)）開工前的參考資料。調查日 2026-10-28；Larch 只讀公開頁（首頁、wiki、changelog）與社群 repo `yazelin/larch-vn-skill`（MIT，`4e725f4`，2026-09-09；作者讀平台前端 bundle 與市集作品整理的欄位實測，Larch 開發者 yayapipi 帳號有 fork；**Larch 引擎本身未找到公開原始碼**），Marinara 讀 `e5ead06`（2026-10-23）的 docs 與原始碼，只記做法、不抄碼（AGPL，照 [marinara_reference_notes §21](../plans/marinara_reference_notes.md)）。
 
 ## 結論摘要
 
@@ -42,7 +42,7 @@ VN 模式（[vn-mode](../tasks/vn-mode.md)）開工前的參考資料。調查�
 
 ## 對照 Table Tavern：值得參考
 
-每條寫：做法 → 採用後會怎樣 → 理由。編號對 [vn-mode](../tasks/vn-mode.md) 拍板。
+每條寫：做法 → 採用後會怎樣 → 理由。編號對 [vn-mode](../handoffs/vn-mode.md) 拍板。
 
 1. **幕的邊界契約（借 Larch AI 對話卡）**：全自動 VN 每一幕帶「隱藏目標＋離開條件＋最多幾幕」。→ 劇情不會無限原地打轉，到上限就由引擎推去換幕；成本與時長都有天花板。理由：Larch 把這四件當必填，正是全自動最怕的失控點。對應現有換幕與 `scene_budget`（目前管的是 context 容量，不管劇情幕數，要另加一條劇情上限）。
 2. **只報變動的劇本語意（三方共識）**：背景、BGM、站位沒寫就沿用，換地點那一拍才寫新值。→ 模型每格輸出更短、格式負擔更小，壞格式時退回沿用不會黑屏。理由：拍板 6 每幕一張背景本來就是 delta，再加上「重構目的＝省模型輸出」。

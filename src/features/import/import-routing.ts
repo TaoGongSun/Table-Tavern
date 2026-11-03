@@ -5,6 +5,8 @@
 export type ImportIdentity = "character" | "worldbook";
 export type ImportReceiptKind = "character" | "worldbook" | "refactor";
 export type ImportRoute = "direct" | "merge_worldbook" | "ask";
+/** 路由框作答：開新桌並匯入分聊天桌與 VN 桌兩顆 */
+export type ImportRouteAnswer = "this_table" | "new_table" | "new_vn_table" | "cancel";
 
 /**
  * 收據是主判準。條目只在收據為空時當保險——那種桌可能是收據功能之前的舊桌、

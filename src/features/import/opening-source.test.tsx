@@ -56,6 +56,7 @@ function Harness({ world }: { world: string }) {
     adoptTableName: noop,
     focusSpeaker: () => {},
     openTableForImport: async () => null,
+    onVnTableImported: () => {},
     openWebSaveTable: async () => null,
     runTableOp: async (fn) => fn(),
     resetChatted: () => {},

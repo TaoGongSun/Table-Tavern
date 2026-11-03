@@ -1,11 +1,15 @@
 // 後端資料契約：src-tauri 回傳的結構，畫面與 controller 共用。
 
 /** list_worlds 的一列。id 是目錄名；解不開的桌仍列出，並標唯讀或需要修復。 */
+/** 桌型：開桌時定死。chat＝聊天桌、vn＝視覺小說桌（後端缺省 chat） */
+export type TableKind = "chat" | "vn";
+
 export interface WorldMeta {
   id: string;
   name: string;
   read_only: boolean;
   needs_repair: boolean;
+  table_kind: TableKind;
 }
 
 export interface AppConfig {
@@ -55,6 +59,7 @@ export interface WorldState {
   scene_titles: Record<string, string>;
   // 分岔後內部場號與顯示編號脫鉤：沒進這張表的幕＝原線，顯示編號就是內部場號
   scene_labels: Record<string, SceneLabel>;
+  table_kind: TableKind;
   state: {
     table: Record<string, string>;
     tree: Record<string, StateNode>;

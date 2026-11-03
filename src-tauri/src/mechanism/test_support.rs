@@ -88,6 +88,7 @@ pub(super) fn world_with(pairs: &[(&str, &str)], mechanism: Mechanism) -> data::
         refactor_mode: None,
         statusbar_retired: false,
         regex_allowed: true,
+        table_kind: data::TableKind::Chat,
     }
 }
 

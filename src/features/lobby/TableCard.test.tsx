@@ -12,7 +12,13 @@ import { TableCard } from "./TableCard";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const WORLD: WorldMeta = { id: "w1", name: "Alpha", read_only: false, needs_repair: false };
+const WORLD: WorldMeta = {
+  id: "w1",
+  name: "Alpha",
+  read_only: false,
+  needs_repair: false,
+  table_kind: "chat",
+};
 
 describe("TableCard", () => {
   let root: Root | null = null;
@@ -68,6 +74,15 @@ describe("TableCard", () => {
       input()!.dispatchEvent(new Event("input", { bubbles: true }));
     });
   }
+
+  it("shows a VN badge only on VN tables", () => {
+    const badges = () => [...host!.querySelectorAll(".table-badge")].map((b) => b.textContent);
+    mount({ ...WORLD, table_kind: "vn" });
+    expect(badges()).toEqual([t("vnBadge")]);
+    act(() => root?.unmount());
+    mount();
+    expect(badges()).toEqual([]);
+  });
 
   it("enters from the cover button and is disabled while busy", () => {
     mount();

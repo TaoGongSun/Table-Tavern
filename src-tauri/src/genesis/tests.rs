@@ -151,8 +151,10 @@ fn materialize_writes_world_characters_opening_and_unique_name() {
         ],
         opening: "雨落在碼頭上。你要怎麼做？".to_owned(),
     };
-    let world_id = materialize(&root.0, "夜港", &expanded).unwrap();
-    assert_eq!(data::read_state(&root.0, &world_id).unwrap().name, "夜港 2");
+    let world_id = materialize(&root.0, "夜港", &expanded, data::TableKind::Vn).unwrap();
+    let state = data::read_state(&root.0, &world_id).unwrap();
+    assert_eq!(state.name, "夜港 2");
+    assert_eq!(state.table_kind, data::TableKind::Vn);
     assert_eq!(
         data::read_world_md(&root.0, &world_id).unwrap(),
         expanded.world
@@ -173,8 +175,8 @@ fn materialize_names_table_after_draft_title_even_if_model_renamed_it() {
     )
     .unwrap();
 
-    let first = materialize(&root.0, "  夜港  ", &expanded).unwrap();
-    let second = materialize(&root.0, "夜港", &expanded).unwrap();
+    let first = materialize(&root.0, "  夜港  ", &expanded, data::TableKind::Chat).unwrap();
+    let second = materialize(&root.0, "夜港", &expanded, data::TableKind::Chat).unwrap();
 
     assert_eq!(data::read_state(&root.0, &first).unwrap().name, "夜港 2");
     assert_eq!(data::read_state(&root.0, &second).unwrap().name, "夜港 3");
@@ -190,7 +192,7 @@ fn materialize_names_table_after_draft_title_even_if_model_renamed_it() {
 fn materialize_refuses_blank_title_without_writing() {
     let root = TestRoot::new();
     let expanded = parse_expand("## WORLD: X\n迷霧籠罩碼頭。").unwrap();
-    assert!(materialize(&root.0, " \t ", &expanded).is_err());
+    assert!(materialize(&root.0, " \t ", &expanded, data::TableKind::Chat).is_err());
     assert!(data::list_worlds(&root.0).unwrap().is_empty());
 }
 

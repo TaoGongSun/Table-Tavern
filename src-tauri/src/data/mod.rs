@@ -62,14 +62,17 @@ pub(crate) use state::is_false;
 pub use state::{
     clear_party, is_index_branch, node_at, read_state, set_party, set_player_card, set_tree_value,
     update_state, write_state, CollectionItem, CollectionSpec, CollectionValueType, Condition,
-    FieldKind, FieldRule, InjectLevel, Mechanism, NumericUpdate, OpeningMeta, StateNode,
+    FieldKind, FieldRule, InjectLevel, Mechanism, NumericUpdate, OpeningMeta, StateNode, TableKind,
     TableState, TimePart, Trigger, TriggerCase, TriggerMode, UpdateMode, WorldState,
 };
+#[cfg(test)]
+pub use world::create_world;
 pub use world::{
-    create_reset_world, create_sample_world, create_world, delete_world, interface_takeover,
-    is_interface_takeover, list_worlds, read_interface_shell, read_refactor_outcome, read_world_md,
-    reclaim_world_if_empty, rename_world, requires_present_report, world_has_state_bar,
-    write_interface_shell, write_refactor_outcome, write_world_md, WorldMeta,
+    create_reset_world, create_sample_world, create_world_of_kind, delete_world,
+    interface_takeover, is_interface_takeover, list_worlds, read_interface_shell,
+    read_refactor_outcome, read_world_md, reclaim_world_if_empty, rename_world,
+    requires_present_report, world_has_state_bar, write_interface_shell, write_refactor_outcome,
+    write_world_md, WorldMeta,
 };
 pub(crate) use world::{create_world_exclusive, discard_new_world};
 pub(crate) use world_file::{

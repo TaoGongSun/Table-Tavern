@@ -177,7 +177,12 @@ pub fn draft_title(title: &str) -> Option<&str> {
 }
 
 /// `title` 是玩家草稿的標題，桌名與重名補號都以它為準。
-pub fn materialize(root: &Path, title: &str, expanded: &Expanded) -> DataResult<String> {
+pub fn materialize(
+    root: &Path,
+    title: &str,
+    expanded: &Expanded,
+    kind: data::TableKind,
+) -> DataResult<String> {
     let title = draft_title(title).ok_or_else(|| data::invalid_data("table title is empty"))?;
     let worlds = data::list_worlds(root)?;
     let mut name = title.to_owned();
@@ -187,7 +192,7 @@ pub fn materialize(root: &Path, title: &str, expanded: &Expanded) -> DataResult<
         suffix += 1;
     }
 
-    let world_id = data::create_world(root, &name)?;
+    let world_id = data::create_world_of_kind(root, &name, kind)?;
     // 建桌的許可在 create_world 裡就放下了。這裡再拿一次，蓋住後面的世界書與開場白，
     // 更新閘門才等得了這次開桌寫完。
     let _permit = data::world_write_permit(&world_id)?;

@@ -2,11 +2,12 @@
 // 就地改完再展開成一張真的桌。整組 state 與三支生成流程都在這支元件裡；
 // 關閉只是不畫（open=false 時回 null，元件不卸載），草稿留著，跟拆分前逐字等價。
 // 生成中不能關（× 停用、Esc 無效）；點遮罩一律不關，免得誤觸丟掉整份草稿。
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { t } from "../../i18n";
 import { AiErrorText } from "../../shared/ui/atoms";
 import { Dialog, SwapLabel } from "../../shared/ui/Dialog";
+import type { TableKind } from "../../shared/contracts/backend-contracts";
 
 const GENRE_KEYS = [
   "genGenreFantasy",
@@ -57,6 +58,9 @@ export function GenerateTableDialog({
   onClose,
   onCreated,
   transport,
+  tableKind = "chat",
+  title,
+  toolbar,
 }: {
   open: boolean;
   onClose: () => void;
@@ -64,6 +68,11 @@ export function GenerateTableDialog({
   onCreated: (worldId: string) => Promise<void>;
   /** 目前的 AI 來源：失敗訊息要指對地方（API 換金鑰／CLI 重新登入） */
   transport?: string;
+  /** 建出來的桌型；VN 開桌精靈的前兩步重用這支，帶 vn */
+  tableKind?: TableKind;
+  title?: string;
+  /** 標題下方的置頂動作列（VN 精靈放「我有角色卡」）；生成中一併停用，跟「生成中不能關」同一道約束 */
+  toolbar?: (busy: boolean) => ReactNode;
 }) {
   const [genInput, setGenInput] = useState("");
   const [genGenres, setGenGenres] = useState<string[]>([]);
@@ -145,6 +154,7 @@ export function GenerateTableDialog({
         genres: genGenres.map((key) => t(key as typeof GENRE_KEYS[number])),
         title: genOutline.title.trim(),
         outlineRaw: serializeGeneratedOutline(genOutline),
+        tableKind,
       });
       if (!result.worldId) {
         setGenResultRaw(result.raw);
@@ -167,11 +177,12 @@ export function GenerateTableDialog({
   const hasOutline = genOutlineRaw !== null;
   return (
     <Dialog
-      title={t("genTitle")}
+      title={title ?? t("genTitle")}
       size="l"
       className="gen-table-dialog"
       onDismiss={genBusy === null ? onClose : undefined}
       closeButton
+      toolbar={toolbar?.(genBusy !== null)}
       start={
         hasOutline && (
           <button

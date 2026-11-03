@@ -1,7 +1,7 @@
 use super::character::{list_characters, read_character, write_character, CharacterCard};
 use super::paths::{interface_shell_path, refactor_outcome_path, validate_single_line, world_dir};
 use super::scene::{append_transcript, TranscriptEvent, TranscriptKind};
-use super::state::{Mechanism, TableState, WorldState};
+use super::state::{Mechanism, TableKind, TableState, WorldState};
 use super::worldbook::{read_worldbook, read_worldbook_value};
 use super::{invalid_data, new_id, DataResult, Tier};
 use crate::ui_msg::UiMsg;
@@ -17,6 +17,7 @@ pub struct WorldMeta {
     pub name: String,
     pub read_only: bool,
     pub needs_repair: bool,
+    pub table_kind: TableKind,
 }
 
 /// 最後活動時間＝transcript 內最新檔案 mtime，退而求其次用世界目錄 mtime
@@ -44,6 +45,11 @@ pub fn list_worlds(root: &Path) -> DataResult<Vec<WorldMeta>> {
             .as_ref()
             .map(|dir| super::format::loose_name(dir, &id))
             .unwrap_or_else(|| id.clone());
+        let table_kind = listed
+            .name_dir
+            .as_ref()
+            .map(|dir| super::format::loose_table_kind(dir))
+            .unwrap_or_default();
         let activity = listed
             .sort_dir
             .as_ref()
@@ -56,6 +62,7 @@ pub fn list_worlds(root: &Path) -> DataResult<Vec<WorldMeta>> {
                 name,
                 read_only: listed.read_only,
                 needs_repair: listed.needs_repair,
+                table_kind,
             },
         ));
     }
@@ -67,7 +74,7 @@ pub fn list_worlds(root: &Path) -> DataResult<Vec<WorldMeta>> {
     Ok(worlds.into_iter().map(|(_, meta)| meta).collect())
 }
 
-fn blank_state(id: &str, name: &str) -> WorldState {
+fn blank_state(id: &str, name: &str, table_kind: TableKind) -> WorldState {
     WorldState {
         id: id.to_owned(),
         name: name.to_owned(),
@@ -89,32 +96,34 @@ fn blank_state(id: &str, name: &str) -> WorldState {
         refactor_mode: None,
         statusbar_retired: false,
         regex_allowed: true,
+        table_kind,
     }
 }
 
 /// 目錄與格式標記先落，state 與 world.md 才過得了寫入閘門。呼叫端已持有這桌的寫入許可。
-fn write_new_world(root: &Path, id: &str, name: &str) -> DataResult<()> {
+fn write_new_world(root: &Path, id: &str, name: &str, kind: TableKind) -> DataResult<()> {
     let directory = super::world_file::prepare_new_world(root, id)?;
     super::world_file::commit_world_write(&directory.join("world.md"), b"")?;
     super::world_file::commit_world_write(
         &directory.join("state.json"),
-        serde_json::to_string_pretty(&blank_state(id, name))?.as_bytes(),
+        serde_json::to_string_pretty(&blank_state(id, name, kind))?.as_bytes(),
     )?;
     Ok(())
 }
 
 /// 重新重構時在臨時資料根（data::reset_build_root）建一張同 id 的空白新桌：桌名與模型指定沿用原桌，
-/// 其餘照建桌當下。之後照匯入原檔依序重匯進這張桌，完整成功才換掉原桌。
+/// 桌型也沿用（開桌時定死），其餘照建桌當下。之後照匯入原檔依序重匯進這張桌，完整成功才換掉原桌。
 pub fn create_reset_world(
     build_root: &Path,
     world_id: &str,
     name: &str,
     model_bindings: BTreeMap<String, String>,
+    table_kind: TableKind,
     world_md: &str,
 ) -> DataResult<()> {
     let directory = super::world_file::prepare_new_world(build_root, world_id)?;
     super::world_file::commit_world_write(&directory.join("world.md"), world_md.as_bytes())?;
-    let mut state = blank_state(world_id, name);
+    let mut state = blank_state(world_id, name, table_kind);
     state.model_bindings = model_bindings;
     super::world_file::commit_world_write(
         &directory.join("state.json"),
@@ -123,11 +132,17 @@ pub fn create_reset_world(
     Ok(())
 }
 
+/// 測試用：建一張聊天桌。正式建桌一律帶桌型走 create_world_of_kind。
+#[cfg(test)]
 pub fn create_world(root: &Path, name: &str) -> DataResult<String> {
+    create_world_of_kind(root, name, TableKind::Chat)
+}
+
+pub fn create_world_of_kind(root: &Path, name: &str, kind: TableKind) -> DataResult<String> {
     validate_single_line("world name", name)?;
     let id = new_id();
     let _permit = super::world_lock::world_write_permit(&id)?;
-    write_new_world_or_clean(root, &id, name).map_err(|failed| failed.error)?;
+    write_new_world_or_clean(root, &id, name, kind).map_err(|failed| failed.error)?;
     Ok(id)
 }
 
@@ -138,8 +153,13 @@ pub(crate) struct NewWorldFailed {
 }
 
 /// 建桌途中失敗就把半成品目錄清掉，不留拿不到 id 的殘桌。
-fn write_new_world_or_clean(root: &Path, id: &str, name: &str) -> Result<(), NewWorldFailed> {
-    let Err(error) = write_new_world(root, id, name) else {
+fn write_new_world_or_clean(
+    root: &Path,
+    id: &str,
+    name: &str,
+    kind: TableKind,
+) -> Result<(), NewWorldFailed> {
+    let Err(error) = write_new_world(root, id, name, kind) else {
         return Ok(());
     };
     let cleaned = super::world_file::delete_world_tree(root, id).is_ok();
@@ -162,7 +182,7 @@ pub(crate) fn create_world_exclusive(
     let id = new_id();
     let held = super::world_lock::try_world_exclusive(&id)
         .ok_or_else(|| fail(UiMsg::WorldBusy.into_error()))?;
-    write_new_world_or_clean(root, &id, name)?;
+    write_new_world_or_clean(root, &id, name, TableKind::Chat)?;
     Ok((id, held))
 }
 
@@ -211,7 +231,7 @@ pub fn create_sample_world(root: &Path, lang: &str) -> DataResult<String> {
     }
     let world_id = new_id();
     let _permit = super::world_lock::world_write_permit(&world_id)?;
-    write_new_world(root, &world_id, &sample.world_name)?;
+    write_new_world(root, &world_id, &sample.world_name, TableKind::Chat)?;
     write_world_md(root, &world_id, &sample.world_md)?;
 
     let style = [
@@ -511,8 +531,27 @@ mod tests {
                 name: "群島".to_owned(),
                 read_only: false,
                 needs_repair: false,
+                table_kind: TableKind::Chat,
             }]
         );
+    }
+
+    /// 桌型開桌時寫定：VN 桌讀回來是 vn、列表帶出 vn；舊存檔沒有這欄讀出來是 chat
+    #[test]
+    fn table_kind_persists_and_defaults_to_chat() {
+        let root = TestRoot::new("worlds-table-kind");
+        let vn = create_world_of_kind(root.path(), "幕間", TableKind::Vn).unwrap();
+        assert_eq!(
+            read_state(root.path(), &vn).unwrap().table_kind,
+            TableKind::Vn
+        );
+        let listed = list_worlds(root.path()).unwrap();
+        assert_eq!(listed[0].table_kind, TableKind::Vn);
+
+        let legacy: WorldState = serde_json::from_str(r#"{"id":"old","name":"舊桌"}"#).unwrap();
+        assert_eq!(legacy.table_kind, TableKind::Chat);
+        let written = serde_json::to_value(&legacy).unwrap();
+        assert_eq!(written["table_kind"], "chat");
     }
 
     /// 測試清單 #2：兩桌同名可並存，各自獨立 id 與內容

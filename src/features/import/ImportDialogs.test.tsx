@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { t } from "../../i18n";
 import { ImportDialogs } from "./ImportDialogs";
+import type { ComponentProps } from "react";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -17,7 +18,12 @@ afterEach(() => {
   root = null;
 });
 
-function render(postBusy: boolean, postWaiting: boolean, onPostOpening = vi.fn()) {
+function render(
+  postBusy: boolean,
+  postWaiting: boolean,
+  onPostOpening = vi.fn(),
+  extra: Partial<ComponentProps<typeof ImportDialogs>> = {},
+) {
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
@@ -45,6 +51,7 @@ function render(postBusy: boolean, postWaiting: boolean, onPostOpening = vi.fn()
         postWaiting={postWaiting}
         onTranslateAndPost={() => {}}
         onRetranslate={() => {}}
+        {...extra}
       />,
     ),
   );
@@ -78,5 +85,23 @@ describe("開場白貼出鈕", () => {
     expect(shownLabel(button)).toBe(t("openingLineOk"));
     act(() => button.click());
     expect(onPostOpening).toHaveBeenCalledWith("甲的開場", 0, false);
+  });
+});
+
+describe("第二張卡路由框", () => {
+  it("開新桌並匯入分聊天桌與 VN 桌兩顆", () => {
+    const onAnswerRoute = vi.fn();
+    render(false, false, vi.fn(), {
+      openings: null,
+      route: { worldId: "W", data: [1], identity: "character", label: "莉亞", route: "ask" },
+      onAnswerRoute,
+    });
+    const button = (key: "importRouteNewVnTable" | "importRouteNewTable") =>
+      [...document.querySelectorAll<HTMLButtonElement>("button")].find(
+        (b) => b.textContent === t(key),
+      )!;
+    act(() => button("importRouteNewVnTable").click());
+    act(() => button("importRouteNewTable").click());
+    expect(onAnswerRoute.mock.calls).toEqual([["new_vn_table"], ["new_table"]]);
   });
 });

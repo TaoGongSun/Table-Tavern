@@ -7,8 +7,13 @@ pub(crate) fn list_worlds(app: tauri::AppHandle) -> Result<Vec<data::WorldMeta>,
 }
 
 #[tauri::command]
-pub(crate) fn create_world(app: tauri::AppHandle, name: String) -> Result<String, String> {
-    data::create_world(&data_root(&app)?, &name).map_err(|error| error.to_string())
+pub(crate) fn create_world(
+    app: tauri::AppHandle,
+    name: String,
+    table_kind: data::TableKind,
+) -> Result<String, String> {
+    data::create_world_of_kind(&data_root(&app)?, &name, table_kind)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]

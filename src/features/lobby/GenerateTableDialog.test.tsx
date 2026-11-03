@@ -115,6 +115,38 @@ describe("GenerateTableDialog", () => {
     expect(taglineInputs().map((input) => input.value)).toEqual(["dock guard?", "thief"]);
   });
 
+  // 置頂動作列（VN 精靈的「我有角色卡」）跟「生成中不能關」同一道約束：大綱在生成時停用、回來後恢復
+  it("disables the toolbar entry while the outline is generating", async () => {
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    root = createRoot(host, { onUncaughtError: (error) => renderErrors.push(error) });
+    act(() => {
+      root!.render(
+        <StrictMode>
+          <GenerateTableDialog
+            open
+            onClose={onClose}
+            onCreated={onCreated}
+            transport="api"
+            toolbar={(busy) => (
+              <button type="button" className="probe-toolbar" disabled={busy}>
+                card
+              </button>
+            )}
+          />
+        </StrictMode>,
+      );
+    });
+    const probe = () => document.querySelector<HTMLButtonElement>(".probe-toolbar")!;
+    expect(probe().disabled).toBe(false);
+    let release: (value: unknown) => void = () => {};
+    await generateOutline(() => new Promise((resolve) => (release = resolve)));
+    expect(probe().disabled).toBe(true);
+    await act(async () => release({ parsed: OUTLINE, raw: "raw" }));
+    expect(probe().disabled).toBe(false);
+    expect(renderErrors).toEqual([]);
+  });
+
   it("sends the edited draft title when creating the table", async () => {
     mount();
     await generateOutline(async () => ({ parsed: OUTLINE, raw: "raw" }));
@@ -124,7 +156,7 @@ describe("GenerateTableDialog", () => {
 
     expect(invokeMock).toHaveBeenCalledWith(
       "generate_table_expand",
-      expect.objectContaining({ title: "Glass Harbor" }),
+      expect.objectContaining({ title: "Glass Harbor", tableKind: "chat" }),
     );
     expect(onCreated).toHaveBeenCalledWith("w-new");
   });
