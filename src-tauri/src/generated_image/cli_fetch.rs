@@ -84,8 +84,10 @@ pub(crate) async fn run_cli_image(
 ) -> Result<GeneratedImage, String> {
     let job = CliJob::create(&cli_workspace(app)?, kind, reference)?;
     let mut prompt = prompt.to_owned();
-    if kind == "agy" && job.reference.is_some() {
-        prompt = format!("Reference image file: reference.png (in the current working directory; look at it before generating). {prompt}");
+    // agy 的 view_file 只收絕對路徑；圖像代理不帶預設組件，模型不知道 cwd（plans/agy-image-permissions.md §2.3）
+    if let (true, Some(reference)) = (kind == "agy", &job.reference) {
+        let path = reference.display();
+        prompt = format!("Reference image file: {path} (look at it before generating). {prompt}");
     }
     prompt.push_str(REPLY_RULE);
     if kind == "codex" {

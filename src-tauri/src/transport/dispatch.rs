@@ -81,7 +81,7 @@ fn agy_profile(app: &tauri::AppHandle) -> Result<PathBuf, String> {
             .map_err(|error| UiMsg::AgyProfileFailed { error }.to_string())?;
         cli::agy_home::ensure_keychain_link(&home, &real_home)?;
     }
-    cli::agy_home::ensure_text_agent(&home)?;
+    cli::agy_home::ensure_agents(&home)?;
     Ok(home)
 }
 

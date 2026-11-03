@@ -1,0 +1,20 @@
+{
+  "cli": "agy",
+  "scenario": "oneshot",
+  "inputs": {
+    "model": "gemini-3.8-flash-medium",
+    "tools": false
+  },
+  "args": [
+    "--model",
+    "gemini-3.8-flash-medium",
+    "--agent",
+    "table-tavern-text",
+    "--settings",
+    "{\"toolPermission\":\"request-review\",\"permissions\":{\"allow\":[]},\"allowNonWorkspaceAccess\":false}",
+    "--output-format",
+    "stream-json"
+  ],
+  "exit": 0,
+  "stderr_tail": ""
+}

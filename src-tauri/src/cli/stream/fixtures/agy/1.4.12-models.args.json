@@ -1,0 +1,9 @@
+{
+  "cli": "agy",
+  "scenario": "models",
+  "inputs": {},
+  "args": [
+    "models"
+  ],
+  "exit": 0
+}

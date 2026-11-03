@@ -48,6 +48,7 @@ fn flatten_skips_label_and_closing_when_self_contained() {
 /// 正文一律不進命令列：沒有 -p、整串參數裡找不到正文（正文走 stdin）。
 #[test]
 fn agy_args_carry_no_prompt_on_the_command_line() {
+    let settings = r#"{"toolPermission":"request-review","permissions":{"allow":[]},"allowNonWorkspaceAccess":false}"#;
     assert_eq!(
         agy_args(Some("Claude Sonnet 4.6 (Thinking)"), false),
         [
@@ -55,24 +56,29 @@ fn agy_args_carry_no_prompt_on_the_command_line() {
             "Claude Sonnet 4.6 (Thinking)",
             "--agent",
             "table-tavern-text",
+            "--settings",
+            settings,
             "--output-format",
             "stream-json"
         ]
     );
+    // 生圖走圖像代理，同樣鎖權限；任何組合都不帶跳過權限旗標
     assert_eq!(
-        agy_args(None, false),
+        agy_args(None, true),
         [
             "--agent",
-            "table-tavern-text",
+            "table-tavern-image",
+            "--settings",
+            settings,
             "--output-format",
             "stream-json"
         ]
     );
-    // 生圖要 generate_image：不帶精簡代理
-    let image = agy_args(None, true);
-    assert!(image.contains(&"--dangerously-skip-permissions".to_owned()));
-    assert!(!image.contains(&"--agent".to_owned()));
-    assert!(!image.contains(&"-p".to_owned()));
+    for tools in [false, true] {
+        let args = agy_args(None, tools);
+        assert!(!args.contains(&"--dangerously-skip-permissions".to_owned()));
+        assert!(!args.contains(&"-p".to_owned()));
+    }
 }
 
 #[test]

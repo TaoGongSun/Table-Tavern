@@ -458,7 +458,7 @@ fn capture_agy(root: &Path) {
         return;
     };
     let home = env_path("CVG_AGY_HOME").expect("CVG_AGY_HOME");
-    agy_home::ensure_text_agent(&home).unwrap();
+    agy_home::ensure_agents(&home).unwrap();
     let env = new_env(root, "agy", bin, agy_home::agy_envs(&home));
     let ver = version(&env);
     write_version("agy", &ver);

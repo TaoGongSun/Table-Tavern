@@ -127,8 +127,10 @@ pub(crate) fn ensure_keychain_link(agy_home: &Path, real_home: &Path) -> Result<
     Ok(())
 }
 
-/// app 專用代理的名字（`--agent` 帶這個）。檔案由 `ensure_text_agent` 維護。
+/// app 專用代理的名字（`--agent` 帶這個）。檔案由 `ensure_agents` 維護。
 pub const TEXT_AGENT: &str = "table-tavern-text";
+/// 生圖代理（plans/agy-image-permissions.md）：只給 generate_image 與讀參考圖的 view_file。
+pub const IMAGE_AGENT: &str = "table-tavern-image";
 
 /// 精簡工具集代理（plans/agy-long-survey-fail.md）：`tools: []` 加 `excludeDefaultComponents`
 /// 拿掉 agy 預設的代理系統提示與約 60 個工具（1.4.8 實測只剩內建的 manage_task）。
@@ -145,18 +147,36 @@ subagent: false
 Respond to the user's message with plain text.
 ";
 
-/// 確保 `agy_home/.gemini/config/agents/table-tavern-text.md` 是上面那份內容：相同就不動，
-/// 不同或不存在就同目錄臨時檔＋rename 寫入。原位被資料夾或連結佔住、或任一步失敗都回錯——
-/// agy 找不到 `--agent` 指名的代理時可能靜默退回預設代理，那就又回到會叫工具的老樣子。
-pub(crate) fn ensure_text_agent(agy_home: &Path) -> Result<(), String> {
+/// 生圖代理：沒有 shell、寫檔、聯網工具；不帶 `--dangerously-skip-permissions`，漏網的權限請求
+/// 在無頭模式一律被拒（2026-11-02 agy 1.4.12 實測）。預設組件照樣拿掉，參考圖由呼叫端給路徑。
+const IMAGE_AGENT_FILE: &str = "---
+name: table-tavern-image
+description: Table Tavern image generation (maintained by the app; do not edit)
+tools: [generate_image, view_file]
+excludeDefaultComponents: true
+mainAgent: true
+subagent: false
+---
+Generate the image the user asks for, then reply as instructed.
+";
+
+/// 確保 `agy_home/.gemini/config/agents/` 裡兩份代理檔都是上面的內容。
+pub(crate) fn ensure_agents(agy_home: &Path) -> Result<(), String> {
+    ensure_agent(agy_home, TEXT_AGENT, TEXT_AGENT_FILE)?;
+    ensure_agent(agy_home, IMAGE_AGENT, IMAGE_AGENT_FILE)
+}
+
+/// 單份代理檔：相同就不動，不同或不存在就同目錄臨時檔＋rename 寫入。原位被資料夾或連結佔住、
+/// 或任一步失敗都回錯——內容被改掉的代理檔可能帶回預設工具。
+fn ensure_agent(agy_home: &Path, name: &str, content: &str) -> Result<(), String> {
     let dir = agy_home.join(".gemini").join("config").join("agents");
     std::fs::create_dir_all(&dir).map_err(|error| failed(format!("{}：{error}", dir.display())))?;
-    let path = dir.join(format!("{TEXT_AGENT}.md"));
+    let path = dir.join(format!("{name}.md"));
     match std::fs::symlink_metadata(&path) {
         Ok(meta) if meta.is_file() => {
             let current = std::fs::read(&path)
                 .map_err(|error| failed(format!("{}：{error}", path.display())))?;
-            if current == TEXT_AGENT_FILE.as_bytes() {
+            if current == content.as_bytes() {
                 return Ok(());
             }
         }
@@ -164,9 +184,8 @@ pub(crate) fn ensure_text_agent(agy_home: &Path) -> Result<(), String> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => return Err(failed(format!("{}：{error}", path.display()))),
     }
-    let temp = temp_beside(&dir, TEXT_AGENT)?;
-    let result =
-        std::fs::write(&temp, TEXT_AGENT_FILE).and_then(|()| std::fs::rename(&temp, &path));
+    let temp = temp_beside(&dir, name)?;
+    let result = std::fs::write(&temp, content).and_then(|()| std::fs::rename(&temp, &path));
     if let Err(error) = result {
         let _ = std::fs::remove_file(&temp);
         return Err(failed(format!("{}：{error}", path.display())));
@@ -345,42 +364,45 @@ mod tests {
     }
 
     #[test]
-    fn text_agent_is_written_once_and_rewritten_when_changed() {
+    fn agents_are_written_once_and_rewritten_when_changed() {
         let (_dir, _, agy, _) = setup();
-        ensure_text_agent(&agy).unwrap();
-        let file = agy.join(".gemini/config/agents/table-tavern-text.md");
-        assert_eq!(std::fs::read_to_string(&file).unwrap(), TEXT_AGENT_FILE);
-        let written = std::fs::metadata(&file).unwrap().modified().unwrap();
-        ensure_text_agent(&agy).unwrap();
-        assert_eq!(
-            std::fs::metadata(&file).unwrap().modified().unwrap(),
-            written
-        );
-        std::fs::write(&file, "tools: [run_command]").unwrap();
-        ensure_text_agent(&agy).unwrap();
-        assert_eq!(std::fs::read_to_string(&file).unwrap(), TEXT_AGENT_FILE);
+        ensure_agents(&agy).unwrap();
+        let dir = agy.join(".gemini/config/agents");
+        for (name, content) in [
+            (TEXT_AGENT, TEXT_AGENT_FILE),
+            (IMAGE_AGENT, IMAGE_AGENT_FILE),
+        ] {
+            let file = dir.join(format!("{name}.md"));
+            assert_eq!(std::fs::read_to_string(&file).unwrap(), content);
+            let written = std::fs::metadata(&file).unwrap().modified().unwrap();
+            ensure_agents(&agy).unwrap();
+            assert_eq!(
+                std::fs::metadata(&file).unwrap().modified().unwrap(),
+                written
+            );
+            std::fs::write(&file, "tools: [run_command]").unwrap();
+            ensure_agents(&agy).unwrap();
+            assert_eq!(std::fs::read_to_string(&file).unwrap(), content);
+        }
         // 沒留下臨時檔
-        assert_eq!(
-            std::fs::read_dir(file.parent().unwrap()).unwrap().count(),
-            1
-        );
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 2);
     }
 
     #[test]
-    fn text_agent_slot_taken_by_non_file_is_an_error() {
+    fn agent_slot_taken_by_non_file_is_an_error() {
         let (dir, _, agy, _) = setup();
-        let file = agy.join(".gemini/config/agents/table-tavern-text.md");
+        let file = agy.join(".gemini/config/agents/table-tavern-image.md");
         std::fs::create_dir_all(&file).unwrap();
-        let error = ensure_text_agent(&agy).unwrap_err();
+        let error = ensure_agents(&agy).unwrap_err();
         assert!(error.contains("agy_profile_failed"), "{error}");
         std::fs::remove_dir(&file).unwrap();
         std::os::unix::fs::symlink(dir.path(), &file).unwrap();
-        assert!(ensure_text_agent(&agy).is_err());
+        assert!(ensure_agents(&agy).is_err());
         // 建不出資料夾（.gemini 是檔案）也回錯
         let (_dir2, _, agy2, _) = setup();
         std::fs::create_dir_all(&agy2).unwrap();
         std::fs::write(agy2.join(".gemini"), b"x").unwrap();
-        assert!(ensure_text_agent(&agy2)
+        assert!(ensure_agents(&agy2)
             .unwrap_err()
             .contains("agy_profile_failed"));
     }

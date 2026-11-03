@@ -212,10 +212,11 @@ pub fn codex_session_args(model: Option<&str>, effort: &str, resume: Option<&str
 
 /// agy 沒有 system prompt 旗標，呼叫端把 system 併進正文。正文走 stdin（不帶 `-p`
 /// 就是單發模式），不佔命令列長度。
-/// allow_tools＝false（聊天、旁白、卡重構）：帶 `--agent` 走 app 的精簡工具集代理
-/// （`agy_home::ensure_text_agent`），模型拿不到 run_command 等工具。
-/// allow_tools＝true（生圖）：要 generate_image，不帶代理；生圖工具在無頭模式需要 command 權限、
-/// 提示彈不出來會被自動拒絕（2026-07-27 實測），必須帶 --dangerously-skip-permissions 才會出圖。
+/// 一律帶 app 的專用代理（`agy_home::ensure_agents`）：聊天、旁白、卡重構用沒有工具的文字代理；
+/// 生圖用只有 generate_image／view_file 的圖像代理。不帶 `--dangerously-skip-permissions`，
+/// 再用 `--settings` 把權限鎖成 request-review、清空放行規則，蓋過 agy-home 裡可能存在的設定檔
+/// ——無頭模式彈不出確認，指令、寫檔、工作目錄外讀檔會被拒；例外是 agy-home 的 `.gemini/` 照樣讀得到，
+/// 且 `--settings` 能否蓋過 project／shared scope 的權限規則未證實（plans/agy-image-permissions.md §5）。
 /// 注意：agy 對單則訊息約 195KB 以上會靜默只留開頭（2026-10-06 實測，`-p` 與 stdin 相同），
 /// 換傳遞方式解不掉，見 .ai/plans/long-prompt-scene-hint.md 發現 D。
 pub fn agy_args(model: Option<&str>, allow_tools: bool) -> Vec<String> {
@@ -224,18 +225,22 @@ pub fn agy_args(model: Option<&str>, allow_tools: bool) -> Vec<String> {
         args.push("--model".to_owned());
         args.push(model.to_owned());
     }
-    if allow_tools {
-        args.push("--dangerously-skip-permissions".to_owned());
-    } else {
-        args.push("--agent".to_owned());
-        args.push(super::agy_home::TEXT_AGENT.to_owned());
-    }
+    args.push("--agent".to_owned());
+    args.push(match allow_tools {
+        true => super::agy_home::IMAGE_AGENT.to_owned(),
+        false => super::agy_home::TEXT_AGENT.to_owned(),
+    });
+    args.push("--settings".to_owned());
+    args.push(AGY_LOCKED_SETTINGS.to_owned());
     // stream-json 才拿得到 usage（agy 1.1.8 起含 cache_read_tokens）；純 json 會把整包
     // 壓到最後一次吐出，串流就沒了。
     args.push("--output-format".to_owned());
     args.push("stream-json".to_owned());
     args
 }
+
+/// 每次呼叫都帶的權限設定（只作用於本次，不寫檔）。
+const AGY_LOCKED_SETTINGS: &str = r#"{"toolPermission":"request-review","permissions":{"allow":[]},"allowNonWorkspaceAccess":false}"#;
 
 /// Agy 對話 lane：首輪帶穩定素材，後續用精確 conversation ID 只送新回合。
 /// 不用 `--continue`：它是「這個 workspace 最近一條」，可能誤接生圖／重構對話。

@@ -9,7 +9,7 @@ pub(crate) fn tested(cli: &str) -> Option<&'static str> {
     match cli {
         "claude" => Some("2.1.311"),
         "codex" => Some("0.164.0"),
-        "agy" => Some("1.4.9"),
+        "agy" => Some("1.4.12"),
         "grok" => Some("1.0.70"),
         _ => None,
     }
