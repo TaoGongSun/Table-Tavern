@@ -205,6 +205,7 @@ export const fr: WebMessages = {
   downloadWindows: "Télécharger pour Windows",
   downloadMac: "Télécharger pour macOS (Apple Silicon)",
   downloadAllFiles: "Toutes les versions et tous les fichiers",
+  downloadPcloud: "Télécharger depuis pCloud (accessible en Chine continentale)",
   downloadInstallTitle: "Le système bloque l'installation ?",
   downloadInstallWindows:
     "Windows : l'application de bureau n'a pas encore de certificat de signature de code, SmartScreen peut donc afficher « Windows a protégé votre ordinateur » ou « Éditeur inconnu ». Clique sur « Informations complémentaires », puis sur « Exécuter quand même ». Si le navigateur indique que le fichier n'est pas souvent téléchargé, choisis « Conserver ».",

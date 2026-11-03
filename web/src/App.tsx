@@ -48,7 +48,7 @@ export default function App({ callback, lang: initialLang }: { callback: OAuthCa
     rememberLang(next);
     setLangState(next);
   }, []);
-  // 中國供應商模式藏下載鈕、不打 GitHub（作者裁決 2026-11-02；之後有 APK 再改成下載 APK）
+  // 中國供應商模式不打 GitHub，下載頁只給 pCloud〔作者裁決 2026-11-03〕
   const release = useLatestRelease(!cn);
   const downloadPage = useDownloadPage();
   const [game, setGame] = useState<GameSetup | null>(null);
@@ -110,7 +110,7 @@ export default function App({ callback, lang: initialLang }: { callback: OAuthCa
               busy={busy}
             />
           )}
-          {!cn && <DownloadLink release={release} />}
+          <DownloadLink release={release} />
           {session.apiKey && (
             <button
               type="button"
@@ -166,7 +166,7 @@ export default function App({ callback, lang: initialLang }: { callback: OAuthCa
       </main>
 
       {exhausted && !quotaDismissed && !cn && <QuotaPanel release={release} onClose={() => setQuotaDismissed(true)} />}
-      {downloadPage.open && <DownloadPage release={release} onClose={downloadPage.close} />}
+      {downloadPage.open && <DownloadPage release={release} cn={cn} onClose={downloadPage.close} />}
     </div>
   );
 }

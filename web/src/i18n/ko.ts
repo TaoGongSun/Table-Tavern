@@ -203,6 +203,7 @@ export const ko: WebMessages = {
   downloadWindows: "Windows용 다운로드",
   downloadMac: "macOS용 다운로드(Apple Silicon)",
   downloadAllFiles: "모든 버전과 파일",
+  downloadPcloud: "pCloud에서 다운로드(중국 본토에서도 가능)",
   downloadInstallTitle: "설치할 때 시스템이 막는다면",
   downloadInstallWindows:
     "Windows: 데스크톱 앱은 아직 코드 서명 인증서를 구입하지 않아 SmartScreen이 ‘Windows의 PC 보호’나 ‘알 수 없는 게시자’를 띄울 수 있습니다. ‘추가 정보’를 누른 뒤 ‘실행’을 누르세요. 다운로드할 때 브라우저가 ‘일반적으로 다운로드되지 않는 파일’이라고 하면 ‘유지’를 선택하세요.",

@@ -192,6 +192,7 @@ export const zhCN: WebMessages = {
   downloadWindows: "下载 Windows 版",
   downloadMac: "下载 macOS 版（Apple Silicon）",
   downloadAllFiles: "所有版本与文件",
+  downloadPcloud: "从 pCloud 下载（国内可用）",
   downloadInstallTitle: "安装时被系统拦下？",
   downloadInstallWindows:
     "Windows：桌面版还没有购买代码签名证书，SmartScreen 可能弹出“Windows 已保护你的电脑”或“未知发布者”——点“更多信息”，再点“仍要运行”。下载时浏览器若提示文件“不常下载”，选“保留”（Edge 在“…”里，再点“仍然保留”）。",

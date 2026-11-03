@@ -28,7 +28,11 @@ export async function runCnScenario({ browser, base, fake, step, consoleErrors }
   await page.goto(base);
   await page.getByTestId("key-panel").getByText("连接魔搭 ModelScope就能开始玩").waitFor();
   assert.equal(await page.getByTestId("key-panel").locator("ol li").count(), 4);
-  assert.equal(await page.getByTestId("download-link").count(), 0, "中國供應商模式藏下載鈕");
+  await page.getByTestId("download-link").click();
+  const cta = page.getByTestId("download-cta").locator("a");
+  assert.deepEqual(await cta.allTextContents(), ["从 pCloud 下载（国内可用）"], "中國供應商模式下載頁只給 pCloud");
+  assert.equal(await page.getByTestId("download-version").count(), 0);
+  await page.getByRole("button", { name: "回到游戏" }).click();
   await shot("cn-key-panel");
 
   step("貼到一半的草稿不跟著換家（兩個方向）：換到矽基流動輸入框是空的、送不出");
@@ -69,7 +73,7 @@ export async function runCnScenario({ browser, base, fake, step, consoleErrors }
   await page.getByRole("button", { name: "发送" }).waitFor();
   const first = fake.state.cnRequests.filter((request) => request.route === "chat/completions").at(-1);
   assert.deepEqual([first.provider, first.model, first.auth, first.xTitle], ["ms", "deepseek-ai/DeepSeek-V4.1-Flash", `Bearer ${MS_KEY}`, null]);
-  assert.equal(await page.getByTestId("download-link").count(), 0);
+  assert.equal(await page.getByTestId("download-link").count(), 1);
   await shot("cn-chat");
 
   step("回合中切換選項停用、回合收尾後才解鎖；換到已存金鑰的矽基流動，桌照舊、下一句打那家");

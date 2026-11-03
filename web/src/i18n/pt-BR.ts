@@ -204,6 +204,7 @@ export const ptBR: WebMessages = {
   downloadWindows: "Baixar para Windows",
   downloadMac: "Baixar para macOS (Apple Silicon)",
   downloadAllFiles: "Todas as versões e arquivos",
+  downloadPcloud: "Baixar do pCloud (funciona na China continental)",
   downloadInstallTitle: "O sistema bloqueou a instalação?",
   downloadInstallWindows:
     "Windows: o app de desktop ainda não tem certificado de assinatura de código, então o SmartScreen pode mostrar “O Windows protegeu seu computador” ou “Editor desconhecido”. Clique em “Mais informações” e depois em “Executar assim mesmo”. Se o navegador disser que o arquivo não é baixado com frequência, escolha “Manter”.",

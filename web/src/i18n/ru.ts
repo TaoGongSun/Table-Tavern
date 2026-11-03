@@ -206,6 +206,7 @@ export const ru: WebMessages = {
   downloadWindows: "Скачать для Windows",
   downloadMac: "Скачать для macOS (Apple Silicon)",
   downloadAllFiles: "Все версии и файлы",
+  downloadPcloud: "Скачать с pCloud (доступно в материковом Китае)",
   downloadInstallTitle: "Система блокирует установку?",
   downloadInstallWindows:
     "Windows: у настольного приложения пока нет сертификата подписи кода, поэтому SmartScreen может показать «Система Windows защитила ваш компьютер» или «Неизвестный издатель». Нажми «Подробнее», затем «Выполнить в любом случае». Если браузер пишет, что файл редко скачивают, выбери «Сохранить».",

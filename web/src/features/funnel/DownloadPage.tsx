@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { getLang, t, type MsgKey } from "../../i18n";
+import { PCLOUD_PAGE } from "../../shared/endpoints/origins";
 import { FEATURE_COMPARE } from "./feature-compare";
 import type { ReleaseInfo } from "./releases";
 import { TOUR_FEATURES, TOUR_HERO, type TourFeature } from "./tour-features";
@@ -18,20 +19,27 @@ const STATUS_TEXT: Record<Exclude<ReleaseInfo["status"], "ok">, MsgKey> = {
 const SHOT_WIDTH = 1600;
 const SHOT_HEIGHT = 1136;
 
-/** 下載鈕：沒有對應安裝檔就不出該平台鈕，「所有版本與檔案」永遠在（沒有平台檔時它就是主要按鈕） */
-function DownloadButtons({ release, testId }: { release: ReleaseInfo; testId: string }) {
-  const file = (href: string, label: string) => (
-    <a className="button primary" href={href} target="_blank" rel="noopener noreferrer">
+/**
+ * 下載鈕：沒有對應安裝檔就不出該平台鈕，「所有版本與檔案」永遠在（沒有平台檔時它就是主要按鈕）。
+ * 簡中排 pCloud 在最前當主要按鈕（GitHub 在中國連不上）；中國供應商模式不打 GitHub，只給 pCloud。
+ */
+function DownloadButtons({ release, cn, testId }: { release: ReleaseInfo; cn: boolean; testId: string }) {
+  const pcloud = cn || getLang() === "zh-CN";
+  const link = (href: string, label: string, primary: boolean) => (
+    <a className={primary ? "button primary" : "button"} href={href} target="_blank" rel="noopener noreferrer">
       {label}
     </a>
   );
   return (
     <div className="tour-cta" data-testid={testId}>
-      {release.windows && file(release.windows, t("downloadWindows"))}
-      {release.mac && file(release.mac, t("downloadMac"))}
-      <a className={release.windows || release.mac ? "button" : "button primary"} href={release.pageUrl} target="_blank" rel="noopener noreferrer">
-        {t("downloadAllFiles")}
-      </a>
+      {pcloud && link(PCLOUD_PAGE, t("downloadPcloud"), true)}
+      {!cn && (
+        <>
+          {release.windows && link(release.windows, t("downloadWindows"), !pcloud)}
+          {release.mac && link(release.mac, t("downloadMac"), !pcloud)}
+          {link(release.pageUrl, t("downloadAllFiles"), !pcloud && !release.windows && !release.mac)}
+        </>
+      )}
     </div>
   );
 }
@@ -65,7 +73,7 @@ function TourIcon({ name }: { name: string }) {
  * 下載頁（桌面版導覽）：頁首、主視覺與第一組下載鈕、特色卡、功能對照表、安裝被擋的繞過步驟與第二組下載鈕。
  * 滿版蓋在畫面上、自己捲動；開著時鎖住底下頁面的捲動，Esc 或「回到遊戲」關掉，焦點還給打開前的元素。
  */
-export function DownloadPage({ release, onClose, images = TOUR_IMAGES }: { release: ReleaseInfo; onClose: () => void; images?: TourImages }) {
+export function DownloadPage({ release, cn = false, onClose, images = TOUR_IMAGES }: { release: ReleaseInfo; cn?: boolean; onClose: () => void; images?: TourImages }) {
   const closeButton = useRef<HTMLButtonElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -124,10 +132,12 @@ export function DownloadPage({ release, onClose, images = TOUR_IMAGES }: { relea
         <div className="tour-hero-text">
           <h1 id="tour-title">{t("tourTitle")}</h1>
           <p className="tour-lead">{t("tourLead")}</p>
-          <DownloadButtons release={release} testId="download-cta" />
-          <p className="download-version" data-testid="download-version">
-            {release.status === "ok" ? t("downloadVersion", { version: release.version ?? "" }) : t(STATUS_TEXT[release.status])}
-          </p>
+          <DownloadButtons release={release} cn={cn} testId="download-cta" />
+          {!cn && (
+            <p className="download-version" data-testid="download-version">
+              {release.status === "ok" ? t("downloadVersion", { version: release.version ?? "" }) : t(STATUS_TEXT[release.status])}
+            </p>
+          )}
         </div>
         {hero}
       </section>
@@ -183,7 +193,7 @@ export function DownloadPage({ release, onClose, images = TOUR_IMAGES }: { relea
           <li>{t("downloadInstallMac")}</li>
         </ul>
         <p className="tour-install-note">{t("downloadInstallWhy")}</p>
-        <DownloadButtons release={release} testId="download-cta-bottom" />
+        <DownloadButtons release={release} cn={cn} testId="download-cta-bottom" />
       </section>
     </div>
   );

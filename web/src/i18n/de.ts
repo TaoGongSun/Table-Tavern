@@ -204,6 +204,7 @@ export const de: WebMessages = {
   downloadWindows: "Für Windows herunterladen",
   downloadMac: "Für macOS herunterladen (Apple Silicon)",
   downloadAllFiles: "Alle Versionen und Dateien",
+  downloadPcloud: "Von pCloud herunterladen (auch in Festlandchina erreichbar)",
   downloadInstallTitle: "Blockiert das System die Installation?",
   downloadInstallWindows:
     "Windows: Die Desktop-App hat noch kein Code-Signing-Zertifikat, daher zeigt SmartScreen eventuell „Windows hat Ihren PC geschützt“ oder „Unbekannter Herausgeber“. Klicke auf „Weitere Informationen“ und dann auf „Trotzdem ausführen“. Meldet der Browser, dass die Datei selten heruntergeladen wird, wähle „Behalten“.",

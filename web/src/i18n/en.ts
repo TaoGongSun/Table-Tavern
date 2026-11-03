@@ -204,6 +204,7 @@ export const en: WebMessages = {
   downloadWindows: "Download for Windows",
   downloadMac: "Download for macOS (Apple Silicon)",
   downloadAllFiles: "All versions and files",
+  downloadPcloud: "Download from pCloud (works in mainland China)",
   downloadInstallTitle: "Blocked by the system while installing?",
   downloadInstallWindows:
     "Windows: the desktop app doesn't have a code-signing certificate yet, so SmartScreen may show “Windows protected your PC” or “Unknown publisher”. Click “More info”, then “Run anyway”. If your browser says the file isn't commonly downloaded, choose “Keep” (in Edge it's under “…”, then “Keep anyway”).",

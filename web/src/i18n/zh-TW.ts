@@ -194,6 +194,7 @@ export const zhTW = {
   downloadWindows: "下載 Windows 版",
   downloadMac: "下載 macOS 版（Apple Silicon）",
   downloadAllFiles: "所有版本與檔案",
+  downloadPcloud: "從 pCloud 下載（中國大陸可用）",
   downloadInstallTitle: "安裝時被系統擋下？",
   downloadInstallWindows:
     "Windows：桌面版還沒有購買程式碼簽章憑證，SmartScreen 可能跳出「Windows 已保護您的電腦」或「未知的發行者」——點「其他資訊」，再按「仍要執行」。下載時瀏覽器若說檔案「不常下載」，選「保留」（Edge 在「…」裡，再按「仍要保留」）。",

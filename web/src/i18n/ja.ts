@@ -203,6 +203,7 @@ export const ja: WebMessages = {
   downloadWindows: "Windows 版をダウンロード",
   downloadMac: "macOS 版をダウンロード（Apple Silicon）",
   downloadAllFiles: "すべてのバージョンとファイル",
+  downloadPcloud: "pCloud からダウンロード（中国本土でも利用可）",
   downloadInstallTitle: "インストール時にブロックされたら",
   downloadInstallWindows:
     "Windows：デスクトップ版はまだコード署名証明書を購入していないため、SmartScreen が「Windows によって PC が保護されました」や「不明な発行元」を表示することがあります。「詳細情報」を押し、「実行」を押してください。ダウンロード時にブラウザが「一般的にダウンロードされていません」と表示したら「保存」を選んでください。",

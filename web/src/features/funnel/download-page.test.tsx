@@ -7,7 +7,8 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { DesktopOnly } from "./DesktopOnly";
 import { DOWNLOAD_HASH, useDownloadPage } from "./download-route";
 import { DownloadPage } from "./DownloadPage";
-import { t, type MsgKey } from "../../i18n";
+import { setLang, t, type MsgKey } from "../../i18n";
+import { PCLOUD_PAGE } from "../../shared/endpoints/origins";
 import { FEATURE_COMPARE } from "./feature-compare";
 import { fetchLatestRelease, LOADING_RELEASE, NO_RELEASE, RELEASE_UNAVAILABLE, type ReleaseInfo } from "./releases";
 import { TOUR_FEATURES } from "./tour-features";
@@ -62,6 +63,28 @@ describe("the download page", () => {
     // 頁面上沒有其他連結
     expect(links()).toEqual([...expected, ...expected]);
     expect(targets()).toEqual(Array(6).fill("_blank"));
+  });
+
+  it("simplified Chinese: pCloud first as the main button, GitHub files after it", async () => {
+    setLang("zh-CN");
+    try {
+      await render(<DownloadPage release={RELEASE} onClose={() => {}} />);
+      const cta = host.querySelector("[data-testid=download-cta]")!;
+      expect([...cta.querySelectorAll("a")].map((a) => [a.textContent, a.getAttribute("href"), a.className])).toEqual([
+        ["从 pCloud 下载（国内可用）", PCLOUD_PAGE, "button primary"],
+        ["下载 Windows 版", RELEASE.windows, "button"],
+        ["下载 macOS 版（Apple Silicon）", RELEASE.mac, "button"],
+        ["所有版本与文件", RELEASE.pageUrl, "button"],
+      ]);
+    } finally {
+      setLang("zh-TW");
+    }
+  });
+
+  it("China provider mode: only pCloud, no GitHub links and no version line", async () => {
+    await render(<DownloadPage release={LOADING_RELEASE} cn onClose={() => {}} />);
+    expect(groups()).toEqual(Array(2).fill([{ text: "從 pCloud 下載（中國大陸可用）", href: PCLOUD_PAGE, rel: "noopener noreferrer" }]));
+    expect(host.querySelector("[data-testid=download-version]")).toBeNull();
   });
 
   it("rate limited, offline, or a release without matching installers: no broken link and never 'no release yet'", async () => {

@@ -204,6 +204,7 @@ export const es: WebMessages = {
   downloadWindows: "Descargar para Windows",
   downloadMac: "Descargar para macOS (Apple Silicon)",
   downloadAllFiles: "Todas las versiones y archivos",
+  downloadPcloud: "Descargar desde pCloud (funciona en China continental)",
   downloadInstallTitle: "¿El sistema lo bloquea al instalar?",
   downloadInstallWindows:
     "Windows: la app de escritorio aún no tiene un certificado de firma de código, así que SmartScreen puede mostrar «Windows protegió su PC» o «Editor desconocido». Pulsa «Más información» y luego «Ejecutar de todas formas». Si el navegador dice que el archivo no se descarga habitualmente, elige «Conservar».",
