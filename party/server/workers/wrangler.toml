@@ -1,4 +1,4 @@
-# 房間伺服器（Cloudflare Workers＋Durable Objects）。這份只供型別與本機 `npm run dev:server`（wrangler dev）；
+# 房間伺服器（Cloudflare Workers＋Durable Objects）：供本機 `npm run dev:server`（wrangler dev）與正式部署使用；
 # 不含任何帳號 id 或密鑰。部署時由部署者自己補 account_id（或用環境變數 CLOUDFLARE_ACCOUNT_ID），不進版控。
 name = "table-tavern-party"
 main = "index.ts"
@@ -28,7 +28,7 @@ new_sqlite_classes = ["RoomDO"]
 ROOM_IDLE_DAYS = "30"
 
 # 建房限流（協定 §6.1：同 IP 每小時 10 次）。Rate Limiting binding 的 period 只能是 10 或 60 秒，
-# 表達不了「每小時」；先用每分鐘 1 次（每小時最多 60 次）近似。namespace_id 是帳號內自訂的整數，佔位值。
+# 表達不了「每小時」；先用每分鐘 1 次近似。namespace_id 是帳號內自訂的整數，用來識別這組限流。
 [[ratelimits]]
 name = "CREATE_LIMITER"
 namespace_id = "1001"

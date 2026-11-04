@@ -1,0 +1,11 @@
+node_modules/
+dist/
+dist-node/
+.wrangler/
+data/
+coverage/
+*.tsbuildinfo
+package-lock.json
+npm-shrinkwrap.json
+yarn.lock
+pnpm-lock.yaml
