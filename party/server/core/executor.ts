@@ -158,7 +158,12 @@ async function applySync(tx: Tx, keep: KeepThrough, items: SyncItem[]) {
   if (changed) w.lastDispatch = null; // 桌尾已不是房間最後那回合
   Object.assign(w.exec, { sync: null, paused: false });
   announceExec(tx);
-  pushDispatch(tx);
+  // 閘門期間 welcome 沒帶派工：補完才把在途那份原樣重送（同一般重連，執行端照 dispatchId 判斷續跑、重跑或不動）
+  const r = w.round;
+  if (r?.dispatch && (r.phase === "queued" || r.phase === "generating")) {
+    r.genAt = tx.now;
+    tx.toExec("dispatch", r.dispatch);
+  } else pushDispatch(tx);
 }
 
 /** 工作：當前的照收；已收過的 jobId 回 ok 不重做（冪等）；其餘 E_DISPATCH_UNKNOWN */

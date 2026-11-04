@@ -52,9 +52,29 @@ describe("同步閘門（§3.3）", () => {
     expect((await sync(room, { keepThrough: { round: last.round, part: last.part } }))?.t).toBe("ok");
     expect(room.s.exec).toMatchObject({ sync: null, paused: false });
     expect(room.events("story.truncated")).toEqual([]);
-    expect(room.s.round).toMatchObject({ round: 3, phase: "queued" }); // 沒有補送內容：已送出的不動，照常結算
+    expect(room.s.round).toMatchObject({ round: 3, phase: "queued" }); // 補完才結算、派工 // 沒有補送內容：已送出的不動，照常結算
     expect(room.frames("x2", "dispatch")).toHaveLength(1);
     expect((await sync(room, {}))?.p.detail).toBe("sync_not_needed");
+  });
+
+  it("閘門期間停在 generating 的回合（執行端沒留下結果）：補完重送同一份派工", async () => {
+    const room = await paused();
+    await room.send("b", "action.submit", { round: 3, text: "我推門" }); // 全員送出，但閘門沒開不結算
+    await room.exec("x2");
+    expect(room.frames("x2", "dispatch")).toEqual([]);
+    const last = story(room).at(-1)!;
+    await sync(room, { keepThrough: { round: last.round, part: last.part } });
+    expect(room.s.round).toMatchObject({ round: 3, phase: "queued" }); // 補完才結算、派工
+    const first = room.frames("x2", "dispatch").at(-1)!.p;
+    await room.send("x2", "dispatch.ack", { dispatchId: first.dispatchId });
+    expect(room.s.round!.phase).toBe("generating");
+    // 執行端收下後又被關房、結果沒留下：重開補完時拿到同一份
+    await room.send("x2", "status", { keepAwake: null, busy: false, paused: true });
+    await room.disconnect("x2");
+    await room.exec("x3");
+    expect(room.frames("x3", "welcome")[0].p.dispatch).toBeNull();
+    await sync(room, { keepThrough: { round: last.round, part: last.part } }, "x3");
+    expect(room.frames("x3", "dispatch").at(-1)?.p.dispatchId).toBe(first.dispatchId);
   });
 
   it("關房那則 status 沒送到：hello 自報 paused 一樣上閘門；沒送過種子的房間不上閘門", async () => {

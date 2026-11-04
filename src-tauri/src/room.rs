@@ -599,6 +599,15 @@ pub(crate) async fn exit() -> Result<(), String> {
     if let Some(turn) = job_turn {
         room.engine.abort(&room.world(), &turn);
     }
+    // 等中止的派工鏈與換幕工作把結果寫進重送佇列再斷線：不等的話馬上重開時新舊兩份 Room 會互相覆寫存檔、
+    // 結果丟掉（room-host-actions §3.3）。最多等 10 秒，關房不因卡住的呼叫卡死
+    let until = tokio::time::Instant::now() + Duration::from_secs(10);
+    while tokio::time::Instant::now() < until && {
+        let work = room.work();
+        work.dispatch.is_some() || work.job.is_some()
+    } {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
     running.stop().await;
     release_table(&room, &room.world())
 }
