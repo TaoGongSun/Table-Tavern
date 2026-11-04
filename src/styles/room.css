@@ -31,12 +31,14 @@
   height: 180px;
 }
 
-/* 房間畫面佔滿主欄：上方資訊列、下面 party 的房間元件自己捲動 */
+/* 房間畫面佔滿主欄：上方資訊列、下面 party 的房間元件。
+   故事區留最小高度，放不下時整個房間畫面一起捲，不把故事區擠成 0、也不讓輸入區蓋住房主鈕列 */
 .desktop-room {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow-y: auto;
   margin: 0 -2rem;
 }
 .room-bar {
@@ -52,12 +54,19 @@
   padding: 1rem 2rem;
 }
 .app.party-embedded {
-  flex: 1;
-  min-height: 0;
+  flex: 1 0 auto;
   height: auto;
   max-width: none;
   width: 100%;
   margin: 0;
+}
+/* 基準 10rem 而不是 0：外層才會照最小高度排版，故事長了在自己框裡捲，不把整頁撐長 */
+.app.party-embedded .story {
+  flex: 1 0 10rem;
+}
+/* 手機版輸入區黏在底部；嵌在桌面版時外層會捲，黏著會蓋住故事區與房主鈕列 */
+.app.party-embedded .action-box {
+  position: static;
 }
 
 /* 房間開著、人在別處：app 最上方一列常駐條（佔位，不疊在任何頂欄上） */
