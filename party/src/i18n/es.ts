@@ -1,5 +1,18 @@
-// 尚未翻譯：先用英文（多人房間包 4，之後另案補譯）
+// 未翻譯的文案沿用英文；room-desktop-layout 的名單與接回提示已翻譯。
 import { en } from "./en";
 import type { PartyMessages } from "./zh-TW";
 
-export const es: PartyMessages = { ...en };
+export const es: PartyMessages = {
+  ...en,
+  hostRemove: "Eliminar…",
+  hostKick: "Eliminar",
+  seatRelease: "Ceder el asiento",
+  seatReleaseConfirm: "¿Ceder tu asiento? Dejarás de controlar a este personaje y tendrás que elegir uno para volver a sentarte.",
+  badgePayer: "Usa su cuota",
+  badgePayerSelf: "Usa mi cuota",
+  badgePayerHint: "El GM funciona con la cuota de IA de esta persona",
+  pairTitle: "Usar mi cuota para el GM: introduce el código de vinculación del ordenador",
+  roundAllDelegatedHost: "Todos con IA: avanza con el GM o desactiva la IA de alguien",
+  delegatedReturned: "La historia de tu ausencia está arriba. Desplázate hacia arriba para leerla.",
+  hostMemberOptions: "Gestionar a {name}",
+};

@@ -1,5 +1,18 @@
-// 尚未翻譯：先用英文（多人房間包 4，之後另案補譯）
+// 未翻譯的文案沿用英文；room-desktop-layout 的名單與接回提示已翻譯。
 import { en } from "./en";
 import type { PartyMessages } from "./zh-TW";
 
-export const ja: PartyMessages = { ...en };
+export const ja: PartyMessages = {
+  ...en,
+  hostRemove: "削除…",
+  hostKick: "削除",
+  seatRelease: "席を譲る",
+  seatReleaseConfirm: "席を譲りますか？このキャラクターの操作を終了します。再び参加するにはキャラクターを選び直して着席してください。",
+  badgePayer: "この人の利用枠",
+  badgePayerSelf: "自分の利用枠",
+  badgePayerHint: "GM はこの人の AI 利用枠で動いています",
+  pairTitle: "自分の利用枠で GM を動かす：パソコンのペアリングコードを入力",
+  roundAllDelegatedHost: "全員 AI 代行中：GM 進行を押すか、誰かの代行を解除",
+  delegatedReturned: "離れている間の物語は上にあります。上にスクロールして読めます。",
+  hostMemberOptions: "{name}の管理",
+};

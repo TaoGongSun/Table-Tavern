@@ -261,6 +261,12 @@ button.table-cover {
   text-overflow: ellipsis;
 }
 
+.table-room-icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--ink-2);
+}
+
 .table-card-foot .btn-icon {
   flex: none;
   width: 26px;

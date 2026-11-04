@@ -112,9 +112,10 @@ export function TableCard({ world, busy, onEnter, onRename, onDelete, room, room
             {badgeLabel}
           </span>
         )}
-        {/* 桌名本來就是「房間 <碼>」時不重複掛徽章 */}
-        {room && room.code && !world.name.includes(room.code) && (
-          <span className="table-badge">{t("roomBadge", { code: room.code })}</span>
+        {room?.code && (
+          <span className="table-room-icon" role="img" title={t("roomBadge", { code: room.code })} aria-label={t("roomBadge", { code: room.code })}>
+            <IconUsers />
+          </span>
         )}
         <MoreMenu
           label={t("itemOptionsAria", { name: world.name })}

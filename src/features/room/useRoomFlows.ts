@@ -4,7 +4,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
-import { t } from "../../i18n";
+import { currentLang, t } from "../../i18n";
 import { readRoomStatus } from "./room-status";
 import { enterRoom, useRoomHost } from "./useRoomHost";
 
@@ -97,14 +97,15 @@ export function useRoomFlows(deps: Deps) {
     });
   }
 
-  /** 綁新房間、新建的桌名換成房間碼（用現有桌開房則保留原桌名）、換成房間畫面；房間沒開成就把剛建的空桌收掉 */
+  /** 綁新房間、新建的桌名換成開房日期（用現有桌開房則保留原桌名）、換成房間畫面；房間沒開成就把剛建的空桌收掉 */
   function bind(id: string, server: string, fresh: boolean) {
     return deps.runTableOp(async () => {
       try {
         const status = await enterRoom(id, server);
-        // 房間桌用房間碼命名：不掛自動名（空桌回收不收它，Rust 端也另有一道）
+        // 房間＋日期不落在「新桌 [編號]」自動名格式；空桌回收不收它，Rust 端也另有一道。
         if (fresh && status.roomCode) {
-          await invoke("rename_world", { worldId: id, newName: `${t("roomTableName")} ${status.roomCode}` }).catch(() => {});
+          const date = new Intl.DateTimeFormat(currentLang(), { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date());
+          await invoke("rename_world", { worldId: id, newName: `${t("roomTableName")} ${date}` }).catch(() => {});
         }
         await deps.refreshWorlds();
         await host.refresh();

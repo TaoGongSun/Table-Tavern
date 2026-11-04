@@ -1,5 +1,5 @@
 // 房間畫面：回合列在上、代管中的常駐列、分頁（故事／名單／房主／出額度）、故事頁底部固定行動格（沒座位時換成選角）。
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { t, type MsgKey } from "../../i18n";
 import { GmControls } from "../controls/GmControls";
 import { HostPanel } from "../controls/HostPanel";
@@ -24,6 +24,7 @@ const STATUS: Record<string, MsgKey> = { pending: "statusPending", drafting: "st
 function MemberList({ view, act, c }: { view: RoomView; act: Act; c: RoomControls }) {
   const { run, error } = useRun(act);
   const [leaving, setLeaving] = useState(false);
+  const [releasing, setReleasing] = useState(false);
   const desktop = c.pairForm === false;
   const seatedPlaying = !!view.me.cardId && canDelegate(view);
   // 已入座、遊戲中、還沒代管：離開前問要不要先交給 AI 代管；其他情況照舊一按就走（桌面版的離開＝關房，不問）
@@ -42,7 +43,7 @@ function MemberList({ view, act, c }: { view: RoomView; act: Act; c: RoomControl
             {m.nickname}
             {m.cardId && ` · ${view.cards.find((c) => c.cardId === m.cardId)?.name ?? ""}`}
             {view.room.hostId === m.memberId && <span className="badge">{t("badgeHost")}</span>}
-            {view.room.payerId === m.memberId && <span className="badge">{t("badgePayer")}</span>}
+            {view.room.payerId === m.memberId && <span className="badge" title={t("badgePayerHint")}>{t(m.memberId === view.me.memberId ? "badgePayerSelf" : "badgePayer")}</span>}
           </span>
           {m.delegated ? <span className="chip">{t("delegatedBadge")}</span> : roster.has(m.memberId) && <span className="chip">{t(STATUS[roster.get(m.memberId)!])}</span>}
         </div>
@@ -55,8 +56,13 @@ function MemberList({ view, act, c }: { view: RoomView; act: Act; c: RoomControl
         {/* 暫時離開＝只斷線（座位與角色保留），可以回來所以不用紅框；桌面版換成「關房（暫停）」照舊紅框 */}
         <button type="button" className={desktop ? "ghost danger" : "ghost"} data-testid="leave" onClick={leave}>{c.leaveLabel ?? t("leaveRoom")}</button>
         {/* 離座不可逆：跟另外兩顆分開，靠右紅字 */}
-        {view.me.cardId && view.room.status !== "closed" && <button type="button" className="ghost danger seat-release" onClick={() => run("seat.release")}>{t("seatRelease")}</button>}
+        {view.me.cardId && view.room.status !== "closed" && <button type="button" className="ghost danger seat-release" onClick={() => setReleasing(true)}>{t("seatRelease")}</button>}
       </div>
+      {releasing && (
+        <Confirm title={t("seatRelease")} testId="seat-release-confirm" onCancel={() => setReleasing(false)} actions={[{ label: t("seatRelease"), danger: true, onClick: async () => { await run("seat.release"); setReleasing(false); } }]}>
+          <p>{t("seatReleaseConfirm")}</p>
+        </Confirm>
+      )}
       {leaving && (
         <Confirm
           title={t("leaveTitle")}
@@ -97,7 +103,22 @@ export interface RoomControls {
   seatEntry?: ReactNode;
 }
 
-export function RoomScreen({ view, c }: { view: RoomView; c: RoomControls }) {
+export function RoomScreen({ view, c: controls }: { view: RoomView; c: RoomControls }) {
+  const [takenBack, setTakenBack] = useState(false);
+  // 只認本人接回成功；房主替別人取消代管、讓座或轉移座位都不算。
+  const actRoom: Act = useCallback(async (kind, params, waitMs) => {
+    setTakenBack(false);
+    const reply = await controls.act(kind, params, waitMs);
+    const target = params as { memberId?: string; on?: boolean } | undefined;
+    if (reply.ok && kind === "seat.delegate" && target?.on === false && target.memberId === view.me.memberId && view.me.delegated && view.me.cardId) setTakenBack(true);
+    return reply;
+  }, [controls.act, view.me.memberId, view.me.delegated, view.me.cardId]);
+  useEffect(() => {
+    if (!takenBack) return;
+    const timer = setTimeout(() => setTakenBack(false), 5000);
+    return () => clearTimeout(timer);
+  }, [takenBack]);
+  const c = { ...controls, act: actRoom, sendDraft: (text: string) => { setTakenBack(false); controls.sendDraft(text); } };
   const [tab, setTab] = useState<"story" | "members" | "host" | "payer">("story");
   const isHost = view.room.hostId === view.me.memberId;
   const isPayer = view.room.payerId === view.me.memberId;
@@ -143,7 +164,7 @@ export function RoomScreen({ view, c }: { view: RoomView; c: RoomControls }) {
       ) : (
         bar
       )}
-      <DelegatedBanner view={view} act={c.act} />
+      {takenBack ? <div className="delegated-banner" role="status" data-testid="delegate-returned">{t("delegatedReturned")}</div> : <DelegatedBanner view={view} act={c.act} />}
       {c.pairForm !== false && nav}
       {tab === "story" && (
         <>

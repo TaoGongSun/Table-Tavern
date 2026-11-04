@@ -255,7 +255,12 @@ describe("手機客戶端對真伺服器核心", () => {
     expect(B.q('[data-testid="story"]')!.textContent).toContain("前情摘要前情：大家進了酒館。");
 
     const sockets = hub.sockets.length;
-    A.click("移除…"); // 入座的人：確認框一起選角色怎麼處理
+    // 到場整理的次要動作收進每人的選單，移除仍先確認角色處置
+    expect(A.button("移除…")).toBeNull();
+    act(() => A.q<HTMLButtonElement>(`[data-testid="host-${room.s.members[1].id}"] [aria-haspopup="menu"]`)!.click());
+    expect(A.q('[role="menu"]')!.closest(".app")).not.toBeNull();
+    expect([...A.q('[role="menu"]')!.querySelectorAll("button")].at(-1)!.textContent).toBe("封鎖");
+    A.click("移除…");
     act(() => A.q<HTMLInputElement>('[data-testid="remove-confirm"] input[type="radio"]:not(:checked)')!.click()); // 交給 GM 當 NPC
     act(() => [...A.q('[data-testid="remove-confirm"]')!.querySelectorAll("button")].find((x) => x.textContent === "移除")!.click());
     await until(() => room.events("seat.departure").length === 1);
@@ -804,6 +809,9 @@ describe("AI 代管（room-seat-delegate 包 3）", () => {
     B.click("接回");
     await until(() => !B.q('[data-testid="delegated-banner"]'));
     expect(room.s.members.find((m) => m.id === b)!.delegated).toBe(false);
+    expect(B.q('[data-testid="delegate-returned"]')!.textContent).toBe("你離開期間的劇情在上面，往上翻可以看");
+    B.type('[data-testid="action-text"]', "我回來了");
+    expect(B.q('[data-testid="delegate-returned"]')).toBeNull();
   });
 
   it("暫時離開：遊戲中已入座跳兩鈕確認，「交給 AI 代管再離開」先代管再斷線", async () => {
@@ -830,7 +838,7 @@ describe("AI 代管（room-seat-delegate 包 3）", () => {
     act(() => A2.q<HTMLButtonElement>(`[data-testid="attend-delegate-${b2}"]`)!.click());
     await until(() => r2.s.members.find((m) => m.id === b2)!.delegated);
     act(() => A2.q<HTMLButtonElement>(`[data-testid="attend-delegate-${a2}"]`)!.click());
-    await until(() => A2.text().includes("全員代管中，回合不會自動進行：按 GM 推進，或取消某人的代管"));
+    await until(() => A2.text().includes("全員代管中：按 GM 推進，或取消某人的代管"));
     await until(() => B2.text().includes("全員代管中，等房主處理"));
     expect(A2.button("結算這回合")).toBeNull(); // 名單空著：結算鈕不出現（按了也只會被擋）
     expect(B2.q('[data-testid="delegated-banner"]')!.textContent).toContain("接回後馬上就能行動");
@@ -860,4 +868,63 @@ describe("AI 代管（room-seat-delegate 包 3）", () => {
     expect(room.frames("x1", "ctl")[0].p.cmd).toEqual({ kind: "pause" });
     expect(A.q<HTMLButtonElement>('[data-testid="pause-room"]')!.disabled).toBe(true);
   });
+});
+
+
+describe("名單與接回提示（room-desktop-layout 包 C）", () => {
+  it("讓出座位需確認，取消保留座位，確認才釋放", async () => {
+    const { room, A, B, b } = await table();
+    A.tab("members");
+    expect(A.text()).toContain("用我的額度");
+    B.tab("members");
+    expect(B.q('.badge[title]')!.getAttribute("title")).toBe("GM 用這個人的 AI 額度在跑");
+    expect(B.text()).toContain("用他的額度");
+    B.click("讓出座位");
+    expect(room.s.members.find((m) => m.id === b)!.cardId).toBe("c2");
+    expect(B.q('[data-testid="seat-release-confirm"]')!.textContent).toContain("你將不再控制這個角色");
+    B.click("取消");
+    expect(B.q('[data-testid="seat-release-confirm"]')).toBeNull();
+    // 失敗也收起遮罩，名單頁錯誤可見，座位保留。
+    const socket = B.socket();
+    const rejected = vi.spyOn(socket, "send").mockImplementationOnce((raw) => {
+      const frame = JSON.parse(raw);
+      queueMicrotask(() => socket.onmessage?.({ data: JSON.stringify({ t: "err", p: { id: frame.id, code: "E_FORBIDDEN" } }) }));
+    });
+    B.click("讓出座位");
+    act(() => B.q<HTMLButtonElement>('[data-testid="seat-release-confirm"] .danger')!.click());
+    await until(() => !B.q('[data-testid="seat-release-confirm"]'));
+    expect(B.q('[data-testid="members"] .field-error')!.textContent).not.toBe("");
+    expect(room.s.members.find((m) => m.id === b)!.cardId).toBe("c2");
+    rejected.mockRestore();
+    B.click("讓出座位");
+    act(() => B.q<HTMLButtonElement>('[data-testid="seat-release-confirm"] .danger')!.click());
+    await until(() => !room.s.members.find((m) => m.id === b)!.cardId);
+    expect(B.q('[data-testid="delegate-returned"]')).toBeNull();
+    // 沒入座段保留指派座位，次要操作仍在選單內
+    A.tab("host");
+    const row = A.q(`[data-testid="host-${b}"]`)!;
+    expect(row.querySelector("select")).not.toBeNull();
+    expect(row.textContent).not.toContain("轉讓房主");
+    act(() => row.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!.click());
+    expect(A.q('[role="menu"]')!.textContent).toContain("轉讓房主");
+    expect(A.q('[role="menu"]')!.textContent).toContain("移除");
+  });
+
+  it("房主替別人取消代管不出提示；本人從名單接回後提示五秒自動消失", async () => {
+    const { room, A, B, b } = await table();
+    B.tab("members");
+    B.click("交給 AI 代管");
+    await until(() => B.q('[data-testid="delegated-banner"]'));
+    A.tab("host");
+    act(() => A.q<HTMLButtonElement>(`[data-testid="attend-delegate-${b}"]`)!.click());
+    await until(() => !B.q('[data-testid="delegated-banner"]'));
+    expect(A.q('[data-testid="delegate-returned"]')).toBeNull();
+    expect(B.q('[data-testid="delegate-returned"]')).toBeNull();
+    B.click("交給 AI 代管");
+    await until(() => room.s.members.find((m) => m.id === b)!.delegated);
+    act(() => B.q<HTMLButtonElement>('[data-testid="self-delegate"]')!.click());
+    await until(() => B.q('[data-testid="delegate-returned"]'));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5050)); });
+    expect(B.q('[data-testid="delegate-returned"]')).toBeNull();
+  }, 10000);
 });

@@ -2,6 +2,7 @@
 // 沒入座的另一段照舊（接手座位、轉讓、移出、封鎖）；有入座又斷線的人時給一鍵代管。從回合列「到場整理」切過來時捲到這一段。
 import { useEffect, useRef, useState } from "react";
 import { t } from "../../i18n";
+import { PartyMenu } from "./PartyMenu";
 import { Confirm } from "../room/Confirm";
 import { DelegateButton } from "../room/DelegateButton";
 import { canDelegate, cardName, offlineSeated } from "../room/delegation";
@@ -42,11 +43,11 @@ export function Attendance({ view, act, focus }: { view: RoomView; act: Act; foc
             <DelegateButton view={view} act={act} memberIds={[m.memberId]} on={!m.delegated} label={t(m.delegated ? "delegateOff" : "delegateOnOther")} className="ghost" testId={`attend-delegate-${m.memberId}`} />
           )}
           {m.memberId !== me && (
-            <span className="panel-actions">
-              <button type="button" className="ghost" onClick={() => run("host.transfer", { memberId: m.memberId })}>{t("hostTransfer")}</button>
-              <button type="button" className="ghost" onClick={() => (setMode("absent"), setRemoving(m.memberId))}>{t("hostRemove")}</button>
-              <button type="button" className="ghost danger" onClick={() => run("member.kick", { memberId: m.memberId, ban: true })}>{t("hostBan")}</button>
-            </span>
+            <PartyMenu trigger="⋯" className="ghost" label={t("hostMemberOptions", { name: m.nickname })} items={[
+              { key: "transfer", label: t("hostTransfer"), onSelect: () => void run("host.transfer", { memberId: m.memberId }) },
+              { key: "remove", label: t("hostRemove"), onSelect: () => (setMode("absent"), setRemoving(m.memberId)) },
+              { key: "ban", label: t("hostBan"), danger: true, onSelect: () => void run("member.kick", { memberId: m.memberId, ban: true }) },
+            ]} />
           )}
         </div>
       ))}
@@ -61,9 +62,11 @@ export function Attendance({ view, act, focus }: { view: RoomView; act: Act; foc
               {seated.map((x) => <option key={x.memberId} value={x.memberId}>{`${cardName(view, x.cardId)}（${x.nickname}）`}</option>)}
             </select>
           )}
-          <button type="button" className="ghost" onClick={() => run("host.transfer", { memberId: m.memberId })}>{t("hostTransfer")}</button>
-          <button type="button" className="ghost" onClick={() => run("member.kick", { memberId: m.memberId, ban: false })}>{t("hostKick")}</button>
-          <button type="button" className="ghost danger" onClick={() => run("member.kick", { memberId: m.memberId, ban: true })}>{t("hostBan")}</button>
+          <PartyMenu trigger="⋯" className="ghost" label={t("hostMemberOptions", { name: m.nickname })} items={[
+            { key: "transfer", label: t("hostTransfer"), onSelect: () => void run("host.transfer", { memberId: m.memberId }) },
+            { key: "remove", label: t("hostKick"), onSelect: () => void run("member.kick", { memberId: m.memberId, ban: false }) },
+            { key: "ban", label: t("hostBan"), danger: true, onSelect: () => void run("member.kick", { memberId: m.memberId, ban: true }) },
+          ]} />
         </div>
       ))}
       {target && (
