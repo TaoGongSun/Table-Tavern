@@ -5,6 +5,8 @@ import { HostPanel } from "../controls/HostPanel";
 import { PairForm } from "../controls/PairForm";
 import { PayerPanel } from "../controls/PayerPanel";
 import { SeatPicker } from "../join/SeatPicker";
+import type { Upload } from "../my-card/card-upload";
+import { CardSheet } from "../my-card/CardSheet";
 import { ActionBox } from "./ActionBox";
 import type { RoomView } from "./room-state";
 import { RoundBar } from "./RoundBar";
@@ -50,6 +52,8 @@ export interface RoomControls {
   resumed: (round: number) => void;
   /** null＝不提供匯出（桌面版：那張桌本機就有） */
   exportRoom: (() => Promise<boolean>) | null;
+  /** null＝桌面版：不給匯入與換圖上傳 */
+  upload: Upload | null;
   onLeave: () => void;
   /** 桌面版換掉「暫時離開」的字樣 */
   leaveLabel?: string;
@@ -67,6 +71,9 @@ export function RoomScreen({ view, c }: { view: RoomView; c: RoomControls }) {
   // 遊戲中沒座位的房主多半只當主持：選角收成一行，要入座再展開
   const [picking, setPicking] = useState(false);
   const folded = isHost && view.room.status === "playing" && !picking;
+  const [sheet, setSheet] = useState<"create" | "edit" | null>(null);
+  const open = view.room.status !== "closed";
+  if (sheet && open) return <CardSheet view={view} act={c.act} mode={sheet} upload={c.upload} onClose={() => setSheet(null)} />;
   return (
     <>
       <RoundBar view={view} act={c.act} />
@@ -80,10 +87,14 @@ export function RoomScreen({ view, c }: { view: RoomView; c: RoomControls }) {
       {tab === "story" && (
         <>
           <StoryView view={view} loadOlder={c.loadOlder} />
-          {view.me.cardId && view.room.status !== "closed" ? <ActionBox view={view} act={c.act} sendDraft={c.sendDraft} cancelDraft={c.cancelDraft} /> : canSit && (folded ? (
+          {/* 電腦自己的座位照舊用 CastRail 的卡片編輯 */}
+          {view.me.cardId && open && c.pairForm !== false && (
+            <button type="button" className="ghost" data-testid="card-edit" onClick={() => setSheet("edit")}>{t("cardEdit")}</button>
+          )}
+          {view.me.cardId && open ? <ActionBox view={view} act={c.act} sendDraft={c.sendDraft} cancelDraft={c.cancelDraft} /> : canSit && (folded ? (
             <button type="button" className="ghost" data-testid="seat-unfold" onClick={() => setPicking(true)}>{t("seatShowPicker")}</button>
           ) : (
-            <SeatPicker view={view} act={c.act} desktop={c.pairForm === false} />
+            <SeatPicker view={view} act={c.act} desktop={c.pairForm === false} upload={c.upload} onCreate={() => setSheet("create")} />
           ))}
         </>
       )}

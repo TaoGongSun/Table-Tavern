@@ -49,6 +49,9 @@ const COPY = {
     roomClaimedConfirm: "「{name}」正在用這張卡，這樣做會讓他失去角色。要繼續嗎？",
     roomDeleteNote: "這張桌開過房間，會同時結束房間。",
     roomContinue: "繼續",
+    roomImageGen: "允許玩家用 AI 生圖（用這台電腦的 AI 額度）",
+    roomGenOk: "{name} 生了一張角色圖",
+    roomGenFailed: "{name} 生圖失敗",
   },
   "zh-CN": {
     roomOpen: "开房间",
@@ -99,6 +102,9 @@ const COPY = {
     roomClaimedConfirm: "“{name}”正在用这张卡，这样做会让他失去角色。要继续吗？",
     roomDeleteNote: "这张桌开过房间，会同时结束房间。",
     roomContinue: "继续",
+    roomImageGen: "允许玩家用 AI 生图（用这台电脑的 AI 额度）",
+    roomGenOk: "{name} 生成了一张角色图",
+    roomGenFailed: "{name} 生图失败",
   },
   en: {
     roomOpen: "Open a room",
@@ -149,6 +155,9 @@ const COPY = {
     roomClaimedConfirm: "“{name}” is playing this card; this will take their character away. Continue?",
     roomDeleteNote: "This table has a room; it will be ended too.",
     roomContinue: "Continue",
+    roomImageGen: "Let players make AI images (uses this computer's AI credits)",
+    roomGenOk: "{name} made a character image",
+    roomGenFailed: "{name}: image generation failed",
   },
   ja: {
     roomOpen: "ルームを開く",
@@ -199,6 +208,9 @@ const COPY = {
     roomClaimedConfirm: "「{name}」がこのカードを使っています。この操作でキャラクターを失います。続けますか？",
     roomDeleteNote: "このテーブルのルームも終了します。",
     roomContinue: "続ける",
+    roomImageGen: "プレイヤーの AI 画像生成を許可（このパソコンの AI 枠を使います）",
+    roomGenOk: "{name} がキャラクター画像を生成しました",
+    roomGenFailed: "{name} の画像生成に失敗しました",
   },
   ko: {
     roomOpen: "방 만들기",
@@ -249,6 +261,9 @@ const COPY = {
     roomClaimedConfirm: "“{name}” 님이 이 카드를 쓰고 있습니다. 이 작업을 하면 캐릭터를 잃습니다. 계속할까요?",
     roomDeleteNote: "이 테이블의 방도 함께 끝납니다.",
     roomContinue: "계속",
+    roomImageGen: "플레이어의 AI 이미지 생성 허용 (이 컴퓨터의 AI 사용량 사용)",
+    roomGenOk: "{name} 님이 캐릭터 이미지를 만들었습니다",
+    roomGenFailed: "{name} 님의 이미지 생성 실패",
   },
   es: {
     roomOpen: "Abrir una sala",
@@ -299,6 +314,9 @@ const COPY = {
     roomClaimedConfirm: "«{name}» está usando esta carta; esto le quitará su personaje. ¿Continuar?",
     roomDeleteNote: "Esta mesa tiene una sala; también se terminará.",
     roomContinue: "Continuar",
+    roomImageGen: "Permitir que los jugadores generen imágenes con IA (usa los créditos de IA de este equipo)",
+    roomGenOk: "{name} generó una imagen de personaje",
+    roomGenFailed: "{name}: falló la generación de imagen",
   },
   "pt-BR": {
     roomOpen: "Abrir uma sala",
@@ -349,6 +367,9 @@ const COPY = {
     roomClaimedConfirm: "“{name}” está usando esta carta; isso vai tirar o personagem dele. Continuar?",
     roomDeleteNote: "Esta mesa tem uma sala; ela também será encerrada.",
     roomContinue: "Continuar",
+    roomImageGen: "Permitir que jogadores gerem imagens com IA (usa os créditos de IA deste computador)",
+    roomGenOk: "{name} gerou uma imagem de personagem",
+    roomGenFailed: "{name}: falha ao gerar imagem",
   },
   de: {
     roomOpen: "Raum öffnen",
@@ -399,6 +420,9 @@ const COPY = {
     roomClaimedConfirm: "„{name}“ spielt diese Karte; dadurch verliert diese Person ihren Charakter. Fortfahren?",
     roomDeleteNote: "Dieser Tisch hat einen Raum; er wird ebenfalls beendet.",
     roomContinue: "Fortfahren",
+    roomImageGen: "Spielern KI-Bilder erlauben (nutzt das KI-Kontingent dieses Computers)",
+    roomGenOk: "{name} hat ein Charakterbild erstellt",
+    roomGenFailed: "{name}: Bilderstellung fehlgeschlagen",
   },
   fr: {
     roomOpen: "Ouvrir une salle",
@@ -449,6 +473,9 @@ const COPY = {
     roomClaimedConfirm: "« {name} » joue cette carte ; cette action lui retirera son personnage. Continuer ?",
     roomDeleteNote: "Cette table a une salle ; elle sera aussi terminée.",
     roomContinue: "Continuer",
+    roomImageGen: "Autoriser les joueurs à générer des images IA (utilise les crédits IA de cet ordinateur)",
+    roomGenOk: "{name} a généré une image de personnage",
+    roomGenFailed: "{name} : échec de la génération d’image",
   },
   ru: {
     roomOpen: "Открыть комнату",
@@ -499,6 +526,9 @@ const COPY = {
     roomClaimedConfirm: "«{name}» играет этой карточкой; это лишит его персонажа. Продолжить?",
     roomDeleteNote: "У этого стола есть комната; она тоже будет завершена.",
     roomContinue: "Продолжить",
+    roomImageGen: "Разрешить игрокам создавать ИИ-изображения (тратит лимит ИИ этого компьютера)",
+    roomGenOk: "{name} создал(а) изображение персонажа",
+    roomGenFailed: "{name}: не удалось создать изображение",
   },
 } as const;
 

@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { MemoryStorage } from "@web/features/openrouter/memory-storage";
 import { CARDS, Room, STAGE } from "../../../server/core/room-test-kit";
+import { receiveUpload } from "../../../server/core/upload";
 import App from "../../App";
 import { applyLang } from "../../i18n";
 import { Hub, type FakeSocket } from "./fake-server";
@@ -130,8 +131,9 @@ describe("手機客戶端對真伺服器核心", () => {
     await until(() => A.q('[data-testid="seat-create"]'));
     expect((A.button("開始") as HTMLButtonElement).disabled).toBe(true);
     expect(A.q('[data-testid="start-blocked"]')!.textContent).toBe("至少一位玩家入座才能開始");
-    expect(A.q<HTMLInputElement>('[data-testid="seat-create"] input')!.value).toBe("阿明");
-    await act(async () => A.q<HTMLFormElement>('[data-testid="seat-create"]')!.requestSubmit());
+    A.click("建立角色");
+    expect(A.q<HTMLInputElement>('[data-testid="card-name"]')!.value).toBe("阿明");
+    await act(async () => A.q<HTMLFormElement>('[data-testid="card-sheet"]')!.requestSubmit());
     await until(() => room.s.jobs.length > 0);
     const jobId = room.s.jobs[0].job.jobId;
     const card = { cardId: "mine", name: "阿明", color: null, avatar: null, blurb: "", playable: true, hidden: false };
@@ -337,5 +339,159 @@ describe("手機客戶端對真伺服器核心", () => {
     act(() => void document.dispatchEvent(new Event("visibilitychange")));
     await until(() => B.socket() !== old && B.socket()?.readyState === 1 && B.button("收回修改"));
     expect(B.socket().sent[0].p.lastSeq).toBeGreaterThan(0); // 補事件路徑
+  });
+});
+
+describe("玩家卡（room-player-cards）", () => {
+  /** env.fetch 接到真的上傳收件（兩殼共用的 receiveUpload），處理完把訊框交給各手機 */
+  const uploadFetch = (hub: Hub, calls: string[]) =>
+    (async (url: string, init: RequestInit) => {
+      calls.push(url);
+      const bytes = new Uint8Array(await (init.body as Blob).arrayBuffer());
+      const auth = (init.headers as Record<string, string>).Authorization;
+      const r = await receiveUpload(hub.room.runner, {
+        kind: new URL(url, "https://party.example").searchParams.get("kind"), contentLength: String(bytes.length), origin: null, selfOrigin: "https://party.example",
+        deviceId: auth.slice("Bearer ".length), body: (async function* () { yield bytes; })(),
+      });
+      hub.flush();
+      return new Response(JSON.stringify(r.body), { status: r.status });
+    }) as typeof fetch;
+  const pickFile = (p: Phone, sel: string, file: File) =>
+    act(() => {
+      const input = p.q<HTMLInputElement>(sel)!;
+      Object.defineProperty(input, "files", { value: [file], configurable: true });
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  const last = (room: Room, t: string) => room.frames("x1", t).at(-1)!.p;
+  const NEW = { cardId: "c9", name: "匯入的", color: null, avatar: null, blurb: "", playable: true, hidden: false };
+
+  it("匯入角色卡：太大的檔不送；解析失敗只顯示原因；成功後自動入座", async () => {
+    const calls: string[] = [];
+    const room = await Room.create();
+    await room.exec();
+    await room.send("x1", "roster.update", { cards: CARDS });
+    const hub = new Hub(room);
+    hub.wrap = (fn) => act(fn);
+    const C = phone(hub, `k=${room.joinSecret}`, { fetch: uploadFetch(hub, calls) });
+    C.type('[data-testid="nickname"]', "小美");
+    await act(async () => C.q<HTMLFormElement>("form")!.requestSubmit());
+    await until(() => C.q('[data-testid="seat-create"] input[type="file"]'));
+    const sel = '[data-testid="seat-create"] input[type="file"]';
+    await pickFile(C, sel, new File([new Uint8Array(8 * 1024 * 1024 + 1)], "big.png"));
+    await until(() => C.text().includes("檔案太大"));
+    expect(calls).toEqual([]);
+    await pickFile(C, sel, new File(['{"name":"x"}'], "bad.json"));
+    await until(() => room.frames("x1", "job.card_import").length === 1);
+    expect(calls[0]).toBe(`/api/rooms/${room.code}/cards?kind=card`);
+    await hub.exec("job.result", { jobId: last(room, "job.card_import").jobId, ok: false, error: { code: "E_CARD_INVALID" } });
+    await until(() => C.text().includes("讀不出這張角色卡"));
+    await pickFile(C, sel, new File(['{"name":"匯入的"}'], "ok.json"));
+    await until(() => room.frames("x1", "job.card_import").length === 2);
+    await hub.exec("roster.update", { cards: [...CARDS, NEW] });
+    await hub.exec("job.result", { jobId: last(room, "job.card_import").jobId, ok: true, result: { cardId: "c9" } });
+    await until(() => C.q('[data-testid="action-box"]'));
+  });
+
+  it("建立角色：秘密段不經 seat.create，入座後接著存；存失敗畫面不關、原文保留可重試", async () => {
+    const room = await Room.create();
+    await room.exec();
+    const hub = new Hub(room);
+    hub.wrap = (fn) => act(fn);
+    const C = phone(hub, `k=${room.joinSecret}`);
+    C.type('[data-testid="nickname"]', "小美");
+    await act(async () => C.q<HTMLFormElement>("form")!.requestSubmit());
+    await until(() => C.button("建立角色"));
+    C.click("建立角色");
+    C.type('[data-testid="card-public"]', "紅髮劍士");
+    C.type('[data-testid="card-private"]', "其實是公主");
+    await act(async () => C.q<HTMLFormElement>('[data-testid="card-sheet"]')!.requestSubmit());
+    await until(() => room.s.jobs.length > 0);
+    expect(JSON.stringify(room.s.jobs)).not.toContain("其實是公主");
+    expect(room.s.jobs[0].job).toMatchObject({ name: "小美", blurb: "紅髮劍士" });
+    await hub.exec("roster.update", { cards: [{ ...NEW, name: "小美" }] });
+    await hub.exec("job.result", { jobId: room.s.jobs[0].job.jobId, ok: true, result: { cardId: "c9" } });
+    await until(() => room.frames("x1", "card.save").length === 1);
+    expect(last(room, "card.save")).toMatchObject({ cardId: "c9", privateMd: "其實是公主" });
+    expect(last(room, "card.save").publicMd).toBeUndefined();
+    await hub.exec("card.save.result", { reqId: last(room, "card.save").reqId, ok: false, code: "E_INTERNAL" });
+    await until(() => C.q('[data-testid="card-pending"]'));
+    expect(C.q<HTMLTextAreaElement>('[data-testid="card-private"]')!.value).toBe("其實是公主");
+    room.clock += 3000; // 存卡每人 2 秒一次
+    C.click("重試存檔");
+    await until(() => room.frames("x1", "card.save").length === 2);
+    await hub.exec("card.save.result", { reqId: last(room, "card.save").reqId, ok: true });
+    await until(() => !C.q('[data-testid="card-sheet"]') && C.q('[data-testid="action-box"]'));
+    expect(room.store.events.some((e) => JSON.stringify(e).includes("其實是公主"))).toBe(false);
+  });
+
+  it("編輯我的角色：讀卡、只送改過的欄位、改名先確認；生圖先確認一次、預覽後用這張；主機關掉生圖就停用；別人看不到秘密段", async () => {
+    const { room, hub, A, B } = await table();
+    const confirm = vi.fn(() => true);
+    vi.stubGlobal("confirm", confirm);
+    await hub.exec("status", { keepAwake: null, busy: false, imageGen: true });
+    A.click("編輯我的角色");
+    await until(() => room.frames("x1", "card.read").length === 1);
+    const card = { name: "角色1", avatar: "🗡", publicMd: "公開", privateMd: "舊秘密", image: null };
+    await hub.exec("card.read.result", { reqId: last(room, "card.read").reqId, ok: true, card });
+    await until(() => A.q<HTMLTextAreaElement>('[data-testid="card-private"]')?.value === "舊秘密");
+    A.type('[data-testid="card-name"]', "新名字");
+    A.type('[data-testid="card-private"]', "新秘密");
+    await act(async () => A.q<HTMLFormElement>('[data-testid="card-sheet"]')!.requestSubmit());
+    await until(() => room.frames("x1", "card.save").length === 1);
+    expect(confirm).toHaveBeenCalledWith("要把角色改名成「新名字」嗎？");
+    const { reqId, memberId: _m, ...sent } = last(room, "card.save");
+    expect(sent).toEqual({ cardId: "c1", name: "新名字", privateMd: "新秘密" });
+    await hub.exec("card.save.result", { reqId, ok: true });
+    await until(() => !A.q('[data-testid="card-sheet"]'));
+    expect(JSON.stringify(room.out[B.socket().id])).not.toMatch(/舊秘密|新秘密/);
+
+    room.clock += 3000; // 讀卡每人每秒一次
+    A.click("編輯我的角色");
+    await until(() => room.frames("x1", "card.read").length === 2);
+    await hub.exec("card.read.result", { reqId: last(room, "card.read").reqId, ok: true, card: { ...card, name: "新名字" } });
+    await until(() => A.q('[data-testid="card-gen-notice"]'));
+    expect(A.q('[data-testid="card-gen-notice"]')!.textContent).toBe("會用 GM 主機「家裡的電腦」上設定的 AI 額度");
+    confirm.mockClear();
+    A.click("AI 生圖");
+    await until(() => room.frames("x1", "image.gen").length === 1);
+    expect(confirm).toHaveBeenCalledWith("這會用 GM 主機「家裡的電腦」的 AI 額度生一張圖，要繼續嗎？");
+    expect(last(room, "image.gen")).toMatchObject({ cardId: "c1", name: "新名字", description: "公開", framing: "half" });
+    await hub.exec("image.gen.result", { reqId: last(room, "image.gen").reqId, ok: true, file: "1700.png", preview: "data:image/png;base64,AAAA" });
+    await until(() => A.q('[data-testid="card-gen-preview"]'));
+    expect(A.q('[data-testid="card-gen-preview"]')!.textContent).toContain("新生成的圖");
+    room.clock += 3000;
+    A.click("用這張");
+    await until(() => room.frames("x1", "card.save").length === 2);
+    expect(last(room, "card.save")).toMatchObject({ imageFromGallery: "1700.png" });
+    await hub.exec("card.save.result", { reqId: last(room, "card.save").reqId, ok: true });
+    await until(() => A.q<HTMLImageElement>('[data-testid="card-image-now"]')?.src.startsWith("data:image/png"));
+    A.click("AI 生圖");
+    await until(() => room.frames("x1", "image.gen").length === 2);
+    await hub.exec("image.gen.result", { reqId: last(room, "image.gen").reqId, ok: true, file: "1701.png", preview: "data:image/png;base64,BBBB" });
+    await until(() => A.q('[data-testid="card-gen-preview"]'));
+    A.click("丟掉"); // 丟掉不存檔
+    await until(() => !A.q('[data-testid="card-gen-preview"]'));
+    expect(room.frames("x1", "card.save")).toHaveLength(2);
+    // 關掉編卡畫面再開：同一房間不再問
+    A.click("返回");
+    await until(() => !A.q('[data-testid="card-sheet"]'));
+    room.clock += 3000;
+    A.click("編輯我的角色");
+    await until(() => room.frames("x1", "card.read").length === 3);
+    await hub.exec("card.read.result", { reqId: last(room, "card.read").reqId, ok: true, card: { ...card, name: "新名字" } });
+    await until(() => A.q('[data-testid="card-gen-notice"]'));
+    A.click("AI 生圖");
+    await until(() => room.frames("x1", "image.gen").length === 3);
+    expect(confirm).toHaveBeenCalledTimes(1);
+    await hub.exec("image.gen.result", { reqId: last(room, "image.gen").reqId, ok: false, code: "E_GEN_QUOTA" });
+    await until(() => A.text().includes("GM 主機的 AI 額度用完了"));
+    // 主機關掉開關：只留說明，額外提示與構圖一起收起
+    await hub.exec("status", { keepAwake: null, busy: false, imageGen: false });
+    await until(() => A.q('[data-testid="card-gen-notice"]')!.textContent === "GM 主機關閉了 AI 生圖");
+    expect(A.button("AI 生圖")).toBeNull();
+    expect(A.q('[data-testid="card-image"] select')).toBeNull();
+    // 主機沒有房間能用的生圖路線：整段不出現
+    await hub.exec("status", { keepAwake: null, busy: false, imageGen: false, imageGenRoute: false });
+    await until(() => !A.q('[data-testid="card-gen-notice"]'));
   });
 });

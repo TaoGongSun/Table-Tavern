@@ -10,6 +10,14 @@
   flex: 0 0 9em;
   color: var(--ink-2);
 }
+/* 開關標籤照文字長度、不套 9em 欄寬；太窄才換行 */
+.room-toggle {
+  flex: 0 1 auto;
+  color: var(--ink-2);
+}
+.room-nowrap {
+  white-space: nowrap;
+}
 .room-value {
   flex: 1 1 12em;
   min-width: 0;

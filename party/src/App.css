@@ -467,25 +467,59 @@
   margin: 0;
 }
 
-.app .seat-create {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.app .seat-entries {
   margin-top: 12px;
   padding-top: 10px;
   border-top: 1px dashed var(--line);
 }
 
-.app .seat-create h3 {
+/* 選檔鈕：label 包住隱藏的 file input，長得跟按鈕一樣 */
+.app label.button-like,
+.app .panel label.button-like {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
   margin: 0;
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
   font-size: 15px;
+  cursor: pointer;
 }
 
-.app .seat-create label {
+.app .card-sheet .panel-actions {
+  align-items: center;
+  margin: 8px 0;
+}
+
+.app .card-sheet .muted {
+  display: block;
+  font-size: 13px;
+}
+
+.app .card-image img {
+  width: 120px;
+  height: 120px;
+  border-radius: 12px;
+  object-fit: cover;
+}
+
+.app .card-image select {
+  width: auto;
+}
+
+.app .card-gen-preview {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 14px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.app .card-gen-preview > p {
+  flex-basis: 100%;
+  margin: 0;
 }
 
 .app .round-waiting {

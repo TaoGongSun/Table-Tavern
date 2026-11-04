@@ -71,13 +71,13 @@ export class RoomSocket {
   }
 
   /** 送請求並等回覆；斷線中或逾時回 E_OFFLINE（客戶端自己的碼，不是協定碼） */
-  request(t: string, p: unknown = {}): Promise<Reply> {
+  request(t: string, p: unknown = {}, waitMs = this.time.requestMs): Promise<Reply> {
     if (!this.ready || this.ws?.readyState !== 1) return Promise.resolve({ ok: false, code: "E_OFFLINE" });
     const id = this.nextId();
     this.ws.send(JSON.stringify({ t, id, p }));
     return new Promise((resolve) => {
       this.pending.set(id, resolve);
-      setTimeout(() => this.pending.delete(id) && resolve({ ok: false, code: "E_OFFLINE" }), this.time.requestMs);
+      setTimeout(() => this.pending.delete(id) && resolve({ ok: false, code: "E_OFFLINE" }), waitMs);
     });
   }
 

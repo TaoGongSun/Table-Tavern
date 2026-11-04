@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { deviceId, inAppBrowser, joinedNickname, parseInvite, rememberJoined, withoutPairCode, type Invite } from "./features/connection/invite";
 import { JoinForm, OpenInBrowserBanner } from "./features/join/JoinForm";
 import { LanguagePicker } from "./features/language/LanguagePicker";
+import { makeUpload } from "./features/my-card/card-upload";
 import { errorText } from "./features/room/error-text";
 import { RoomScreen } from "./features/room/RoomScreen";
 import { useRoom, type RoomEnv } from "./features/room/useRoom";
@@ -34,7 +35,8 @@ export function useRoomSession(env: RoomEnv, invite: Invite, device: string, nic
       return false;
     }
   };
-  return { ...room, exportRoom };
+  const upload = makeUpload(env.fetch, invite.code, device, room.awaitUpload);
+  return { ...room, exportRoom, upload };
 }
 export type RoomSession = ReturnType<typeof useRoomSession>;
 
@@ -55,6 +57,7 @@ export function RoomBody({ room, origin, desktop }: { room: RoomSession; origin:
         c={{
           ...room,
           exportRoom: desktop ? null : room.exportRoom,
+          upload: desktop ? null : room.upload,
           origin,
           onLeave: desktop ? desktop.onLeave : () => (room.leave(), setLeft(true)),
           leaveLabel: desktop?.leaveLabel,

@@ -19,6 +19,12 @@ export interface RoomStatus {
   lastError: string | null;
   /** 伺服器上的房間已被清：重開會建新房 */
   gone: boolean;
+  /** 允許玩家用 AI 生圖（這桌的房間設定，預設開；room-player-cards §3.7） */
+  imageGen: boolean;
+  /** 本機生圖來源是 API（房間生圖唯一路線）；不是就不顯示生圖開關 */
+  imageGenRoute: boolean;
+  /** 最近的玩家生圖（最多 20 筆、新的在後、只在記憶體）；`name` 是卡名 */
+  genLog: Array<{ at: number; name: string; ok: boolean }>;
 }
 
 export const readRoomStatus = (worldId?: string) => invoke<RoomStatus>("room_status", { worldId: worldId ?? null });

@@ -22,15 +22,21 @@ export interface JoinParams {
   pairCode: string | null;
   nickname: string;
 }
-export type Act = (t: string, p?: unknown) => Promise<Reply>;
+export interface UploadResult {
+  ok: boolean;
+  cardId?: string;
+  code?: ErrorCode;
+}
+/** `waitMs`：比預設 35 秒久的請求（生圖，伺服器最多等 10 分鐘） */
+export type Act = (t: string, p?: unknown, waitMs?: number) => Promise<Reply>;
 
 const DRAFT_MS = 600; // 伺服器每 500 ms 收一則
 
 /** 按鈕用：發指令、把錯誤留給元件顯示在旁邊（§8「欄位下紅字」）；成功回 result */
 export function useRun(act: Act) {
   const [error, setError] = useState<string | null>(null);
-  const run = useCallback(async (t: string, p: unknown = {}) => {
-    const reply = await act(t, p);
+  const run = useCallback(async (t: string, p: unknown = {}, waitMs?: number) => {
+    const reply = await act(t, p, waitMs);
     setError(reply.ok ? null : errorText(reply.code, reply.retryAfterMs));
     return reply.ok ? (reply.result ?? true) : null;
   }, [act]);
@@ -50,6 +56,8 @@ export function useRoom(env: RoomEnv, join: JoinParams, onJoined: () => void) {
   const viewRef = useRef<RoomView | null>(null);
   const socket = useRef<RoomSocket | null>(null);
   const draft = useRef({ last: 0, timer: null as ReturnType<typeof setTimeout> | null, text: "", gen: 0 });
+  // 上傳結果（vol.card_upload）：可能比 HTTP 202 先到，先收著等 awaitUpload 來拿
+  const uploads = useRef({ done: new Map<string, UploadResult>(), wait: new Map<string, (r: UploadResult) => void>() });
 
   useEffect(() => {
     let joined = false;
@@ -65,6 +73,14 @@ export function useRoom(env: RoomEnv, join: JoinParams, onJoined: () => void) {
         ...(join.pairCode && !joined ? { pairCode: join.pairCode } : {}),
       }),
       onFrame: (f: Frame) => {
+        if (f.t === "vol" && f.p.type === "card_upload") {
+          const u = uploads.current;
+          const r: UploadResult = { ok: f.p.ok === true, cardId: f.p.cardId, code: f.p.code };
+          const resolve = u.wait.get(f.p.uploadId);
+          if (resolve) (u.wait.delete(f.p.uploadId), resolve(r));
+          else u.done.set(f.p.uploadId, r);
+          return;
+        }
         if (f.t === "welcome" && !joined) {
           joined = true;
           onJoined();
@@ -85,8 +101,8 @@ export function useRoom(env: RoomEnv, join: JoinParams, onJoined: () => void) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [join.code, join.deviceId]);
 
-  const act: Act = useCallback(async (t, p = {}) => {
-    const reply = (await socket.current?.request(t, p)) ?? { ok: false as const, code: "E_OFFLINE" as const };
+  const act: Act = useCallback(async (t, p = {}, waitMs) => {
+    const reply = (await socket.current?.request(t, p, waitMs)) ?? { ok: false as const, code: "E_OFFLINE" as const };
     if (!reply.ok && reply.code === "E_STATE_CONFLICT") socket.current?.resync(); // 以伺服器畫面為準，不另跳窗
     return reply;
   }, []);
@@ -131,5 +147,17 @@ export function useRoom(env: RoomEnv, join: JoinParams, onJoined: () => void) {
     setView(viewRef.current);
   }, []);
 
-  return { view, status, fatal, notice, clearNotice: () => setNotice(null), act, sendDraft, cancelDraft, loadOlder, resumed, leave: () => socket.current?.stop() };
+  /** 等某件上傳的處理結果（照 HTTP 202 給的 uploadId） */
+  const awaitUpload = useCallback((uploadId: string) => {
+    const u = uploads.current;
+    const r = u.done.get(uploadId);
+    if (r) return (u.done.delete(uploadId), Promise.resolve(r));
+    return new Promise<UploadResult>((resolve) => {
+      u.wait.set(uploadId, resolve);
+      // 伺服器 10 分鐘一定收回名額；斷線期間錯過結果就當逾時（入座、換圖重連後照樣看得到）
+      setTimeout(() => u.wait.delete(uploadId) && resolve({ ok: false, code: "E_EXECUTOR_TIMEOUT" }), 11 * 60_000);
+    });
+  }, []);
+
+  return { view, status, awaitUpload, fatal, notice, clearNotice: () => setNotice(null), act, sendDraft, cancelDraft, loadOlder, resumed, leave: () => socket.current?.stop() };
 }

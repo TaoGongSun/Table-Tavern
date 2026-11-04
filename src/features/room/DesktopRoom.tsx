@@ -1,11 +1,13 @@
 // 電腦上的房間畫面（room-host-desktop-play）：上方房主資訊列，下面就是手機同一套房間元件（party/）。
 // 連線本身在 app 最外層（useDesktopRoom），這裡只畫；離開這個畫面連線照開著。
-import { useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useState } from "react";
 import { RoomBody } from "@party/App";
 import "@party/App.css";
 import { setLangOnly } from "@party/i18n";
 import { currentLang, t } from "../../i18n";
 import { QrCode } from "./QrCode";
+import type { RoomStatus } from "./room-status";
 import type { DesktopRoomCtl } from "./useDesktopRoom";
 
 function CopyRow({ label, value }: { label: string; value: string }) {
@@ -25,6 +27,42 @@ function CopyRow({ label, value }: { label: string; value: string }) {
           <QrCode value={value} label={label} />
         </div>
       )}
+    </div>
+  );
+}
+
+/** 玩家用 AI 生圖花的是這台電腦上的帳號：開關與最近紀錄放在這裡（room-player-cards §3.4） */
+function ImageGenRow({ status }: { status: RoomStatus }) {
+  const [enabled, setEnabled] = useState<boolean | null>(null); // 送出後、輪詢還沒跟上前先顯示新值
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (enabled === status.imageGen) setEnabled(null);
+  }, [enabled, status.imageGen]);
+  const on = enabled ?? status.imageGen;
+  const log = (status.genLog ?? []).slice(-3).reverse();
+  return (
+    <div className="room-row" data-testid="room-image-gen">
+      <label className="room-toggle">
+        <input
+          type="checkbox"
+          checked={on}
+          onChange={(event) => {
+            const next = event.currentTarget.checked;
+            setEnabled(next);
+            invoke("room_image_gen", { enabled: next }).then(
+              () => setError(""),
+              (e) => (setEnabled(null), setError(String(e))),
+            );
+          }}
+        />{" "}
+        {t("roomImageGen")}
+      </label>
+      {log.map((x) => (
+        <span key={`${x.at}-${x.name}`} className="muted room-nowrap">
+          {new Date(x.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} {t(x.ok ? "roomGenOk" : "roomGenFailed", { name: x.name })}
+        </span>
+      ))}
+      {error && <span role="alert">{error}</span>}
     </div>
   );
 }
@@ -61,6 +99,7 @@ export function DesktopRoom({ ctl }: { ctl: DesktopRoomCtl }) {
           </button>
         </div>
         {notice && <p role="status">{notice}</p>}
+        {status?.active && status.imageGenRoute && <ImageGenRow status={status} />}
         {v && !iAmHost && (
           <div className="room-row" data-testid="room-phone-host">
             <span>{t("roomPhoneHost", { name: v.members.find((m) => m.memberId === v.room.hostId)?.nickname ?? "—" })}</span>

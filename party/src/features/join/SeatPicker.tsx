@@ -1,14 +1,30 @@
-// 選角（協定 §2）：名冊中可玩、未隱藏、沒保留給電腦的卡；或自建簡易角色（名字＋公開描述，執行端在桌上建卡後替他入座）。
+// 選角（協定 §2）：名冊中可玩、未隱藏、沒保留給電腦的卡；或匯入角色卡、建立角色（執行端在桌上建卡後替他入座，room-player-cards）。
 import { useState } from "react";
 import { t } from "../../i18n";
+import type { Upload } from "../my-card/card-upload";
+import { errorText } from "../room/error-text";
 import type { RoomView } from "../room/room-state";
 import { useRun, type Act } from "../room/useRoom";
 
-export function SeatPicker({ view, act, desktop = false }: { view: RoomView; act: Act; desktop?: boolean }) {
-  const { run, error } = useRun(act);
-  const [name, setName] = useState(view.me.nickname);
-  const [blurb, setBlurb] = useState("");
-  const [busy, setBusy] = useState(false);
+interface Props {
+  view: RoomView;
+  act: Act;
+  desktop?: boolean;
+  /** null＝桌面版：不給匯入 */
+  upload: Upload | null;
+  onCreate: () => void;
+}
+
+export function SeatPicker({ view, act, desktop = false, upload, onCreate }: Props) {
+  const { run, error, setError } = useRun(act);
+  const [importing, setImporting] = useState(false);
+  async function importCard(file: File | undefined) {
+    if (!file || !upload) return;
+    setImporting(true);
+    const r = await upload("card", file);
+    setImporting(false);
+    setError(r.ok ? null : errorText(r.code ?? "E_INTERNAL", r.retryAfterMs));
+  }
   // 保留給電腦（房主自己的玩家卡）的卡：手機上不列，認走之後照常顯示「已有人」
   const cards = view.cards.filter((c) => c.playable && !c.hidden && (desktop || !c.reserved || c.claimedBy !== null));
   return (
@@ -31,27 +47,16 @@ export function SeatPicker({ view, act, desktop = false }: { view: RoomView; act
         </div>
       ))}
       {view.room.settings.allowCustomCards && (
-        <form
-          className="seat-create"
-          data-testid="seat-create"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setBusy(true);
-            await run("seat.create", { name: name.trim(), blurb: blurb.trim() });
-            setBusy(false);
-          }}
-        >
-          <h3>{t("seatCreate")}</h3>
-          <label>
-            {t("seatCreateName")}
-            <input value={name} maxLength={40} onChange={(e) => setName(e.target.value)} />
-          </label>
-          <label>
-            {t("seatCreateBlurb")}
-            <textarea value={blurb} maxLength={1000} rows={3} onChange={(e) => setBlurb(e.target.value)} />
-          </label>
-          <button type="submit" disabled={busy || !name.trim()}>{t("seatCreate")}</button>
-        </form>
+        <div className="panel-actions seat-entries" data-testid="seat-create">
+          {/* 匯入：房主電腦建出只有角色本身的卡後自動入座（桌面版有自己的匯入，不給） */}
+          {upload && (
+            <label className="button-like">
+              {importing ? t("seatImporting") : t("seatImport")}
+              <input type="file" accept=".png,.json,image/png,application/json" hidden disabled={importing} onChange={(e) => void importCard(e.target.files?.[0])} />
+            </label>
+          )}
+          <button type="button" onClick={onCreate}>{t("seatCreate")}</button>
+        </div>
       )}
       {error && <div className="field-error">{error}</div>}
     </div>

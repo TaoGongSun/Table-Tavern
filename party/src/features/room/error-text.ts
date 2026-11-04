@@ -32,14 +32,14 @@ export const ERROR_TEXT: Record<ErrorCode | "E_OFFLINE", MsgKey> = {
   E_SESSION_REPLACED: "errSessionReplaced", // 不自動重連
   E_EXECUTOR_REPLACED: "errInternal", // 只有執行端會收到
   E_INTERNAL: "errInternal",
-  // 玩家卡上傳與生圖（room-player-cards）：包 3 換成各自的說明，先用通用錯誤
-  E_LENGTH_REQUIRED: "errInternal",
-  E_TOO_LARGE: "errInternal",
-  E_UNSUPPORTED_FORMAT: "errInternal",
-  E_CARD_INVALID: "errInternal",
-  E_GEN_QUOTA: "errInternal",
-  E_GEN_UNSUPPORTED: "errInternal",
-  E_GEN_REFUSED: "errInternal",
+  // 玩家卡上傳與生圖（room-player-cards）
+  E_LENGTH_REQUIRED: "errUploadFailed",
+  E_TOO_LARGE: "errTooLarge",
+  E_UNSUPPORTED_FORMAT: "errUnsupportedFormat",
+  E_CARD_INVALID: "errCardInvalid",
+  E_GEN_QUOTA: "errGenQuota",
+  E_GEN_UNSUPPORTED: "errGenUnsupported",
+  E_GEN_REFUSED: "errGenRefused",
   E_OFFLINE: "errOffline", // 客戶端自己的：斷線中送不出去
 };
 
