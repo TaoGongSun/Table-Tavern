@@ -169,6 +169,21 @@ impl Engine for Fake {
     }
 
     fn table_changed(&self, _: &str) {}
+
+    /// 生圖替身：照真的那條把 PNG 寫進那張卡的圖庫
+    fn generate_image(
+        &self,
+        request: crate::commands::image::ImageRequest,
+    ) -> BoxFut<'_, Result<(String, Vec<u8>), String>> {
+        Box::pin(async move {
+            let dir =
+                data::gallery_dir(&self.root, &request.world_id, &request.character_id).unwrap();
+            std::fs::create_dir_all(&dir).unwrap();
+            let png = card_tests::png(6);
+            std::fs::write(dir.join("1700000000000.png"), &png).unwrap();
+            Ok(("1700000000000.png".to_owned(), png))
+        })
+    }
 }
 
 /// 一桌兩張卡：阿濤（玩家）、老闆（NPC）
@@ -1087,3 +1102,6 @@ fn reserve_keeps_host_card() {
     assert_eq!(frame["p"]["cardId"], boss.as_str());
     assert_eq!(frame["p"]["deviceId"], device.as_str());
 }
+
+#[path = "cards_tests.rs"]
+mod card_tests;

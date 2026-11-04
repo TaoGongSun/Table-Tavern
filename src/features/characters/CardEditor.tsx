@@ -48,6 +48,7 @@ export function CardEditor({
   onOpenAiSettings,
   isPlayer = false,
   hidePrivate = false,
+  roomMode = false,
   seatGuard,
   onConverted,
   isBusy,
@@ -79,6 +80,8 @@ export function CardEditor({
   isPlayer?: boolean;
   /** 房間裡別人座位上的卡（room-host-desktop-play）：不顯示秘密情報段，存檔照原值 */
   hidePrivate?: boolean;
+  /** 這桌的房間開著：玩家卡的秘密情報說明改寫「其他玩家看不到」 */
+  roomMode?: boolean;
   /** 房間裡別人座位上的卡：封存、改舞台卡會讓他失去角色，先確認 */
   seatGuard?: () => Promise<boolean>;
   onConverted: () => Promise<void>;
@@ -213,7 +216,7 @@ export function CardEditor({
       ...card,
       name: target,
       avatar: card.avatar.trim() || DEFAULT_AVATAR,
-      private_md: isPlayer ? "" : card.private_md,
+      private_md: card.private_md,
       tier: isPlayer ? "balanced" : card.tier,
     };
     // 改名只換之後的顯示名稱（id 定址不受影響），欄位下的說明太容易看漏，儲存前再提醒一次
@@ -654,9 +657,9 @@ export function CardEditor({
             onChange={(e) => setCard({ ...card, public_md: e.currentTarget.value })}
           />
         </label>
-        {!isPlayer && !hidePrivate && guardPrivate(
+        {!hidePrivate && guardPrivate(
           <label>
-            {t("privateLabel")}
+            {t(isPlayer ? (roomMode ? "playerPrivateRoomLabel" : "playerPrivateLabel") : "privateLabel")}
             <textarea
               rows={4}
               value={card.private_md}

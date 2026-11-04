@@ -169,8 +169,12 @@ pub(super) fn gm_system_prompt(
         system.push_str(&front);
     }
     // 舞台卡（stage-card-in-speaker-list）：場景／世界設定，另起「舞台」段，不說它有扮演者
-    let (stage, cast): (Vec<&CharacterCard>, Vec<&CharacterCard>) =
-        cards.iter().partition(|card| card.stage);
+    // 多人房間在場的真人玩家卡進「玩家角色」段（含秘密情報），不列在登場角色
+    let seated = |card: &CharacterCard| texts.party.contains(&card.id);
+    let (stage, cast): (Vec<&CharacterCard>, Vec<&CharacterCard>) = cards
+        .iter()
+        .filter(|card| !seated(card) || voice == GmVoice::Protagonist)
+        .partition(|card| card.stage);
     let (public_label, private_label) = match en {
         true => (
             "Public profile:",
@@ -213,10 +217,26 @@ pub(super) fn gm_system_prompt(
         if voice == GmVoice::Protagonist {
             system.push_str(&protagonist_section(player, &texts.player.public, lang));
         } else {
-            system.push_str(&player_heading(&player.name, lang));
-            if !texts.player.public.trim().is_empty() {
-                system.push_str(&format!("\n{}\n", texts.player.public.trim()));
-            }
+            system.push_str(&player_section(
+                &player.name,
+                &texts.player.public,
+                &texts.player.private,
+                lang,
+            ));
+        }
+    }
+    if voice != GmVoice::Protagonist {
+        for card in cards
+            .iter()
+            .filter(|card| seated(card) && player.is_none_or(|p| p.id != card.id))
+        {
+            let card_texts = texts.card(card);
+            system.push_str(&player_section(
+                &card.name,
+                &card_texts.public,
+                &card_texts.private,
+                lang,
+            ));
         }
     }
     let back = section_body(back, lang);
@@ -300,6 +320,22 @@ fn protagonist_section(player: &CharacterCard, public: &str, lang: &str) -> Stri
     }
     if !player.private_md.trim().is_empty() {
         text.push_str(&format!("{private_label}\n{}\n", player.private_md.trim()));
+    }
+    text
+}
+
+/// GM 側的玩家角色段：標頭＋公開段＋玩家自填的秘密情報（空白就不出標題，沒填的桌提示詞逐字不變）
+fn player_section(name: &str, public: &str, private: &str, lang: &str) -> String {
+    let mut text = player_heading(name, lang);
+    if !public.trim().is_empty() {
+        text.push_str(&format!("\n{}\n", public.trim()));
+    }
+    if !private.trim().is_empty() {
+        let label = match scaffold_en(lang) {
+            true => "Secret notes from the player (you know them, but never reveal them on your own or let other characters learn them unless the story uncovers them naturally):",
+            false => "玩家自填的秘密情報（你知道，但不得主動揭露，也不能讓其他角色得知，除非劇情自然揭開）：",
+        };
+        text.push_str(&format!("{label}\n{}\n", private.trim()));
     }
     text
 }

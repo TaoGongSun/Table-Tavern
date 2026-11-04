@@ -379,6 +379,8 @@ export const ja: Record<MsgKey, string> = {
   avatarEmojiLabel: "アイコン（画像がない場合に表示、最大4文字）",
   publicLabel: "公開設定（周囲が知っている情報）",
   playerPublicLabel: "周囲から見たあなた（社会的立場、外見、評判）",
+  playerPrivateLabel: "秘密の情報（GM には見えるが、自分から明かすことはない）",
+  playerPrivateRoomLabel: "秘密の情報（GM には見えるが、ほかのプレイヤーには見えない）",
   privateLabel: "非公開設定（このキャラクターとGMのみに共有される情報）",
   tierLabel: "ランク",
   saveBtn: "保存",

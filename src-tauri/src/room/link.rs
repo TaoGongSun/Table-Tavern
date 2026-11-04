@@ -1,6 +1,6 @@
 //! 執行端連線（協定 §4.2、§6.1、§6.5、§7.4）：建房 HTTP、WebSocket、`hello`／`welcome`、心跳、退避重連、
 //! 重送佇列，以及把收到的訊框交給 `run`。
-use super::{run, seed, Room, Saved};
+use super::{cards, run, seed, Room, Saved};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -314,6 +314,7 @@ fn welcome(room: &Arc<Room>, p: &Value) -> Vec<Value> {
             status.last_error = None;
         }
     }
+    cards::seats_from_snapshot(room, snapshot);
     let mut frames = saved.queue.clone();
     let caps = room.engine.capabilities();
     room.status().model_label = caps["current"]["modelLabel"].as_str().map(str::to_owned);
@@ -364,7 +365,12 @@ fn on_frame(room: &Arc<Room>, frame: &Value) {
         "dispatch" => run::on_dispatch(room, p),
         "abort" => run::abort(room),
         "ctl" => run::on_ctl(room, p),
-        "job.scene_advance" | "job.card_create" => run::on_job(room, p),
+        "job.scene_advance" | "job.card_create" | "job.card_import" | "job.card_image" => {
+            run::on_job(room, p)
+        }
+        "card.read" => cards::on_read(room, p),
+        "card.save" => cards::on_save(room, p),
+        "image.gen" => cards::on_gen(room, p),
         "job.cancel" => run::on_cancel(room, p),
         "ok" => on_reply(room, p, None),
         "err" => on_reply(room, p, p["code"].as_str()),
@@ -393,6 +399,7 @@ fn on_frame(room: &Arc<Room>, frame: &Value) {
             status.pair_code = None;
             status.payer_link = None;
         }
+        "ev" => cards::on_seat_event(room, &p["e"]),
         _ => {}
     }
 }

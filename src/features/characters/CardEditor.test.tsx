@@ -177,6 +177,15 @@ describe("CardEditor", () => {
     ]);
   });
 
+  it("keeps a player card's secret notes and shows the GM-only hint", async () => {
+    backend.handlers.read_character = () => card("p1", "Me", { private_md: "my secret" });
+    await mount({ characterId: "p1", isPlayer: true });
+    expect(host!.textContent).toContain(t("playerPrivateLabel"));
+    await act(async () => saveButton().click());
+    const writes = backend.calls.filter((call) => call.command === "write_character");
+    expect((writes[0].args.card as CharacterCard).private_md).toBe("my secret");
+  });
+
   it("has no more menu for a new card", async () => {
     await mount({ characterId: "n1", isNew: true });
     expect(nameInput()).not.toBeNull();

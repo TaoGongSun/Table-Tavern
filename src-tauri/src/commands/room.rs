@@ -49,6 +49,12 @@ pub(crate) fn room_roster_refresh() -> Result<(), String> {
     room::refresh_roster()
 }
 
+/// 資訊列「允許玩家用 AI 生圖」開關
+#[tauri::command]
+pub(crate) fn room_image_gen(enabled: bool) -> Result<(), String> {
+    room::set_image_gen(enabled)
+}
+
 /// 桌面成員連線的裝置碼與邀請連結
 #[tauri::command]
 pub(crate) fn room_identity() -> Result<room::Identity, String> {

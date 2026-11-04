@@ -393,6 +393,7 @@ export function AppWorkspace({
               onConverted={finishConverted}
               onDeleteCharacter={deleteGuarded}
               hidePrivate={seatHolder(cardView?.id ?? "") !== null}
+              roomMode={roomMode}
               seatGuard={seatGuard(cardView?.id ?? "")}
               onDeletePlayerCard={deletePlayerCard}
               onClose={() => setMainView(null)}

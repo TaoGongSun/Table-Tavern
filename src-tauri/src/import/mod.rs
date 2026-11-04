@@ -22,8 +22,8 @@ mod tests;
 pub use card::import_character;
 pub(crate) use card::original_import_error;
 pub use card::{
-    card_openings, check_character_bytes, import_character_reporting, probe_import, worldbook_json,
-    ImportProbe, ImportedCharacter,
+    card_openings, check_character_bytes, import_character_reporting, player_card_from_bytes,
+    probe_import, worldbook_json, ImportProbe, ImportedCharacter,
 };
 pub use export::export_character;
 pub(crate) use export::strip_greetings;

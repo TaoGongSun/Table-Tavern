@@ -379,6 +379,8 @@ export const fr: Record<MsgKey, string> = {
   avatarEmojiLabel: "Icône (affichée si le personnage n'a pas d'image, max. 4 caractères)",
   publicLabel: "Profil public (ce que tout le monde sait sur lui)",
   playerPublicLabel: "Comment les autres te voient (rôle social, apparence, réputation)",
+  playerPrivateLabel: "Notes secrètes (le MJ les voit mais ne les révèle pas)",
+  playerPrivateRoomLabel: "Notes secrètes (le MJ les voit, les autres joueurs non)",
   privateLabel: "Profil privé (visible uniquement par ce personnage et le MJ)",
   tierLabel: "Niveau",
   saveBtn: "Enregistrer",

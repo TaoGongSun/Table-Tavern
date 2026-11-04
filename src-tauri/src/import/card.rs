@@ -274,6 +274,32 @@ pub(super) fn parse_character(bytes: &[u8]) -> DataResult<ParsedCard> {
     })
 }
 
+/// 多人房間玩家匯入的卡（room-player-cards §3.1）：只收角色本身——名字、公開段、顯示圖。
+pub struct PlayerCard {
+    pub name: String,
+    pub public_md: String,
+    pub image: Option<Vec<u8>>,
+}
+
+/// 玩家匯入的卡檔：同一支解析器，不寫任何檔。秘密段、備用開場白、擴充、世界書、正則與介面都不讀；
+/// 顯示圖救不回就沒圖，卡照建
+pub fn player_card_from_bytes(bytes: &[u8], lang: &str) -> DataResult<PlayerCard> {
+    let parsed = parse_character(bytes)?;
+    let card_data = parsed
+        .value
+        .get("data")
+        .filter(|data| data.is_object())
+        .unwrap_or(&parsed.value);
+    Ok(PlayerCard {
+        public_md: public_markdown(card_data, lang),
+        name: parsed.name,
+        image: bytes
+            .starts_with(PNG_MAGIC)
+            .then(|| display_png(bytes))
+            .flatten(),
+    })
+}
+
 /// 只驗卡檔（不寫任何東西）：匯入本體在寫「未完成」標記前先驗，壞檔不會留下標記。
 pub fn check_character_bytes(bytes: &[u8]) -> DataResult<()> {
     parse_character(bytes).map(|_| ())

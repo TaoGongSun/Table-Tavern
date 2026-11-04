@@ -382,6 +382,8 @@ export const zh = {
   avatarEmojiLabel: "圖示（沒有角色圖片時顯示，最多 4 個字元）",
   publicLabel: "公開設定（所有人認識的它）",
   playerPublicLabel: "別人眼中的你（社會身份、外表、風評）",
+  playerPrivateLabel: "秘密情報（GM 看得到，不會主動說破）",
+  playerPrivateRoomLabel: "秘密情報（GM 看得到，其他玩家看不到）",
   privateLabel: "私有設定（只進本角色與 GM 的上下文）",
   tierLabel: "檔位",
   saveBtn: "儲存",

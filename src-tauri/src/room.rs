@@ -3,6 +3,7 @@
 //! `link` 管連線、心跳、重連退避與重送佇列；`run` 管派工、GM 鏈接力、換幕工作與遠端控制；`seed` 產公開名冊、
 //! 公開歷史與 capabilities；`awake` 防休眠。GM 引擎本身不動，經 `Engine` 呼叫（測試換成替身）。
 mod awake;
+mod cards;
 mod link;
 mod member;
 mod run;
@@ -70,6 +71,11 @@ pub(crate) trait Engine: Send + Sync + 'static {
     /// 協定 `capabilities` 內容（照目前設定與覆寫產生）
     fn capabilities(&self) -> Value;
     fn table_changed(&self, world: &str);
+    /// 角色生圖進那張卡的圖庫（桌面版同一條，來源照本機偏好）：回（圖庫檔名, PNG）
+    fn generate_image(
+        &self,
+        request: crate::commands::image::ImageRequest,
+    ) -> BoxFut<'_, Result<(String, Vec<u8>), String>>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -137,6 +143,17 @@ pub(crate) struct Saved {
     pub(crate) phone_host: bool,
     /// 伺服器回房間不在了（憑證已清）；下次開房建新房時歸零
     pub(crate) gone: bool,
+    /// 房主在資訊列關掉「允許玩家用 AI 生圖」（預設開；花的是這台電腦上設定的 AI 帳號）
+    pub(crate) image_gen_off: bool,
+}
+
+/// 資訊列的最近生圖紀錄一行（只在這台電腦、不上送）
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GenLog {
+    pub(crate) at: u64,
+    pub(crate) name: String,
+    pub(crate) ok: bool,
 }
 
 /// 面板讀的狀態
@@ -156,6 +173,11 @@ pub(crate) struct Status {
     pub(crate) last_error: Option<String>,
     /// 伺服器上的房間已被清（閒置過期或被結束）：重開會建新房、房間碼換新
     pub(crate) gone: bool,
+    pub(crate) image_gen: bool,
+    /// 本機生圖來源是 API（房間生圖唯一路線）；不是就不顯示開關
+    pub(crate) image_gen_route: bool,
+    /// 最近的玩家生圖（新的在後，最多 20 行）
+    pub(crate) gen_log: Vec<GenLog>,
 }
 
 /// 在程序裡跑著的那些（不落地）
@@ -168,6 +190,10 @@ pub(crate) struct Work {
     pub(crate) abort: bool,
     /// 伺服器手上的名冊有哪些卡（段落說話者必須在名冊裡，否則整條連線被關）
     pub(crate) roster: Vec<String>,
+    /// 伺服器說的座位（卡 id → 成員 id），從 welcome 快照與座位事件來：讀卡、存卡、換圖、生圖都要對得上
+    pub(crate) seats: std::collections::HashMap<String, String>,
+    /// 玩家生圖本機同時只跑一件
+    pub(crate) generating: bool,
 }
 
 /// 計時單位：心跳 15、退避 1／2／5／10／30、換幕進度 240 個單位。正式 1 秒，測試縮短。
@@ -353,6 +379,9 @@ impl Room {
         status.server = saved.server.clone();
         status.room_code = Some(saved.room_code.clone());
         status.invite_url = Some(saved.invite_url.clone());
+        status.image_gen = !saved.image_gen_off;
+        drop(saved);
+        status.image_gen_route = cards::gen_route(self);
         status
     }
 }
@@ -591,6 +620,15 @@ pub(crate) fn refresh_roster() -> Result<(), String> {
     Ok(())
 }
 
+/// 資訊列「允許玩家用 AI 生圖」：存進這桌的房間設定，馬上報給伺服器（手機據此停用生圖鈕）
+pub(crate) fn set_image_gen(enabled: bool) -> Result<(), String> {
+    let slot = running();
+    let room = &slot.as_ref().ok_or("ROOM_NOT_ACTIVE")?.room;
+    room.try_update(|saved| saved.image_gen_off = !enabled)?;
+    let _ = room.out.send(run::status_frame(room));
+    Ok(())
+}
+
 /// 桌面成員連線的身分（協定 §1.2）：裝置碼第一次用時產生、跟這間房存在一起
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -798,6 +836,15 @@ impl Engine for AppEngine {
         let _ = self
             .app
             .emit("room-table-changed", json!({ "worldId": world }));
+    }
+
+    fn generate_image(
+        &self,
+        request: crate::commands::image::ImageRequest,
+    ) -> BoxFut<'_, Result<(String, Vec<u8>), String>> {
+        Box::pin(crate::commands::image::generate_to_gallery(
+            &self.app, request,
+        ))
     }
 }
 

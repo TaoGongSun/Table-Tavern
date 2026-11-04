@@ -364,6 +364,8 @@ export const zhCN: Record<MsgKey, string> = {
   avatarEmojiLabel: "图标（没有角色图片时显示，最多 4 个字符）",
   publicLabel: "公开设定（所有人认识的它）",
   playerPublicLabel: "别人眼中的你（社会身份、外表、风评）",
+  playerPrivateLabel: "秘密情报（GM 看得到，不会主动说破）",
+  playerPrivateRoomLabel: "秘密情报（GM 看得到，其他玩家看不到）",
   privateLabel: "私有设定（仅进入该角色与 GM 的上下文）",
   tierLabel: "档位",
   saveBtn: "保存",

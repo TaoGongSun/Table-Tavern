@@ -196,7 +196,7 @@ export const EXECUTOR: Record<string, (tx: Tx, p: any) => ReturnType<Handler>> =
     tx.emit("pair.unbound", { memberId: payer });
   },
   status: (tx, p) => {
-    Object.assign(tx.w.exec, { keepAwake: p.keepAwake, busy: p.busy, paused: p.paused === true, imageGen: p.imageGen === true });
+    Object.assign(tx.w.exec, { keepAwake: p.keepAwake, busy: p.busy, paused: p.paused === true, imageGen: p.imageGen === true, imageGenRoute: p.imageGenRoute !== false });
     announceExec(tx);
   },
   quota: (tx, p) => {

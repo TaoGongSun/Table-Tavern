@@ -31,7 +31,9 @@ pub(super) fn status_frame(room: &Room) -> Value {
         let work = room.work();
         work.dispatch.is_some() || work.job.is_some()
     };
-    json!({ "t": "status", "p": { "keepAwake": room.status().keep_awake, "busy": busy } })
+    let route = super::cards::gen_route(room);
+    let image_gen = route && !room.saved().image_gen_off;
+    json!({ "t": "status", "p": { "keepAwake": room.status().keep_awake, "busy": busy, "imageGen": image_gen, "imageGenRoute": route } })
 }
 
 /// 狀態上送（額度協定允許不報：撞額度由 `gen.failed` 的 quota 類錯誤帶）；面板的目前模型跟著 capabilities
@@ -634,8 +636,11 @@ pub(super) fn on_job(room: &Arc<Room>, job: &Value) {
         return;
     }
     room.send("job.ack", json!({ "jobId": id }));
-    if job["kind"] == "card_create" {
-        return create_card(room, &id, job);
+    if matches!(
+        job["kind"].as_str(),
+        Some("card_create" | "card_import" | "card_image")
+    ) {
+        return super::cards::on_job(room, id, job.clone());
     }
     if room.work().job.as_deref() == Some(id.as_str()) {
         return;
@@ -748,44 +753,4 @@ pub(super) fn on_cancel(room: &Arc<Room>, p: &Value) {
         Some(turn) => room.engine.abort(&room.world(), &turn),
         None => settle_job(room, &id, Some("SCENE_ADVANCE_CANCELLED".to_owned())),
     }
-}
-
-/// `job.card_create`（協定 §2 自建卡）：在桌上建一張只有名字與公開描述的卡、送新名冊、回卡 id
-fn create_card(room: &Arc<Room>, id: &str, job: &Value) {
-    if room.saved().cards_made.iter().any(|made| made == id) {
-        return;
-    }
-    let (_, root) = room.engine.roots();
-    let world = room.world();
-    let card = data::CharacterCard {
-        id: data::new_id(),
-        name: text(&job["name"]),
-        color: "#6b7280".to_owned(),
-        avatar: "🙂".to_owned(),
-        tier: data::Tier::Balanced,
-        show_image: true,
-        archived: false,
-        gen_prompt: String::new(),
-        public_md: text(&job["blurb"]),
-        private_md: String::new(),
-        stage: false,
-    };
-    let written = data::world_write_permit(&world)
-        .map_err(String::from)
-        .and_then(|_permit| {
-            data::write_character(&root, &world, &card).map_err(|error| error.to_string())
-        });
-    let p = match written {
-        Ok(()) => {
-            ensure_in_roster(room, &card.id);
-            room.engine.table_changed(&world);
-            json!({ "jobId": id, "ok": true, "result": { "cardId": card.id } })
-        }
-        Err(error) => json!({ "jobId": id, "ok": false, "error": classify(&error) }),
-    };
-    room.durable("job.result", p, |saved| {
-        saved.cards_made.push(id.to_owned());
-        let excess = saved.cards_made.len().saturating_sub(20);
-        saved.cards_made.drain(..excess);
-    });
 }

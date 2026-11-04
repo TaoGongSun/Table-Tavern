@@ -381,6 +381,8 @@ export const de: Record<MsgKey, string> = {
   avatarEmojiLabel: "Symbol (wird angezeigt, wenn die Karte kein Bild hat; bis zu 4 Zeichen)",
   publicLabel: "Öffentliches Profil (was alle über sie wissen)",
   playerPublicLabel: "Wie andere dich sehen (soziale Rolle, Aussehen, Ruf)",
+  playerPrivateLabel: "Geheime Notizen (der GM sieht sie, verrät sie aber nicht)",
+  playerPrivateRoomLabel: "Geheime Notizen (der GM sieht sie, andere Spieler nicht)",
   privateLabel: "Privates Profil (nur für diesen Charakter und den GM sichtbar)",
   tierLabel: "Stufe",
   saveBtn: "Speichern",

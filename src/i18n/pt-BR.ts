@@ -379,6 +379,8 @@ export const ptBR: Record<MsgKey, string> = {
   avatarEmojiLabel: "Ícone (mostrado quando a ficha não tem imagem, até 4 caracteres)",
   publicLabel: "Perfil público (o que todos sabem sobre o personagem)",
   playerPublicLabel: "Como os outros veem você (papel social, aparência, reputação)",
+  playerPrivateLabel: "Notas secretas (o GM vê, mas não revela)",
+  playerPrivateRoomLabel: "Notas secretas (o GM vê; os outros jogadores não)",
   privateLabel: "Perfil privado (apenas este personagem e o GM veem)",
   tierLabel: "Nível",
   saveBtn: "Salvar",

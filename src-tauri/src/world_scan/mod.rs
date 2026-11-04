@@ -22,7 +22,7 @@ mod tests;
 pub use book::TableBook;
 pub use macros::{MacroInputs, MacroSession};
 pub use placement::{arrange, Placed};
-pub use prepare::{prepare, PromptTexts};
+pub use prepare::{prepare, CardTexts, PromptTexts};
 
 use crate::data::world_info_store::counts_toward_timing;
 use crate::data::{CharacterCard, TranscriptEvent, TranscriptKind};

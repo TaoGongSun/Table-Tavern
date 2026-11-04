@@ -44,7 +44,7 @@ const EXECUTOR_FRAMES: Record<string, string> = {
   "gen.delta": "dispatchId:s part:i text:s", "gen.part.end": "dispatchId:s part:i text:s interrupted:b",
   "gen.done": "dispatchId:s aborted:b cardsArrived?:a", "gen.failed": "dispatchId:s atPart:i~ error:o",
   "job.ack": "jobId:s", "job.progress": "jobId:s", "job.result": "jobId:s ok:b result?:o error?:o",
-  "pair.create": "grantHost:b", "pair.revoke": "", status: "keepAwake:b~ busy:b paused?:b imageGen?:b",
+  "pair.create": "grantHost:b", "pair.revoke": "", status: "keepAwake:b~ busy:b paused?:b imageGen?:b imageGenRoute?:b",
   quota: "route:s routeLabel:s window:s state:s usedRatio:n~ resetsAt:i~ creditsLeft:s~ observedAt:i",
   "ctl.result": "ctlId:s ok:b error?:o", "executor.leave": "",
   "card.read.result": "reqId:s ok:b card?:o code?:s", "card.save.result": "reqId:s ok:b code?:s",

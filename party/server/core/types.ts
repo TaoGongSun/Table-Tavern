@@ -135,6 +135,8 @@ export interface ExecutorView {
   paused: boolean;
   /** GM 主機允許玩家用 AI 生圖（桌面版房間資訊列的開關；舊版執行端沒報＝false） */
   imageGen: boolean;
+  /** GM 主機有房間能用的生圖路線（本機生圖來源是 API）；沒有就手機不顯示生圖段。舊版執行端沒報＝true */
+  imageGenRoute: boolean;
   modelLabel: string | null;
 }
 
@@ -189,7 +191,7 @@ export interface RoomState {
   closedAt: number | null;
   joinHash: string;
   execHash: string | null;
-  exec: { label: string; online: boolean; since: number; lastSeen: number; keepAwake: boolean | null; busy: boolean; paused?: boolean; imageGen?: boolean; caps: Capabilities | null; quota: QuotaReport | null };
+  exec: { label: string; online: boolean; since: number; lastSeen: number; keepAwake: boolean | null; busy: boolean; paused?: boolean; imageGen?: boolean; imageGenRoute?: boolean; caps: Capabilities | null; quota: QuotaReport | null };
   execConn: string | null;
   seq: number;
   roundNo: number;

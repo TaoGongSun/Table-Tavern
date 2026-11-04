@@ -378,6 +378,12 @@ pub(crate) fn gm_scan(
         &materials.cards,
         materials.player.as_ref(),
     );
+    scan.texts.party = materials
+        .party
+        .present
+        .iter()
+        .map(|(id, _)| id.clone())
+        .collect();
     scan
 }
 

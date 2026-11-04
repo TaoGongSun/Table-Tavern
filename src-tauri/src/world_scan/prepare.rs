@@ -30,8 +30,10 @@ pub struct PromptTexts {
     pub world_md: String,
     /// 卡 id → 文字
     pub cards: BTreeMap<String, CardTexts>,
-    /// 玩家卡公開設定（中性）；動態時同卡片公開設定的規則
+    /// 玩家卡公開設定（中性）；動態時同卡片公開設定的規則。秘密情報段只有 GM 視角才有
     pub player: CardTexts,
+    /// 多人房間在場的真人玩家卡 id（GM 視角才填）：這些卡進「玩家角色」段、不列在登場角色
+    pub party: Vec<String>,
 }
 
 impl PromptTexts {
@@ -114,7 +116,10 @@ pub fn prepare(
         let card_view = card_text(player, false, &persona);
         texts.player = CardTexts {
             public: neutral_card(session, player.public_md.trim(), &card_view),
-            private: String::new(),
+            private: match viewer {
+                Viewer::Gm => neutral_card(session, player.private_md.trim(), &card_view),
+                Viewer::Character(_) => String::new(),
+            },
             dynamic: dynamic_public(player.public_md.trim()),
         };
     }

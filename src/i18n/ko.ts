@@ -379,6 +379,8 @@ export const ko: Record<MsgKey, string> = {
   avatarEmojiLabel: "아이콘 (캐릭터 이미지가 없을 때 표시, 최대 4자)",
   publicLabel: "공개 정보 (누구나 아는 모습)",
   playerPublicLabel: "남들이 보는 나 (사회적 신분, 외형, 평판)",
+  playerPrivateLabel: "비밀 정보 (GM은 볼 수 있지만 먼저 밝히지 않음)",
+  playerPrivateRoomLabel: "비밀 정보 (GM은 볼 수 있고 다른 플레이어는 못 봄)",
   privateLabel: "비공개 정보 (이 캐릭터와 GM만 볼 수 있는 배경지식)",
   tierLabel: "등급",
   saveBtn: "저장",

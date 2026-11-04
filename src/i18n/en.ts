@@ -391,6 +391,8 @@ export const en: Record<MsgKey, string> = {
   avatarEmojiLabel: "Icon (shown when the card has no image, up to 4 characters)",
   publicLabel: "Public profile (what everyone knows about them)",
   playerPublicLabel: "How others see you (social role, looks, reputation)",
+  playerPrivateLabel: "Secret notes (the GM sees them but won't reveal them)",
+  playerPrivateRoomLabel: "Secret notes (the GM sees them; other players don't)",
   privateLabel: "Private profile (only this character and the GM see it)",
   tierLabel: "Tier",
   saveBtn: "Save",

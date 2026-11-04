@@ -561,3 +561,79 @@ fn card_format_turn_pairs_instruction_with_closing() {
         }
     }
 }
+
+/// 玩家卡秘密情報（room-player-cards §3.3）：單人桌玩家段帶秘密段與禁止揭露句、沒填就逐字照舊；
+/// 多人桌在場真人玩家都進玩家段（含秘密段），不再列在登場角色
+#[test]
+fn player_secret_notes_go_to_the_player_section() {
+    use crate::world_scan::{CardTexts, PromptTexts};
+    let texts_of = |public: &str, private: &str| CardTexts {
+        public: public.into(),
+        private: private.into(),
+        dynamic: false,
+    };
+    let prompt = |texts: &PromptTexts, cards: &[CharacterCard], player: &CharacterCard| {
+        super::gm_system_prompt(
+            texts,
+            cards,
+            Some(player),
+            &[],
+            &[],
+            &Mechanism::default(),
+            "zh-TW",
+            crate::transport::GmVoice::Shared,
+            &Default::default(),
+        )
+    };
+    let me = card("p1", "甲", "甲的公開", "甲的祕密");
+    let plain = PromptTexts {
+        player: texts_of("甲的公開", ""),
+        ..Default::default()
+    };
+    let system = prompt(&plain, &[], &me);
+    assert!(
+        system.ends_with(&format!(
+            "{}\n甲的公開\n",
+            super::player_heading("甲", "zh-TW")
+        )),
+        "{system}"
+    );
+    let secret = PromptTexts {
+        player: texts_of("甲的公開", "甲的祕密"),
+        ..Default::default()
+    };
+    let system = prompt(&secret, &[], &me);
+    assert!(
+        system.contains("甲的公開\n玩家自填的秘密情報（你知道，但不得主動揭露")
+            && system.ends_with("甲的祕密\n"),
+        "{system}"
+    );
+
+    let friend = card("p2", "乙", "乙的公開", "乙的祕密");
+    let npc = card("n1", "店主", "店主的公開", "店主的祕密");
+    let party = PromptTexts {
+        player: texts_of("甲的公開", "甲的祕密"),
+        cards: [("p2", "乙"), ("n1", "店主")]
+            .into_iter()
+            .map(|(id, name)| {
+                (
+                    id.to_owned(),
+                    texts_of(&format!("{name}的公開"), &format!("{name}的祕密")),
+                )
+            })
+            .collect(),
+        party: vec!["p1".into(), "p2".into()],
+        ..Default::default()
+    };
+    let system = prompt(&party, &[me.clone(), friend, npc], &me);
+    let cast = &system[system.find("## 登場角色").unwrap()..system.find("## 玩家角色").unwrap()];
+    assert!(cast.contains("### 店主") && !cast.contains("乙"), "{cast}");
+    let players = &system[system.find("## 玩家角色").unwrap()..];
+    assert!(
+        players.contains("「乙」")
+            && players.contains("乙的公開\n玩家自填的秘密情報")
+            && players.contains("乙的祕密"),
+        "{players}"
+    );
+    assert!(!players.contains("店主"), "{players}");
+}

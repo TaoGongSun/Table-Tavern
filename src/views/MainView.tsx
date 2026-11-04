@@ -44,6 +44,7 @@ interface MainViewProps {
   onDeleteCharacter: (id: string) => Promise<void>;
   /** 房間裡別人座位上的卡：卡片編輯不顯示秘密情報段 */
   hidePrivate?: boolean;
+  roomMode?: boolean;
   /** 房間裡別人座位上的卡：封存、改舞台卡前先確認 */
   seatGuard?: () => Promise<boolean>;
   onDeletePlayerCard: (id: string) => Promise<void>;
@@ -93,6 +94,7 @@ export function MainView({
   onConverted,
   onDeleteCharacter,
   hidePrivate = false,
+  roomMode = false,
   seatGuard,
   onDeletePlayerCard,
   onClose,
@@ -165,6 +167,7 @@ export function MainView({
           onConverted={() => onConverted(cardId)}
           isBusy={isBusy}
           hidePrivate={hidePrivate}
+          roomMode={roomMode}
           seatGuard={seatGuard}
           spriteTab={
             vnTable && cardKind === "character" ? (
