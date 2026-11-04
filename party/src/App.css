@@ -929,3 +929,8 @@
   height: 180px;
   margin-top: 8px;
 }
+
+.app .join-form .guide-link {
+  align-self: center;
+  font-size: 14px;
+}

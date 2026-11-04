@@ -4,6 +4,7 @@ import type { PartyMessages } from "./zh-TW";
 
 export const ko: PartyMessages = {
   ...en,
+  guideLink: "플레이 방법",
   statusTime: "시간",
   statusPlace: "장소",
   statusPresent: "등장",

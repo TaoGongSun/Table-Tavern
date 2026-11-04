@@ -8,7 +8,8 @@ import { ChatView } from "./features/chat/ChatView";
 import { GLOBAL_VARIABLES, type GameSetup } from "./features/chat/useChat";
 import { DownloadLink } from "./features/funnel/DownloadLink";
 import { DownloadPage } from "./features/funnel/DownloadPage";
-import { useDownloadPage } from "./features/funnel/download-route";
+import { useDownloadPage, useRoomGuidePage } from "./features/funnel/download-route";
+import { RoomGuide } from "./features/funnel/RoomGuide";
 import { QuotaPanel } from "./features/funnel/QuotaPanel";
 import type { QuotaState } from "./features/funnel/quota";
 import { useLatestRelease } from "./features/funnel/useLatestRelease";
@@ -53,6 +54,7 @@ export default function App({ callback, lang: initialLang }: { callback: OAuthCa
   // 中國供應商模式不打 GitHub，下載頁只給 pCloud〔作者裁決 2026-11-03〕
   const release = useLatestRelease(!cn);
   const downloadPage = useDownloadPage();
+  const roomGuide = useRoomGuidePage();
   const [game, setGame] = useState<GameSetup | null>(null);
   // 首開就是選卡畫面，按開始才要金鑰：沒金鑰就記下這桌、帶去連線面板，連好自動進桌〔作者裁決 2026-11-03〕
   const [pendingGame, setPendingGame] = useState<GameSetup | null>(null);
@@ -199,6 +201,7 @@ export default function App({ callback, lang: initialLang }: { callback: OAuthCa
 
       {exhausted && !quotaDismissed && !cn && <QuotaPanel release={release} onClose={() => setQuotaDismissed(true)} />}
       {downloadPage.open && <DownloadPage release={release} cn={cn} onClose={downloadPage.close} />}
+      {roomGuide.open && <RoomGuide onClose={roomGuide.close} />}
     </div>
   );
 }

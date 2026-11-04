@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { t, type MsgKey } from "../../i18n";
 import { GmControls } from "../controls/GmControls";
+import { GuideLink } from "../join/GuideLink";
 import { HostPanel } from "../controls/HostPanel";
 import { UndoControls } from "../controls/UndoControls";
 import { PairForm } from "../controls/PairForm";
@@ -68,7 +69,16 @@ function MemberList({ view, act, c }: { view: RoomView; act: Act; c: RoomControl
           )}
         </div>
       ))}
-      <p className="muted">{t("idleNotice", { days: view.room.idleDays })}</p>
+      <p className="muted">
+        {t("idleNotice", { days: view.room.idleDays })}
+        {/* 桌面版房主看的是自己的 App，不給連到網頁的說明 */}
+        {c.pairForm !== false && (
+          <>
+            {" "}
+            <GuideLink />
+          </>
+        )}
+      </p>
       {c.pairForm !== false &&
         view.room.payerId !== view.me.memberId &&
         view.room.status !== "closed" && <PairForm act={act} />}

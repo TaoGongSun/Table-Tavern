@@ -4,6 +4,7 @@ import type { PartyMessages } from "./zh-TW";
 
 export const ptBR: PartyMessages = {
   ...en,
+  guideLink: "Como jogar",
   statusTime: "Tempo",
   statusPlace: "Local",
   statusPresent: "Presentes",

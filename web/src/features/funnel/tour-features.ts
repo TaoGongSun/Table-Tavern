@@ -25,6 +25,7 @@ export const TOUR_HERO = "table";
  */
 export const ROOM_TOUR_ZH_CN = {
   title: "怎么和朋友一起玩",
+  more: "看完整玩法说明 →",
   features: [
     {
       key: "roomHost",

@@ -7,7 +7,7 @@
 ## [0.5.0] — 2026-11-04
 
 ### 這一版有什麼
-- **開房間跟朋友一起玩**：在電腦上開房間，朋友用手機點邀請連結就能加入，不用裝 App。每人一個角色、各自行動；主持故事的 AI（GM）在房主的電腦上跑，用的是房主的 AI 帳號（也可以改用某位朋友的）。房主照常玩自己的角色，還能把暫時離開的朋友交給 AI 代打、收回或重來上一回合、暫停與重開房間；朋友在手機上可以自己建角色、生角色圖、重選一張。玩到一半的單人桌也能從桌卡選單「用這張桌開房」。
+- **開房間跟朋友一起玩**：在電腦上開房間，朋友用手機點邀請連結就能加入，不用裝 App。每人一個角色、各自行動；主持故事的 AI（GM）在房主的電腦上跑，用的是房主的 AI 帳號（也可以改用某位朋友的）。房主照常玩自己的角色，還能把暫時離開的朋友交給 AI 代打、收回或重來上一回合、暫停與重開房間；朋友在手機上可以自己建角色、生角色圖、重選一張。玩到一半的單人桌也能從桌卡選單「用這張桌開房」。[看玩法說明](https://table-tavern.pages.dev/#guide/room)
 - **視覺小說模式**：大廳新增「視覺小說」。AI 一邊寫故事一邊畫背景和人物，你用選項決定劇情走向；有章節、結局、回頭改選、跳過看過的段落、存檔和標題畫面。做好的作品可以匯出成一個檔案（.ttvn）給別人玩；也支援帶視覺小說設定的角色卡。
 - **故事裡不再冒出 GM 的狀態標記**：房間的故事頁頂端改成一行「時間 · 地點 · 在場」。
 - **簡體中文玩家**：網頁版可以改用魔搭或矽基流動（貼上金鑰就能用），桌面版也能接矽基流動；下載頁多了 pCloud。
@@ -54,7 +54,7 @@
 **English**
 
 ### What's new
-- **Open a room and play with friends**: open a room on your computer and friends join from their phone by tapping an invite link — nothing to install. Everyone plays their own character; the AI that runs the story (the GM) runs on the host's computer, using the host's AI account (or a chosen friend's). The host keeps playing their own character and can let the AI play for a friend who steps away, take back or redo the last round, and pause and reopen the room; friends can create a character on their phone, generate character art and pick a different one. A solo table you're already playing can become a room from its table menu ("Open a room with this table").
+- **Open a room and play with friends**: open a room on your computer and friends join from their phone by tapping an invite link — nothing to install. Everyone plays their own character; the AI that runs the story (the GM) runs on the host's computer, using the host's AI account (or a chosen friend's). The host keeps playing their own character and can let the AI play for a friend who steps away, take back or redo the last round, and pause and reopen the room; friends can create a character on their phone, generate character art and pick a different one. A solo table you're already playing can become a room from its table menu ("Open a room with this table"). [Read the guide](https://table-tavern.pages.dev/#guide/room)
 - **Visual novel mode**: a new "Visual Novel" entry in the lobby. The AI writes the story while drawing backgrounds and characters, and you steer it with choices; with chapters, endings, going back to choose again, skipping parts you've read, saves and a title screen. Export a finished work as a single file (.ttvn) for others to play; character cards with visual-novel settings are supported too.
 - **No more GM status markup popping up in the story**: the room's story tab now shows one line at the top, "Time · Place · Present".
 - **Simplified Chinese players**: the web version can use ModelScope or SiliconFlow (paste your key and go), the desktop app can use SiliconFlow, and the download page adds pCloud.

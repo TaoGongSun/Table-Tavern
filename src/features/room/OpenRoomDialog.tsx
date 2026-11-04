@@ -1,7 +1,11 @@
 // 首頁「開房間」：風險說明、伺服器網址（自架用，收在「進階」），選角色卡（可多選，跟匯入同一條路）或不選卡直接開。
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useRef, useState } from "react";
 import { t } from "../../i18n";
 import { Dialog } from "../../shared/ui/Dialog";
+
+/** 網頁版的多人房間玩法說明（繁中、簡中有自己的版本，其餘語系看英文版） */
+const ROOM_GUIDE_URL = "https://table-tavern.pages.dev/#guide/room";
 
 export function OpenRoomDialog({
   server: initialServer,
@@ -20,6 +24,11 @@ export function OpenRoomDialog({
   return (
     <Dialog title={existingTable ? t("roomTitleFromTable", { name: existingTable.name }) : t("roomTitle")} size="m" onDismiss={onCancel} closeButton>
       <p>{t(existingTable ? "roomIntroFromTable" : "roomIntro")}</p>
+      <p>
+        <button type="button" className="link" onClick={() => void openUrl(ROOM_GUIDE_URL)}>
+          {t("roomGuideLink")}
+        </button>
+      </p>
       <p className="risk-box" role="note">
         {t("roomRisk")}
       </p>

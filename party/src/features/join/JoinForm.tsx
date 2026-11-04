@@ -1,6 +1,7 @@
 // 加入：填暱稱（新裝置第一次進房才要）；QQ、微信內建瀏覽器提示改用瀏覽器開啟（計畫 §9）。
 import { useState } from "react";
 import { t } from "../../i18n";
+import { GuideLink } from "./GuideLink";
 
 // 用 QQ、微信的是中國玩家，引導不跟介面語系、固定簡中〔作者裁決 2026-11-03〕
 const OPEN_IN_BROWSER = {
@@ -49,6 +50,7 @@ export function JoinForm({
       <button type="submit" className="primary" disabled={!nickname.trim()}>
         {t("joinButton")}
       </button>
+      <GuideLink />
     </form>
   );
 }

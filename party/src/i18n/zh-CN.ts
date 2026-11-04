@@ -9,6 +9,7 @@ export const zhCN: PartyMessages = {
   joinNeedInvite: "需要房主给的邀请链接才能加入。",
   joinTitle: "加入房间 {code}",
   joinNickname: "你的昵称",
+  guideLink: "怎么玩？",
   joinButton: "加入",
   leftRoom: "你已暂时离开，座位和角色都保留着。用同一个链接回来就能接着玩。",
 

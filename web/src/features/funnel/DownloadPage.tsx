@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { getLang, t, type MsgKey } from "../../i18n";
 import { PCLOUD_PAGE } from "../../shared/endpoints/origins";
+import { ROOM_GUIDE_HASH } from "./download-route";
 import { FEATURE_COMPARE } from "./feature-compare";
 import type { ReleaseInfo } from "./releases";
 import { ROOM_TOUR_ZH_CN, TOUR_FEATURES, TOUR_HERO } from "./tour-features";
 import { pickTourImage, TOUR_IMAGES, type TourImages } from "./tour-images";
+import { useOverlayPage } from "./useOverlayPage";
 
 const cell = (value: boolean | MsgKey) => (typeof value === "string" ? t(value) : t(value ? "compareYes" : "compareNo"));
 
@@ -74,26 +76,8 @@ function TourIcon({ name }: { name: string }) {
  * 滿版蓋在畫面上、自己捲動；開著時鎖住底下頁面的捲動，Esc 或「回到遊戲」關掉，焦點還給打開前的元素。
  */
 export function DownloadPage({ release, cn = false, onClose, images = TOUR_IMAGES }: { release: ReleaseInfo; cn?: boolean; onClose: () => void; images?: TourImages }) {
-  const closeButton = useRef<HTMLButtonElement>(null);
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
+  const closeButton = useOverlayPage(onClose);
   const [failed, setFailed] = useState<ReadonlySet<string>>(() => new Set());
-
-  useEffect(() => {
-    const opener = document.activeElement;
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    closeButton.current?.focus({ preventScroll: true });
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeRef.current();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = overflow;
-      if (opener instanceof HTMLElement && opener.isConnected) opener.focus({ preventScroll: true });
-    };
-  }, []);
 
   const lang = getLang();
   const imageOf = (key: string) => (failed.has(key) ? null : pickTourImage(images, key, lang));
@@ -152,6 +136,9 @@ export function DownloadPage({ release, cn = false, onClose, images = TOUR_IMAGE
               {text(feature.title, feature.body)}
             </article>
           ))}
+          <a href={ROOM_GUIDE_HASH} data-testid="room-guide-link">
+            {ROOM_TOUR_ZH_CN.more}
+          </a>
         </section>
       )}
 

@@ -4,6 +4,7 @@ import type { PartyMessages } from "./zh-TW";
 
 export const ja: PartyMessages = {
   ...en,
+  guideLink: "遊び方",
   statusTime: "時間",
   statusPlace: "場所",
   statusPresent: "登場",

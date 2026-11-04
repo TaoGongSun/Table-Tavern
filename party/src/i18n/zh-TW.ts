@@ -10,6 +10,7 @@ export const zhTW = {
   joinNeedInvite: "需要房主給的邀請連結才能加入。",
   joinTitle: "加入房間 {code}",
   joinNickname: "你的暱稱",
+  guideLink: "怎麼玩？",
   joinButton: "加入",
   leftRoom: "你已暫時離開，座位和角色都保留著。用同一個連結回來就能接著玩。",
 

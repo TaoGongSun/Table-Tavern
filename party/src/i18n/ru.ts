@@ -4,6 +4,7 @@ import type { PartyMessages } from "./zh-TW";
 
 export const ru: PartyMessages = {
   ...en,
+  guideLink: "Как играть",
   statusTime: "Время",
   statusPlace: "Место",
   statusPresent: "Присутствуют",

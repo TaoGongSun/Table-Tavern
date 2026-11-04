@@ -9,6 +9,7 @@ export const en: PartyMessages = {
   joinNeedInvite: "You need an invite link from the host to join.",
   joinTitle: "Join room {code}",
   joinNickname: "Your nickname",
+  guideLink: "How to play",
   joinButton: "Join",
   leftRoom: "You stepped away. Your seat and character are kept; open the same link to continue.",
 
