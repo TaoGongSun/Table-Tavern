@@ -105,6 +105,9 @@ pub(crate) struct DispatchRun {
     pub(crate) used: u32,
     pub(crate) step: Step,
     pub(crate) arrived: Vec<String>,
+    /// 房主「GM 旁白」點到的 NPC（不接話，`gen.done.called` 回報給伺服器）
+    #[serde(default)]
+    pub(crate) called: Option<String>,
     pub(crate) dispatch: Value,
 }
 

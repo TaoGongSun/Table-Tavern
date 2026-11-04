@@ -62,7 +62,7 @@ export function buildSnapshot(s: RoomState, events: StoredEvent[], viewer: strin
     members: s.members.filter((m) => !m.banned).map((m) => ({ memberId: m.id, nickname: m.nickname, cardId: m.cardId, connected: isOnline(s, m.id) })),
     cards: s.cards,
     executor,
-    round: r && { round: r.round, kind: r.kind, scene: r.scene, phase: r.phase, roster: r.roster, deadline: r.deadline, pausedRemainingMs: r.pausedRemainingMs, dispatchId: r.dispatchId, hold: r.hold },
+    round: r && { round: r.round, kind: r.kind, scene: r.scene, phase: r.phase, roster: r.roster, deadline: r.deadline, pausedRemainingMs: r.pausedRemainingMs, dispatchId: r.dispatchId, hold: r.hold, called: viewer === s.hostId ? (r.called ?? null) : null },
     story: storyOf(events),
     streaming,
     quota,

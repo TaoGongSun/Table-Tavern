@@ -1,7 +1,7 @@
 // 回合狀態機（協定 §3）：開回合、結算、派工、離座、倒數暫停與單一鬧鐘。
 import { ulid } from "./secrets";
 import { Fail, type Tx } from "./tx";
-import type { Dispatch, ExecutorView, Member, PublicExecutorError, RoomState, RosterEntry, RoundKind, SceneSettings } from "./types";
+import type { Dispatch, ExecutorView, HostTurn, Member, PublicExecutorError, RoomState, RosterEntry, RoundKind, SceneSettings } from "./types";
 
 export const MIN = 60_000;
 export const DAY = 1440 * MIN;
@@ -31,7 +31,7 @@ export function offered(s: RoomState, route: unknown, model: unknown): SceneSett
   return { route: route as string, model: found.id, modelLabel: found.label };
 }
 
-export function openRound(tx: Tx, kind: RoundKind) {
+export function openRound(tx: Tx, kind: RoundKind, host?: HostTurn) {
   const s = tx.w;
   const arrivals: string[] = [];
   const roster = kind !== "play" ? [] : seatedMembers(s).map((m): RosterEntry => {
@@ -45,7 +45,7 @@ export function openRound(tx: Tx, kind: RoundKind) {
   s.round = {
     round: ++s.roundNo, kind, scene: s.scene, phase: kind === "play" ? "acting" : "queued", roster,
     deadline: run ? tx.now + ms : null, pausedRemainingMs: run ? null : ms, dispatchId: null, hold: null,
-    batch: [], arrivals, dispatch: null, partsEnded: 0, speaker: null, genAt: tx.now,
+    batch: [], arrivals, dispatch: null, partsEnded: 0, speaker: null, genAt: tx.now, called: null, ...(host ? { host } : {}),
   };
   tx.emit("round.opened", { round: s.round.round, kind, roster, deadline: s.round.deadline });
   if (kind !== "play") pushDispatch(tx);
@@ -75,13 +75,22 @@ export function resolve(tx: Tx, by: "all" | "host" | "timeout") {
   pushDispatch(tx);
 }
 
+/** 作廢當前回合（換幕、房主 GM 鈕）：已送出的行動退回草稿；還沒派工的回合裡剛登場的人，下一次開 acting 再登場 */
+export function cancelRound(tx: Tx) {
+  const w = tx.w;
+  const r = w.round!;
+  for (const e of r.roster) if (e.status === "submitted" && e.text) w.drafts[e.memberId] = e.text;
+  if (!r.dispatch) for (const m of w.members) if (m.cardId && r.arrivals.includes(m.cardId)) m.arriving = true;
+  tx.emit("round.cancelled", { round: r.round });
+}
+
 /** 同一回合只派一次：dispatchId 只在這裡產生一次，之後重送、重連、retry 都用同一份 */
 export function ensureDispatch(tx: Tx): Dispatch {
   if (tx.s.round!.dispatch) return tx.s.round!.dispatch;
   const s = tx.w;
   const r = s.round!;
   const players = seatedMembers(s).filter((m) => !m.arriving).map((m) => ({ cardId: m.cardId!, memberId: m.id, name: cardName(s, m.cardId!), connected: isOnline(s, m.id) }));
-  r.dispatch = { dispatchId: ulid(tx.now, tx.ctx.rng), round: r.round, kind: r.kind, scene: r.scene, settings: s.sceneSettings!, actions: r.batch, players, arrivals: r.arrivals, departures: s.departures };
+  r.dispatch = { dispatchId: ulid(tx.now, tx.ctx.rng), round: r.round, kind: r.kind, scene: r.scene, settings: s.sceneSettings!, actions: r.batch, players, arrivals: r.arrivals, departures: s.departures, ...(r.host ? { host: r.host } : {}) };
   Object.assign(r, { dispatchId: r.dispatch.dispatchId, genAt: tx.now });
   s.departures = [];
   tx.emit("gen.dispatched", { round: r.round, dispatchId: r.dispatchId });

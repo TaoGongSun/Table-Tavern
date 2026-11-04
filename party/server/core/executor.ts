@@ -158,7 +158,13 @@ export const EXECUTOR: Record<string, (tx: Tx, p: any) => ReturnType<Handler>> =
       tx.emit("roster.updated", { cards: w.cards });
     }
     tx.emit("gen.done", { round: r.round, aborted: p.aborted });
+    // 房主「GM 旁白」點到的 NPC：只信還能被請發言的卡，記在下一個 acting、只告訴房主（「讓 X 接話」）
+    const called = r.host?.mode === "narrate" && w.cards.some((c) => c.cardId === p.called && c.playable && !c.hidden && c.claimedBy === null) ? (p.called as string) : null;
     openRound(tx, "play");
+    if (called) {
+      w.round!.called = called;
+      tx.toMember(w.hostId, "vol", { type: "called", round: w.round!.round, cardId: called });
+    }
   },
   "gen.failed": (tx, p) => {
     const s = tx.s;

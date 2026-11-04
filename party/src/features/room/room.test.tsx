@@ -351,6 +351,25 @@ describe("手機客戶端對真伺服器核心", () => {
     await until(() => B.socket() !== old && B.socket()?.readyState === 1 && B.button("收回修改"));
     expect(B.socket().sent[0].p.lastSeq).toBeGreaterThan(0); // 補事件路徑
   });
+
+  it("房主 GM 鈕：只有房主看得到；按旁白時別人已送出的行動回到輸入框；GM 點到的 NPC 只在房主那邊出現「讓 X 接話」", async () => {
+    const { room, hub, A, B } = await table();
+    expect(A.q('[data-testid="gm-controls"]')).toBeTruthy();
+    expect(B.q('[data-testid="gm-controls"]')).toBeNull();
+    B.type('[data-testid="action-text"]', "我點酒");
+    B.click("送出");
+    await until(() => A.q('[data-testid="submitted"]'));
+    A.click("GM 旁白");
+    await until(() => room.s.round?.kind === "host" && B.q<HTMLTextAreaElement>('[data-testid="action-text"]')!.value === "我點酒");
+    expect(A.q<HTMLButtonElement>('[data-testid="gm-narrate"]')!.disabled).toBe(true);
+    const dispatchId = room.dispatchId();
+    await hub.exec("dispatch.ack", { dispatchId });
+    await hub.exec("gen.done", { dispatchId, aborted: false, called: "c3" });
+    await until(() => A.button("讓角色3接話"));
+    expect(B.button("讓角色3接話")).toBeNull();
+    A.click("讓角色3接話");
+    await until(() => room.s.round?.host?.call === true);
+  });
 });
 
 describe("玩家卡（room-player-cards）", () => {

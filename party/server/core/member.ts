@@ -1,9 +1,9 @@
 // 客戶端 → 伺服器指令（協定 §5.1）：每則先查角色再查狀態，失敗拋 Fail、狀態不動。
 import { resnapshot } from "./snapshot";
-import { announceExec, MIN, offered, openRound, resolve, seatedMembers, unseat } from "./round";
+import { announceExec, cancelRound, MIN, offered, openRound, resolve, seatedMembers, unseat } from "./round";
 import { CROCKFORD8, secret, sameHash, sha256Hex, ulid } from "./secrets";
 import { Fail, need, type Tx } from "./tx";
-import type { Member, RemoteCommand, RoomState, RosterEntry, StoredEvent } from "./types";
+import type { HostTurn, Member, RemoteCommand, RoomState, RosterEntry, StoredEvent } from "./types";
 import { cleanName, cleanText, shape } from "./validate";
 
 export type Handler = (tx: Tx, p: any, m: Member) => void | "later" | Promise<void | "later">;
@@ -203,6 +203,21 @@ export const MEMBER: Record<string, Handler> = {
     need(tx.s.exec.online, "E_EXECUTOR_OFFLINE");
     resolve(tx, "host");
   },
+  // 房主 GM 鈕（room-host-actions §3.1）：沒人入座也能按；這回合已送出的行動退回草稿，GM 跑完開新的 acting
+  "host.gm": (tx, p, m) => {
+    host(tx, m);
+    const r = roundAt(tx, p.round);
+    need(p.mode === "narrate" || p.mode === "advance" || p.mode === "call", "E_BAD_FRAME");
+    need(tx.s.exec.online, "E_EXECUTOR_OFFLINE");
+    let turn: HostTurn = { mode: p.mode };
+    if (p.mode === "call") {
+      const card = tx.s.cards.find((c) => c.cardId === p.cardId);
+      need(card && card.playable && !card.hidden && card.claimedBy === null, "E_SEAT_TAKEN");
+      turn = { mode: "call", cardId: card.cardId, call: r.called === card.cardId }; // GM 剛點到他＝「讓 X 接話」，先寫點名列
+    }
+    cancelRound(tx);
+    openRound(tx, "host", turn);
+  },
   "round.continue": (tx, p, m) => {
     hostOrPayer(tx, m);
     roundAt(tx, p.round, "held");
@@ -316,8 +331,7 @@ export const MEMBER: Record<string, Handler> = {
       next = offered(s, p.next.route, p.next.model);
     }
     const w = tx.w;
-    for (const e of r.roster) if (e.status === "submitted" && e.text) w.drafts[e.memberId] = e.text; // 已送出的行動退回成草稿
-    tx.emit("round.cancelled", { round: r.round });
+    cancelRound(tx);
     const job = { jobId: ulid(tx.now, tx.ctx.rng), kind: "scene_advance" as const, scene: s.scene, nextSettings: next };
     Object.assign(w, { round: null, status: "transition", transition: { jobId: job.jobId, since: tx.now, progressAt: tx.now, stalled: false } });
     w.jobs.push({ job, reply: null });

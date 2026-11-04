@@ -1,6 +1,7 @@
 // 房間畫面：回合列在上、分頁（故事／名單／房主／出額度）、故事頁底部固定行動格（沒座位時換成選角）。
 import { useState } from "react";
 import { t, type MsgKey } from "../../i18n";
+import { GmControls } from "../controls/GmControls";
 import { HostPanel } from "../controls/HostPanel";
 import { PairForm } from "../controls/PairForm";
 import { PayerPanel } from "../controls/PayerPanel";
@@ -93,6 +94,7 @@ export function RoomScreen({ view, c }: { view: RoomView; c: RoomControls }) {
             <button type="button" className="ghost" data-testid="card-edit" onClick={() => (setImported(false), setSheet("edit"))}>{t("cardEdit")}</button>
           )}
           {imported && view.me.cardId && <p className="muted" data-testid="import-note">{t("seatImportedNote")}</p>}
+          {isHost && view.room.status === "playing" && <GmControls view={view} act={c.act} />}
           {view.me.cardId && open ? <ActionBox view={view} act={c.act} sendDraft={c.sendDraft} cancelDraft={c.cancelDraft} /> : canSit && (folded ? (
             <button type="button" className="ghost" data-testid="seat-unfold" onClick={() => setPicking(true)}>{t("seatShowPicker")}</button>
           ) : (

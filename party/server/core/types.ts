@@ -11,7 +11,9 @@ export interface SceneSettings {
   model: string;
   modelLabel: string;
 }
-export type RoundKind = "open" | "scene_open" | "play";
+export type RoundKind = "open" | "scene_open" | "play" | "host";
+/** 房主 GM 鈕（room-host-actions §3.1）：narrate＝只旁白、advance＝旁白接力、call＝請某張卡接一句（call＝先寫點名列） */
+export interface HostTurn { mode: "narrate" | "advance" | "call"; cardId?: string; call?: boolean }
 export type RoundPhase = "acting" | "queued" | "generating" | "held";
 export type ActStatus = "pending" | "drafting" | "submitted" | "skipped";
 export interface RosterEntry {
@@ -30,6 +32,8 @@ export interface RoundView {
   pausedRemainingMs: number | null;
   dispatchId: string | null;
   hold: PublicExecutorError | null;
+  /** 上一則 GM 旁白點到的 NPC（「讓 X 接話」）；只給房主，這回合結束就失效 */
+  called?: string | null;
 }
 export interface PublicCard {
   cardId: string;
@@ -116,6 +120,7 @@ export interface Dispatch {
   players: Array<{ cardId: string; memberId: string; name: string; connected: boolean }>;
   arrivals: string[];
   departures: Array<{ cardId: string; mode: "npc" | "absent" }>;
+  host?: HostTurn;
 }
 export type Job =
   | { jobId: string; kind: "scene_advance"; scene: number; nextSettings: SceneSettings }
@@ -169,6 +174,7 @@ export interface Member {
 export interface RoundState extends RoundView {
   batch: ActionItem[];
   arrivals: string[];
+  host?: HostTurn;
   dispatch: Dispatch | null;
   partsEnded: number; // 已落地的段數；part 依序，第 n 段 end 後為 n+1
   speaker: Speaker | null; // 進行中那一段的說話者（gen.part.end 不帶 speaker）

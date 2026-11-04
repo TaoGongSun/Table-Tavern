@@ -85,6 +85,7 @@ interface SceneSettings {        // 同一幕固定，換幕才換〔作者裁�
 - `open`：房間開始的第一回合，沒有行動格，直接生成（GM 開場、介紹在場角色）。
 - `scene_open`：換幕後的第一回合，同上（GM 接新幕）。
 - `play`：一般回合，先行動格再生成。
+- `host`：房主 GM 鈕開的回合（`host.gm`，room-host-actions），同 `open` 沒有行動格、直接生成。
 
 ```
            ┌──────────────────────── 下一回合 r+1（kind=play）◀─────────────────────────┐
@@ -250,6 +251,7 @@ interface ActionItem {           // 派工批次的一格，順序即提示順�
 | `action.skip` | `{ round }` | P（在 roster） | acting(round) | 發 `action.skipped`，判結算條件 1 |
 | `action.retract` | `{ round }` | P | acting(round) 且自己已 submitted／skipped | 發 `action.retracted`，原文回成草稿 |
 | `round.resolve` | `{ round }` | H | acting(round)、roster 不為空、執行端在線 | 結算（§3.2-2）；roster 空回 `E_STATE_CONFLICT`、執行端離線回 `E_EXECUTOR_OFFLINE` |
+| `host.gm` | `{ round, mode: "narrate"\|"advance"\|"call", cardId? }` | H | acting(round)、執行端在線；roster 可空 | `call` 的卡要沒人認領、可上場、未隱藏，否則 `E_SEAT_TAKEN`；發 `round.cancelled`（已送出的退回草稿）、開 `host` 回合直接派工（`Dispatch.host`；卡是上一則旁白點到的就 `call: true` 先寫點名列）。細節見 [room-host-actions.md](room-host-actions.md) §3.1 |
 | `round.continue` | `{ round }` | H 或 F | held(round) | 放棄這回合剩下的生成，已落的段落保留，開 acting(round+1) |
 | `gen.abort` | `{ round }` | H 或 F | generating(round) | 轉執行端 `abort`；等執行端回 `gen.done{aborted:true}` |
 | `room.start` | `{}` | H | lobby、≥1 玩家、執行端在線 | 發 `room.started`、開 `open` 回合 |
@@ -311,7 +313,7 @@ interface CreateRoomRes { roomCode: string; joinSecret: string; executorToken: s
 | `gen.part.begin` | `{ dispatchId, part, speaker: Speaker }` | generating | `part` 從 0 起、逐段 +1；伺服器開記憶體緩衝 |
 | `gen.delta` | `{ dispatchId, part, text }` | generating，該段 begin 後 | 累積並廣播 `vol.delta`；執行端應合併成每 ≥ 80 ms 或 ≥ 200 字一則 |
 | `gen.part.end` | `{ dispatchId, part, text, interrupted }` | 該段 begin 後 | 落 `story.part`（冪等：同 `(dispatchId, part)` 第二次直接回 ok） |
-| `gen.done` | `{ dispatchId, aborted, cardsArrived?: string[] }` | generating | 發 `gen.done`；開 acting(r+1)；`cardsArrived` 是本回合回歸的隱藏卡 |
+| `gen.done` | `{ dispatchId, aborted, cardsArrived?: string[], called?: string }` | generating | 發 `gen.done`；開 acting(r+1)；`cardsArrived` 是本回合回歸的隱藏卡；`called` 是房主「GM 旁白」點到的 NPC，記在 acting(r+1)、只以 `vol.called` 告訴房主 |
 | `gen.failed` | `{ dispatchId, atPart: number \| null, error: ExecutorError }` | generating | 發 `gen.failed`（公開版）＋`vol.error_detail`（只出額度者）；→ `held` |
 | `job.ack` | `{ jobId }` | 收到 `job.*` 後 | 記進度時間 |
 | `job.progress` | `{ jobId }` | 工作執行中，至少每 5 分鐘 | 記進度時間；`stalled` 時解除 |

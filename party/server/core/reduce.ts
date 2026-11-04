@@ -47,6 +47,7 @@ async function welcome(tx: Tx, lastSeq: number, extra: Record<string, unknown>) 
   if (lastSeq > 0 && lastSeq <= s.seq && s.seq - lastSeq <= 500) {
     tx.send(tx.conn, "welcome", { ...(who !== "exec" ? { memberId: who } : {}), live: liveValues(s, tx.ctx.live, who), ...extra });
     for (const e of [...(await tx.ctx.store.eventsAfter(lastSeq, 500)), ...tx.events]) if (e.seq > lastSeq) tx.send(tx.conn, "ev", evFrame(e));
+    if (who === s.hostId && s.round?.called) tx.send(tx.conn, "vol", { type: "called", round: s.round.round, cardId: s.round.called }); // 補完事件才給（round.opened 會清掉）
     return;
   }
   await sendSnapshot(tx, tx.conn, who, extra);

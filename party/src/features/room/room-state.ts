@@ -169,6 +169,9 @@ function onVolatile(v: RoomView, x: any) {
     case "resumed": // 客戶端自己的：遠端重試／切換被執行端接受，伺服器已把 held 轉回 generating（沒有事件）
       if (round?.phase === "held") Object.assign(round, { phase: "generating", hold: null });
       break;
+    case "called": // 只給房主：上一則 GM 旁白點到的 NPC
+      if (round) round.called = x.cardId;
+      break;
     case "presence":
       for (const m of v.members) if (m.memberId === x.memberId) m.connected = x.connected;
       break;

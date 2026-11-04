@@ -168,6 +168,7 @@ pub(super) fn on_dispatch(room: &Arc<Room>, dispatch: &Value) {
                 used: 0,
                 step: Step::Land,
                 arrived: Vec::new(),
+                called: None,
                 dispatch: dispatch.clone(),
             });
         }),
@@ -198,14 +199,17 @@ async fn chain(room: &Arc<Room>) {
     let world = room.world();
     match outcome {
         Ok(aborted) => {
-            let arrived = room
+            let (arrived, called) = room
                 .saved()
                 .dispatch
-                .map(|run| run.arrived)
+                .map(|run| (run.arrived, run.called))
                 .unwrap_or_default();
             let mut p = json!({ "dispatchId": run.id, "aborted": aborted });
             if !arrived.is_empty() {
                 p["cardsArrived"] = json!(arrived);
+            }
+            if let Some(card) = called {
+                p["called"] = json!(card);
             }
             room.durable("gen.done", p, |saved| {
                 set_state(saved, &run.id, RunState::Done)
@@ -251,7 +255,8 @@ fn change_run(room: &Room, change: impl FnOnce(&mut DispatchRun)) {
     });
 }
 
-/// 跑到鏈尾：Ok(是否中止)；Err((失敗那段的段號, 錯誤))
+/// 跑到鏈尾：Ok(是否中止)；Err((失敗那段的段號, 錯誤))。房主 GM 鈕（`dispatch.host.mode`）照單人版三顆鈕：
+/// narrate＝旁白一次、不寫點名列（點到的 NPC 記進 `called`）；call＝直接請那張卡接一句（`call` 先寫點名列）；advance＝一般鏈
 async fn steps(room: &Arc<Room>, id: &str) -> Result<bool, (Option<u32>, String)> {
     let world = room.world();
     let (config_root, root) = room.engine.roots();
@@ -263,6 +268,8 @@ async fn steps(room: &Arc<Room>, id: &str) -> Result<bool, (Option<u32>, String)
         let Some(run) = room.saved().dispatch.filter(|run| run.id == id) else {
             return Ok(false);
         };
+        let host = &run.dispatch["host"];
+        let mode = host["mode"].as_str().unwrap_or_default();
         let part = run.last_ended.map_or(0, |n| n + 1);
         if room.work().abort && run.step != Step::Land {
             return Ok(true);
@@ -270,9 +277,22 @@ async fn steps(room: &Arc<Room>, id: &str) -> Result<bool, (Option<u32>, String)
         match run.step {
             Step::Land => {
                 // 同一派工重送：Duplicate 就不重落玩家事件（room.json 遺失時 GM 鏈會重跑，列已知限制）
-                land_batch(&config_root, &root, &world, &run.dispatch)
+                let outcome = land_batch(&config_root, &root, &world, &run.dispatch)
                     .map_err(|error| (None, error))?;
-                change_run(room, |run| run.step = Step::Narrate);
+                let next = match mode {
+                    "call" => {
+                        let card = text(&host["cardId"]);
+                        if host["call"] == true && !matches!(outcome, BatchOutcome::Duplicate) {
+                            let name = data::read_character(&root, &world, &card)
+                                .map(|card| card.name)
+                                .map_err(|error| (None, error.to_string()))?;
+                            append_call(&root, &world, id, name).map_err(|error| (None, error))?;
+                        }
+                        Step::Reply(card)
+                    }
+                    _ => Step::Narrate,
+                };
+                change_run(room, |run| run.step = next);
                 room.engine.table_changed(&world);
             }
             Step::Narrate if run.used >= max => change_run(room, |run| run.step = Step::Done),
@@ -284,13 +304,19 @@ async fn steps(room: &Arc<Room>, id: &str) -> Result<bool, (Option<u32>, String)
                     .narrate(world.clone(), turn.clone(), id.to_owned(), io.delta())
                     .await
                     .map_err(|error| (Some(part), error))?;
-                let next = land_narration(&root, &world, id, &turn, &n)
+                let only = mode == "narrate";
+                let next = land_narration(&root, &world, id, &turn, &n, !only)
                     .map_err(|error| (Some(part), error))?;
+                let (next, called) = match next {
+                    Step::Reply(card) if only => (Step::Done, Some(card)),
+                    next => (next, None),
+                };
                 let arrived = n.arrived.clone();
                 io.end(&n.text, n.aborted, move |run| {
                     run.used += 1;
                     run.step = next;
                     run.arrived.extend(arrived);
+                    run.called = called.or(run.called.take());
                 });
                 room.engine.table_changed(&world);
                 if n.aborted {
@@ -318,7 +344,7 @@ async fn steps(room: &Arc<Room>, id: &str) -> Result<bool, (Option<u32>, String)
                     .map_err(|error| (Some(part), error))?;
                 land_reply(&root, &world, id, &turn, &card, &name, &spoken)
                     .map_err(|error| (Some(part), error))?;
-                let next = if spoken.aborted || run.used >= max {
+                let next = if spoken.aborted || run.used >= max || mode == "call" {
                     Step::Done
                 } else {
                     Step::Narrate
@@ -486,13 +512,14 @@ fn land_batch(
     chat_turn::append_party_batch(config_root, root, world, &batch)
 }
 
-/// 旁白正文（回合鍵 main）→ 變動紀錄（state_update）→ 點名列；回下一步。點到真人玩家只寫點名列就停
+/// 旁白正文（回合鍵 main）→ 變動紀錄（state_update）→ 點名列（`call_row`）；回下一步。點到真人玩家只寫點名列就停
 fn land_narration(
     root: &Path,
     world: &str,
     action: &str,
     turn: &str,
     n: &super::Narration,
+    call_row: bool,
 ) -> Result<Step, String> {
     let scene = scene_of(root, world)?;
     let key = |part: &str| data::message_vars::TurnKey {
@@ -532,16 +559,30 @@ fn land_narration(
     if !player && card.as_ref().is_none_or(|card| card.stage) {
         return Ok(Step::Done);
     }
-    let mut call = event(TranscriptKind::System, ("", "GM"), "", action);
-    call.marker = Some(EventMarker::GmCall {
-        name: card.map(|card| card.name).unwrap_or_default(),
-    });
-    append(&call, None)?;
+    if call_row {
+        append_call(
+            root,
+            world,
+            action,
+            card.map(|card| card.name).unwrap_or_default(),
+        )?;
+    }
     Ok(if player {
         Step::Done
     } else {
         Step::Reply(next.to_owned())
     })
+}
+
+/// 「GM 請 X 發言」點名列（角色模型靠它知道自己被點）
+fn append_call(root: &Path, world: &str, action: &str, name: String) -> Result<(), String> {
+    let mut call = event(TranscriptKind::System, ("", "GM"), "", action);
+    call.marker = Some(EventMarker::GmCall { name });
+    let _permit = data::world_write_permit(world)?;
+    let scene = scene_of(root, world)?;
+    data::append_event(root, world, scene, &call, None)
+        .map(|_| ())
+        .map_err(|error| error.to_string())
 }
 
 fn land_reply(
