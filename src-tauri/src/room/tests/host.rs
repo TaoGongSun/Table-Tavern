@@ -88,3 +88,56 @@ async fn host_gm_modes_land_like_the_solo_buttons() {
         .all(|e| e.action_id.is_some()));
     running.stop().await;
 }
+
+/// 收回（job.undo）：那批玩家句、旁白、點名、角色回覆整批從桌尾收掉，狀態樹回到那批之前；再送同一筆照樣回 ok
+#[tokio::test]
+async fn job_undo_pops_the_dispatch_and_rewinds_the_table() {
+    let (root, world, tao, boss) = table("host-undo");
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let server = format!("http://{}", listener.local_addr().unwrap());
+    let fake = Fake::new(
+        &root,
+        vec![
+            Act::Say("店裡很安靜。", Some(boss.clone())),
+            Act::Line("歡迎。"),
+            Act::Say("雨停了。", None),
+        ],
+    );
+    let mut first = saved(&server, &world);
+    first.seeded = true;
+    let running = start(fake.clone(), first, FAST, false).await;
+    let mut conn = accept(&listener).await;
+    conn.welcome(false, Value::Null, Value::Null).await;
+    let before = data::read_state(&root, &world).unwrap().state;
+    conn.send("dispatch", dispatch("d1", &tao, act(&tao, "我推門進去。")))
+        .await;
+    conn.expect("gen.done").await;
+    assert_eq!(transcript(&root, &world).len(), 5);
+    let mut changed = data::read_state(&root, &world).unwrap();
+    changed
+        .state
+        .table
+        .insert("天氣".to_owned(), "晴".to_owned());
+    data::write_state(&root, &world, &changed).unwrap();
+
+    for job in ["u1", "u1"] {
+        conn.send(
+            "job.undo",
+            json!({ "jobId": job, "kind": "undo", "dispatchId": "d1" }),
+        )
+        .await;
+        conn.expect("job.ack").await;
+        let result = conn.expect("job.result").await["p"].clone();
+        assert_eq!(
+            (result["jobId"].as_str(), result["ok"].as_bool()),
+            (Some(job), Some(true))
+        );
+    }
+    assert!(transcript(&root, &world).is_empty());
+    assert_eq!(data::read_state(&root, &world).unwrap().state, before);
+    assert!(
+        read_saved(&root, &world).dispatch.is_none(),
+        "收掉的派工不再能 retry"
+    );
+    running.stop().await;
+}

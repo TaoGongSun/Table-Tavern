@@ -1,7 +1,7 @@
 // 執行端 → 伺服器訊息（協定 §6.2）：派工結果以 dispatchId／(dispatchId, part)／jobId 冪等收下。
 import { uploadResult } from "./cards";
 import { claim, type Handler } from "./member";
-import { announceExec, hold, MIN, openRound, unseat } from "./round";
+import { announceExec, cancelRound, hold, MIN, openRound, reopen, unseat } from "./round";
 import { crockford, sameHash, sha256Hex } from "./secrets";
 import { Fail, need, type Tx } from "./tx";
 import type { ErrorCode, Job, PendingJob, PublicCard, PublicExecutorError } from "./types";
@@ -41,6 +41,7 @@ function sceneResult(tx: Tx, job: Extract<Job, { kind: "scene_advance" }>, p: an
   need(typeof summary === "string" && summary.length <= 64000, "E_TEXT_INVALID");
   tx.emit("scene.summary", { scene: w.scene, text: summary, round: w.roundNo });
   w.summarySeqs.push(w.seq);
+  w.lastDispatch = null; // 上一幕不是收回目標
   Object.assign(w, { scene: w.scene + 1, sceneSettings: job.nextSettings, nextSettings: null });
   tx.emit("scene.started", { scene: w.scene, settings: job.nextSettings });
   w.sceneStartSeq = w.seq;
@@ -62,6 +63,40 @@ function cardResult(tx: Tx, j: PendingJob, p: any) {
   if (!j.reply) return;
   if (code) tx.err(j.reply.conn, code, { id: j.reply.id });
   else tx.send(j.reply.conn, "ok", { id: j.reply.id, result: { cardId } });
+}
+
+/** 收回的結果（§3.2）：執行端收乾淨才動回合；失敗（那批已不在桌尾）狀態不動、回房主 E_STATE_CONFLICT */
+function undoResult(tx: Tx, j: PendingJob, p: any) {
+  const w = tx.w;
+  const u = w.undo;
+  const ld = w.lastDispatch;
+  w.undo = null;
+  const ok = p.ok && u && ld && j.job.kind === "undo" && ld.dispatchId === j.job.dispatchId;
+  if (j.reply) {
+    if (ok) tx.send(j.reply.conn, "ok", { id: j.reply.id });
+    else tx.err(j.reply.conn, "E_STATE_CONFLICT", { id: j.reply.id });
+  }
+  if (!ok) return;
+  if (w.round?.phase === "acting") cancelRound(tx); // 收回後開出的那回合，已送出的退回草稿
+  w.lastDispatch = null; // 只收一層
+  tx.emit("round.undone", { round: ld.round });
+  if (u.mode === "regenerate") {
+    if (u.next) {
+      w.sceneSettings = u.next; // 幕中切換之二：重生時換路線／模型，這一幕剩下的都用新的
+      tx.emit("scene.settings_switched", { settings: u.next, reason: "regenerate" });
+      announceExec(tx);
+    }
+    return reopen(tx, ld);
+  }
+  // 原文一律另存給本人，草稿不動；登場與離席放回待帶清單
+  for (const a of ld.actions) {
+    if (a.kind !== "act" || !a.text || !w.members.some((m) => m.id === a.memberId && !m.banned)) continue;
+    (w.returned ??= {})[a.memberId] = a.text;
+    tx.toMember(a.memberId, "vol", { type: "returned", text: a.text });
+  }
+  for (const m of w.members) if (m.cardId && ld.arrivals.includes(m.cardId)) m.arriving = true;
+  w.departures = [...ld.departures.filter((d) => !w.departures.some((x) => x.cardId === d.cardId)), ...w.departures];
+  openRound(tx, "play");
 }
 
 /** 工作：當前的照收；已收過的 jobId 回 ok 不重做（冪等）；其餘 E_DISPATCH_UNKNOWN */
@@ -157,6 +192,7 @@ export const EXECUTOR: Record<string, (tx: Tx, p: any) => ReturnType<Handler>> =
       w.cards = w.cards.map((c) => (back.includes(c.cardId) ? { ...c, hidden: false } : c));
       tx.emit("roster.updated", { cards: w.cards });
     }
+    w.lastDispatch = r.dispatch;
     tx.emit("gen.done", { round: r.round, aborted: p.aborted });
     // 房主「GM 旁白」點到的 NPC：只信還能被請發言的卡，記在下一個 acting、只告訴房主（「讓 X 接話」）
     const called = r.host?.mode === "narrate" && w.cards.some((c) => c.cardId === p.called && c.playable && !c.hidden && c.claimedBy === null) ? (p.called as string) : null;
@@ -172,6 +208,7 @@ export const EXECUTOR: Record<string, (tx: Tx, p: any) => ReturnType<Handler>> =
     const r = live(tx, p.dispatchId);
     const error = cleanError(p.error) ?? Fail.throw("E_BAD_FRAME");
     hold(tx, pub(error));
+    tx.w.lastDispatch = r.dispatch;
     tx.w.lastError = { round: r.round, error }; // 快照與重連時帶給出額度者
     tx.toMember(s.payerId, "vol", { type: "error_detail", round: r.round, error }); // 細節只給出額度者
   },
@@ -185,6 +222,7 @@ export const EXECUTOR: Record<string, (tx: Tx, p: any) => ReturnType<Handler>> =
     w.doneJobs = [...w.doneJobs.slice(-19), p.jobId];
     if (j.job.kind === "scene_advance") sceneResult(tx, j.job, p);
     else if (j.job.kind === "card_create") cardResult(tx, j, p);
+    else if (j.job.kind === "undo") undoResult(tx, j, p);
     else uploadResult(tx, j.job, p);
   },
   "pair.create": async (tx, p) => {
@@ -217,7 +255,7 @@ export const EXECUTOR: Record<string, (tx: Tx, p: any) => ReturnType<Handler>> =
     const w = tx.w;
     delete w.ctls[p.ctlId];
     if (p.ok && c.settings) {
-      w.sceneSettings = c.settings; // 唯一的幕中切換（§7.3），執行端切完自己接著重送
+      w.sceneSettings = c.settings; // 幕中切換之一（§7.3；另一種是重生），執行端切完自己接著重送
       tx.emit("scene.settings_switched", { settings: c.settings, reason: c.hold?.kind ?? "other" });
     }
     if (!p.ok && c.hold && w.round?.phase === "generating") Object.assign(w.round, { phase: "held", hold: c.hold });

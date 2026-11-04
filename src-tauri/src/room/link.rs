@@ -365,9 +365,8 @@ fn on_frame(room: &Arc<Room>, frame: &Value) {
         "dispatch" => run::on_dispatch(room, p),
         "abort" => run::abort(room),
         "ctl" => run::on_ctl(room, p),
-        "job.scene_advance" | "job.card_create" | "job.card_import" | "job.card_image" => {
-            run::on_job(room, p)
-        }
+        "job.scene_advance" | "job.card_create" | "job.card_import" | "job.card_image"
+        | "job.undo" => run::on_job(room, p),
         "card.read" => cards::on_read(room, p),
         "card.save" => cards::on_save(room, p),
         "card.gallery" => cards::on_gallery(room, p),

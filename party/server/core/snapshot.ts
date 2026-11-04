@@ -8,7 +8,7 @@ export interface Snapshot {
   room: Pick<RoomState, "code" | "status" | "settings" | "hostId" | "payerId" | "scene" | "sceneSettings" | "createdAt" | "idleDays"> & {
     transition: { jobId: string; since: number; stalled: boolean } | null;
   };
-  me: { memberId: string; nickname: string; cardId: string | null; isHost: boolean; isPayer: boolean; draft: string | null } | null;
+  me: { memberId: string; nickname: string; cardId: string | null; isHost: boolean; isPayer: boolean; draft: string | null; returned: string | null } | null;
   members: Array<{ memberId: string; nickname: string; cardId: string | null; connected: boolean }>;
   cards: PublicCard[];
   executor: ExecutorView;
@@ -21,10 +21,16 @@ export interface Snapshot {
   errorDetail?: { round: number; error: ExecutorError } | null;
 }
 
-/** 段號約定：玩家行動用負數（-1 起，依批次順序），幕摘要用 32（GM 段號 0–31 之外），不與生成段撞號 */
+/** 房主收回過的回合（§3.2 round.undone）：那回合的 GM／NPC／系統段與玩家行動段都不算數；匯出也用 */
+export const undoneRounds = (events: StoredEvent[]) => new Set(events.filter((e) => e.type === "round.undone").map((e) => e.payload.round as number));
+
+/** 段號約定：玩家行動用負數（-1 起，依批次順序），幕摘要用 32、收回提示用 33（GM 段號 0–31 之外），不與生成段撞號 */
 export function storyOf(events: StoredEvent[]): StoryPart[] {
   const story: StoryPart[] = [];
+  const undone = undoneRounds(events);
   for (const { type, at, payload: p } of events) {
+    if (type === "round.undone") story.push({ round: p.round as number, part: 33, speaker: { kind: "system", marker: "round_undone" }, text: "", interrupted: false, at });
+    if (undone.has(p.round as number) && (type === "story.part" || type === "round.resolved")) continue;
     if (type === "story.part") story.push(p as unknown as StoryPart);
     if (type === "scene.summary") story.push({ round: p.round as number, part: 32, speaker: { kind: "system", marker: "scene_summary" }, text: p.text as string, interrupted: false, at });
     if (type !== "round.resolved") continue;
@@ -32,8 +38,9 @@ export function storyOf(events: StoredEvent[]): StoryPart[] {
       if (a.kind === "act") story.push({ round: p.round as number, part: -1 - i, speaker: { kind: "player", memberId: a.memberId, cardId: a.cardId, name: a.name }, text: a.text!, interrupted: false, at });
     });
   }
-  return story;
+  return story.filter((p, i) => !(isUndoneNote(p) && story[i + 1] && isUndoneNote(story[i + 1]))); // 連續收回只留一行提示
 }
+const isUndoneNote = (p: StoryPart) => p.part === 33;
 
 /** 即時值（不落事件日誌）：補事件的重連路徑也要帶，否則手機一直顯示過時的在線與草稿狀態 */
 export function liveValues(s: RoomState, live: Live, viewer: string) {
@@ -58,7 +65,7 @@ export function buildSnapshot(s: RoomState, events: StoredEvent[], viewer: strin
   return {
     seq: s.seq,
     room: { code: s.code, status: s.status, settings: s.settings, hostId: s.hostId, payerId: s.payerId, scene: s.scene, sceneSettings: s.sceneSettings, createdAt: s.createdAt, idleDays: s.idleDays, transition: t && { jobId: t.jobId, since: t.since, stalled: t.stalled } },
-    me: me ? { memberId: me.id, nickname: me.nickname, cardId: me.cardId, isHost: s.hostId === me.id, isPayer: s.payerId === me.id, draft: s.drafts[me.id] ?? null } : null,
+    me: me ? { memberId: me.id, nickname: me.nickname, cardId: me.cardId, isHost: s.hostId === me.id, isPayer: s.payerId === me.id, draft: s.drafts[me.id] ?? null, returned: s.returned?.[me.id] ?? null } : null,
     members: s.members.filter((m) => !m.banned).map((m) => ({ memberId: m.id, nickname: m.nickname, cardId: m.cardId, connected: isOnline(s, m.id) })),
     cards: s.cards,
     executor,

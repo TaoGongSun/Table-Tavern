@@ -191,6 +191,7 @@ describe("手機客戶端對真伺服器核心", () => {
     await until(() => B.q('[data-testid="submitted"]')?.textContent?.includes("我拔劍")); // 結算前就公開（裁決 9）
     expect(A.q<HTMLTextAreaElement>('[data-testid="action-text"]')!.value).toBe("");
     expect(A.button("收回修改")).toBeTruthy();
+    expect(A.q('[data-testid="submitted-note"]')!.textContent).toBe("已送出：我拔劍（結算前可以收回修改）"); // 輸入框清空了，寫出送了什麼
 
     B.click("跳過");
     await until(() => room.s.round?.phase === "queued");
@@ -369,6 +370,89 @@ describe("手機客戶端對真伺服器核心", () => {
     expect(B.button("讓角色3接話")).toBeNull();
     A.click("讓角色3接話");
     await until(() => room.s.round?.host?.call === true);
+  });
+
+  it("房主收回上一回合：確認後 GM 段從大家的故事串消失、留一行提示；被收回的行動只回到本人，帶回填進輸入框，不用重連", async () => {
+    const { room, hub, A, B } = await table();
+    B.type('[data-testid="action-text"]', "我推門");
+    B.click("送出");
+    A.click("跳過");
+    await until(() => room.s.round?.phase === "queued");
+    const dispatchId = room.dispatchId();
+    await hub.exec("dispatch.ack", { dispatchId });
+    await hub.exec("gen.part.begin", { dispatchId, part: 0, speaker: { kind: "gm" } });
+    await hub.exec("gen.part.end", { dispatchId, part: 0, text: "門後是一片黑。", interrupted: false });
+    await hub.exec("gen.done", { dispatchId, aborted: false });
+    await until(() => A.button("收回上一回合") && B.text().includes("門後是一片黑。"));
+    expect(B.q('[data-testid="undo-controls"]')).toBeNull();
+    A.click("收回上一回合");
+    await until(() => A.q('[data-testid="undo-confirm"]'));
+    A.click("收回上一回合");
+    await until(() => room.s.undo);
+    await hub.exec("job.result", { jobId: room.s.undo!.jobId, ok: true });
+    await until(() => !B.text().includes("門後是一片黑。") && B.text().includes("房主收回了上一回合"));
+    expect(B.q('[data-testid="story"]')!.textContent).not.toContain("我推門");
+    // 輸入框空著：原文直接放回去、上方一行提示，送出後提示消失；伺服器那份另存清掉
+    await until(() => B.q<HTMLTextAreaElement>('[data-testid="action-text"]')!.value === "我推門" && B.q('[data-testid="returned-notice"]'));
+    expect(B.q('[data-testid="returned"]')).toBeNull();
+    await until(() => room.s.returned?.[room.s.members[1].id] === undefined);
+    B.click("送出");
+    await until(() => !B.q('[data-testid="returned-notice"]'));
+  });
+
+  it("收回時已經打了新草稿：草稿不動，原文另外顯示，帶回接在草稿後面", async () => {
+    const { room, hub, A, B } = await table();
+    B.type('[data-testid="action-text"]', "我推門");
+    B.click("送出");
+    A.click("跳過");
+    await until(() => room.s.round?.phase === "queued");
+    await room.finishGen("門後是一片黑。");
+    hub.flush();
+    await until(() => A.button("收回上一回合") && B.q('[data-testid="action-text"]'));
+    B.type('[data-testid="action-text"]', "我想先看看");
+    A.click("收回上一回合");
+    A.click("收回上一回合");
+    await until(() => room.s.undo);
+    await hub.exec("job.result", { jobId: room.s.undo!.jobId, ok: true });
+    await until(() => B.q('[data-testid="returned"]')?.textContent?.includes("我推門"));
+    expect(B.q<HTMLTextAreaElement>('[data-testid="action-text"]')!.value).toBe("我想先看看");
+    // 合併後太長：不截字、不換掉輸入框，原文照留、提示先刪一些
+    const long = "長".repeat(1998);
+    B.type('[data-testid="action-text"]', long);
+    B.click("帶回");
+    await until(() => B.q('[data-testid="returned-too-long"]'));
+    expect(B.q<HTMLTextAreaElement>('[data-testid="action-text"]')!.value).toBe(long);
+    expect(room.s.returned?.[room.s.members[1].id]).toBe("我推門");
+    // 帶回失敗：取消掉的草稿照原樣補送（測試時鐘不走，手動推過草稿限流）
+    await until(() => ((room.clock += 600), room.s.drafts[room.s.members[1].id] === long), 2000);
+    B.type('[data-testid="action-text"]', "我想先看看");
+    B.click("帶回");
+    await until(() => !B.q('[data-testid="returned"]'));
+    expect(B.q<HTMLTextAreaElement>('[data-testid="action-text"]')!.value).toBe("我想先看看\n我推門");
+    expect(room.s.drafts[room.s.members[1].id]).toBe("我想先看看\n我推門");
+  });
+
+  it("GM 旁白在第一段前就失敗（held、故事串沒有這回合的段落）：房主照樣看得到收回鈕並能收回", async () => {
+    const { room, hub, A } = await table();
+    A.click("GM 旁白");
+    await until(() => room.s.round?.kind === "host");
+    const dispatchId = room.dispatchId();
+    await hub.exec("dispatch.ack", { dispatchId });
+    await hub.exec("gen.failed", { dispatchId, atPart: 0, error: { kind: "model_unavailable", code: "AI_HTTP_STATUS_404", message: "x", actions: ["switch_model", "switch_route", "retry"], resetsAt: null } });
+    await until(() => A.button("收回上一回合"));
+    // 上次是模型下架：重生的換模型選單灰掉它、預設換成能用的那個
+    A.click("重生上一回合");
+    await until(() => A.q('[data-testid="undo-confirm"]'));
+    const model = A.q<HTMLSelectElement>('[data-testid="undo-confirm"] select[aria-label="模型"]')!;
+    expect(model.value).toBe("m-b");
+    expect(model.querySelector<HTMLOptionElement>('option[value="m-a"]')!.disabled).toBe(true);
+    expect(A.text()).toContain("GM 卡住：模型已下架或叫不到，等房主換模型");
+    expect(A.text()).toContain("會用選的模型重跑這一回合。"); // 一段都沒寫出來：警語不說「會消失」
+    expect(A.button("用原模型重生（已下架）")?.disabled).toBe(true);
+    A.click("取消");
+    A.click("收回上一回合");
+    A.click("收回上一回合");
+    await until(() => room.s.undo?.round === 3);
   });
 });
 

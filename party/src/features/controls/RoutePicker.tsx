@@ -9,20 +9,33 @@ export interface RouteChoice {
   model: string;
 }
 
-export function RoutePicker({ routes, current, label, onPick }: { routes: RouteOffer[] | null; current: SceneSettings | null; label: string; onPick: (c: RouteChoice) => void }) {
-  const [c, setC] = useState<RouteChoice>({ route: current?.route ?? routes?.[0]?.route ?? "", model: current?.model ?? "" });
+/** `broken`＝上次失敗、這個模型本身用不了（重生時）：灰掉它，預設改選清單裡第一個能用的 */
+export function RoutePicker({ routes, current, label, onPick, broken }: { routes: RouteOffer[] | null; current: SceneSettings | null; label: string; onPick: (c: RouteChoice) => void; broken?: RouteChoice | null }) {
+  const bad = (route: string, model: string) => !!broken && broken.route === route && broken.model === model;
+  const [c, setC] = useState<RouteChoice>(() => {
+    const start = { route: current?.route ?? routes?.[0]?.route ?? "", model: current?.model ?? "" };
+    if (!bad(start.route, start.model)) return start;
+    for (const r of routes ?? []) for (const m of r.models) if (!bad(r.route, m.id)) return { route: r.route, model: m.id };
+    return { route: start.route, model: "" };
+  });
   const offer = routes?.find((r) => r.route === c.route);
   const laxity = (n: number | null) => (n ? ` · ${t("laxity", { n })}` : "");
   return (
     <div className="route-picker">
       {routes ? (
         <>
+          <label className="picker-label">{t("payerRoute")}</label>
           <select aria-label={t("payerRoute")} value={c.route} onChange={(e) => setC({ route: e.target.value, model: "" })}>
             {routes.map((r) => <option key={r.route} value={r.route}>{r.label}</option>)}
           </select>
+          <label className="picker-label">{t("payerModel")}</label>
           <select aria-label={t("payerModel")} value={c.model} onChange={(e) => setC({ ...c, model: e.target.value })}>
             <option value="">—</option>
-            {offer?.models.map((m) => <option key={m.id} value={m.id}>{modelName(m.label) + laxity(m.laxity)}</option>)}
+            {offer?.models.map((m) => (
+              <option key={m.id} value={m.id} disabled={bad(c.route, m.id)}>
+                {modelName(m.label) + laxity(m.laxity) + (bad(c.route, m.id) ? `（${t("modelFailedLast")}）` : "")}
+              </option>
+            ))}
           </select>
         </>
       ) : (
@@ -31,7 +44,7 @@ export function RoutePicker({ routes, current, label, onPick }: { routes: RouteO
           <input aria-label={t("payerModel")} value={c.model} onChange={(e) => setC({ ...c, model: e.target.value })} />
         </>
       )}
-      <button type="button" disabled={!c.route || !c.model} onClick={() => onPick(c)}>{label}</button>
+      <button type="button" disabled={!c.route || !c.model || bad(c.route, c.model)} onClick={() => onPick(c)}>{label}</button>
     </div>
   );
 }

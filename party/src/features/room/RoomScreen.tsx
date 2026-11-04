@@ -3,6 +3,7 @@ import { useState } from "react";
 import { t, type MsgKey } from "../../i18n";
 import { GmControls } from "../controls/GmControls";
 import { HostPanel } from "../controls/HostPanel";
+import { UndoControls } from "../controls/UndoControls";
 import { PairForm } from "../controls/PairForm";
 import { PayerPanel } from "../controls/PayerPanel";
 import { SeatPicker } from "../join/SeatPicker";
@@ -89,12 +90,18 @@ export function RoomScreen({ view, c }: { view: RoomView; c: RoomControls }) {
       {tab === "story" && (
         <>
           <StoryView view={view} loadOlder={c.loadOlder} />
+          {isHost && view.room.status === "playing" && (
+            // 房主的回合級故事按鈕：一列排開、放不下才換行，故事串留最多空間
+            <div className="host-controls">
+              <UndoControls view={view} act={c.act} />
+              <GmControls view={view} act={c.act} />
+            </div>
+          )}
           {/* 電腦自己的座位照舊用 CastRail 的卡片編輯 */}
           {view.me.cardId && open && c.pairForm !== false && (
             <button type="button" className="ghost" data-testid="card-edit" onClick={() => (setImported(false), setSheet("edit"))}>{t("cardEdit")}</button>
           )}
           {imported && view.me.cardId && <p className="muted" data-testid="import-note">{t("seatImportedNote")}</p>}
-          {isHost && view.room.status === "playing" && <GmControls view={view} act={c.act} />}
           {view.me.cardId && open ? <ActionBox view={view} act={c.act} sendDraft={c.sendDraft} cancelDraft={c.cancelDraft} /> : canSit && (folded ? (
             <button type="button" className="ghost" data-testid="seat-unfold" onClick={() => setPicking(true)}>{t("seatShowPicker")}</button>
           ) : (

@@ -782,7 +782,7 @@ pub fn read_transcript(
 
 mod floor;
 mod lines;
-pub use floor::{pop_transcript_floor, restore_transcript_events};
+pub use floor::{pop_action_floors, pop_transcript_floor, restore_transcript_events};
 pub(crate) use lines::{edit_line, find_event_rev, find_rev, LineHead};
 
 #[cfg(test)]

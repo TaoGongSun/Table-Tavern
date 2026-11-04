@@ -199,6 +199,34 @@
   gap: 8px;
 }
 
+.app .host-controls {
+  display: flex;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 6px var(--gutter);
+  border-top: 1px solid var(--line);
+}
+
+.app .host-controls > .action-hint,
+.app .host-controls > .field-error,
+.app .undo-confirm {
+  flex-basis: 100%;
+}
+
+.app .host-controls .gm-help {
+  margin-left: auto;
+}
+
+.app .picker-label {
+  color: var(--muted);
+}
+
+.app .host-controls select {
+  width: auto;
+}
+
 .app .round-actions:not(:empty) {
   margin-top: 6px;
 }

@@ -113,7 +113,7 @@ function onEvent(v: RoomView, e: any, at: number) {
       Object.assign(v.room, { status: "playing", transition: null });
       break;
     case "round.opened":
-      v.round = { round: e.round, kind: e.kind, scene: v.room.scene, phase: e.kind === "play" ? "acting" : "queued", roster: e.roster, deadline: e.deadline, pausedRemainingMs: null, dispatchId: null, hold: null };
+      v.round = { round: e.round, kind: e.kind, scene: v.room.scene, phase: e.phase ?? (e.kind === "play" ? "acting" : "queued"), roster: e.roster, deadline: e.deadline, pausedRemainingMs: null, dispatchId: null, hold: null };
       Object.assign(v, { streaming: null, errorDetail: null });
       break;
     case "round.deadline":
@@ -146,6 +146,10 @@ function onEvent(v: RoomView, e: any, at: number) {
       v.round = null;
       break;
     }
+    case "round.undone": // 房主收回：那回合的段落與玩家行動都撤掉（storyOf 另補一行提示）
+      v.story = v.story.filter((p) => p.round !== e.round);
+      if (v.story[v.story.length - 1]?.part === 33) v.story = v.story.slice(0, -1); // 連續收回只留一行（新的那行隨後補上）
+      break;
     case "gen.dispatched":
       if (v.round) v.round.dispatchId = e.dispatchId;
       break;
@@ -168,6 +172,9 @@ function onVolatile(v: RoomView, x: any) {
     }
     case "resumed": // 客戶端自己的：遠端重試／切換被執行端接受，伺服器已把 held 轉回 generating（沒有事件）
       if (round?.phase === "held") Object.assign(round, { phase: "generating", hold: null });
+      break;
+    case "returned": // 只給本人：房主收回的行動原文（null＝丟掉了）
+      v.me.returned = x.text;
       break;
     case "called": // 只給房主：上一則 GM 旁白點到的 NPC
       if (round) round.called = x.cardId;

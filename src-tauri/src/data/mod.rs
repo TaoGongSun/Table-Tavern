@@ -53,10 +53,11 @@ pub use scene::{
     append_character_reply, append_event, append_opening, append_opening_keyed, append_transcript,
     append_within_turn, begin_next_scene_as, branch_opening, discard_unanswered_player,
     export_scene_markdown, export_transcript_markdown, fork_scene, opening_checkpoint,
-    pop_transcript_floor, read_transcript, remove_transcript_event, replace_scene_summary,
-    replace_transcript_text, replay_chapter, restore_transcript_events, revert_scene, scene_label,
-    set_last_transcript_state, settle_pending_turn, sync_scene_state_tree, write_imported_scene,
-    write_work_scene, ImportedEvent, ImportedScene, TranscriptEvent, TranscriptKind,
+    pop_action_floors, pop_transcript_floor, read_transcript, remove_transcript_event,
+    replace_scene_summary, replace_transcript_text, replay_chapter, restore_transcript_events,
+    revert_scene, scene_label, set_last_transcript_state, settle_pending_turn,
+    sync_scene_state_tree, write_imported_scene, write_work_scene, ImportedEvent, ImportedScene,
+    TranscriptEvent, TranscriptKind,
 };
 #[cfg(test)]
 pub use scene::{begin_next_scene, fail_publish};

@@ -3,11 +3,11 @@ import { resnapshot } from "./snapshot";
 import { announceExec, cancelRound, MIN, offered, openRound, resolve, seatedMembers, unseat } from "./round";
 import { CROCKFORD8, secret, sameHash, sha256Hex, ulid } from "./secrets";
 import { Fail, need, type Tx } from "./tx";
-import type { HostTurn, Member, RemoteCommand, RoomState, RosterEntry, StoredEvent } from "./types";
+import type { HostTurn, Member, RemoteCommand, SceneSettings, RoomState, RosterEntry, StoredEvent } from "./types";
 import { cleanName, cleanText, shape } from "./validate";
 
 export type Handler = (tx: Tx, p: any, m: Member) => void | "later" | Promise<void | "later">;
-const STORY = new Set(["story.part", "round.resolved", "scene.summary", "scene.started"]);
+const STORY = new Set(["story.part", "round.resolved", "round.undone", "scene.summary", "scene.started"]);
 export const evFrame = (e: StoredEvent) => ({ seq: e.seq, at: e.at, e: { type: e.type, ...e.payload } });
 
 export function rate(tx: Tx, key: string, max: number, windowMs: number) {
@@ -22,6 +22,7 @@ const open = (s: RoomState) => need(s.status === "lobby" || s.status === "playin
 
 /** 針對某回合的指令：回合號＝版本號（§3.3） */
 function roundAt(tx: Tx, round: number, phase = "acting") {
+  need(!tx.s.undo, "E_ROUND_NOT_ACTING"); // 收回在等執行端
   const r = tx.s.round;
   need(r && round === r.round, "E_ROUND_STALE");
   need(r.phase === phase, phase === "acting" ? "E_ROUND_NOT_ACTING" : "E_STATE_CONFLICT");
@@ -112,7 +113,7 @@ function ctl(tx: Tx, m: Member, p: { ctlId: string; cmd: any }) {
   let cmd: RemoteCommand = { kind: k };
   let settings;
   if (k === "retry" || k === "switch_model" || k === "switch_route") {
-    need(r?.phase === "held" && (k === "retry" || r.hold?.actions.includes(k)), "E_STATE_CONFLICT");
+    need(!s.undo && r?.phase === "held" && (k === "retry" || r.hold?.actions.includes(k)), "E_STATE_CONFLICT"); // 收回在等執行端時不重試
     if (k !== "retry") {
       settings = offered(s, k === "switch_route" ? p.cmd.route : s.sceneSettings!.route, p.cmd.model);
       cmd = k === "switch_route" ? { kind: k, route: settings.route, model: settings.model } : { kind: k, model: settings.model };
@@ -127,6 +128,21 @@ function ctl(tx: Tx, m: Member, p: { ctlId: string; cmd: any }) {
   w.ctls[p.ctlId] = { conn: tx.conn, id: tx.reqId, at: tx.now, cmd, settings, hold: prevHold };
   tx.toExec("ctl", { ctlId: p.ctlId, by: m.id, cmd });
   return "later" as const;
+}
+
+/** 存草稿（不公開，別人只看到狀態） */
+function setDraft(tx: Tx, m: Member, raw: unknown) {
+  need(m.cardId, "E_SEAT_REQUIRED");
+  need(tx.s.status === "playing" || tx.s.status === "transition", "E_STATE_CONFLICT");
+  const text = cleanText(raw, 0);
+  need(text !== null, "E_TEXT_INVALID");
+  const s = tx.w;
+  if (text) s.drafts[m.id] = text;
+  else delete s.drafts[m.id];
+  const e = s.round?.phase === "acting" ? s.round.roster.find((x) => x.memberId === m.id) : undefined;
+  if (!e || e.status === "submitted" || e.status === "skipped") return;
+  e.status = text ? "drafting" : "pending";
+  tx.toAll("vol", { type: "roster_status", round: s.round!.round, memberId: m.id, status: e.status });
 }
 
 export const MEMBER: Record<string, Handler> = {
@@ -162,18 +178,8 @@ export const MEMBER: Record<string, Handler> = {
     return "later" as const;
   },
   "action.draft": (tx, p, m) => {
-    need(m.cardId, "E_SEAT_REQUIRED");
-    need(tx.s.status === "playing" || tx.s.status === "transition", "E_STATE_CONFLICT");
-    const text = cleanText(p.text, 0);
-    need(text !== null, "E_TEXT_INVALID");
     rate(tx, `d:${m.id}`, 1, 500);
-    const s = tx.w;
-    if (text) s.drafts[m.id] = text;
-    else delete s.drafts[m.id];
-    const e = s.round?.phase === "acting" ? s.round.roster.find((x) => x.memberId === m.id) : undefined;
-    if (!e || e.status === "submitted" || e.status === "skipped") return;
-    e.status = text ? "drafting" : "pending"; // 草稿不公開：別人只看到狀態
-    tx.toAll("vol", { type: "roster_status", round: s.round!.round, memberId: m.id, status: e.status });
+    setDraft(tx, m, p.text);
   },
   "action.submit": (tx, p, m) => {
     const e = myEntry(tx, m, p.round);
@@ -218,9 +224,39 @@ export const MEMBER: Record<string, Handler> = {
     cancelRound(tx);
     openRound(tx, "host", turn);
   },
+  // 收回／重生上一回合（§3.2）：存 undo、請執行端把那批事件從桌尾收掉，等 job.result 才動回合
+  "round.undo": (tx, p, m) => {
+    host(tx, m);
+    const s = tx.s;
+    const r = s.round;
+    const ld = s.lastDispatch;
+    need(!s.undo && (p.mode === "regenerate" || p.mode === "edit"), "E_STATE_CONFLICT");
+    const target = r && ld && ld.round === p.round && ld.scene === s.scene && ((r.phase === "acting" && r.round === ld.round + 1) || (r.phase === "held" && r.round === ld.round));
+    need(target, "E_STATE_CONFLICT");
+    need(s.exec.online, "E_EXECUTOR_OFFLINE");
+    let next: SceneSettings | null = null;
+    if (p.next !== undefined) {
+      need(s.payerId === m.id, "E_FORBIDDEN"); // 只有出額度者能同時換路線／模型（同換幕）
+      need(p.mode === "regenerate" && shape(p.next, "route:s model:s"), "E_BAD_FRAME");
+      next = offered(s, p.next.route, p.next.model);
+    }
+    const job = { jobId: ulid(tx.now, tx.ctx.rng), kind: "undo" as const, dispatchId: ld!.dispatchId };
+    tx.w.undo = { jobId: job.jobId, round: ld!.round, mode: p.mode, next };
+    tx.w.jobs.push({ job, reply: { conn: tx.conn, id: tx.reqId } });
+    tx.toExec("job.undo", job);
+    return "later" as const;
+  },
+  // 丟掉，或帶回（`draft`＝放進輸入框後的整段草稿）：草稿同一筆交易存好才清原文，存不進去（太長）原文照留
+  "action.returned_dismiss": (tx, p, m) => {
+    if (tx.s.returned?.[m.id] === undefined) return;
+    if (p.draft !== undefined) setDraft(tx, m, p.draft);
+    delete tx.w.returned![m.id];
+    tx.toMember(m.id, "vol", { type: "returned", text: null });
+  },
   "round.continue": (tx, p, m) => {
     hostOrPayer(tx, m);
     roundAt(tx, p.round, "held");
+    tx.w.lastDispatch = null; // 放棄的回合不再是收回目標
     openRound(tx, "play");
   },
   "gen.abort": (tx, p, m) => {
@@ -282,6 +318,7 @@ export const MEMBER: Record<string, Handler> = {
     if (p.ban) t.banned = true; // 封鎖只記裝置雜湊
     else s.members = s.members.filter((x) => x !== t);
     delete s.drafts[t.id];
+    if (s.returned) delete s.returned[t.id];
     tx.emit("member.kicked", { memberId: t.id, ban: p.ban });
     for (const [id, c] of Object.entries(s.conns)) if (c.who === t.id) tx.shut(id, 4403, p.ban ? "E_BANNED" : "E_KICKED");
   },
@@ -305,6 +342,10 @@ export const MEMBER: Record<string, Handler> = {
     Object.assign(from, { cardId: null, arriving: false });
     if (s.drafts[from.id] !== undefined) s.drafts[to.id] = s.drafts[from.id];
     delete s.drafts[from.id];
+    if (s.returned?.[from.id] !== undefined) {
+      s.returned[to.id] = s.returned[from.id];
+      delete s.returned[from.id];
+    }
     s.cards = s.cards.map((c) => (c.cardId === to.cardId ? { ...c, claimedBy: to.id } : c));
     for (const e of s.round?.roster ?? []) if (e.memberId === from.id) e.memberId = to.id;
     tx.emit("seat.reassigned", { from: from.id, to: to.id, cardId: to.cardId });
@@ -322,7 +363,7 @@ export const MEMBER: Record<string, Handler> = {
     const r = s.round;
     need(s.status === "playing" && r, "E_STATE_CONFLICT");
     need(p.round === r.round, "E_ROUND_STALE");
-    need(r.phase === "acting" || (r.phase === "held" && r.hold?.kind === "scene_full"), "E_ROUND_NOT_ACTING");
+    need(!s.undo && (r.phase === "acting" || (r.phase === "held" && r.hold?.kind === "scene_full")), "E_ROUND_NOT_ACTING");
     need(s.exec.online, "E_EXECUTOR_OFFLINE");
     let next = s.nextSettings ?? s.sceneSettings!;
     if (p.next !== undefined) {

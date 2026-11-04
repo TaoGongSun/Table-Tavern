@@ -85,6 +85,47 @@ pub fn pop_transcript_floor(
     })
 }
 
+/// 多人房間收回一個派工（room-host-actions §4）：從桌尾逐樓往前，樓頭 `action_id` 是這個派工就收，不是就停；
+/// 一次原子重寫、檯面回捲一次，不留復原疊。回 true＝收乾淨了（含本幕早就沒有它的事件＝已收過）；
+/// false＝它的事件還在、但不在桌尾，什麼都不改。
+pub fn pop_action_floors(
+    root: &Path,
+    world_id: &str,
+    scene: u64,
+    action_id: &str,
+) -> DataResult<bool> {
+    with_commit(root, world_id, |tx| {
+        let cut = edit_scene(root, world_id, scene, |mut events| {
+            let ours = |event: &TranscriptEvent| event.action_id.as_deref() == Some(action_id);
+            let mut end = events.len();
+            while let Some(start) = floor_start(&events[..end]) {
+                if ours(&events[start]) {
+                    end = start;
+                    continue;
+                }
+                // 樓頭是別的派工：尾端還黏著這個派工的附屬行（「讓 X 接話」的點名列跟著上一則旁白成樓）就切到那裡
+                end = (start..end)
+                    .find(|&i| events[i..end].iter().all(ours))
+                    .unwrap_or(end);
+                break;
+            }
+            if events[..end].iter().any(ours) {
+                return Ok((None, None));
+            }
+            if end == events.len() {
+                return Ok((Some(None), None));
+            }
+            events.truncate(end);
+            Ok((Some(Some(events.clone())), Some(events)))
+        })?;
+        match cut {
+            None => Ok(false),
+            Some(None) => Ok(true),
+            Some(Some(remaining)) => rewind_state(tx, scene, &remaining).map(|()| true),
+        }
+    })
+}
+
 /// 復原整組：照原序一次寫回（先交接上一回合沒落成的部分），每則照一般追加的規矩配 ID、換新版本 token、
 /// 沒快照才借目前檯面；檯面採最後一則的快照。整檔原子重寫，失敗就一則都沒放回、可整組重試。
 pub fn restore_transcript_events(
@@ -297,5 +338,59 @@ mod tests {
         let mut opening = line(TranscriptKind::System, None, None);
         opening.opening = true;
         assert_eq!(floor_start(&[opening.clone(), summary(None)]), Some(0));
+    }
+
+    /// 收回派工：尾段整批收（含登場塊、點名、離席標記），已收過回 true 不動，不在桌尾回 false 不動；改名失敗一則都不收
+    #[test]
+    fn pop_action_floors_takes_the_tail_batch_or_nothing() {
+        let root = crate::smart_free::test_root("pop-action-floors");
+        let world = crate::data::create_world(&root, "收回桌").unwrap();
+        let absent = line(
+            TranscriptKind::System,
+            Some(EventMarker::PlayerAbsent { name: "乙".into() }),
+            Some("d2"),
+        );
+        let reply = line(TranscriptKind::Dialogue, None, Some("d2"));
+        let lines = [
+            gm(Some("d1")),
+            absent,
+            player("d2"),
+            arrival(Some("d2")),
+            gm(Some("d2")),
+            summary(Some("d2")),
+            call(Some("d2")),
+            reply,
+        ];
+        for event in &lines {
+            crate::data::append_event(&root, &world, 0, event, None).unwrap();
+        }
+        let count = || {
+            crate::data::read_transcript(&root, &world, 0)
+                .unwrap()
+                .len()
+        };
+        {
+            let _fail = crate::data::world_file::RenameFailGuard::fail_ending(".jsonl", 1);
+            assert!(pop_action_floors(&root, &world, 0, "d2").is_err());
+        }
+        assert_eq!(count(), 8, "重寫失敗一則都不收");
+        assert!(
+            !pop_action_floors(&root, &world, 0, "d1").unwrap(),
+            "不在桌尾"
+        );
+        assert_eq!(count(), 8);
+        assert!(pop_action_floors(&root, &world, 0, "d2").unwrap());
+        assert_eq!(count(), 1);
+        assert!(pop_action_floors(&root, &world, 0, "d2").unwrap(), "已收過");
+        assert_eq!(count(), 1);
+        // 「讓 X 接話」：點名列（d3）跟著上一則旁白（d1）成樓，照樣收得掉
+        for event in [
+            call(Some("d3")),
+            line(TranscriptKind::Dialogue, None, Some("d3")),
+        ] {
+            crate::data::append_event(&root, &world, 0, &event, None).unwrap();
+        }
+        assert!(pop_action_floors(&root, &world, 0, "d3").unwrap());
+        assert_eq!(count(), 1);
     }
 }

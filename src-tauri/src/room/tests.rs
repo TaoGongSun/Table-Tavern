@@ -782,6 +782,8 @@ fn errors_overrides_and_capabilities() {
         "not_ready"
     );
     assert_eq!(kind("AI_INCOMPLETE_RESPONSE: cut"), "tool_format");
+    assert_eq!(kind("AI_HTTP_STATUS_404: gone"), "model_unavailable");
+    assert_eq!(kind("AI_HTTP_STATUS_503: busy"), "provider_unreachable");
     assert_eq!(kind("讀不到檔案 /home/someone/x"), "other");
     assert_eq!(
         run::classify("讀不到檔案 /home/someone/x")["code"],

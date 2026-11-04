@@ -1,4 +1,5 @@
 // 有損匯出成網頁存檔契約 v1（協定 §9.3、src/shared/contracts/web-save/web-save.md）：只帶文字，不帶卡片原檔與成員資料。
+import { undoneRounds } from "./snapshot";
 import type { ActionItem, RoomState, Speaker, StoredEvent } from "./types";
 
 type PublicSpeaker = Speaker extends infer S ? (S extends { memberId: string } ? Omit<S, "memberId"> : S) : never;
@@ -15,7 +16,9 @@ export function toWebSave(s: RoomState, events: StoredEvent[], now: number) {
     speakers[id] = speaker;
     scenes[scenes.length - 1].firstMessageId ??= id;
   };
+  const undone = undoneRounds(events); // 房主收回的回合不輸出
   for (const { type, at, payload: p } of events) {
+    if (undone.has(p.round as number) && (type === "story.part" || type === "round.resolved")) continue;
     if (type === "round.resolved") {
       (p.batch as ActionItem[]).forEach((a, i) => {
         players.add(a.cardId);

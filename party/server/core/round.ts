@@ -84,18 +84,37 @@ export function cancelRound(tx: Tx) {
   tx.emit("round.cancelled", { round: r.round });
 }
 
-/** 同一回合只派一次：dispatchId 只在這裡產生一次，之後重送、重連、retry 都用同一份 */
-export function ensureDispatch(tx: Tx): Dispatch {
+/** 同一回合只派一次：dispatchId 只在這裡產生一次，之後重送、重連、retry 都用同一份。
+ *  `from`＝重生：players／arrivals／departures（之後的欄位也一樣）照原派工快照，s.departures 留給下一個正常派工 */
+export function ensureDispatch(tx: Tx, from?: Dispatch): Dispatch {
   if (tx.s.round!.dispatch) return tx.s.round!.dispatch;
   const s = tx.w;
   const r = s.round!;
-  const players = seatedMembers(s).filter((m) => !m.arriving).map((m) => ({ cardId: m.cardId!, memberId: m.id, name: cardName(s, m.cardId!), connected: isOnline(s, m.id) }));
-  r.dispatch = { dispatchId: ulid(tx.now, tx.ctx.rng), round: r.round, kind: r.kind, scene: r.scene, settings: s.sceneSettings!, actions: r.batch, players, arrivals: r.arrivals, departures: s.departures, ...(r.host ? { host: r.host } : {}) };
+  const ids = { dispatchId: ulid(tx.now, tx.ctx.rng), round: r.round, kind: r.kind, scene: r.scene, settings: s.sceneSettings!, actions: r.batch };
+  if (from) r.dispatch = { ...from, ...ids };
+  else {
+    const players = seatedMembers(s).filter((m) => !m.arriving).map((m) => ({ cardId: m.cardId!, memberId: m.id, name: cardName(s, m.cardId!), connected: isOnline(s, m.id) }));
+    r.dispatch = { ...ids, players, arrivals: r.arrivals, departures: s.departures, ...(r.host ? { host: r.host } : {}) };
+    s.departures = [];
+  }
   Object.assign(r, { dispatchId: r.dispatch.dispatchId, genAt: tx.now });
-  s.departures = [];
   tx.emit("gen.dispatched", { round: r.round, dispatchId: r.dispatchId });
   return r.dispatch;
 }
+/** 重生：照原派工的種類與批次開新回合，直接 queued 派工（play 另發 round.resolved，玩家行動才回到故事串） */
+export function reopen(tx: Tx, from: Dispatch) {
+  const s = tx.w;
+  s.lastError = null;
+  s.round = {
+    round: ++s.roundNo, kind: from.kind, scene: s.scene, phase: "queued", roster: [], deadline: null, pausedRemainingMs: null, dispatchId: null, hold: null,
+    batch: from.actions, arrivals: from.arrivals, dispatch: null, partsEnded: 0, speaker: null, genAt: tx.now, called: null, ...(from.host ? { host: from.host } : {}),
+  };
+  tx.emit("round.opened", { round: s.round.round, kind: from.kind, roster: [], deadline: null, phase: "queued" });
+  if (from.kind === "play") tx.emit("round.resolved", { round: s.round.round, by: "host", batch: from.actions });
+  ensureDispatch(tx, from);
+  pushDispatch(tx);
+}
+
 export function pushDispatch(tx: Tx) {
   if (tx.s.exec.online && tx.s.round?.phase === "queued") tx.toExec("dispatch", ensureDispatch(tx));
 }
@@ -142,7 +161,7 @@ export function settle(tx: Tx) {
   const s = tx.s;
   const r = s.round;
   if (s.status !== "playing" || r?.phase !== "acting") return;
-  const run = r.roster.length > 0 && s.exec.online;
+  const run = r.roster.length > 0 && s.exec.online && !s.undo; // 收回在等執行端：倒數暫停、不結算
   if (run ? r.pausedRemainingMs !== null : r.deadline !== null) {
     const w = tx.w.round!;
     if (run) Object.assign(w, { deadline: tx.now + w.pausedRemainingMs!, pausedRemainingMs: null });
@@ -196,7 +215,7 @@ export function onAlarm(tx: Tx) {
   const s = tx.s;
   const r = s.round;
   const due = r?.phase === "acting" && r.deadline !== null && now >= r.deadline;
-  if (due && s.status === "playing" && s.exec.online && r.roster.length > 0) resolve(tx, "timeout");
+  if (due && s.status === "playing" && s.exec.online && !s.undo && r.roster.length > 0) resolve(tx, "timeout");
   else if (generating(tx.s) && now >= r!.genAt + GEN_IDLE_MS) hold(tx, { kind: "provider_unreachable", actions: ["retry", "switch_route"], resetsAt: null }, "E_GEN_TIMEOUT");
   const t = tx.s.transition;
   if (t && !t.stalled && now >= t.progressAt + GEN_IDLE_MS) {

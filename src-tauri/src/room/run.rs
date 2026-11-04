@@ -89,10 +89,16 @@ pub(super) fn classify(error: &str) -> Value {
             &["scene_advance"],
             "This scene is full; advance to the next scene.",
         )
+    } else if has(&["AI_HTTP_STATUS_404", "cli_model_unavailable"]) {
+        // 模型下架／叫不到：重試沒用，等出額度者換模型（重生或切換）
+        (
+            "model_unavailable",
+            &["switch_model", "switch_route", "retry"],
+            "The GM model is unavailable; pick another model.",
+        )
     } else if has(&[
         "cli_not_found",
         "cli_risk_not_accepted",
-        "cli_model_unavailable",
         "AI_HTTP_STATUS_401",
         "AI_HTTP_STATUS_403",
     ]) {
@@ -683,6 +689,9 @@ pub(super) fn on_job(room: &Arc<Room>, job: &Value) {
     ) {
         return super::cards::on_job(room, id, job.clone());
     }
+    if job["kind"] == "undo" {
+        return undo(room, &id, job);
+    }
     if room.work().job.as_deref() == Some(id.as_str()) {
         return;
     }
@@ -794,4 +803,36 @@ pub(super) fn on_cancel(room: &Arc<Room>, p: &Value) {
         Some(turn) => room.engine.abort(&room.world(), &turn),
         None => settle_job(room, &id, Some("SCENE_ADVANCE_CANCELLED".to_owned())),
     }
+}
+
+/// `job.undo`（room-host-actions §3.2）：把那個派工落下的事件從桌尾整批收掉（狀態樹一起回捲），照實回結果。
+/// 已收過也回 ok（冪等）；不在桌尾、或本機還在跑它，回失敗、什麼都不改
+fn undo(room: &Arc<Room>, id: &str, job: &Value) {
+    let dispatch = text(&job["dispatchId"]);
+    let (_, root) = room.engine.roots();
+    let world = room.world();
+    let popped = match room.work().dispatch.as_deref() == Some(dispatch.as_str()) {
+        true => Ok(false),
+        false => data::world_write_permit(&world)
+            .map_err(String::from)
+            .and_then(|_permit| {
+                let scene = scene_of(&root, &world)?;
+                data::pop_action_floors(&root, &world, scene, &dispatch).map_err(|e| e.to_string())
+            }),
+    };
+    let p = match popped {
+        Ok(true) => json!({ "jobId": id, "ok": true }),
+        Ok(false) => json!({ "jobId": id, "ok": false, "error": classify("UNDO_NOT_TAIL") }),
+        Err(error) => json!({ "jobId": id, "ok": false, "error": classify(&error) }),
+    };
+    room.durable("job.result", p, |saved| {
+        if saved
+            .dispatch
+            .as_ref()
+            .is_some_and(|run| run.id == dispatch)
+        {
+            saved.dispatch = None; // 收掉的派工不再能 retry
+        }
+    });
+    room.engine.table_changed(&world);
 }

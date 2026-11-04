@@ -47,7 +47,7 @@ export interface PublicCard {
   /** 房主保留給電腦自己的那張（桌面版開房前的玩家卡）：只有電腦那台裝置能認領 */
   reserved?: boolean;
 }
-export type SystemMarker = "scene_summary" | "card_arrival" | "person_arrival" | "state_update";
+export type SystemMarker = "scene_summary" | "card_arrival" | "person_arrival" | "state_update" | "round_undone";
 export type Speaker =
   | { kind: "gm" }
   | { kind: "npc"; cardId: string; name: string }
@@ -69,7 +69,7 @@ export interface ActionItem {
   text?: string;
   watchReason?: "skipped" | "timeout" | "host_resolved";
 }
-export type ExecutorErrorKind = "refusal" | "quota" | "tool_format" | "provider_unreachable" | "scene_full" | "not_ready" | "other";
+export type ExecutorErrorKind = "refusal" | "quota" | "tool_format" | "provider_unreachable" | "scene_full" | "not_ready" | "model_unavailable" | "other";
 export type RemoteAction = "retry" | "switch_model" | "switch_route" | "continue" | "scene_advance";
 export interface ExecutorError {
   kind: ExecutorErrorKind;
@@ -126,7 +126,8 @@ export type Job =
   | { jobId: string; kind: "scene_advance"; scene: number; nextSettings: SceneSettings }
   | { jobId: string; kind: "card_create"; memberId: string; name: string; blurb: string }
   | { jobId: string; kind: "card_import"; memberId: string; uploadId: string; size: number }
-  | { jobId: string; kind: "card_image"; memberId: string; cardId: string; uploadId: string; size: number };
+  | { jobId: string; kind: "card_image"; memberId: string; cardId: string; uploadId: string; size: number }
+  | { jobId: string; kind: "undo"; dispatchId: string };
 export interface InflightReport {
   dispatch: { dispatchId: string; state: "running" | "done" | "failed"; lastEndedPart: number | null } | null;
   job: { jobId: string; state: "running" | "done" } | null;
@@ -219,6 +220,11 @@ export interface RoomState {
   jobs: PendingJob[];
   doneJobs: string[];
   lastDoneDispatch: string | null;
+  /** 最後一個做完（gen.done／gen.failed）的派工：收回與重生的目標（只收一層，收過或換幕就清） */
+  lastDispatch?: Dispatch | null;
+  undo?: { jobId: string; round: number; mode: "regenerate" | "edit"; next: SceneSettings | null } | null;
+  /** 被收回的行動原文，只給本人（帶回／丟掉） */
+  returned?: Record<string, string>;
   lastError?: { round: number; error: ExecutorError } | null; // 最近一筆錯誤細節，只給出額度者（重連後還看得到）；舊房間沒有這欄
   ctls: Record<string, { conn: string; id?: string; at: number; cmd: RemoteCommand; settings?: SceneSettings; hold?: PublicExecutorError | null }>;
   conns: Record<string, { role: ConnRole; who: string | null; at: number }>; // who＝memberId／"exec"；null＝還沒 hello

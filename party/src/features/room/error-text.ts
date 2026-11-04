@@ -57,7 +57,8 @@ export const HOLD_TEXT: Record<ExecutorErrorKind, MsgKey> = {
   tool_format: "holdNeedsHost",
   provider_unreachable: "holdProviderUnreachable",
   scene_full: "holdSceneFull",
-  not_ready: "holdNeedsHost",
+  not_ready: "holdNotReady",
+  model_unavailable: "holdModelGone",
   other: "holdOther",
 };
 

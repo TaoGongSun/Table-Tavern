@@ -70,7 +70,7 @@ interface RoomSettings {
   shuffleOrder: boolean;         // 預設 false＝照入座順序
   allowCustomCards: boolean;     // 預設 true
 }
-interface SceneSettings {        // 同一幕固定，換幕才換〔作者裁決 2026-11-02〕
+interface SceneSettings {        // 同一幕固定，換幕才換〔作者裁決 2026-11-02〕；幕中只有失敗重試（§7.3）與重生（room-host-actions §3.2）能換〔作者裁決 2026-11-03〕
   route: string;                 // 執行端自報的路線 id（不透明，例：桌面版的傳輸設定），≤64 字
   model: string;                 // 執行端自報的模型 id，≤200 字
   modelLabel: string;            // 顯示用，所有人只看得到「GM：<modelLabel>」〔作者裁決 2026-11-02：玩家零設定、看不到供應商〕
@@ -252,6 +252,8 @@ interface ActionItem {           // 派工批次的一格，順序即提示順�
 | `action.retract` | `{ round }` | P | acting(round) 且自己已 submitted／skipped | 發 `action.retracted`，原文回成草稿 |
 | `round.resolve` | `{ round }` | H | acting(round)、roster 不為空、執行端在線 | 結算（§3.2-2）；roster 空回 `E_STATE_CONFLICT`、執行端離線回 `E_EXECUTOR_OFFLINE` |
 | `host.gm` | `{ round, mode: "narrate"\|"advance"\|"call", cardId? }` | H | acting(round)、執行端在線；roster 可空 | `call` 的卡要沒人認領、可上場、未隱藏，否則 `E_SEAT_TAKEN`；發 `round.cancelled`（已送出的退回草稿）、開 `host` 回合直接派工（`Dispatch.host`；卡是上一則旁白點到的就 `call: true` 先寫點名列）。細節見 [room-host-actions.md](room-host-actions.md) §3.1 |
+| `round.undo` | `{ round, mode: "regenerate"\|"edit", next?: { route, model } }` | H；`next` 只限房主是出額度者 | 目標＝最後一個做完的派工回合（當前是它的 gen.done 開出的 acting(round+1)，或 held(round)）、同一幕、執行端在線、沒有收回在跑 | 送執行端 `job.undo`，期間回合指令回 `E_ROUND_NOT_ACTING`、不結算；執行端收乾淨後發 `round.undone`，重生照原派工快照重開、收回把原文另存給本人（`vol.returned`）。只收一層。細節見 [room-host-actions.md](room-host-actions.md) §3.2 |
+| `action.returned_dismiss` | `{}` | P | 任何時候 | 清掉本人被收回的行動，送本人 `vol.returned { text: null }` |
 | `round.continue` | `{ round }` | H 或 F | held(round) | 放棄這回合剩下的生成，已落的段落保留，開 acting(round+1) |
 | `gen.abort` | `{ round }` | H 或 F | generating(round) | 轉執行端 `abort`；等執行端回 `gen.done{aborted:true}` |
 | `room.start` | `{}` | H | lobby、≥1 玩家、執行端在線 | 發 `room.started`、開 `open` 回合 |
@@ -274,7 +276,7 @@ interface ActionItem {           // 派工批次的一格，順序即提示順�
 ### 5.2 伺服器 → 客戶端
 
 - `welcome { snapshot? , memberId }`、`ok`、`err`、`pong`。
-- 持久事件 `ev.e`（`RoomEvent`，各帶 `type`）：`room.created`、`room.started`、`room.settings_changed`、`room.closed`、`member.joined { memberId, nickname }`、`member.renamed`、`member.left`、`member.kicked`、`host.changed`、`invite.regenerated`、`seat.claimed { memberId, cardId }`、`seat.released`、`seat.reassigned`、`seat.departure { cardId, mode }`、`roster.updated { cards }`、`pair.bound`、`pair.unbound`、`scene.advancing { jobId }`、`scene.stalled { jobId }`、`scene.failed { error: PublicExecutorError }`、`scene.summary { scene, text }`、`scene.started { scene, settings }`、`scene.settings_switched { settings, reason }`（§7.3 幕中例外）、`round.opened { round, kind, roster, deadline }`、`action.submitted { round, memberId, text }`、`action.skipped`、`action.retracted`、`round.resolved { round, by:"all"|"host"|"timeout", batch: ActionItem[] }`、`round.cancelled { round }`、`gen.dispatched { round, dispatchId }`、`story.part`（`StoryPart`）、`gen.failed { round, error: PublicExecutorError }`、`gen.done { round, aborted }`。
+- 持久事件 `ev.e`（`RoomEvent`，各帶 `type`）：`room.created`、`room.started`、`room.settings_changed`、`room.closed`、`member.joined { memberId, nickname }`、`member.renamed`、`member.left`、`member.kicked`、`host.changed`、`invite.regenerated`、`seat.claimed { memberId, cardId }`、`seat.released`、`seat.reassigned`、`seat.departure { cardId, mode }`、`roster.updated { cards }`、`pair.bound`、`pair.unbound`、`scene.advancing { jobId }`、`scene.stalled { jobId }`、`scene.failed { error: PublicExecutorError }`、`scene.summary { scene, text }`、`scene.started { scene, settings }`、`scene.settings_switched { settings, reason }`（§7.3 幕中例外）、`round.opened { round, kind, roster, deadline }`、`action.submitted { round, memberId, text }`、`action.skipped`、`action.retracted`、`round.resolved { round, by:"all"|"host"|"timeout", batch: ActionItem[] }`、`round.cancelled { round }`、`round.undone { round }`（房主收回：那回合的段落與玩家行動都不算數）、`gen.dispatched { round, dispatchId }`、`story.part`（`StoryPart`）、`gen.failed { round, error: PublicExecutorError }`、`gen.done { round, aborted }`。
 - 即時訊息 `vol`：
   - `delta { round, part, speaker?, text }`：`speaker` 只在該段第一則帶。客戶端把同 `(round, part)` 的 `text` 依序串接成暫時顯示；收到 `story.part` 同一段時**以它的 `text` 整段取代**（delta 是執行端串流的原樣增量，可能含狀態區塊與點名行；定稿才是剝乾淨的顯示文字）。沿用網頁版 `stream-chat.ts` 的 `onDelta(string)` 形狀，只多一層 `(round, part)` 定位。
   - `presence { memberId, connected }`、`roster_status { round, memberId, status }`、`executor { ExecutorView }`、`quota { coarse: QuotaCoarse }`（全員）／`quota_detail { report: QuotaReport }`（只出額度者）、`error_detail { round, error: ExecutorError }`（只出額度者，§7.1）。
@@ -334,6 +336,7 @@ interface CreateRoomRes { roomCode: string; joinSecret: string; executorToken: s
 | `ctl` | `{ ctlId, by: memberId, cmd: RemoteCommand }` | §7.3 |
 | `job.scene_advance` | `{ jobId, scene, nextSettings }` | `job.ack` → 桌面版既有換幕（摘要），期間 `job.progress` → `job.result { summary }`；不套 30 秒逾時（§3.5） |
 | `job.card_create` | `{ jobId, memberId, name, blurb }` | `job.ack` → 在桌上建玩家卡、送 `roster.update` → `job.result { cardId }` |
+| `job.undo` | `{ jobId, dispatchId }` | `job.ack` → 把這個派工落的事件從桌尾整批收掉、狀態樹回捲 → `job.result`（已收過也 ok；不在桌尾回失敗） |
 | `job.cancel` | `{ jobId }` | 中止該工作，照實回 `job.result`（已提交就回 ok） |
 | `pair.claimed` | `{ memberId, nickname, grantHost }` | 面板顯示「X 已配對」並給「撤銷」 |
 | `vol.*` | 同客戶端（在線、草稿狀態） | 面板顯示在線玩家用，可忽略 |
@@ -352,7 +355,7 @@ interface Dispatch {
   arrivals: string[];           // 本回合登場的玩家卡 cardId（§3.4）
   departures: Array<{ cardId: string; mode: "npc" | "absent" }>;
 }
-type Job = { jobId: string; kind: "scene_advance"; scene: number; nextSettings: SceneSettings } | { jobId: string; kind: "card_create"; memberId: string; name: string; blurb: string };
+type Job = { jobId: string; kind: "scene_advance"; scene: number; nextSettings: SceneSettings } | { jobId: string; kind: "card_create"; memberId: string; name: string; blurb: string } | { jobId: string; kind: "undo"; dispatchId: string };
 ```
 
 執行端流程（沿用桌面版既有流程，細節屬包 2／包 3）：
@@ -390,6 +393,7 @@ type ExecutorErrorKind =
   | "provider_unreachable" // 連不上、串流停滯（AI_CALL_FAILED、AI_STREAM_STALLED、其他 AI_HTTP_STATUS_*）
   | "scene_full"         // 換幕容量鎖、上下文過長（scene_capacity_full、AI_CONTEXT_TOO_LONG）
   | "not_ready"          // 執行端沒設定好（金鑰缺、命令列未登入、風險說明未同意等）
+  | "model_unavailable"  // 模型下架／叫不到（AI_HTTP_STATUS_404、cli_model_unavailable），重試沒用（room-host-actions）
   | "other";
 type RemoteAction = "retry" | "switch_model" | "switch_route" | "continue" | "scene_advance";
 interface ExecutorError {        // 只給出額度者
@@ -407,9 +411,10 @@ interface PublicExecutorError { kind: ExecutorErrorKind; actions: RemoteAction[]
 | refusal | switch_route, switch_model, retry, continue | 「GM 這段被供應商擋下，等出額度者處理」 | 原因＋「切境外重送」等鈕〔作者裁決 2026-11-02：拒答明確告知、給切境外一鍵〕 |
 | quota | switch_route, switch_model, retry | 「GM 額度用完，約 hh:mm 恢復」 | 重置時間＋「臨時切 OpenRouter」 |
 | tool_format | retry, switch_route | 「GM 主機需要處理」 | 「命令列工具版本不符，請到電腦更新或切 OpenRouter」 |
-| provider_unreachable | retry, switch_route | 「GM 連線不穩，重試中」 | 錯誤碼＋重試 |
+| provider_unreachable | retry, switch_route | 「GM 連線不穩，等房主重試」 | 錯誤碼＋重試 |
 | scene_full | scene_advance | 「這一幕滿了，請房主換幕」 | 同左 |
-| not_ready | retry | 「GM 主機需要處理」 | 執行端給的說明 |
+| not_ready | retry | 「GM 卡住：金鑰或登入失效，等房主處理」 | 執行端給的說明 |
+| model_unavailable | switch_model, switch_route, retry | 「GM 卡住：模型已下架或叫不到，等房主換模型」 | 換模型重送（或重生上一回合） |
 | other | retry, continue | 「GM 出錯了」 | 錯誤碼＋說明 |
 
 不靜默重試到失敗：執行端自己只做桌面版本來就有的重試，失敗即上送。
@@ -446,7 +451,7 @@ interface RouteOffer { route: string; label: string; models: Array<{ id: string;
 
 - 只有出額度者能發（伺服器驗 `pair.bound`），否則 `E_FORBIDDEN`。已有出額度者時別人 `pair.claim` 一般碼回 `E_STATE_CONFLICT`（§1.2）。
 - `route`／`model` 必須在執行端 `capabilities.routes` 裡，否則 `E_MODEL_NOT_OFFERED`。
-- `switch_model`／`switch_route` 是**唯一的幕中切換**（計畫 §1 例外）：生效後發 `scene.settings_switched { settings, reason: error.kind }`，全員看到「GM 改用 <modelLabel>」，接著自動 `retry`。不在 `held` 或錯誤不允許 → `E_STATE_CONFLICT`。
+- `switch_model`／`switch_route` 是兩種幕中切換之一（另一種是房主重生時換，`reason: "regenerate"`，room-host-actions §3.2）：生效後發 `scene.settings_switched { settings, reason: error.kind }`，全員看到「GM 改用 <modelLabel>」，接著自動 `retry`。不在 `held` 或錯誤不允許 → `E_STATE_CONFLICT`。
 - 執行端回 `ctl.result`；30 秒沒回 → 伺服器回發令者 `E_EXECUTOR_TIMEOUT`。這個逾時只套遠端控制指令，不套 `job.*`。
 
 ### 7.4 在線狀態與防休眠（只寫可觀測行為）
