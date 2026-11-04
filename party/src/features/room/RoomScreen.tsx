@@ -72,6 +72,7 @@ export function RoomScreen({ view, c }: { view: RoomView; c: RoomControls }) {
   const [picking, setPicking] = useState(false);
   const folded = isHost && view.room.status === "playing" && !picking;
   const [sheet, setSheet] = useState<"create" | "edit" | null>(null);
+  const [imported, setImported] = useState(false); // 剛匯入卡：提示只帶入了哪些，開編卡畫面就收起
   const open = view.room.status !== "closed";
   if (sheet && open) return <CardSheet view={view} act={c.act} mode={sheet} upload={c.upload} onClose={() => setSheet(null)} />;
   return (
@@ -89,12 +90,13 @@ export function RoomScreen({ view, c }: { view: RoomView; c: RoomControls }) {
           <StoryView view={view} loadOlder={c.loadOlder} />
           {/* 電腦自己的座位照舊用 CastRail 的卡片編輯 */}
           {view.me.cardId && open && c.pairForm !== false && (
-            <button type="button" className="ghost" data-testid="card-edit" onClick={() => setSheet("edit")}>{t("cardEdit")}</button>
+            <button type="button" className="ghost" data-testid="card-edit" onClick={() => (setImported(false), setSheet("edit"))}>{t("cardEdit")}</button>
           )}
+          {imported && view.me.cardId && <p className="muted" data-testid="import-note">{t("seatImportedNote")}</p>}
           {view.me.cardId && open ? <ActionBox view={view} act={c.act} sendDraft={c.sendDraft} cancelDraft={c.cancelDraft} /> : canSit && (folded ? (
             <button type="button" className="ghost" data-testid="seat-unfold" onClick={() => setPicking(true)}>{t("seatShowPicker")}</button>
           ) : (
-            <SeatPicker view={view} act={c.act} desktop={c.pairForm === false} upload={c.upload} onCreate={() => setSheet("create")} />
+            <SeatPicker view={view} act={c.act} desktop={c.pairForm === false} upload={c.upload} onCreate={() => setSheet("create")} onImported={() => setImported(true)} />
           ))}
         </>
       )}

@@ -5,7 +5,8 @@ import { cleanText } from "../../../server/core/validate";
 import { t } from "../../i18n";
 import type { RoomView } from "../room/room-state";
 import { useRun, type Act } from "../room/useRoom";
-import { CardImage } from "./CardImage";
+import { errorText } from "../room/error-text";
+import { CardImage, type ImageDraft } from "./CardImage";
 import type { Upload } from "./card-upload";
 
 interface Fields {
@@ -29,6 +30,8 @@ export function CardSheet({ view, act, mode, upload, onClose }: Props) {
   const [saved, setSaved] = useState<Fields | null>(mode === "create" ? { ...EMPTY, name: view.me.nickname } : null);
   const [f, setF] = useState<Fields>(saved ?? EMPTY);
   const [image, setImage] = useState<string | null>(null);
+  // 圖一律暫存，按存檔才寫入、按返回就撤回（同桌面版 CardEditor）；undefined＝沒動過
+  const [draftImage, setDraftImage] = useState<ImageDraft | undefined>(undefined);
   const [cardId, setCardId] = useState<string | null>(mode === "edit" ? view.me.cardId : null);
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState(false); // 已建卡入座、秘密段還沒存上
@@ -58,7 +61,17 @@ export function CardSheet({ view, act, mode, upload, onClose }: Props) {
     return out;
   }
 
-  async function saveTo(id: string, patch: Record<string, string>) {
+  async function saveTo(id: string, fields: Record<string, string>) {
+    const d = draftImage;
+    const patch: Record<string, unknown> = { ...fields };
+    if (d && "png" in d) {
+      // 新圖先上傳（執行端換好圖才回），成功就算已存，之後存欄位失敗重試也不用再傳
+      const r = upload ? await upload("image", d.png) : { ok: false as const, code: "E_INTERNAL" as const };
+      if (!r.ok) return (setError(errorText(r.code ?? "E_INTERNAL")), false);
+      setImage(d.preview);
+      setDraftImage(undefined);
+    } else if (d === null) patch.removeImage = true;
+    else if (d) patch.imageFromGallery = d.file;
     if (Object.keys(patch).length && !(await run("card.save", { cardId: id, ...patch }))) return false;
     onClose();
     return true;
@@ -98,9 +111,18 @@ export function CardSheet({ view, act, mode, upload, onClose }: Props) {
       {loading ? (
         !error && <p className="muted">{t("cardLoading")}</p>
       ) : (
-        <>
+        // 存檔進行中整區停用：存好就關畫面，期間補打的字會不見
+        <fieldset disabled={busy} data-testid="card-fields">
           {mode === "edit" && cardId && (
-            <CardImage view={view} act={act} cardId={cardId} image={image} setImage={setImage} draft={{ name: f.name, description: f.publicMd }} upload={upload} />
+            <CardImage
+              view={view}
+              act={act}
+              cardId={cardId}
+              image={draftImage === undefined ? image : (draftImage?.preview ?? null)}
+              setDraft={setDraftImage}
+              draft={{ name: f.name, description: f.publicMd }}
+              canUpload={!!upload}
+            />
           )}
           <label>
             {t("seatCreateName")}
@@ -119,7 +141,7 @@ export function CardSheet({ view, act, mode, upload, onClose }: Props) {
             <span className="muted">{t("cardPrivateHint")}</span>
             <textarea value={f.privateMd} maxLength={64000} rows={5} placeholder={t("cardPrivatePlaceholder")} onChange={set("privateMd")} data-testid="card-private" />
           </label>
-        </>
+        </fieldset>
       )}
     </form>
   );

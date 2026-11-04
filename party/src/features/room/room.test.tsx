@@ -390,6 +390,7 @@ describe("玩家卡（room-player-cards）", () => {
     await hub.exec("roster.update", { cards: [...CARDS, NEW] });
     await hub.exec("job.result", { jobId: last(room, "job.card_import").jobId, ok: true, result: { cardId: "c9" } });
     await until(() => C.q('[data-testid="action-box"]'));
+    await until(() => C.q('[data-testid="import-note"]')?.textContent === "匯入完成：只帶入名字、描述和圖");
   });
 
   it("建立角色：秘密段不經 seat.create，入座後接著存；存失敗畫面不關、原文保留可重試", async () => {
@@ -424,7 +425,7 @@ describe("玩家卡（room-player-cards）", () => {
     expect(room.store.events.some((e) => JSON.stringify(e).includes("其實是公主"))).toBe(false);
   });
 
-  it("編輯我的角色：讀卡、只送改過的欄位、改名先確認；生圖先確認一次、預覽後用這張；主機關掉生圖就停用；別人看不到秘密段", async () => {
+  it("編輯我的角色：讀卡、只送改過的欄位、改名先確認；生圖同一房間只確認一次、預覽標新圖、用這張與返回撤回、丟掉、按存檔才寫入圖；存檔期間停用欄位；主機關掉生圖只留說明、沒路線整段不出現；別人看不到秘密段", async () => {
     const { room, hub, A, B } = await table();
     const confirm = vi.fn(() => true);
     vi.stubGlobal("confirm", confirm);
@@ -438,6 +439,8 @@ describe("玩家卡（room-player-cards）", () => {
     A.type('[data-testid="card-private"]', "新秘密");
     await act(async () => A.q<HTMLFormElement>('[data-testid="card-sheet"]')!.requestSubmit());
     await until(() => room.frames("x1", "card.save").length === 1);
+    // 存檔等回覆期間整區停用：存好就關畫面，補打的字會不見
+    expect(A.q<HTMLFieldSetElement>('[data-testid="card-fields"]')!.disabled).toBe(true);
     expect(confirm).toHaveBeenCalledWith("要把角色改名成「新名字」嗎？");
     const { reqId, memberId: _m, ...sent } = last(room, "card.save");
     expect(sent).toEqual({ cardId: "c1", name: "新名字", privateMd: "新秘密" });
@@ -445,49 +448,58 @@ describe("玩家卡（room-player-cards）", () => {
     await until(() => !A.q('[data-testid="card-sheet"]'));
     expect(JSON.stringify(room.out[B.socket().id])).not.toMatch(/舊秘密|新秘密/);
 
-    room.clock += 3000; // 讀卡每人每秒一次
-    A.click("編輯我的角色");
-    await until(() => room.frames("x1", "card.read").length === 2);
-    await hub.exec("card.read.result", { reqId: last(room, "card.read").reqId, ok: true, card: { ...card, name: "新名字" } });
-    await until(() => A.q('[data-testid="card-gen-notice"]'));
+    const reopen = async (n: number, c: typeof card) => {
+      room.clock += 3000; // 讀卡每人每秒一次、存卡每人 2 秒一次
+      A.click("編輯我的角色");
+      await until(() => room.frames("x1", "card.read").length === n);
+      await hub.exec("card.read.result", { reqId: last(room, "card.read").reqId, ok: true, card: c });
+      await until(() => A.q('[data-testid="card-gen-notice"]'));
+    };
+    const gen = async (n: number) => {
+      A.click("AI 生圖");
+      await until(() => room.frames("x1", "image.gen").length === n);
+      await hub.exec("image.gen.result", { reqId: last(room, "image.gen").reqId, ok: true, file: "1700.png", preview: "data:image/png;base64,AAAA" });
+      await until(() => A.q('[data-testid="card-gen-preview"]'));
+    };
+    // 「用這張」只進草稿：按返回就撤回，什麼都沒存
+    await reopen(2, { ...card, name: "新名字" });
     expect(A.q('[data-testid="card-gen-notice"]')!.textContent).toBe("會用 GM 主機「家裡的電腦」上設定的 AI 額度");
     confirm.mockClear();
-    A.click("AI 生圖");
-    await until(() => room.frames("x1", "image.gen").length === 1);
+    await gen(1);
     expect(confirm).toHaveBeenCalledWith("這會用 GM 主機「家裡的電腦」的 AI 額度生一張圖，要繼續嗎？");
     expect(last(room, "image.gen")).toMatchObject({ cardId: "c1", name: "新名字", description: "公開", framing: "half" });
-    await hub.exec("image.gen.result", { reqId: last(room, "image.gen").reqId, ok: true, file: "1700.png", preview: "data:image/png;base64,AAAA" });
-    await until(() => A.q('[data-testid="card-gen-preview"]'));
     expect(A.q('[data-testid="card-gen-preview"]')!.textContent).toContain("新生成的圖");
-    room.clock += 3000;
+    // 預覽還沒決定前不能再生，免得以為沒成功又花一次額度
+    expect((A.button("AI 生圖") as HTMLButtonElement).disabled).toBe(true);
     A.click("用這張");
-    await until(() => room.frames("x1", "card.save").length === 2);
-    expect(last(room, "card.save")).toMatchObject({ imageFromGallery: "1700.png" });
-    await hub.exec("card.save.result", { reqId: last(room, "card.save").reqId, ok: true });
     await until(() => A.q<HTMLImageElement>('[data-testid="card-image-now"]')?.src.startsWith("data:image/png"));
-    A.click("AI 生圖");
-    await until(() => room.frames("x1", "image.gen").length === 2);
-    await hub.exec("image.gen.result", { reqId: last(room, "image.gen").reqId, ok: true, file: "1701.png", preview: "data:image/png;base64,BBBB" });
-    await until(() => A.q('[data-testid="card-gen-preview"]'));
-    A.click("丟掉"); // 丟掉不存檔
-    await until(() => !A.q('[data-testid="card-gen-preview"]'));
-    expect(room.frames("x1", "card.save")).toHaveLength(2);
-    // 關掉編卡畫面再開：同一房間不再問
     A.click("返回");
-    await until(() => !A.q('[data-testid="card-sheet"]'));
-    room.clock += 3000;
-    A.click("編輯我的角色");
-    await until(() => room.frames("x1", "card.read").length === 3);
-    await hub.exec("card.read.result", { reqId: last(room, "card.read").reqId, ok: true, card: { ...card, name: "新名字" } });
-    await until(() => A.q('[data-testid="card-gen-notice"]'));
-    A.click("AI 生圖");
-    await until(() => room.frames("x1", "image.gen").length === 3);
+    await reopen(3, { ...card, name: "新名字" });
+    expect(A.q('[data-testid="card-image-now"]')).toBeNull();
+    expect(room.frames("x1", "card.save")).toHaveLength(1);
+    // 同一房間關掉再開不再問；「丟掉」不進草稿；按存檔才把圖庫那張套上
+    await gen(2);
     expect(confirm).toHaveBeenCalledTimes(1);
+    A.click("丟掉");
+    await until(() => !A.q('[data-testid="card-gen-preview"]'));
+    expect(A.q('[data-testid="card-image-now"]')).toBeNull();
+    await gen(3);
+    A.click("用這張");
+    A.click("AI 生圖");
+    await until(() => room.frames("x1", "image.gen").length === 4);
     await hub.exec("image.gen.result", { reqId: last(room, "image.gen").reqId, ok: false, code: "E_GEN_QUOTA" });
     await until(() => A.text().includes("GM 主機的 AI 額度用完了"));
+    A.click("存檔");
+    await until(() => room.frames("x1", "card.save").length === 2);
+    const { reqId: r2, memberId: _m2, ...sent2 } = last(room, "card.save");
+    expect(sent2).toEqual({ cardId: "c1", imageFromGallery: "1700.png" });
+    await hub.exec("card.save.result", { reqId: r2, ok: true });
+    await until(() => !A.q('[data-testid="card-sheet"]'));
+
     // 主機關掉開關：只留說明，額外提示與構圖一起收起
     await hub.exec("status", { keepAwake: null, busy: false, imageGen: false });
-    await until(() => A.q('[data-testid="card-gen-notice"]')!.textContent === "GM 主機關閉了 AI 生圖");
+    await reopen(4, card);
+    expect(A.q('[data-testid="card-gen-notice"]')!.textContent).toBe("GM 主機關閉了 AI 生圖");
     expect(A.button("AI 生圖")).toBeNull();
     expect(A.q('[data-testid="card-image"] select')).toBeNull();
     // 主機沒有房間能用的生圖路線：整段不出現
