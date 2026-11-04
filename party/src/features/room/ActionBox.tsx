@@ -1,5 +1,5 @@
 // 行動格（協定 §3.3）：草稿節流上傳（不公開）、送出即公開、收回成草稿、跳過。GM 生成中可打字不可送；
-// 被拒（回合已往下走、GM 還在說）時草稿原樣保留。
+// 被拒（回合已往下走、GM 還在說）時草稿原樣保留。交給 AI 代管中照樣能打字存草稿，只是送不出（不在名單上）。
 import { useEffect, useState } from "react";
 import { t } from "../../i18n";
 import type { RoomView } from "./room-state";
@@ -53,7 +53,7 @@ export function ActionBox({ view, act, sendDraft, cancelDraft }: { view: RoomVie
     }
     else if (text) sendDraft(text);
   };
-  const hint = !live ? t("actionWaitStart") : r?.phase === "held" ? t("actionHeld") : r?.phase !== "acting" ? t("errRoundNotActing") : !entry ? t("actionNextRound") : done && !(entry?.status === "submitted" && entry.text) ? t("actionDone") : null;
+  const hint = !live ? t("actionWaitStart") : view.me.delegated ? t("actionDelegated") : r?.phase === "held" ? t("actionHeld") : r?.phase !== "acting" ? t("errRoundNotActing") : !entry ? t("actionNextRound") : done && !(entry?.status === "submitted" && entry.text) ? t("actionDone") : null;
   return (
     <div className="action-box" data-testid="action-box">
       {hint && <div className="action-hint">{hint}</div>}

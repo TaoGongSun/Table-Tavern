@@ -56,9 +56,8 @@ describe("多人房間的在場標記（含 AI 代管的暫離與回來）", () 
       "（玩家離席）〈守衛〉改由 GM 當 NPC 扮演",
     );
     expect(eventDisplayText(system({ type: "player_absent", name: "阿明" }, ""))).toBe("（玩家離席）〈阿明〉暫不登場");
-    expect(eventDisplayText(system({ type: "player_delegated", name: "小雨" }, ""))).toBe(
-      "（玩家暫離）〈小雨〉暫由 GM 代演，照角色原本個性行動，不替玩家做重大決定",
-    );
+    // 玩家看到的只寫狀態；給 GM 的演法提示留在標記原文（marker_player_delegated，後端寫進逐字稿）
+    expect(eventDisplayText(system({ type: "player_delegated", name: "小雨" }, ""))).toBe("（玩家暫離）〈小雨〉交給 AI 代管");
     expect(eventDisplayText(system({ type: "player_returned", name: "小雨" }, ""))).toBe("（玩家回來）〈小雨〉");
   });
 });

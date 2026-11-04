@@ -1,5 +1,5 @@
-// 房間畫面：回合列在上、分頁（故事／名單／房主／出額度）、故事頁底部固定行動格（沒座位時換成選角）。
-import { useState } from "react";
+// 房間畫面：回合列在上、代管中的常駐列、分頁（故事／名單／房主／出額度）、故事頁底部固定行動格（沒座位時換成選角）。
+import { useEffect, useRef, useState } from "react";
 import { t, type MsgKey } from "../../i18n";
 import { GmControls } from "../controls/GmControls";
 import { HostPanel } from "../controls/HostPanel";
@@ -10,6 +10,10 @@ import { SeatPicker } from "../join/SeatPicker";
 import type { Upload } from "../my-card/card-upload";
 import { CardSheet } from "../my-card/CardSheet";
 import { ActionBox } from "./ActionBox";
+import { Confirm } from "./Confirm";
+import { DelegateButton } from "./DelegateButton";
+import { DelegatedBanner } from "./DelegatedBanner";
+import { canDelegate, sentThisRound } from "./delegation";
 import type { RoomView } from "./room-state";
 import { RoundBar } from "./RoundBar";
 import { StoryView } from "./StoryView";
@@ -19,6 +23,15 @@ const STATUS: Record<string, MsgKey> = { pending: "statusPending", drafting: "st
 
 function MemberList({ view, act, c }: { view: RoomView; act: Act; c: RoomControls }) {
   const { run, error } = useRun(act);
+  const [leaving, setLeaving] = useState(false);
+  const desktop = c.pairForm === false;
+  const seatedPlaying = !!view.me.cardId && canDelegate(view);
+  // 已入座、遊戲中、還沒代管：離開前問要不要先交給 AI 代管；其他情況照舊一按就走（桌面版的離開＝關房，不問）
+  const leave = () => (!desktop && seatedPlaying && !view.me.delegated ? setLeaving(true) : c.onLeave());
+  const delegateAndLeave = async () => {
+    if (await run("seat.delegate", { memberId: view.me.memberId, on: true })) c.onLeave();
+    else setLeaving(false);
+  };
   const roster = new Map(view.round?.roster.map((e) => [e.memberId, e.status]));
   return (
     <div className="panel" data-testid="members">
@@ -31,17 +44,30 @@ function MemberList({ view, act, c }: { view: RoomView; act: Act; c: RoomControl
             {view.room.hostId === m.memberId && <span className="badge">{t("badgeHost")}</span>}
             {view.room.payerId === m.memberId && <span className="badge">{t("badgePayer")}</span>}
           </span>
-          {roster.has(m.memberId) && <span className="chip">{t(STATUS[roster.get(m.memberId)!])}</span>}
+          {m.delegated ? <span className="chip">{t("delegatedBadge")}</span> : roster.has(m.memberId) && <span className="chip">{t(STATUS[roster.get(m.memberId)!])}</span>}
         </div>
       ))}
       <p className="muted">{t("idleNotice", { days: view.room.idleDays })}</p>
       {c.pairForm !== false && view.room.payerId !== view.me.memberId && view.room.status !== "closed" && <PairForm act={act} />}
       {error && <div className="field-error">{error}</div>}
-      <div className="panel-actions">
-        {view.me.cardId && view.room.status !== "closed" && <button type="button" onClick={() => run("seat.release")}>{t("seatRelease")}</button>}
-        {/* 暫時離開＝只斷線（座位與角色保留）；桌面版換成「關房（暫停）」 */}
-        <button type="button" className="ghost danger" onClick={c.onLeave}>{c.leaveLabel ?? t("leaveRoom")}</button>
+      <div className="panel-actions member-actions">
+        {seatedPlaying && <DelegateButton view={view} act={act} memberIds={[view.me.memberId]} on={!view.me.delegated} label={t(view.me.delegated ? "delegateTakeBack" : "delegateOn")} testId="self-delegate" />}
+        {/* 暫時離開＝只斷線（座位與角色保留），可以回來所以不用紅框；桌面版換成「關房（暫停）」照舊紅框 */}
+        <button type="button" className={desktop ? "ghost danger" : "ghost"} data-testid="leave" onClick={leave}>{c.leaveLabel ?? t("leaveRoom")}</button>
+        {/* 離座不可逆：跟另外兩顆分開，靠右紅字 */}
+        {view.me.cardId && view.room.status !== "closed" && <button type="button" className="ghost danger seat-release" onClick={() => run("seat.release")}>{t("seatRelease")}</button>}
       </div>
+      {leaving && (
+        <Confirm
+          title={t("leaveTitle")}
+          testId="leave-confirm"
+          onCancel={() => setLeaving(false)}
+          actions={[{ label: t("leaveDelegate"), onClick: () => void delegateAndLeave() }, { label: t("leaveKeep"), onClick: () => (setLeaving(false), c.onLeave()) }]}
+        >
+          <p>{t("leaveAsk")}</p>
+          {sentThisRound(view, view.me.memberId) && <p>{t("delegateRetractSelf")}</p>}
+        </Confirm>
+      )}
     </div>
   );
 }
@@ -62,6 +88,9 @@ export interface RoomControls {
   /** false＝桌面版：不顯示輸入配對碼（接回房主在資訊列）、選角看得到保留給電腦的卡 */
   pairForm?: boolean;
   origin: string;
+  /** 桌面版：資訊列那條邀請連結；手機：自己網址上的密語（邀請新朋友時給伺服器驗） */
+  inviteUrl?: string | null;
+  joinSecret?: string | null;
 }
 
 export function RoomScreen({ view, c }: { view: RoomView; c: RoomControls }) {
@@ -76,10 +105,20 @@ export function RoomScreen({ view, c }: { view: RoomView; c: RoomControls }) {
   const [sheet, setSheet] = useState<"create" | "edit" | null>(null);
   const [imported, setImported] = useState(false); // 剛匯入卡：提示只帶入了哪些，開編卡畫面就收起
   const open = view.room.status !== "closed";
+  // 房主剛把房間從暫停接回（電腦重開）：提醒誰還沒連上；只記在記憶體
+  const wasPaused = useRef(view.executor.paused);
+  // 桌面版每次（重）開房間都是新掛上的畫面：一開始就算剛接回，沒人缺席就不會出現
+  const [reopened, setReopened] = useState(c.pairForm === false);
+  const [attend, setAttend] = useState(0); // 從回合列「到場整理」切過來：每按一次捲一次
+  useEffect(() => {
+    if (wasPaused.current && !view.executor.paused && view.executor.online) setReopened(true);
+    wasPaused.current = view.executor.paused;
+  }, [view.executor.paused, view.executor.online]);
   if (sheet && open) return <CardSheet view={view} act={c.act} mode={sheet} upload={c.upload} onClose={() => setSheet(null)} />;
   return (
     <>
-      <RoundBar view={view} act={c.act} />
+      <RoundBar view={view} act={c.act} reopen={isHost ? { shown: reopened, dismiss: () => setReopened(false), openAttendance: () => (setTab("host"), setAttend((n) => n + 1)) } : undefined} />
+      <DelegatedBanner view={view} act={c.act} />
       <nav className="tabs">
         {tabs.map((k) => (
           <button key={k} type="button" className={tab === k ? "tab on" : "tab"} onClick={() => setTab(k)} data-testid={`tab-${k}`}>
@@ -110,7 +149,9 @@ export function RoomScreen({ view, c }: { view: RoomView; c: RoomControls }) {
         </>
       )}
       {tab === "members" && <MemberList view={view} act={c.act} c={c} />}
-      {tab === "host" && isHost && <HostPanel view={view} act={c.act} origin={c.origin} exportRoom={c.exportRoom} />}
+      {tab === "host" && isHost && (
+        <HostPanel view={view} act={c.act} invite={{ origin: c.origin, inviteUrl: c.inviteUrl, joinSecret: c.joinSecret }} exportRoom={c.exportRoom} phone={c.pairForm !== false} focusAttendance={attend > 0} key={attend} />
+      )}
       {tab === "payer" && isPayer && <PayerPanel view={view} act={c.act} resumed={c.resumed} desktop={c.pairForm === false} />}
     </>
   );

@@ -24,6 +24,6 @@ export function useRoomSession(env: RoomEnv, invite: Invite, device: string, nic
     }
   };
   const upload = makeUpload(env.fetch, invite.code, device, room.awaitUpload);
-  return { ...room, exportRoom, upload };
+  return { ...room, exportRoom, upload, joinSecret: invite.joinSecret };
 }
 export type RoomSession = ReturnType<typeof useRoomSession>;

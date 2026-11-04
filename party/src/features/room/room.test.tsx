@@ -239,7 +239,7 @@ describe("手機客戶端對真伺服器核心", () => {
   });
 
   it("換幕：已送出的行動退回草稿、新幕開場帶前情摘要；房主移出成員、關房後畫面唯讀", async () => {
-    const { room, hub, A, B, b } = await table();
+    const { room, hub, A, B } = await table();
     B.type('[data-testid="action-text"]', "我想走");
     B.click("送出");
     await until(() => room.events("action.submitted").length === 1);
@@ -253,7 +253,11 @@ describe("手機客戶端對真伺服器核心", () => {
     expect(B.q('[data-testid="story"]')!.textContent).toContain("前情摘要前情：大家進了酒館。");
 
     const sockets = hub.sockets.length;
-    act(() => A.q(`[data-testid="host-${b}"]`)!.querySelectorAll("button")[1].click()); // 移出
+    A.click("移除…"); // 入座的人：確認框一起選角色怎麼處理
+    act(() => A.q<HTMLInputElement>('[data-testid="remove-confirm"] input[type="radio"]:not(:checked)')!.click()); // 交給 GM 當 NPC
+    act(() => [...A.q('[data-testid="remove-confirm"]')!.querySelectorAll("button")].find((x) => x.textContent === "移除")!.click());
+    await until(() => room.events("seat.departure").length === 1);
+    expect(room.events("seat.departure")[0].payload).toMatchObject({ mode: "npc" });
     await until(() => B.q('[data-testid="fatal"]'));
     expect(B.q('[data-testid="fatal"]')!.textContent).toBe("你已被移出房間");
     await until(() => true, 3);
@@ -698,5 +702,86 @@ describe("玩家卡（room-player-cards）", () => {
     await until(() => room.frames("x1", "card.save").length === 1);
     const { reqId: _r, memberId: _m, ...sent } = last(room, "card.save");
     expect(sent).toEqual({ cardId: "c1", imageFromGallery: "1700000000001.png", crop: { x: 0, y: 0, w: 1, h: 1 } });
+  });
+});
+
+describe("AI 代管（room-seat-delegate 包 3）", () => {
+  const inside = (p: Phone, testId: string, label: string) => act(() => [...p.q(`[data-testid="${testId}"]`)!.querySelectorAll("button")].find((x) => x.textContent === label)!.click());
+
+  it("已送出後自己交給 AI 代管：先確認，原文回到輸入框、常駐列出現、送出停用；別人名單看到標籤；接回後收起", async () => {
+    const { room, A, B, b } = await table();
+    B.type('[data-testid="action-text"]', "我先走");
+    B.click("送出");
+    await until(() => room.events("action.submitted").length === 1);
+    B.tab("members");
+    B.click("交給 AI 代管");
+    expect(B.q('[data-testid="delegate-confirm"]')!.textContent).toContain("你這回合已送出的行動會退回草稿、不計入");
+    inside(B, "delegate-confirm", "交給 AI 代管");
+    await until(() => B.q('[data-testid="delegated-banner"]'));
+    expect(B.q('[data-testid="delegated-banner"]')!.textContent).toContain("接回後從下一回合開始行動");
+    B.tab("story");
+    expect(B.q<HTMLTextAreaElement>('[data-testid="action-text"]')!.value).toBe("我先走");
+    expect(B.text()).toContain("你的角色代管中，接回後才能送行動");
+    expect(B.button("送出")!.disabled).toBe(true);
+    A.tab("members");
+    await until(() => A.q(`[data-testid="member-${b}"]`)!.textContent!.includes("AI 代管中"));
+    B.click("接回");
+    await until(() => !B.q('[data-testid="delegated-banner"]'));
+    expect(room.s.members.find((m) => m.id === b)!.delegated).toBe(false);
+  });
+
+  it("暫時離開：遊戲中已入座跳兩鈕確認，「交給 AI 代管再離開」先代管再斷線", async () => {
+    const { room, B, b } = await table();
+    B.tab("members");
+    B.click("暫時離開");
+    expect(B.q('[data-testid="leave-confirm"]')!.textContent).toContain("你的座位會保留。要不要先把角色交給 AI 代管？");
+    inside(B, "leave-confirm", "交給 AI 代管再離開");
+    await until(() => B.text().includes("你已暫時離開"));
+    expect(room.s.members.find((m) => m.id === b)!.delegated).toBe(true);
+  });
+
+  it("房主：「還在等」裡離線的人旁邊直接代管；全員代管時房主與玩家看到不同的原因，接回寫馬上能行動", async () => {
+    const { room, A, B, b } = await table();
+    B.tab("members");
+    B.click("暫時離開");
+    inside(B, "leave-confirm", "直接離開（座位保留）");
+    await until(() => A.q(`[data-testid="waiting-delegate-${b}"]`));
+    act(() => A.q<HTMLButtonElement>(`[data-testid="waiting-delegate-${b}"]`)!.click());
+    await until(() => room.s.members.find((m) => m.id === b)!.delegated);
+
+    const { room: r2, A: A2, B: B2, a: a2, b: b2 } = await table();
+    A2.tab("host");
+    act(() => A2.q<HTMLButtonElement>(`[data-testid="attend-delegate-${b2}"]`)!.click());
+    await until(() => r2.s.members.find((m) => m.id === b2)!.delegated);
+    act(() => A2.q<HTMLButtonElement>(`[data-testid="attend-delegate-${a2}"]`)!.click());
+    await until(() => A2.text().includes("全員代管中，回合不會自動進行：按 GM 推進，或取消某人的代管"));
+    await until(() => B2.text().includes("全員代管中，等房主處理"));
+    expect(A2.button("結算這回合")).toBeNull(); // 名單空著：結算鈕不出現（按了也只會被擋）
+    expect(B2.q('[data-testid="delegated-banner"]')!.textContent).toContain("接回後馬上就能行動");
+  });
+
+  it("到場整理：一鍵代管沒連線的人；邀請新朋友顯示現行連結不重生；暫停房間先確認、送出後停用", async () => {
+    const { room, A, B, b } = await table();
+    B.tab("members");
+    B.click("暫時離開");
+    inside(B, "leave-confirm", "直接離開（座位保留）");
+    A.tab("host");
+    await until(() => A.q('[data-testid="delegate-offline"]'));
+    expect(A.q('[data-testid="delegate-offline"]')!.textContent).toBe("把沒連線的人都交給 AI 代管（1 人）");
+    act(() => A.q<HTMLButtonElement>('[data-testid="delegate-offline"]')!.click());
+    await until(() => !A.q('[data-testid="delegate-offline"]'));
+    expect(A.q(`[data-testid="host-${b}"]`)!.textContent).toContain("AI 代管中");
+
+    A.click("邀請新朋友");
+    await until(() => A.q('[data-testid="invite"]'));
+    expect(A.q<HTMLInputElement>('[data-testid="invite"]')!.value).toBe(`https://party.example/r/${room.code}#k=${room.joinSecret}`);
+    expect(room.frames("x1", "invite")).toEqual([]);
+
+    A.click("暫停房間");
+    expect(A.q('[data-testid="pause-confirm"]')!.textContent).toContain("得在電腦（");
+    inside(A, "pause-confirm", "暫停房間");
+    await until(() => room.frames("x1", "ctl").length === 1);
+    expect(room.frames("x1", "ctl")[0].p.cmd).toEqual({ kind: "pause" });
+    expect(A.q<HTMLButtonElement>('[data-testid="pause-room"]')!.disabled).toBe(true);
   });
 });

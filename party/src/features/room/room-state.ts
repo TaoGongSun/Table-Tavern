@@ -39,11 +39,12 @@ function copy(v: RoomView): RoomView {
   return { ...v, room: { ...v.room }, me: { ...v.me }, members: v.members.map((m) => ({ ...m })), round: v.round && { ...v.round, roster: v.round.roster.map((e) => ({ ...e })) } };
 }
 
+/** 座位異動（入座、離座、轉移）一律清掉代管旗標：伺服器那邊也清了，接手者要代管會另發 seat.delegated */
 function setSeat(v: RoomView, memberId: string, cardId: string | null) {
   const m = v.members.find((x) => x.memberId === memberId);
   const prev = m?.cardId ?? null;
-  if (m) m.cardId = cardId;
-  if (memberId === v.me.memberId) v.me.cardId = cardId;
+  if (m) Object.assign(m, { cardId, delegated: false });
+  if (memberId === v.me.memberId) Object.assign(v.me, { cardId, delegated: false });
   v.cards = v.cards.map((c) => (c.cardId === cardId ? { ...c, claimedBy: memberId } : c.cardId === prev && c.claimedBy === memberId ? { ...c, claimedBy: null } : c));
 }
 
@@ -96,6 +97,11 @@ function onEvent(v: RoomView, e: any, at: number) {
       setSeat(v, e.from, null);
       setSeat(v, e.to, e.cardId);
       for (const x of v.round?.roster ?? []) if (x.memberId === e.from) x.memberId = e.to;
+      break;
+    case "seat.delegated": // 交給 AI 代管／接回：代管中不在名單（接回時回名單靠 roster_status）
+      for (const m of v.members) if (m.memberId === e.memberId) m.delegated = e.on;
+      if (mine) v.me.delegated = e.on;
+      if (e.on && v.round) v.round.roster = v.round.roster.filter((x) => x.memberId !== e.memberId);
       break;
     case "seat.departure":
       v.departed = v.departed.filter((c) => c !== e.cardId);

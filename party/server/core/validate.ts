@@ -27,7 +27,7 @@ export function shape(v: unknown, spec: string): v is Record<string, any> {
 
 const MEMBER_FRAMES: Record<string, string> = {
   hello: "protocol:i role:s deviceId:s joinSecret?:s nickname?:s pairCode?:s lastSeq:i client:o",
-  "profile.rename": "nickname:s", "seat.claim": "cardId:s", "seat.delegate": "memberId:s on:b", "seat.release": "", "seat.create": "name:s blurb:s",
+  "profile.rename": "nickname:s", "seat.claim": "cardId:s", "seat.delegate": "memberId:s on:b", "seat.delegate_many": "memberIds:a", "seat.release": "", "seat.create": "name:s blurb:s",
   "action.draft": "text:s", "action.submit": "round:i text:s", "action.skip": "round:i", "action.retract": "round:i",
   "round.resolve": "round:i", "round.continue": "round:i", "gen.abort": "round:i", "host.gm": "round:i mode:s cardId?:s", "round.undo": "round:i mode:s next?:o", "action.returned_dismiss": "draft?:s", "room.start": "",
   "room.settings": "patch:o", "invite.regenerate": "", "invite.current": "candidate?:s", "host.transfer": "memberId:s", "member.kick": "memberId:s ban:b mode?:s",

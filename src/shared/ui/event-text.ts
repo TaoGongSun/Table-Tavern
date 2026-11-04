@@ -52,8 +52,9 @@ export function markerHeading(marker: KnownMarker): string {
     case "player_absent":
       return t("marker_player_absent", { name: marker.name });
     // AI 代管（room-seat-delegate）：暫離與接回
+    // 標記原文（marker_player_delegated）也是寫給 GM 的演法提示；玩家看到的標頭只寫狀態
     case "player_delegated":
-      return t("marker_player_delegated", { name: marker.name });
+      return t("roomMarkerDelegated", { name: marker.name });
     case "player_returned":
       return t("marker_player_returned", { name: marker.name });
   }

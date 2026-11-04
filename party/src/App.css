@@ -650,3 +650,59 @@
 .app .crop-zoom input {
   flex: 1;
 }
+
+/* AI 代管（room-seat-delegate）：代管中的常駐列、確認框鈕直排、名單頁離座靠右、邀請 QR */
+.app .delegated-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px var(--gutter);
+  background: var(--surface-2);
+  font-size: 14px;
+}
+
+.app .confirm-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.app .member-actions .seat-release {
+  margin-left: auto;
+}
+
+.app .reopen-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.app .waiting-name .dot {
+  display: inline-block;
+}
+
+.app button.small {
+  min-height: 0;
+  padding: 2px 8px;
+  font-size: 13px;
+}
+
+.app .row.attend {
+  flex-wrap: wrap;
+}
+
+.app .remove-mode {
+  border: 0;
+  padding: 0;
+  margin: 8px 0 0;
+}
+
+.app .invite-box .room-qr {
+  display: block;
+  width: 180px;
+  height: 180px;
+  margin-top: 8px;
+}

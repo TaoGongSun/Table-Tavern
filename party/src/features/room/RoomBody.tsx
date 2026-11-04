@@ -9,6 +9,8 @@ import type { RoomSession } from "./useRoomSession";
 export interface DesktopHooks {
   leaveLabel: string;
   onLeave: () => void;
+  /** 資訊列那條邀請連結：房主頁「邀請新朋友」直接顯示它 */
+  inviteUrl: string | null;
 }
 
 export function RoomBody({ room, origin, desktop }: { room: RoomSession; origin: string; desktop?: DesktopHooks }) {
@@ -33,6 +35,8 @@ export function RoomBody({ room, origin, desktop }: { room: RoomSession; origin:
           onLeave: desktop ? desktop.onLeave : () => (room.leave(), setLeft(true)),
           leaveLabel: desktop?.leaveLabel,
           pairForm: !desktop,
+          inviteUrl: desktop?.inviteUrl,
+          joinSecret: desktop ? null : room.joinSecret,
         }}
       />
     </>

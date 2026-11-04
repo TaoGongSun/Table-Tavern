@@ -145,6 +145,16 @@ function setDraft(tx: Tx, m: Member, raw: unknown) {
   tx.toAll("vol", { type: "roster_status", round: s.round!.round, memberId: m.id, status: e.status });
 }
 
+/** 開或關一位的代管；狀態沒變回 E_STATE_CONFLICT（整筆交易不動） */
+function setDelegated(tx: Tx, by: Member, memberId: string, on: boolean) {
+  const t = tx.w.members.find((x) => x.id === memberId && !x.banned);
+  need(t?.cardId, "E_SEAT_REQUIRED");
+  need(!!t.delegated !== on, "E_STATE_CONFLICT");
+  if (on) delegate(tx, t);
+  else undelegate(tx, t);
+  tx.emit("seat.delegated", { memberId: t.id, cardId: t.cardId, on, by: by.id });
+}
+
 export const MEMBER: Record<string, Handler> = {
   ping: (tx) => {
     tx.send(tx.conn, "pong", undefined);
@@ -160,12 +170,14 @@ export const MEMBER: Record<string, Handler> = {
   // 交給 AI 代管／接回（room-seat-delegate §3.1）：本人或房主；座位、卡的認領、草稿都保留
   "seat.delegate": (tx, p, m) => {
     need(p.memberId === m.id || tx.s.hostId === m.id, "E_FORBIDDEN");
-    const t = tx.w.members.find((x) => x.id === p.memberId && !x.banned);
-    need(t?.cardId, "E_SEAT_REQUIRED");
-    need(!!t.delegated !== p.on, "E_STATE_CONFLICT");
-    if (p.on) delegate(tx, t);
-    else undelegate(tx, t);
-    tx.emit("seat.delegated", { memberId: t.id, cardId: t.cardId, on: p.on, by: m.id });
+    setDelegated(tx, m, p.memberId, p.on);
+  },
+  // 房主一次代管好幾位（一鍵代管）：同一筆交易做完，結算留給交易尾端，已送出的人一律先退回草稿、不會先被結算進去
+  "seat.delegate_many": (tx, p, m) => {
+    host(tx, m);
+    const ids: unknown[] = p.memberIds;
+    need(ids.length > 0 && ids.length <= 12 && ids.every((x) => typeof x === "string") && new Set(ids).size === ids.length, "E_BAD_FRAME");
+    for (const id of ids as string[]) setDelegated(tx, m, id, true);
   },
   "seat.release": (tx, _p, m) => {
     open(tx.s);

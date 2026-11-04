@@ -1,6 +1,7 @@
 // 座位交給 AI 代管、移除時一起決定處置、房主遠端暫停（room-seat-delegate 包 1）
 import { describe, expect, it } from "vitest";
 import { CARDS, playing, Room, STAGE } from "./room-test-kit";
+import { applyFrame, type RoomView } from "../../src/features/room/room-state";
 
 const lastDispatch = (room: Room) => room.frames("x1", "dispatch").at(-1)?.p;
 const ids = (room: Room) => room.s.round!.roster.map((e) => e.memberId);
@@ -233,5 +234,55 @@ describe("代管接回碰上收回／重生", () => {
     expect(again.dispatchId).not.toBe(first.dispatchId);
     expect(again).toMatchObject({ players: first.players, arrivals: ["c2"], departures: first.departures, returns: ["c2"] });
     expect(room.s.returning).toEqual([]);
+  });
+});
+
+describe("一鍵代管 seat.delegate_many", () => {
+  it("同一筆交易做完才結算：已送出的人照樣退回草稿、不被算進這回合（A 送出、B 沒送、C 送出，代管 B、C）", async () => {
+    const room = await playing(["a", "b", "c"]);
+    await room.send("a", "action.submit", { round: 2, text: "a 行動" });
+    await room.send("c", "action.submit", { round: 2, text: "c 行動" });
+    expect((await room.ask("b", "seat.delegate_many", { memberIds: ["m2", "m3"] }))?.p.code).toBe("E_FORBIDDEN");
+    await room.send("a", "seat.delegate_many", { memberIds: ["m2", "m3"] });
+    expect(room.events("round.resolved")).toHaveLength(1);
+    expect(room.events("round.resolved")[0].payload.batch).toMatchObject([{ memberId: "m1", kind: "act" }]);
+    expect(room.s.drafts.m3).toBe("c 行動");
+    expect(lastDispatch(room)).toMatchObject({ players: [{ cardId: "c1" }], departures: [{ cardId: "c2", mode: "delegate" }, { cardId: "c3", mode: "delegate" }] });
+  });
+
+  it("其中一位不能代管（已在代管、沒座位）：整筆不動、回錯", async () => {
+    const room = await playing(["a", "b", "c"]);
+    await room.send("b", "seat.delegate", { memberId: "m2", on: true });
+    expect((await room.ask("a", "seat.delegate_many", { memberIds: ["m3", "m2"] }))?.p.code).toBe("E_STATE_CONFLICT");
+    expect(room.s.members.find((m) => m.id === "m3")?.delegated).toBeFalsy();
+    expect((await room.ask("a", "seat.delegate_many", { memberIds: [] }))?.p.code).toBe("E_BAD_FRAME");
+  });
+});
+
+describe("手機畫面跟著座位異動清代管旗標", () => {
+  /** 某位成員從加入那一刻起看到的畫面（第一份快照＋之後逐筆套事件） */
+  const view = (room: Room, id: string) => (room.out[id] ?? []).reduce<RoomView | null>((v, f) => (f.t === "welcome" && v ? v : applyFrame(v, f)), null)!;
+
+  it("代管、離座、再認領：本人與名單都不是代管中", async () => {
+    const room = await playing();
+    await room.send("b", "seat.delegate", { memberId: "m2", on: true });
+    expect(view(room, "b").me.delegated).toBe(true);
+    await room.send("b", "seat.release");
+    await room.send("b", "seat.claim", { cardId: "c3" });
+    for (const id of ["a", "b"]) expect(view(room, id).members.find((m) => m.memberId === "m2")?.delegated).toBe(false);
+    expect(view(room, "b").me).toMatchObject({ cardId: "c3", delegated: false });
+  });
+
+  it("代管中的座位轉給別人：來源與接手者在每支手機上都不是代管中", async () => {
+    const room = await playing();
+    await room.join("c");
+    await room.send("b", "seat.delegate", { memberId: "m2", on: true });
+    await room.send("a", "member.reassign", { from: "m2", to: "m3" });
+    for (const id of ["a", "b", "c"]) {
+      const v = view(room, id);
+      expect(v.members.filter((m) => m.delegated)).toEqual([]);
+    }
+    expect(view(room, "b").me.delegated).toBe(false);
+    expect(view(room, "c").me).toMatchObject({ cardId: "c2", delegated: false });
   });
 });

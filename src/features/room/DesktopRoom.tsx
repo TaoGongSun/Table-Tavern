@@ -9,7 +9,7 @@ import { gmErrorText } from "@party/features/room/gm-error";
 import { redactAiErrorDetail } from "../../shared/ui/ai-error";
 import { backendText } from "../../shared/ui/backend-text";
 import { currentLang, t } from "../../i18n";
-import { QrCode } from "./QrCode";
+import { QrCode } from "@party/features/controls/QrCode";
 import type { RoomStatus } from "./room-status";
 import type { DesktopRoomCtl } from "./useDesktopRoom";
 
@@ -164,7 +164,7 @@ export function DesktopRoom({ ctl }: { ctl: DesktopRoomCtl }) {
         </p>
       ) : room ? (
         <div className="app party-embedded">
-          <RoomBody room={room} origin={ctl.origin} desktop={{ leaveLabel: t("roomPause"), onLeave: ctl.pause }} />
+          <RoomBody room={room} origin={ctl.origin} desktop={{ leaveLabel: t("roomPause"), onLeave: ctl.pause, inviteUrl: status?.inviteUrl ?? null }} />
         </div>
       ) : (
         <p className="room-stopped">{t("roomConnecting")}</p>
