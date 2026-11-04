@@ -179,6 +179,8 @@ pub(crate) struct Status {
     pub(crate) keep_awake: Option<bool>,
     pub(crate) model_label: Option<String>,
     pub(crate) last_error: Option<String>,
+    /// `last_error` 是 GM 生成失敗時，執行端分好的 `ExecutorErrorKind`；其他錯誤為 None
+    pub(crate) last_error_kind: Option<String>,
     /// 伺服器上的房間已被清（閒置過期或被結束）：重開會建新房、房間碼換新
     pub(crate) gone: bool,
     pub(crate) image_gen: bool,
@@ -361,8 +363,19 @@ impl Room {
     }
 
     pub(crate) fn note_error(&self, message: &str) {
+        self.note(None, message);
+    }
+
+    /// GM 生成失敗：連同分好的種類記下（面板照種類出那句人話）
+    pub(crate) fn note_gm_error(&self, kind: String, message: &str) {
+        self.note(Some(kind), message);
+    }
+
+    fn note(&self, kind: Option<String>, message: &str) {
         log::warn!("房間模式：{message}");
-        self.status().last_error = Some(message.chars().take(300).collect());
+        let mut status = self.status();
+        status.last_error = Some(message.chars().take(300).collect());
+        status.last_error_kind = kind;
     }
 
     /// 協定 §6.5 `InflightReport`

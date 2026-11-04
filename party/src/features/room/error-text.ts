@@ -61,5 +61,7 @@ export const HOLD_TEXT: Record<ExecutorErrorKind, MsgKey> = {
   model_unavailable: "holdModelGone",
   other: "holdOther",
 };
+/** 看畫面的人就是出額度者（能自己處理）時改講他能做什麼 */
+export const HOLD_TEXT_PAYER: Partial<Record<ExecutorErrorKind, MsgKey>> = { refusal: "holdRefusalPayer" };
 
 export const clock = (at: number) => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });

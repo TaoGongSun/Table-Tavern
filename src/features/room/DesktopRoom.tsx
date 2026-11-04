@@ -2,7 +2,7 @@
 // 連線本身在 app 最外層（useDesktopRoom），這裡只畫；離開這個畫面連線照開著。
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
-import { RoomBody } from "@party/App";
+import { RoomBody } from "@party/features/room/RoomBody";
 import "@party/App.css";
 import { setLangOnly, t as partyT } from "@party/i18n";
 import { gmErrorText } from "@party/features/room/gm-error";
@@ -114,7 +114,7 @@ export function DesktopRoom({ ctl }: { ctl: DesktopRoomCtl }) {
         {status?.lastError && (
           <div className="room-row">
             <span className="room-label">{t("roomLastError")}</span>
-            {status.lastError === "E_SERVER_OUTDATED" ? <span>{t("roomServerOutdated")}</span> : <LastError text={status.lastError} />}
+            {status.lastError === "E_SERVER_OUTDATED" ? <span>{t("roomServerOutdated")}</span> : <LastError text={status.lastError} kind={status.lastErrorKind} />}
           </div>
         )}
         {(open || handoff) && (
@@ -176,14 +176,14 @@ export function DesktopRoom({ ctl }: { ctl: DesktopRoomCtl }) {
 // 金鑰片段（sk-…、sk-or-…）：錯誤原文可能抄到，跟 user_id 一樣不印在畫面上（截圖求救、分享螢幕會外流）
 const KEY = /\b(sk-(?:or-)?(?:v\d-)?)[A-Za-z0-9_-]{6,}/g;
 
-/** 「最近錯誤」：一句人話（跟重生時的換模型選單共用 gm-error 對照），原文收進「詳情」並遮掉帳號與金鑰 */
-function LastError({ text }: { text: string }) {
+/** 「最近錯誤」：照執行端分好的種類出一句人話（跟手機共用 gm-error），原文收進「詳情」並遮掉帳號與金鑰 */
+function LastError({ text, kind }: { text: string; kind: RoomStatus["lastErrorKind"] }) {
   const cut = text.search(/[：:]/);
   const code = (cut > 0 ? text.slice(0, cut) : text).trim();
   const detail = redactAiErrorDetail(backendText(cut > 0 ? text.slice(cut + 1).trim() : text)).replace(KEY, "$1[redacted]");
   return (
     <span>
-      {gmErrorText(code)}{" "}
+      {gmErrorText(kind, code)}{" "}
       <details className="room-error-detail">
         <summary>{partyT("gmErrDetail")}</summary>
         <small>{detail}</small>

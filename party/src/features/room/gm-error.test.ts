@@ -1,7 +1,9 @@
 import { expect, it } from "vitest";
-import { gmErrorKind, modelBroken } from "./gm-error";
+import { gmErrorText, modelBroken } from "./gm-error";
+import { t } from "../../i18n";
 
-it("錯誤碼分成要換模型（下架、金鑰）與可直接重試（額度、逾時、網路）", () => {
-  expect(["AI_HTTP_STATUS_404", "AI_HTTP_STATUS_401", "cli_model_unavailable"].map(gmErrorKind).map(modelBroken)).toEqual([true, true, true]);
-  expect(["AI_HTTP_STATUS_429", "E_GEN_TIMEOUT", "AI_CALL_FAILED", "AI_HTTP_STATUS_503", "WHATEVER"].map(gmErrorKind)).toEqual(["quota", "stalled", "network", "network", "other"]);
+it("模型本身用不了（下架、金鑰／登入）才灰掉；沒種類的錯誤只講房間出了問題", () => {
+  expect((["model_unavailable", "not_ready", "quota", "provider_unreachable", "other"] as const).map(modelBroken)).toEqual([true, true, false, false, false]);
+  expect(gmErrorText("scene_full", "AI_CONTEXT_TOO_LONG")).toBe(t("gmErrSceneFull"));
+  expect(gmErrorText(null, "ROOM_CONNECT_FAILED")).toBe(t("roomErrOther", { code: "ROOM_CONNECT_FAILED" }));
 });

@@ -1,6 +1,6 @@
 // 電腦的房間成員連線本體（room-host-desktop-play）：掛在 app 最外層、不畫東西，只把最新狀態交給 useDesktopRoom。
 import { useEffect, useRef } from "react";
-import { useRoomSession } from "@party/App";
+import { useRoomSession } from "@party/features/room/useRoomSession";
 import { ipcSocket } from "./ipc-socket";
 import type { DesktopRoomCtl } from "./useDesktopRoom";
 

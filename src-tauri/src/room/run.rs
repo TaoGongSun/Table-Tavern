@@ -45,9 +45,9 @@ fn report(room: &Room) {
 
 // ── 錯誤分類（協定 §7.1）──
 
-/// 桌面版錯誤字串 → `ExecutorError`。代碼取 `TTMSG:` 的 code 或冒號前的大寫前綴；說明不帶回應本文與路徑
-pub(super) fn classify(error: &str) -> Value {
-    let code = match error.strip_prefix(crate::ui_msg::MARK) {
+/// 錯誤字串的代碼：`TTMSG:` 的 code 或冒號前的大寫前綴；認不出就空字串
+fn code_of(error: &str) -> String {
+    match error.strip_prefix(crate::ui_msg::MARK) {
         Some(json) => {
             serde_json::from_str::<Value>(json).map_or(String::new(), |v| text(&v["code"]))
         }
@@ -60,14 +60,14 @@ pub(super) fn classify(error: &str) -> Value {
             })
             .unwrap_or_default()
             .to_owned(),
-    };
-    let code = if code.is_empty() {
-        "OTHER".to_owned()
-    } else {
-        code
-    };
+    }
+}
+
+type Kind = (&'static str, &'static [&'static str], &'static str);
+
+fn kind_of(code: &str) -> Kind {
     let has = |needles: &[&str]| needles.iter().any(|needle| code.starts_with(needle));
-    let (kind, actions, message): (&str, &[&str], &str) = if has(&["AI_CONTENT_FILTERED"]) {
+    if has(&["AI_CONTENT_FILTERED"]) {
         (
             "refusal",
             &["switch_route", "switch_model", "retry", "continue"],
@@ -99,6 +99,9 @@ pub(super) fn classify(error: &str) -> Value {
     } else if has(&[
         "cli_not_found",
         "cli_risk_not_accepted",
+        "openrouter_api_key_missing",
+        "codex_auth_missing",
+        // 已知限制：403 也可能是地區或內容被擋，這時「金鑰或登入失效」會誤導
         "AI_HTTP_STATUS_401",
         "AI_HTTP_STATUS_403",
     ]) {
@@ -109,13 +112,9 @@ pub(super) fn classify(error: &str) -> Value {
         )
     } else if has(&[
         "cli_too_old",
-        "cli_updating",
         "cli_output_unrecognized",
         "cli_reply_error",
         "cli_no_reply",
-        "AI_INCOMPLETE_RESPONSE",
-        "AI_OUTPUT_RUNAWAY",
-        "AI_EMPTY_RESPONSE",
     ]) {
         (
             "tool_format",
@@ -123,6 +122,11 @@ pub(super) fn classify(error: &str) -> Value {
             "The command-line tool or its output format needs attention.",
         )
     } else if has(&[
+        // 回應半截、失控、空白、CLI 正在更新：重生或重試就會好，不叫人去設定
+        "AI_INCOMPLETE_RESPONSE",
+        "AI_OUTPUT_RUNAWAY",
+        "AI_EMPTY_RESPONSE",
+        "cli_updating",
         "AI_CALL_FAILED",
         "AI_STREAM_STALLED",
         "AI_HTTP_STATUS_",
@@ -137,7 +141,30 @@ pub(super) fn classify(error: &str) -> Value {
         )
     } else {
         ("other", &["retry", "continue"], "The GM host hit an error.")
-    };
+    }
+}
+
+/// 桌面版錯誤字串 → `ExecutorError`；說明不帶回應本文與路徑。回合錯誤被 `ai_call_failure` 包成
+/// `AI_CALL_FAILED: TTMSG:…` 時照內層的碼分（比照前端 `ai-error.ts`），內層認不出才用外層
+pub(super) fn classify(error: &str) -> Value {
+    let mut code = code_of(error);
+    let mut kind = kind_of(&code);
+    if code == "AI_CALL_FAILED" {
+        let inner = error
+            .split_once(':')
+            .map_or("", |(_, rest)| rest.trim_start());
+        if inner.starts_with(crate::ui_msg::MARK) {
+            let inner_code = code_of(inner);
+            let inner_kind = kind_of(&inner_code);
+            if inner_kind.0 != "other" {
+                (code, kind) = (inner_code, inner_kind);
+            }
+        }
+    }
+    if code.is_empty() {
+        code = "OTHER".to_owned();
+    }
+    let (kind, actions, message) = kind;
     json!({
         "kind": kind, "code": code.chars().take(64).collect::<String>(),
         "message": message, "actions": actions, "resetsAt": null,
@@ -223,7 +250,10 @@ async fn chain(room: &Arc<Room>) {
         }
         Err((at_part, message)) => {
             let error = classify(&message);
-            room.note_error(&format!("{}：{message}", text(&error["code"])));
+            room.note_gm_error(
+                text(&error["kind"]),
+                &format!("{}：{message}", text(&error["code"])),
+            );
             let p = json!({ "dispatchId": run.id, "atPart": at_part, "error": error });
             room.durable("gen.failed", p, |saved| {
                 set_state(saved, &run.id, RunState::Failed)

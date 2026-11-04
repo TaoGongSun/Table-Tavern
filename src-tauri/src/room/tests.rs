@@ -609,6 +609,16 @@ async fn reconnect_follows_inflight_report() {
         running.room.panel().last_error.as_deref(),
         Some("AI_CONTENT_FILTERED：拒答")
     );
+    // 只有 GM 生成失敗帶種類；之後記別的錯誤就清掉
+    running
+        .room
+        .note_gm_error("refusal".to_owned(), "AI_CONTENT_FILTERED：拒答");
+    assert_eq!(
+        running.room.panel().last_error_kind.as_deref(),
+        Some("refusal")
+    );
+    running.room.note_error("roster.update：x");
+    assert_eq!(running.room.panel().last_error_kind, None);
     running.stop().await;
 }
 
@@ -785,8 +795,51 @@ fn errors_overrides_and_capabilities() {
         kind(&crate::ui_msg::UiMsg::CliRiskNotAccepted.to_string()),
         "not_ready"
     );
-    assert_eq!(kind("AI_INCOMPLETE_RESPONSE: cut"), "tool_format");
+    assert_eq!(kind("AI_INCOMPLETE_RESPONSE: cut"), "provider_unreachable");
     assert_eq!(kind("AI_HTTP_STATUS_404: gone"), "model_unavailable");
+    // 回合錯誤被 ai_call_failure 包殼：照內層的碼分，內層認不出才用外層
+    let wrap = |msg: crate::ui_msg::UiMsg| format!("AI_CALL_FAILED: {msg}");
+    let wrapped = run::classify(&wrap(crate::ui_msg::UiMsg::CliModelUnavailable {
+        cli: "codex".into(),
+        model: "m".into(),
+    }));
+    assert_eq!(wrapped["kind"], "model_unavailable");
+    assert_eq!(wrapped["code"], "cli_model_unavailable");
+    assert_eq!(
+        kind(&wrap(crate::ui_msg::UiMsg::OpenrouterApiKeyMissing)),
+        "not_ready"
+    );
+    assert_eq!(
+        kind(&crate::ui_msg::UiMsg::OpenrouterApiKeyMissing.to_string()),
+        "not_ready"
+    );
+    assert_eq!(
+        kind(&wrap(crate::ui_msg::UiMsg::CodexAuthMissing {
+            path: "~/x".into()
+        })),
+        "not_ready"
+    );
+    assert_eq!(
+        kind(&wrap(crate::ui_msg::UiMsg::UnknownTransport {
+            transport: "x".into()
+        })),
+        "provider_unreachable"
+    );
+    assert_eq!(
+        kind("AI_CALL_FAILED: error sending request"),
+        "provider_unreachable"
+    );
+    // 內層不是 JSON、不是物件、或又包了一層：一律退回外層，不猜
+    for odd in [
+        "AI_CALL_FAILED: TTMSG:not json",
+        "AI_CALL_FAILED: TTMSG:[\"cli_model_unavailable\"]",
+        "AI_CALL_FAILED: TTMSG:\"cli_model_unavailable\"",
+        "AI_CALL_FAILED: AI_CALL_FAILED: TTMSG:{\"code\":\"cli_model_unavailable\"}",
+    ] {
+        let error = run::classify(odd);
+        assert_eq!(error["kind"], "provider_unreachable", "{odd}");
+        assert_eq!(error["code"], "AI_CALL_FAILED", "{odd}");
+    }
     assert_eq!(kind("AI_HTTP_STATUS_503: busy"), "provider_unreachable");
     assert_eq!(kind("讀不到檔案 /home/someone/x"), "other");
     assert_eq!(

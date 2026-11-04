@@ -4,7 +4,7 @@ import { useState } from "react";
 import { t } from "../../i18n";
 import type { RoomView } from "../room/room-state";
 import { useRun, type Act } from "../room/useRoom";
-import { holdKind, modelBroken } from "../room/gm-error";
+import { modelBroken } from "../room/gm-error";
 import { RoutePicker } from "./RoutePicker";
 
 export function UndoControls({ view, act }: { view: RoomView; act: Act }) {
@@ -21,7 +21,7 @@ export function UndoControls({ view, act }: { view: RoomView; act: Act }) {
   };
   const offline = !view.executor.online ? t("startNeedExecutor") : view.executor.syncing ? t("roundHostSyncing") : null;
   // 卡住（held）時看上次失敗的種類：模型本身用不了就灰掉它；暫時性錯誤原模型照選、提示可以直接重試
-  const failed = r?.phase === "held" && r.hold ? holdKind(r.hold.kind) : null;
+  const failed = r?.phase === "held" && r.hold ? r.hold.kind : null;
   const cur = view.room.sceneSettings;
   const broken = failed && modelBroken(failed) && cur ? { route: cur.route, model: cur.model } : null;
   // 卡住且 GM 這回合一段都沒寫出來：沒有東西會消失，警語改講會重跑
@@ -38,7 +38,7 @@ export function UndoControls({ view, act }: { view: RoomView; act: Act }) {
         <div className="undo-confirm" data-testid="undo-confirm">
           <p>{t(warn)}</p>
           <div className="panel-actions">
-            <button type="button" className="danger" disabled={ask === "regenerate" && !!broken} onClick={() => undo(ask)}>{ask === "regenerate" && broken ? t("regenSameBroken", { why: t(failed === "gone" ? "whyGone" : "whyAuth") }) : t(ask === "regenerate" ? "undoRegenerate" : "undoEdit")}</button>
+            <button type="button" className="danger" disabled={ask === "regenerate" && !!broken} onClick={() => undo(ask)}>{ask === "regenerate" && broken ? t("regenSameBroken", { why: t(failed === "model_unavailable" ? "whyGone" : "whyAuth") }) : t(ask === "regenerate" ? "undoRegenerate" : "undoEdit")}</button>
             <button type="button" className="ghost" onClick={() => setAsk(null)}>{t("cancel")}</button>
           </div>
           {ask === "regenerate" && view.room.payerId === view.me.memberId && (

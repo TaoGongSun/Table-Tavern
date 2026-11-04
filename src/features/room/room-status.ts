@@ -1,6 +1,7 @@
 // Rust `room::Status` 的前端型別與輪詢：房間在 Rust 跑（執行端迴圈與房間畫面的成員連線），畫面只讀狀態。
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
+import type { ExecutorErrorKind } from "../../../party/server/core/types";
 
 export interface RoomStatus {
   /** 執行端在跑（房間開著） */
@@ -17,6 +18,8 @@ export interface RoomStatus {
   keepAwake: boolean | null;
   modelLabel: string | null;
   lastError: string | null;
+  /** `lastError` 是 GM 生成失敗時執行端分好的種類；其他錯誤為 null */
+  lastErrorKind: ExecutorErrorKind | null;
   /** 伺服器上的房間已被清：重開會建新房 */
   gone: boolean;
   /** 允許玩家用 AI 生圖（這桌的房間設定，預設開；room-player-cards §3.7） */

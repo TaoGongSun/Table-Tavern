@@ -278,8 +278,10 @@ describe("手機客戶端對真伺服器核心", () => {
     await hub.exec("dispatch.ack", { dispatchId });
     const error = { kind: "refusal", code: "AI_CONTENT_FILTERED", message: "供應商拒答，建議切境外路線", actions: ["switch_route", "switch_model", "retry", "continue"], resetsAt: null };
     await hub.exec("gen.failed", { dispatchId, atPart: null, error });
-    await until(() => B.text().includes("GM 這段被供應商擋下，等出額度者處理"));
+    await until(() => B.text().includes("GM 這段被供應商擋下，等房主處理"));
     expect(B.text()).not.toContain("AI_CONTENT_FILTERED");
+    expect(B.text()).toContain("GM 卡住了，房主處理後再送");
+    expect(A.text()).toContain("GM 這段被供應商擋下，你可以重試、換模型或跳過"); // A 是出額度者
 
     A.tab("payer");
     await until(() => A.q('[data-testid="error-detail"]'));

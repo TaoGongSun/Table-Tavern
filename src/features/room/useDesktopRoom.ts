@@ -4,7 +4,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { RoomSession } from "@party/App";
+import type { RoomSession } from "@party/features/room/useRoomSession";
 import { parseInvite, type Invite } from "@party/features/connection/invite";
 import { t } from "../../i18n";
 import { pairCodeOf, readRoomStatus, waitRoomStatus, type RoomStatus } from "./room-status";

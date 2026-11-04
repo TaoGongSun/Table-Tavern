@@ -53,7 +53,7 @@ export function ActionBox({ view, act, sendDraft, cancelDraft }: { view: RoomVie
     }
     else if (text) sendDraft(text);
   };
-  const hint = !live ? t("actionWaitStart") : r?.phase !== "acting" ? t("errRoundNotActing") : !entry ? t("actionNextRound") : done && !(entry?.status === "submitted" && entry.text) ? t("actionDone") : null;
+  const hint = !live ? t("actionWaitStart") : r?.phase === "held" ? t("actionHeld") : r?.phase !== "acting" ? t("errRoundNotActing") : !entry ? t("actionNextRound") : done && !(entry?.status === "submitted" && entry.text) ? t("actionDone") : null;
   return (
     <div className="action-box" data-testid="action-box">
       {hint && <div className="action-hint">{hint}</div>}

@@ -1,7 +1,7 @@
 // 回合列：回合號與幕、倒數、GM 生成中／主機離線等待中、held 的公開錯誤；房主（與出額度者）的回合級按鈕也在這裡。
 import { useEffect, useState } from "react";
 import { modelName, t } from "../../i18n";
-import { clock, HOLD_TEXT } from "./error-text";
+import { clock, HOLD_TEXT, HOLD_TEXT_PAYER } from "./error-text";
 import type { RoomView } from "./room-state";
 import { useRun, type Act } from "./useRoom";
 
@@ -15,7 +15,7 @@ function status(v: RoomView, now: number): string {
   if (v.room.status === "lobby") return t("roundLobby");
   if (v.room.status === "transition") return t(v.room.transition?.stalled ? "roundStalled" : "roundTransition");
   if (!r) return "";
-  if (r.phase === "held" && r.hold) return r.hold.kind === "quota" && r.hold.resetsAt ? t("holdQuotaAt", { time: clock(r.hold.resetsAt) }) : t(HOLD_TEXT[r.hold.kind]);
+  if (r.phase === "held" && r.hold) return r.hold.kind === "quota" && r.hold.resetsAt ? t("holdQuotaAt", { time: clock(r.hold.resetsAt) }) : t((v.room.payerId === v.me.memberId && HOLD_TEXT_PAYER[r.hold.kind]) || HOLD_TEXT[r.hold.kind]);
   if (r.phase !== "acting") return t(v.executor.online ? "roundGenerating" : v.executor.paused ? "roundHostPaused" : "roundExecutorOffline");
   if (r.deadline !== null) return t("roundCountdown", { time: mmss(Math.max(0, r.deadline - now)) });
   return r.pausedRemainingMs !== null ? t("roundPaused", { time: mmss(r.pausedRemainingMs) }) : t("roundActing");
