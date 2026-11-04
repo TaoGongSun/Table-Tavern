@@ -4,6 +4,7 @@ import { PCLOUD_PAGE } from "../../shared/endpoints/origins";
 import { ROOM_GUIDE_HASH } from "./download-route";
 import { FEATURE_COMPARE } from "./feature-compare";
 import type { ReleaseInfo } from "./releases";
+import { version as DESKTOP_VERSION } from "../../../../package.json";
 import { ROOM_TOUR_ZH_CN, TOUR_FEATURES, TOUR_HERO } from "./tour-features";
 import { pickTourImage, TOUR_IMAGES, type TourImages } from "./tour-images";
 import { useOverlayPage } from "./useOverlayPage";
@@ -23,8 +24,9 @@ const SHOT_HEIGHT = 1136;
 
 /** 簡中頁與中國供應商模式只給 pCloud：GitHub 在中國連不上 */
 const pcloudOnly = (cn: boolean) => cn || getLang() === "zh-CN";
-/** 版本行：中國供應商模式不打 GitHub 就不畫；簡中頁只在讀到版本時畫，讀不到不提「到發布頁查看」（那頁沒有發布頁連結） */
-const showVersion = (cn: boolean, status: ReleaseInfo["status"]) => !cn && (getLang() !== "zh-CN" || status === "ok");
+/** pCloud 頁的版本行：不打 GitHub，用建置時的桌面版版本號（換版時 pCloud 檔可能晚一步換上） */
+const versionLine = (cn: boolean, release: ReleaseInfo) =>
+  pcloudOnly(cn) ? t("downloadVersion", { version: DESKTOP_VERSION }) : release.status === "ok" ? t("downloadVersion", { version: release.version ?? "" }) : t(STATUS_TEXT[release.status]);
 
 /** 下載鈕：沒有對應安裝檔就不出該平台鈕，「所有版本與檔案」永遠在（沒有平台檔時它就是主要按鈕） */
 function DownloadButtons({ release, cn, testId, guide = false }: { release: ReleaseInfo; cn: boolean; testId: string; guide?: boolean }) {
@@ -132,11 +134,9 @@ export function DownloadPage({ release, cn = false, onClose, images = TOUR_IMAGE
           <h1 id="tour-title">{t("tourTitle")}</h1>
           <p className="tour-lead">{t("tourLead")}</p>
           <DownloadButtons release={release} cn={cn} testId="download-cta" guide={rooms.length > 0} />
-          {showVersion(cn, release.status) && (
-            <p className="download-version" data-testid="download-version">
-              {release.status === "ok" ? t("downloadVersion", { version: release.version ?? "" }) : t(STATUS_TEXT[release.status])}
-            </p>
-          )}
+          <p className="download-version" data-testid="download-version">
+            {versionLine(cn, release)}
+          </p>
         </div>
         {hero}
       </section>

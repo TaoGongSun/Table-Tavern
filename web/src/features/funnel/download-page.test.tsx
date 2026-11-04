@@ -2,6 +2,7 @@
 // 下載頁（桌面版導覽）：版本與上下兩組下載鈕、沒有正式版退發佈頁、截圖選圖與缺圖退圖示卡、安裝繞過說明、功能對照表；
 // 覆蓋層行為（鎖捲動、Esc、焦點）；`#download` 開關；碰到桌面版才有的功能給下載連結。
 import { act } from "react";
+import { version as DESKTOP_VERSION } from "../../../../package.json";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { DesktopOnly } from "./DesktopOnly";
@@ -65,26 +66,22 @@ describe("the download page", () => {
     expect(targets()).toEqual(Array(6).fill("_blank"));
   });
 
-  it("simplified Chinese: only pCloud, no GitHub links; version line only once the version is known", async () => {
+  it("simplified Chinese: only pCloud, no GitHub links; the version line is the desktop build's version", async () => {
     setLang("zh-CN");
     try {
       await render(<DownloadPage release={RELEASE} onClose={() => {}} />);
       const pcloud = { text: "从 pCloud 下载（国内可用）", href: PCLOUD_PAGE, rel: "noopener noreferrer" };
       expect(groups()).toEqual([[pcloud, { text: ROOM_TOUR_ZH_CN.more, href: "#guide/room", rel: null }], [pcloud]]);
-      expect(host.querySelector("[data-testid=download-version]")?.textContent).toBe(`当前版本 v${RELEASE.version}`);
-      await act(async () => root?.unmount());
-      host.remove();
-      await render(<DownloadPage release={LOADING_RELEASE} onClose={() => {}} />);
-      expect(host.querySelector("[data-testid=download-version]")).toBeNull();
+      expect(host.querySelector("[data-testid=download-version]")?.textContent).toBe(`当前版本 v${DESKTOP_VERSION}`);
     } finally {
       setLang("zh-TW");
     }
   });
 
-  it("China provider mode: only pCloud, no GitHub links and no version line", async () => {
+  it("China provider mode: only pCloud, no GitHub links; the version comes from the build, not GitHub", async () => {
     await render(<DownloadPage release={LOADING_RELEASE} cn onClose={() => {}} />);
     expect(groups()).toEqual(Array(2).fill([{ text: "從 pCloud 下載（中國大陸可用）", href: PCLOUD_PAGE, rel: "noopener noreferrer" }]));
-    expect(host.querySelector("[data-testid=download-version]")).toBeNull();
+    expect(host.querySelector("[data-testid=download-version]")?.textContent).toBe(`目前版本 v${DESKTOP_VERSION}`);
   });
 
   it("rate limited, offline, or a release without matching installers: no broken link and never 'no release yet'", async () => {
