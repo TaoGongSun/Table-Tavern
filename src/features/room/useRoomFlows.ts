@@ -29,10 +29,10 @@ const roomError = (reason: unknown) => (String(reason).includes("ROOM_OTHER_TABL
 
 export function useRoomFlows(deps: Deps) {
   const host = useRoomHost();
-  const [dialog, setDialog] = useState<{ server: string } | null>(null);
+  const [dialog, setDialog] = useState<{ server: string; world?: string; name?: string } | null>(null);
   const [queue, setQueue] = useState<{ world: string; files: File[] } | null>(null);
   // 選了卡開房：匯完才開房
-  const [pending, setPending] = useState<{ world: string; server: string } | null>(null);
+  const [pending, setPending] = useState<{ world: string; server: string; fresh: boolean } | null>(null);
   // 這次從開房／重開進來的桌：房間斷了（伺服器上被清、被取代）也留在房間畫面，讓它自己建新房或給「重新連線」
   const [shown, setShown] = useState<string | null>(null);
   // 正在跑的那一張（匯入函式本身回來為止；之後的身分框、路由框、開場旁白框由 importPending／openingPending 接手）
@@ -60,11 +60,12 @@ export function useRoomFlows(deps: Deps) {
     }
     if (queue || !settled) return;
     setPending(null);
-    void bind(pending.world, pending.server);
+    void bind(pending.world, pending.server, pending.fresh);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending, queue, table, busy, settled]);
 
-  async function start() {
+  /** worldId 給了＝用這張未遊玩的桌開房（桌卡選單），不建新桌 */
+  async function start(worldId?: string, name?: string) {
     if (host.activeWorld) {
       // 另一間房開著：一次只開一間，帶他回那間
       await deps.enterTable(host.activeWorld);
@@ -76,32 +77,33 @@ export function useRoomFlows(deps: Deps) {
       return;
     }
     const status = await readRoomStatus().catch(() => null);
-    setDialog({ server: status?.server ?? "" });
+    setDialog({ server: status?.server ?? "", world: worldId, name });
   }
 
   function open(files: File[], server: string) {
+    const existing = dialog?.world;
     setDialog(null);
     return deps.runTableOp(async () => {
       deps.setError("");
       try {
-        const id = await invoke<string>("create_world", { name: t("roomTableName"), tableKind: "chat" });
+        const id = existing ?? (await invoke<string>("create_world", { name: t("roomTableName"), tableKind: "chat" }));
         await deps.refreshWorlds();
         await deps.enterTable(id);
         if (files.length > 0) setQueue({ world: id, files });
-        setPending({ world: id, server });
+        setPending({ world: id, server, fresh: !existing });
       } catch (reason) {
         deps.setError(roomError(reason));
       }
     });
   }
 
-  /** 綁新房間、桌名換成房間碼、換成房間畫面；房間沒開成就把剛建的空桌收掉 */
-  function bind(id: string, server: string) {
+  /** 綁新房間、新建的桌名換成房間碼（用現有桌開房則保留原桌名）、換成房間畫面；房間沒開成就把剛建的空桌收掉 */
+  function bind(id: string, server: string, fresh: boolean) {
     return deps.runTableOp(async () => {
       try {
         const status = await enterRoom(id, server);
         // 房間桌用房間碼命名：不掛自動名（空桌回收不收它，Rust 端也另有一道）
-        if (status.roomCode) {
+        if (fresh && status.roomCode) {
           await invoke("rename_world", { worldId: id, newName: `${t("roomTableName")} ${status.roomCode}` }).catch(() => {});
         }
         await deps.refreshWorlds();

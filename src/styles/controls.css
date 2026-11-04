@@ -160,6 +160,13 @@ button.menu-item-danger,
   cursor: default;
 }
 
+.menu-note {
+  display: block;
+  font-size: var(--fs-meta);
+  color: var(--ink-3);
+  white-space: normal;
+}
+
 .menu-sep {
   width: auto;
   height: 1px;

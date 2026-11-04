@@ -5,18 +5,21 @@ import { Dialog } from "../../shared/ui/Dialog";
 
 export function OpenRoomDialog({
   server: initialServer,
+  existingTable,
   onCancel,
   onOpen,
 }: {
   server: string;
+  /** 用現有的桌開房：不選卡，只有一顆開房鈕 */
+  existingTable?: { name: string };
   onCancel: () => void;
   onOpen: (files: File[], server: string) => void;
 }) {
   const [server, setServer] = useState(initialServer);
   const input = useRef<HTMLInputElement>(null);
   return (
-    <Dialog title={t("roomTitle")} size="m" onDismiss={onCancel} closeButton>
-      <p>{t("roomIntro")}</p>
+    <Dialog title={existingTable ? t("roomTitleFromTable", { name: existingTable.name }) : t("roomTitle")} size="m" onDismiss={onCancel} closeButton>
+      <p>{t(existingTable ? "roomIntroFromTable" : "roomIntro")}</p>
       <p className="risk-box" role="note">
         {t("roomRisk")}
       </p>
@@ -28,12 +31,20 @@ export function OpenRoomDialog({
         </label>
       </details>
       <div className="room-row">
-        <button type="button" className="btn btn-primary" disabled={!server.trim()} onClick={() => input.current?.click()}>
-          {t("roomPickCards")}
-        </button>
-        <button type="button" className="btn" disabled={!server.trim()} onClick={() => onOpen([], server)}>
-          {t("roomNoCards")}
-        </button>
+        {existingTable ? (
+          <button type="button" className="btn btn-primary" disabled={!server.trim()} onClick={() => onOpen([], server)}>
+            {t("roomOpenFromTable")}
+          </button>
+        ) : (
+          <>
+            <button type="button" className="btn btn-primary" disabled={!server.trim()} onClick={() => input.current?.click()}>
+              {t("roomPickCards")}
+            </button>
+            <button type="button" className="btn" disabled={!server.trim()} onClick={() => onOpen([], server)}>
+              {t("roomNoCards")}
+            </button>
+          </>
+        )}
       </div>
       <input
         ref={input}

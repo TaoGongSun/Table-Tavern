@@ -37,7 +37,7 @@ export function StoryView({ view, loadOlder }: { view: RoomView; loadOlder: (bef
       data-testid="story"
       onScroll={(e) => (stick.current = e.currentTarget.scrollHeight - e.currentTarget.scrollTop - e.currentTarget.clientHeight < 80)}
     >
-      {cursor !== 0 && (
+      {cursor !== 0 && view.room.scene > 0 && ( // 第一幕之前沒有更早的劇情
         <button type="button" className="ghost older" onClick={async () => setCursor(await loadOlder(cursor ?? view.seq + 1))}>
           {t("storyOlder")}
         </button>

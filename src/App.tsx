@@ -1099,12 +1099,13 @@ function App() {
       {roomBanner}
       <div className="app-shell">
         <RoomSession ctl={deskRoom} />
-        {room.dialog && <OpenRoomDialog server={room.dialog.server} onCancel={room.closeDialog} onOpen={(files, server) => void room.open(files, server)} />}
+        {room.dialog && <OpenRoomDialog server={room.dialog.server} existingTable={room.dialog.world ? { name: room.dialog.name ?? "" } : undefined} onCancel={room.closeDialog} onOpen={(files, server) => void room.open(files, server)} />}
         {table === "" ? (
           <Lobby
             rooms={room.host.rooms}
             activeRoom={room.host.activeWorld}
             onOpenRoom={() => void room.start()}
+            onOpenRoomFrom={(id) => void room.start(id, worlds.find((w) => w.id === id)?.name)}
             onReopenRoom={(id) => void room.reopen(id)}
             onEndRoom={(id) => void room.end(id)}
             worlds={worlds}

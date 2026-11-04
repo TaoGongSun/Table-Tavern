@@ -23,6 +23,8 @@ export interface MoreMenuItem {
   label: string;
   /** 滑鼠停留的補充說明 */
   hint?: string;
+  /** 直接寫在項目下方的說明（停用的理由；觸控與點太快時 hint 不會出現） */
+  note?: string;
   icon?: ReactNode;
   onSelect: () => void;
   disabled?: boolean;
@@ -125,6 +127,11 @@ export function MoreMenu({
     focusPending.current = true;
     reposition();
   }, [open, reposition]);
+
+  // 開著的時候項目數變了（例如晚到的項目）：重新定位，免得靠近視窗底部時被擠出畫面
+  useLayoutEffect(() => {
+    if (open) reposition();
+  }, [open, items.length, reposition]);
 
   // 定位完才移焦：定位前彈層是 visibility:hidden，瀏覽器不讓隱形元素取得焦點
   useLayoutEffect(() => {
@@ -278,7 +285,10 @@ export function MoreMenu({
                   }}
                 >
                   {item.icon}
-                  <span className="btn-label">{item.label}</span>
+                  <span className="btn-label">
+                    {item.label}
+                    {item.note && <span className="menu-note">{item.note}</span>}
+                  </span>
                 </button>
               </Fragment>
             ))}

@@ -18,11 +18,15 @@ interface TableCardProps {
   onEnter: (id: string) => void;
   onRename: (id: string, raw: string) => void;
   onDelete: (id: string) => void;
+  /** 可用現有桌開房的桌（單人聊天桌）：打開選單時 check 查有沒有遊玩過；fresh＝未遊玩、false＝已遊玩、undefined＝還沒查完 */
+  roomFromTable?: { fresh: boolean | undefined; check: () => void; onOpen: () => void };
+  /** 另一間房開著（一次只開一間） */
+  otherRoomActive?: boolean;
   /** 開過房的桌（room-host-desktop-play）：徽章與「重開房間／回房間」「結束並刪除房間」 */
   room?: { code: string; active: boolean; otherActive: boolean; onReopen: () => void; onEnd: () => void };
 }
 
-export function TableCard({ world, busy, onEnter, onRename, onDelete, room }: TableCardProps) {
+export function TableCard({ world, busy, onEnter, onRename, onDelete, room, roomFromTable, otherRoomActive }: TableCardProps) {
   const { ref, images } = useTableCover(world.id);
   const [draft, setDraft] = useState<string | null>(null);
   const settled = useRef(false);
@@ -115,6 +119,7 @@ export function TableCard({ world, busy, onEnter, onRename, onDelete, room }: Ta
         <MoreMenu
           label={t("itemOptionsAria", { name: world.name })}
           disabled={busy}
+          onOpen={roomFromTable?.check}
           items={[
             ...(room
               ? [
@@ -123,15 +128,21 @@ export function TableCard({ world, busy, onEnter, onRename, onDelete, room }: Ta
                     label: t(room.active ? "roomBack" : "roomReopen"),
                     icon: <IconUsers />,
                     disabled: badge !== null || room.otherActive,
-                    hint: room.otherActive ? t("roomOtherTable") : undefined,
+                    note: room.otherActive ? t("roomOtherTable") : undefined,
                     onSelect: room.active ? () => onEnter(world.id) : room.onReopen,
                   },
+                ]
+              : []),
+            // 一律列出，免得查完才多出一項、選單位移害人點到別項；查完前與不能開時停用並直接寫理由
+            ...(roomFromTable
+              ? [
                   {
-                    key: "room-end",
-                    label: t("roomEnd"),
-                    icon: <IconDelete />,
-                    danger: true,
-                    onSelect: room.onEnd,
+                    key: "room-open",
+                    label: t("roomOpenFromTable"),
+                    icon: <IconUsers />,
+                    disabled: roomFromTable.fresh !== true || otherRoomActive,
+                    note: otherRoomActive ? t("roomOtherTable") : roomFromTable.fresh === false ? t("roomFromTablePlayed") : undefined,
+                    onSelect: roomFromTable.onOpen,
                   },
                 ]
               : []),
@@ -143,6 +154,17 @@ export function TableCard({ world, busy, onEnter, onRename, onDelete, room }: Ta
               disabled: badge !== null,
               onSelect: startRename,
             },
+            ...(room
+              ? [
+                  {
+                    key: "room-end",
+                    label: t("roomEnd"),
+                    icon: <IconDelete />,
+                    danger: true,
+                    onSelect: room.onEnd,
+                  },
+                ]
+              : []),
             {
               key: "delete",
               label: t("deleteTableTitle"),
