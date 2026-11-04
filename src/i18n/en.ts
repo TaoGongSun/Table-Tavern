@@ -517,6 +517,7 @@ export const en: Record<MsgKey, string> = {
   stateFieldPlace: "Place",
   stateFieldPresent: "Present",
   stateSummaryPresent: "Present: ",
+  stateBarEntry: "Status",
   stateEmptyValue: "—",
   stateEditHint: "Click to edit",
   stateJumpHint: "Big jump this round, might be a model miscalculation. Click to mark it as a counter so it stops flagging.",

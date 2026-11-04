@@ -1,5 +1,6 @@
 //! 房間的公開投影（協定 §4.4、§6.2、§10）：名冊、公開歷史、capabilities。只送公開欄位——私設、世界書、
 //! GM 專屬事件、原文與變數表一律不出這台電腦。
+use crate::chat_turn;
 use crate::data::{self, AppConfig, EventMarker, TranscriptKind};
 use crate::transport;
 use base64::Engine as _;
@@ -243,6 +244,10 @@ fn history(root: &Path, world: &str, cards: &[Value], budget: usize) -> Vec<Valu
         .map_or(0, |elapsed| elapsed.as_millis() as u64);
     for item in &mut out {
         item["at"] = json!(now);
+    }
+    // 最後一段帶當下三鍵：重開房間才看得到狀態行。沒有公開段落就沒處掛（已知限制）
+    if let Some(last) = out.last_mut() {
+        last["state"] = chat_turn::scene_status(&state.state.table);
     }
     out
 }

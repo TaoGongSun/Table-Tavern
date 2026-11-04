@@ -67,6 +67,8 @@ interface StateBarProps {
   cast: CharacterMeta[];
   /** 本桌全部人名（含隱藏、封存卡、玩家、人物條目）：present 顯示轉字形時鎖名與歸位用 */
   knownNames?: readonly string[];
+  /** 房間模式：收合列不畫時間／地點／在場（故事頁另有狀態列），展開後的編輯與樹留著 */
+  hideSceneSummary?: boolean;
 }
 
 /** 主欄的狀態列：平欄摘要＋可折疊的狀態樹，每一格點著就能改 */
@@ -90,6 +92,7 @@ export function StateBar({
   castCount,
   cast,
   knownNames = [],
+  hideSceneSummary = false,
 }: StateBarProps) {
   const [stateBarOpen, setStateBarOpen] = useState(
     () => localStorage.getItem(STATE_BAR_OPEN_KEY) === "true",
@@ -222,6 +225,10 @@ export function StateBar({
     return set;
   }, [player, bindings]);
 
+  // 房間模式拿掉三鍵摘要後，沒有自訂欄、也沒有看得到的狀態樹，整條不畫
+  const hasCustomField = Object.keys(fields).some((key) => !["time", "place", "present"].includes(key));
+  if (hideSceneSummary && !hasCustomField && branchEntries(tree).length === 0) return null;
+
   // 樹狀折疊：分支一層層收起來，預設展開第一層與玩家自己那支；summary 上附分支指認下拉。
   // inList：這一層是清單項或其底下（祖先有鍵恰為 0..n-1 連號的分支）
   function stateTreeNodes(
@@ -304,15 +311,19 @@ export function StateBar({
       {/* 單行摘要：三段各自截短、整行不換行，展開與否都留著當開關 */}
       <summary>
         <IconExpand className="state-bar-chevron" />
-        {summaryFields.map(({ key, label }, index) => (
-          <Fragment key={key}>
-            {index > 0 && <span className="state-bar-pipe">｜</span>}
-            <span className="state-bar-seg" title={`${label}${stateValue(key)}`}>
-              <b>{label}</b>
-              {stateValue(key)}
-            </span>
-          </Fragment>
-        ))}
+        {hideSceneSummary ? (
+          <span className="state-bar-entry">{t("stateBarEntry")}</span>
+        ) : (
+          summaryFields.map(({ key, label }, index) => (
+            <Fragment key={key}>
+              {index > 0 && <span className="state-bar-pipe">｜</span>}
+              <span className="state-bar-seg" title={`${label}${stateValue(key)}`}>
+                <b>{label}</b>
+                {stateValue(key)}
+              </span>
+            </Fragment>
+          ))
+        )}
       </summary>
       <div className="state-bar-fields">
         {stateFields.map(({ key, label }) => stateLeafRow([key], false, label))}

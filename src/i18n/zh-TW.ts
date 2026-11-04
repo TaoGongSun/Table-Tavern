@@ -521,6 +521,7 @@ export const zh = {
   stateFieldPlace: "地點",
   stateFieldPresent: "在場人物",
   stateSummaryPresent: "在場：",
+  stateBarEntry: "狀態",
   stateEmptyValue: "—",
   stateEditHint: "點一下可以改",
   stateJumpHint: "這一輪跳動幅度很大，可能是模型算錯；點一下當成計數器，以後不再提醒",

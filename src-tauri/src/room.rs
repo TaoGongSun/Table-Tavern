@@ -36,6 +36,8 @@ pub(crate) struct Narration {
     pub(crate) state_updates: String,
     pub(crate) arrived: Vec<String>,
     pub(crate) aborted: bool,
+    /// 提交成功後的三鍵快照；沒有＝這段不改房間狀態列
+    pub(crate) status: Option<Value>,
 }
 
 /// `chat_with_character` 回傳的執行端投影
@@ -818,6 +820,7 @@ impl Engine for AppEngine {
                 next_player: n.next_player,
                 arrived: n.arrived_characters,
                 aborted: n.aborted,
+                status: n.status,
             })
         })
     }

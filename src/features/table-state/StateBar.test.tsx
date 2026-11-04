@@ -308,6 +308,61 @@ describe("StateBar 顯示前綴", () => {
   });
 });
 
+describe("StateBar 房間模式", () => {
+  it("收合列不畫三鍵摘要，展開後自訂欄還在", () => {
+    act(() =>
+      root.render(
+        <StateBar
+          fields={{ time: "夜", place: "酒館", present: "阿明", 好感: "1" }}
+          tree={{}}
+          jumps={{}}
+          bindings={[]}
+          editing={null}
+          onBeginEdit={noop}
+          onChangeEditValue={noop}
+          onSave={noop}
+          onCancelEdit={noop}
+          onMarkCounter={noop}
+          onBind={noop}
+          player={null}
+          castCount={0}
+          cast={[]}
+          hideSceneSummary
+        />,
+      ),
+    );
+    expect(host.querySelector("summary .state-bar-seg")).toBeNull();
+    expect(host.querySelector("summary")?.textContent).toContain("狀態");
+    expect(host.querySelector(".state-bar-chevron")).toBeTruthy();
+    expect(host.querySelector(".state-bar-fields")?.textContent).toContain("好感");
+  });
+
+  it("只有三鍵、狀態樹是空的，整條不畫", () => {
+    act(() =>
+      root.render(
+        <StateBar
+          fields={{ time: "夜", place: "酒館", present: "阿明" }}
+          tree={{}}
+          jumps={{}}
+          bindings={[]}
+          editing={null}
+          onBeginEdit={noop}
+          onChangeEditValue={noop}
+          onSave={noop}
+          onCancelEdit={noop}
+          onMarkCounter={noop}
+          onBind={noop}
+          player={null}
+          castCount={0}
+          cast={[]}
+          hideSceneSummary
+        />,
+      ),
+    );
+    expect(host.querySelector(".state-bar")).toBeNull();
+  });
+});
+
 describe("StateBar 在場名單集合", () => {
   const people = {
     林远: { _序: "0", 心情: "警觉" },

@@ -4,6 +4,9 @@ import type { PartyMessages } from "./zh-TW";
 
 export const de: PartyMessages = {
   ...en,
+  statusTime: "Zeit",
+  statusPlace: "Ort",
+  statusPresent: "Anwesend",
   hostRemove: "Entfernen…",
   hostKick: "Entfernen",
   seatRelease: "Platz freigeben",

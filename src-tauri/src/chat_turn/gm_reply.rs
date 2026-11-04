@@ -21,7 +21,8 @@ pub(super) fn gm_reply_parts(
     tree: &std::collections::BTreeMap<String, data::StateNode>,
     retired: bool,
 ) -> GmReplyParts {
-    let mut block = transport::extract_state_block(reply);
+    // 自閉合 `<status…/>` 不認，留著會配到後面的 `</status>`，或原樣留在定稿
+    let mut block = transport::extract_state_block(&transport::strip_self_closing_controls(reply));
     let (next_raw, display) = transport::extract_next_speaker(&block.display);
     let (display, echo_lines) = match transport::strip_state_echo(&display, tree) {
         Some(echo) => (echo.text, echo.lines),
@@ -70,6 +71,7 @@ pub(super) fn aborted_narration(reply: &str) -> GmNarration {
         arrived_persons: Vec::new(),
         aborted: true,
         state_error: None,
+        status: None,
     }
 }
 

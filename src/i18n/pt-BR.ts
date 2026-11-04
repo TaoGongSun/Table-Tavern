@@ -502,6 +502,7 @@ export const ptBR: Record<MsgKey, string> = {
   stateFieldPlace: "Local",
   stateFieldPresent: "Presentes",
   stateSummaryPresent: "Presentes: ",
+  stateBarEntry: "Estado",
   stateEmptyValue: "—",
   stateEditHint: "Clique para editar",
   stateJumpHint: "Salto grande nesta rodada, pode ser um erro de cálculo do modelo. Clique para marcar como contador e parar de avisar.",

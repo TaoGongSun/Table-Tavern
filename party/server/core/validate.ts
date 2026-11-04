@@ -1,5 +1,5 @@
 // 信任邊界（協定 §10）：訊框外形與欄位內容的純函式檢查。失敗一律由呼叫端回錯誤碼、狀態不動。
-import type { ErrorCode, ExecutorError, Frame, PublicCard, QuotaReport, Capabilities, Speaker, StoryPart, SyncItem } from "./types";
+import type { ErrorCode, ExecutorError, Frame, PublicCard, QuotaReport, Capabilities, SceneStatus, Speaker, StoryPart, SyncItem } from "./types";
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 export const isCount = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0;
@@ -154,13 +154,28 @@ export function cleanSpeaker(v: unknown, cards: PublicCard[]): Speaker | null {
   return null;
 }
 
+const SCENE_KEYS = ["time", "place", "present"] as const;
+/** 三鍵快照。不是物件（含陣列）整份丟掉；非字串或超過 200 字的鍵丟掉；空字串留著。沒有半個合法鍵回 null */
+export function cleanSceneState(v: unknown): SceneStatus | null {
+  if (!isObj(v)) return null;
+  const out: SceneStatus = {};
+  for (const key of SCENE_KEYS) {
+    if (!Object.hasOwn(v, key)) continue;
+    const value = v[key];
+    if (typeof value !== "string" || chars(value) > 200) continue;
+    out[key] = value;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 export function cleanHistory(list: unknown, cards: PublicCard[]): StoryPart[] | null {
   if (!Array.isArray(list)) return null;
   const out: StoryPart[] = [];
   for (const h of list) {
     const speaker = shape(h, "speaker:o text:s interrupted:b at:i") && str(h.text, 64000) ? cleanSpeaker(h.speaker, cards) : null;
     if (!speaker) return null;
-    out.push({ round: 0, part: out.length, speaker, text: h.text, interrupted: h.interrupted, at: h.at });
+    const state = cleanSceneState(h.state);
+    out.push({ round: 0, part: out.length, speaker, text: h.text, interrupted: h.interrupted, at: h.at, ...(state ? { state } : {}) });
   }
   return out;
 }

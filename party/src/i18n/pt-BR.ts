@@ -4,6 +4,9 @@ import type { PartyMessages } from "./zh-TW";
 
 export const ptBR: PartyMessages = {
   ...en,
+  statusTime: "Tempo",
+  statusPlace: "Local",
+  statusPresent: "Presentes",
   hostRemove: "Remover…",
   hostKick: "Remover",
   seatRelease: "Ceder o lugar",

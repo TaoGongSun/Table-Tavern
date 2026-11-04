@@ -38,6 +38,9 @@ export const en: PartyMessages = {
   storyOlder: "Load earlier story",
   storyInterrupted: "(interrupted)",
   storyStreaming: "The GM is speaking…",
+  statusTime: "Time",
+  statusPlace: "Place",
+  statusPresent: "Present",
   storySubmitted: "Submitted, waiting for the round to resolve",
 
   roundNumber: "Scene {scene} · Round {round}",

@@ -38,6 +38,9 @@ export const zhCN: PartyMessages = {
   storyOlder: "加载更早的剧情",
   storyInterrupted: "（中断）",
   storyStreaming: "GM 正在说…",
+  statusTime: "时间",
+  statusPlace: "地点",
+  statusPresent: "在场",
   storySubmitted: "已提交，等结算",
 
   roundNumber: "第 {scene} 幕 · 第 {round} 回合",

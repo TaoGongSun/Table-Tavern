@@ -6,7 +6,7 @@ import { keptCount, storyOf, type KeepThrough } from "./snapshot";
 import { crockford, sameHash, sha256Hex } from "./secrets";
 import { Fail, need, type Tx } from "./tx";
 import type { ErrorCode, Job, PendingJob, PublicCard, PublicExecutorError, RoomState, StoryPart, SyncItem } from "./types";
-import { cleanCapabilities, cleanCards, cleanError, cleanHistory, cleanQuota, cleanSpeaker, cleanSyncItems, ID64 } from "./validate";
+import { cleanCapabilities, cleanCards, cleanError, cleanHistory, cleanQuota, cleanSceneState, cleanSpeaker, cleanSyncItems, ID64 } from "./validate";
 
 const OTHER: PublicExecutorError = { kind: "other", actions: ["retry", "continue"], resetsAt: null };
 const pub = (e: { kind: PublicExecutorError["kind"]; actions: PublicExecutorError["actions"]; resetsAt: number | null } | null): PublicExecutorError =>
@@ -264,7 +264,8 @@ export const EXECUTOR: Record<string, (tx: Tx, p: any) => ReturnType<Handler>> =
     const r = live(tx, p.dispatchId);
     need(p.part === r.partsEnded && r.speaker, "E_STATE_CONFLICT");
     need(p.text.length <= 64000, "E_TEXT_INVALID");
-    tx.emit("story.part", { round: r.round, part: p.part, speaker: r.speaker, text: p.text, interrupted: p.interrupted, at: tx.now });
+    const state = cleanSceneState(p.state);
+    tx.emit("story.part", { round: r.round, part: p.part, speaker: r.speaker, text: p.text, interrupted: p.interrupted, at: tx.now, ...(state ? { state } : {}) });
     Object.assign(r, { partsEnded: r.partsEnded + 1, speaker: null });
     tx.ctx.live.stream = null;
   },

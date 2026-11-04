@@ -504,6 +504,7 @@ export const de: Record<MsgKey, string> = {
   stateFieldPlace: "Ort",
   stateFieldPresent: "Anwesende",
   stateSummaryPresent: "Anwesend: ",
+  stateBarEntry: "Status",
   stateEmptyValue: "—",
   stateEditHint: "Zum Bearbeiten klicken",
   stateJumpHint: "Großer Sprung in dieser Runde, möglicherweise ein Rechenfehler des Modells. Klicken, um als Zähler zu markieren und künftig nicht mehr zu warnen.",

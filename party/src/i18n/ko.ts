@@ -4,6 +4,9 @@ import type { PartyMessages } from "./zh-TW";
 
 export const ko: PartyMessages = {
   ...en,
+  statusTime: "시간",
+  statusPlace: "장소",
+  statusPresent: "등장",
   hostRemove: "제거…",
   hostKick: "제거",
   seatRelease: "자리 양보",

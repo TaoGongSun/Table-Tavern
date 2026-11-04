@@ -73,6 +73,7 @@ fn narration(text: &str, next: Option<String>, aborted: bool) -> Narration {
         state_updates: String::new(),
         arrived: Vec::new(),
         aborted,
+        status: None,
     }
 }
 
@@ -443,6 +444,12 @@ async fn dispatch_runs_gm_chain_and_resent_dispatch_is_not_landed_twice() {
         "私設、GM 專屬、原文不得上送：{seed}"
     );
     assert!(seeded.contains("雨下著。"), "公開旁白照送");
+    let last = seed["history"].as_array().unwrap().last().unwrap();
+    assert_eq!(
+        last["state"],
+        json!({ "time": "", "place": "", "present": "" }),
+        "種子最後一段帶當下三鍵"
+    );
     assert_eq!(
         seed["history"][0]["speaker"]["marker"], "solo_before",
         "玩過的桌：種子最前面放分隔"

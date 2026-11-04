@@ -15,6 +15,7 @@ use crate::transport::dispatch::{
 use crate::usage::log as usage_log;
 use crate::{config_root, data, data_root, inflight, lanes, mechanism, transport, world_scan};
 use serde::Serialize;
+use serde_json::{json, Value};
 
 /// GM lane 的一輪：凍結 system（GM 指示＋world.md＋全 constant＋全卡）＋回合尾段
 /// （keyword 條目＋狀態＋導演指示）。narrate 與 suggest 共用，差別只在指示與 echo。
@@ -104,6 +105,15 @@ pub(crate) struct GmNarration {
     pub(crate) aborted: bool,
     /// 狀態更新沒寫成（磁碟錯誤等）：正文照常落檔，前端提示這一輪的狀態可能沒更新
     pub(super) state_error: Option<String>,
+    /// 提交成功後的三鍵快照（平欄）。單人契約不帶這欄；房間 `gen.part.end` 才送
+    #[serde(skip)]
+    pub(crate) status: Option<Value>,
+}
+
+/// 房間狀態列：提交後的平欄三鍵。沒有的鍵送空字串（清空）。
+pub(crate) fn scene_status(table: &std::collections::BTreeMap<String, String>) -> Value {
+    let value = |key: &str| table.get(key).cloned().unwrap_or_default();
+    json!({ "time": value("time"), "place": value("place"), "present": value("present") })
 }
 
 impl GmNarration {
@@ -349,8 +359,12 @@ pub(crate) async fn gm_narrate(
     };
     let mut state_error = None;
     let mut verdict = None;
+    let mut status = None;
     let committed = match committed {
         Ok(Some(commit)) => {
+            if commit.error.is_none() {
+                status = Some(scene_status(&commit.state.state.table));
+            }
             state_error = commit.error;
             verdict = commit.result.1;
             Some((commit.state, commit.result.0))
@@ -460,6 +474,7 @@ pub(crate) async fn gm_narrate(
         arrived_persons,
         aborted: false,
         state_error,
+        status,
     })
 }
 

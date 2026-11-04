@@ -4,6 +4,9 @@ import type { PartyMessages } from "./zh-TW";
 
 export const ja: PartyMessages = {
   ...en,
+  statusTime: "時間",
+  statusPlace: "場所",
+  statusPresent: "登場",
   hostRemove: "削除…",
   hostKick: "削除",
   seatRelease: "席を譲る",

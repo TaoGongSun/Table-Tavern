@@ -502,6 +502,7 @@ export const ru: Record<MsgKey, string> = {
   stateFieldPlace: "Место",
   stateFieldPresent: "Присутствуют",
   stateSummaryPresent: "Присутствуют: ",
+  stateBarEntry: "Состояние",
   stateEmptyValue: "—",
   stateEditHint: "Нажми, чтобы изменить",
   stateJumpHint: "Резкий скачок за этот ход, возможно, модель ошиблась в расчётах. Нажми, чтобы пометить как счётчик и больше не предупреждать.",

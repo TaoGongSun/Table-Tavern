@@ -1,7 +1,8 @@
 // 狀態列／狀態樹 controller：這桌的平欄、樹、跳動記號、分支指認與「正在編輯哪一格」。
 // 所有權從 App() 搬過來，行為與依賴陣列照舊；畫面（stateLeafRow／stateTreeNodes）仍在 App。
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { type BranchBinding, type StateNode, type WorldState } from "../../shared/contracts/backend-contracts";
 import { parseWithFormat, prefixFor, stripPrefix } from "./state-format";
 
@@ -167,6 +168,23 @@ export function useTableStateController(input: {
     reading.current = job;
     return job.promise;
   }, [worldId]);
+
+  // 房間 GM 落段後平欄已改：收合列以外的樹與自訂欄跟著重讀。沒開桌不聽
+  useEffect(() => {
+    if (!worldId) return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void listen<{ worldId: string }>("room-table-changed", (event) => {
+      if (event.payload.worldId === worldId) void refresh();
+    }).then((stop) => {
+      if (disposed) stop();
+      else unlisten = stop;
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [worldId, refresh]);
 
   // 儲存前關掉輸入框，讓失敗時不會卡在一個可能已過期的欄位值上。
   const save = useCallback(

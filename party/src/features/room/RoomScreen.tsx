@@ -16,6 +16,7 @@ import { DelegatedBanner } from "./DelegatedBanner";
 import { canDelegate, sentThisRound } from "./delegation";
 import type { RoomView } from "./room-state";
 import { RoundBar } from "./RoundBar";
+import { SceneStatusLine } from "./scene-status";
 import { StoryView } from "./StoryView";
 import { useRun, type Act } from "./useRoom";
 
@@ -168,6 +169,7 @@ export function RoomScreen({ view, c: controls }: { view: RoomView; c: RoomContr
       {c.pairForm !== false && nav}
       {tab === "story" && (
         <>
+          <SceneStatusLine parts={view.story} />
           <StoryView view={view} loadOlder={c.loadOlder} tail={hostPlaying && <UndoControls view={view} act={c.act} />} />
           {/* 故事區下方整塊：桌面版高度有上限、自己捲（room-desktop-layout §2-9）；手機是 display: contents，版面照舊 */}
           <div className="room-dock">

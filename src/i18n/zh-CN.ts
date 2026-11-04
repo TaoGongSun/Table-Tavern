@@ -500,6 +500,7 @@ export const zhCN: Record<MsgKey, string> = {
   stateFieldPlace: "地点",
   stateFieldPresent: "在场人物",
   stateSummaryPresent: "在场：",
+  stateBarEntry: "状态",
   stateEmptyValue: "—",
   stateEditHint: "点一下可以修改",
   stateJumpHint: "这一轮跳动幅度很大，可能是模型算错；点一下当成计数器，以后不再提醒",

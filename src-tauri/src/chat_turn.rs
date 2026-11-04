@@ -14,7 +14,7 @@ mod vn_script;
 pub(crate) use character::{chat_with_character, ChatReply};
 #[cfg(test)]
 pub(crate) use commit::gm_commit_apply;
-pub(crate) use gm::{gm_narrate, GmNarration};
+pub(crate) use gm::{gm_narrate, scene_status, GmNarration};
 pub(crate) use party_batch::{
     append_party_batch, BatchOutcome, DepartureMode, PartyAction, PartyBatch,
 };

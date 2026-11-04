@@ -418,6 +418,37 @@
   display: contents;
 }
 
+.app .scene-status {
+  flex: none;
+  min-width: 0;
+  padding: 4px var(--gutter);
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: start;
+}
+
+/* 3 行上限放在內層：放外層會讓第 4 行露進內距 */
+.app .scene-status-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+
+/* 標籤不拆；值太長時在值裡斷行（一組比整行還寬時 nowrap 會整組被裁掉），整列 3 行後省略 */
+.app .scene-status-item {
+  overflow-wrap: anywhere;
+}
+
+.app .scene-status .k {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 .app .story {
   flex: 1;
   min-height: 0;

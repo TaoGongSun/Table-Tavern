@@ -357,6 +357,7 @@ export function AppWorkspace({
                 castCount={characters.list.length}
                 cast={characters.active}
                 knownNames={knownPresentNames}
+                hideSceneSummary={roomMode}
               />
             )}
 

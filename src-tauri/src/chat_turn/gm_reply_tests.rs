@@ -47,6 +47,14 @@ fn gm_reply_parts_strip_narrator_label_from_text_only() {
     assert_eq!(aborted_narration("（旁白）夜更深").text, "夜更深");
 }
 
+/// 完成回合的定稿：自閉合 status 先拿掉，才不會留在落檔正文
+#[test]
+fn gm_reply_parts_strips_self_closing_status() {
+    let tree = std::collections::BTreeMap::new();
+    let parts = gm_reply_parts("門開了。<StatusPlaceHolderImpl/>", &tree, false);
+    assert_eq!(parts.display, "門開了。");
+}
+
 /// GM 中止半截照中止規則：沒閉合的標籤、標記前半、沒閉合的普通圍欄都切；自閉合不吞正文
 #[test]
 fn aborted_narration_cuts_unclosed_tails() {

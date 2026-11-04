@@ -1,4 +1,17 @@
+use super::scene_status;
 use crate::commands::NEXT_TEMP_ID;
+
+#[test]
+fn scene_status_sends_three_keys_and_blank_for_missing() {
+    let mut table = std::collections::BTreeMap::new();
+    table.insert("time".to_owned(), "夜".to_owned());
+    table.insert("extra".to_owned(), "不送".to_owned());
+    assert_eq!(
+        scene_status(&table),
+        serde_json::json!({ "time": "夜", "place": "", "present": "" })
+    );
+}
+
 use crate::data;
 use std::sync::atomic::Ordering;
 

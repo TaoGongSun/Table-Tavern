@@ -348,7 +348,8 @@ async fn steps(room: &Arc<Room>, id: &str) -> Result<bool, (Option<u32>, String)
                     next => (next, None),
                 };
                 let arrived = n.arrived.clone();
-                io.end(&n.text, n.aborted, move |run| {
+                let status = n.status.filter(|_| !n.aborted);
+                io.end(&n.text, n.aborted, status.as_ref(), move |run| {
                     run.used += 1;
                     run.step = next;
                     run.arrived.extend(arrived);
@@ -385,7 +386,9 @@ async fn steps(room: &Arc<Room>, id: &str) -> Result<bool, (Option<u32>, String)
                 } else {
                     Step::Narrate
                 };
-                io.end(&spoken.text, spoken.aborted, move |run| run.step = next);
+                io.end(&spoken.text, spoken.aborted, None, move |run| {
+                    run.step = next
+                });
                 room.engine.table_changed(&world);
                 if spoken.aborted {
                     return Ok(true);
@@ -464,7 +467,13 @@ impl Part {
         })
     }
 
-    fn end(&self, text: &str, interrupted: bool, change: impl FnOnce(&mut DispatchRun)) {
+    fn end(
+        &self,
+        text: &str,
+        interrupted: bool,
+        status: Option<&Value>,
+        change: impl FnOnce(&mut DispatchRun),
+    ) {
         let mut state = self
             .state
             .lock()
@@ -475,7 +484,10 @@ impl Part {
         }
         self.begin(&mut state.0);
         let n = self.n;
-        let p = json!({ "dispatchId": self.dispatch, "part": n, "text": text, "interrupted": interrupted });
+        let mut p = json!({ "dispatchId": self.dispatch, "part": n, "text": text, "interrupted": interrupted });
+        if let Some(status) = status {
+            p["state"] = status.clone();
+        }
         self.room.durable("gen.part.end", p, |saved| {
             if let Some(run) = saved.dispatch.as_mut() {
                 run.last_ended = Some(n);

@@ -55,6 +55,12 @@ export type Speaker =
   | { kind: "system"; marker: SystemMarker };
 /** `story.sync` 一項（§3.3）：補送段落（round／part 由伺服器配）或上一幕的摘要（換幕） */
 export type SyncItem = { part: StoryPart } | { summary: string };
+/** 房間狀態列的三鍵。空字串＝清空；缺鍵＝這段沒改那一鍵 */
+export interface SceneStatus {
+  time?: string;
+  place?: string;
+  present?: string;
+}
 export interface StoryPart {
   round: number;
   part: number;
@@ -62,6 +68,7 @@ export interface StoryPart {
   text: string;
   interrupted: boolean;
   at: number;
+  state?: SceneStatus;
 }
 export interface ActionItem {
   memberId: string;

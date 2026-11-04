@@ -2,7 +2,7 @@
 //! 房間本幕故事串（`welcome` 快照＋重送佇列裡還沒落地的段）跟桌上同一幕的公開投影找最長共同前綴，
 //! 之後的桌上段落當補送項；單人時換過幕就依序補「舊幕剩下的 → 舊幕摘要 → 下一幕 …」。
 use super::{seed, Room};
-use crate::data;
+use crate::{chat_turn, data};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::Path;
@@ -79,9 +79,8 @@ fn plan(
 ) -> Result<(Value, Vec<Value>), String> {
     let (_, root) = room.engine.roots();
     let world = room.world();
-    let current = data::read_state(&root, &world)
-        .map_err(|error| error.to_string())?
-        .current_scene;
+    let state = data::read_state(&root, &world).map_err(|error| error.to_string())?;
+    let current = state.current_scene;
     let synced = room.saved().synced_scene;
     let start = synced.filter(|scene| *scene <= current).unwrap_or(current);
     let cards = seed::roster(&root, &world)?;
@@ -131,6 +130,14 @@ fn plan(
     if framed && !items.is_empty() {
         items.insert(0, part(seed::marker("solo_paused")));
         items.push(part(seed::marker("room_reopened")));
+    }
+    // 最後一個段落帶當下三鍵。只有摘要、沒有段落時掛不上去（已知限制）
+    if let Some(item) = items
+        .iter_mut()
+        .rev()
+        .find(|item| item.get("part").is_some())
+    {
+        item["part"]["state"] = chat_turn::scene_status(&state.state.table);
     }
     Ok((keep, items))
 }

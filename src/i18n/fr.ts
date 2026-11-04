@@ -502,6 +502,7 @@ export const fr: Record<MsgKey, string> = {
   stateFieldPlace: "Lieu",
   stateFieldPresent: "Présents",
   stateSummaryPresent: "Présents\u00a0: ",
+  stateBarEntry: "État",
   stateEmptyValue: "—",
   stateEditHint: "Cliquer pour modifier",
   stateJumpHint: "Grand saut ce tour-ci, possible erreur de calcul du modèle. Clique pour marquer comme compteur et ne plus être averti.",

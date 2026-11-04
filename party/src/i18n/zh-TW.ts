@@ -39,6 +39,9 @@ export const zhTW = {
   storyOlder: "載入更早的劇情",
   storyInterrupted: "（中斷）",
   storyStreaming: "GM 正在說…",
+  statusTime: "時間",
+  statusPlace: "地點",
+  statusPresent: "在場",
   storySubmitted: "已送出，等結算",
 
   roundNumber: "第 {scene} 幕 · 第 {round} 回合",

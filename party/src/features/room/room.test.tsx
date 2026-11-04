@@ -108,8 +108,24 @@ async function table(bEnv: Partial<RoomEnv> = {}) {
   await hub.exec("gen.delta", { dispatchId, part: 0, text: "。\n\n```state\ntime: 夜" });
   await until(() => B.q('[data-testid="streaming"]')?.textContent?.includes("風在吹。"));
   expect(B.q('[data-testid="streaming"]')!.textContent).not.toContain("```");
-  await hub.exec("gen.part.end", { dispatchId, part: 0, text: "風在吹，酒館門開了。", interrupted: false });
-  await until(() => !B.q('[data-testid="streaming"]') && B.text().includes("風在吹，酒館門開了。"));
+  expect(B.q('[data-testid="scene-status"]')).toBeNull();
+  await hub.exec("gen.part.end", {
+    dispatchId,
+    part: 0,
+    text: "風在吹，酒館門開了。",
+    interrupted: false,
+    state: { time: "夜", place: "", present: "阿明" },
+  });
+  await until(() => !B.q('[data-testid="streaming"]') && B.q('[data-testid="scene-status"]')?.textContent?.includes("夜"));
+  const line = B.q('[data-testid="scene-status"]')!;
+  expect(line.textContent).toContain("時間 夜");
+  expect(line.textContent).toContain("在場 阿明");
+  expect(line.textContent).not.toContain("地點");
+  expect(line.textContent).not.toContain("：");
+  expect(line.querySelector(".scene-status-item")?.getAttribute("title")).toBe("時間 夜");
+  B.tab("members");
+  expect(B.q('[data-testid="scene-status"]')).toBeNull();
+  B.tab("story");
   await hub.exec("gen.done", { dispatchId, aborted: false });
   await until(() => A.text().includes("輪到大家行動") && B.text().includes("輪到大家行動"));
   return { room, hub, A, B, a: room.s.members[0].id, b: room.s.members[1].id };

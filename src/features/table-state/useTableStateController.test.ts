@@ -9,12 +9,23 @@ import { type TableStateController, useTableStateController } from "./useTableSt
 const calls: string[] = [];
 // 預設：讀狀態固定回金幣 9；競態測試換成受控 promise
 const handler = vi.hoisted(() => ({ current: null as null | ((command: string) => Promise<unknown>) }));
+const listeners = vi.hoisted(() => ({
+  current: null as null | ((event: { payload: { worldId: string } }) => void),
+}));
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(async (command: string) => {
     calls.push(command);
     if (handler.current) return handler.current(command);
     if (command === "read_state") return { state: { table: {}, tree: { 玩家: { 金幣: "9" } } } };
     return [];
+  }),
+}));
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(async (_name: string, handler: (event: { payload: { worldId: string } }) => void) => {
+    listeners.current = handler;
+    return () => {
+      listeners.current = null;
+    };
   }),
 }));
 
@@ -203,6 +214,31 @@ describe("useTableStateController 在場名單集合", () => {
     await act(async () => controller!.refresh());
     expect(controller!.presentScoped).toEqual(["人物"]);
     handler.current = null;
+    await act(async () => root.unmount());
+  });
+});
+
+describe("useTableStateController 房間落段", () => {
+  it("room-table-changed 且是這桌才重讀", async () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    function Probe() {
+      useTableStateController({ worldId: "w1", onError: () => {} });
+      return null;
+    }
+    const root = createRoot(document.createElement("div"));
+    await act(async () => root.render(createElement(Probe)));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    calls.length = 0;
+    await act(async () => {
+      listeners.current?.({ payload: { worldId: "other" } });
+    });
+    expect(calls).not.toContain("read_state");
+    await act(async () => {
+      listeners.current?.({ payload: { worldId: "w1" } });
+    });
+    expect(calls).toContain("read_state");
     await act(async () => root.unmount());
   });
 });

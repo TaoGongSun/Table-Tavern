@@ -502,6 +502,7 @@ export const ko: Record<MsgKey, string> = {
   stateFieldPlace: "장소",
   stateFieldPresent: "등장인물",
   stateSummaryPresent: "등장: ",
+  stateBarEntry: "상태",
   stateEmptyValue: "—",
   stateEditHint: "클릭하여 수정",
   stateJumpHint: "이번 턴 변동 폭이 큽니다. 모델 계산 오류일 수 있어요. 클릭하면 카운터로 표시되어 이후로는 알리지 않습니다.",

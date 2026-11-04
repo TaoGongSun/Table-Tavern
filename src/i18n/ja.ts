@@ -502,6 +502,7 @@ export const ja: Record<MsgKey, string> = {
   stateFieldPlace: "場所",
   stateFieldPresent: "登場人物",
   stateSummaryPresent: "登場：",
+  stateBarEntry: "状態",
   stateEmptyValue: "—",
   stateEditHint: "クリックして編集",
   stateJumpHint: "今回の変動幅が大きすぎます。モデルの計算ミスかもしれません。クリックしてカウンター扱いにすると、以後は警告しません。",
