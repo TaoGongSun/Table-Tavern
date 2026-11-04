@@ -1,11 +1,12 @@
 // 執行端 → 伺服器訊息（協定 §6.2）：派工結果以 dispatchId／(dispatchId, part)／jobId 冪等收下。
 import { uploadResult } from "./cards";
 import { claim, type Handler } from "./member";
-import { announceExec, cancelRound, hold, MIN, openRound, reopen, unseat } from "./round";
+import { announceExec, cancelRound, hold, MIN, openRound, pushDispatch, reopen, unseat } from "./round";
+import { keptCount, storyOf, type KeepThrough } from "./snapshot";
 import { crockford, sameHash, sha256Hex } from "./secrets";
 import { Fail, need, type Tx } from "./tx";
-import type { ErrorCode, Job, PendingJob, PublicCard, PublicExecutorError } from "./types";
-import { cleanCapabilities, cleanCards, cleanError, cleanHistory, cleanQuota, cleanSpeaker, ID64 } from "./validate";
+import type { ErrorCode, Job, PendingJob, PublicCard, PublicExecutorError, RoomState, StoryPart, SyncItem } from "./types";
+import { cleanCapabilities, cleanCards, cleanError, cleanHistory, cleanQuota, cleanSpeaker, cleanSyncItems, ID64 } from "./validate";
 
 const OTHER: PublicExecutorError = { kind: "other", actions: ["retry", "continue"], resetsAt: null };
 const pub = (e: { kind: PublicExecutorError["kind"]; actions: PublicExecutorError["actions"]; resetsAt: number | null } | null): PublicExecutorError =>
@@ -99,6 +100,67 @@ function undoResult(tx: Tx, j: PendingJob, p: any) {
   openRound(tx, "play");
 }
 
+/** 種子與補送段落配回合號（§3.3）：照「玩家句 → GM／NPC」分回合，玩家句 -1 起、其餘 0–31；
+ *  32、33 留給幕摘要與收回提示，任何段落都不會撞到 */
+function slots(w: RoomState) {
+  let group: { round: number; gm: number; player: number } | null = null;
+  return {
+    reset: () => void (group = null),
+    next: (speaker: StoryPart["speaker"]) => {
+      const player = speaker.kind === "player";
+      if (!group || (player && group.gm > 0) || group.gm > 31) group = { round: ++w.roundNo, gm: 0, player: 0 };
+      return { round: group.round, part: player ? -1 - group.player++ : group.gm++ };
+    },
+  };
+}
+
+/** 換幕（同 sceneResult 成功那半）：關房期間房主單人換過幕，補送到上一幕的摘要 */
+function syncScene(tx: Tx, summary: string) {
+  const w = tx.w;
+  if (w.round) cancelRound(tx); // 已送出的行動退回草稿
+  w.round = null;
+  tx.emit("scene.summary", { scene: w.scene, text: summary, round: w.roundNo });
+  w.summarySeqs.push(w.seq);
+  Object.assign(w, { scene: w.scene + 1, nextSettings: null });
+  tx.emit("scene.started", { scene: w.scene, settings: w.sceneSettings });
+  w.sceneStartSeq = w.seq;
+}
+
+/** 補送（§3.3）：撤掉桌上已不存在的段 → 依序補段落與換幕 → 退回已送出的行動 → 解除閘門 */
+async function applySync(tx: Tx, keep: KeepThrough, items: SyncItem[]) {
+  const s = tx.s;
+  const w = tx.w;
+  const scene = storyOf([...(await tx.ctx.store.eventsAfter(s.sceneStartSeq, Number.MAX_SAFE_INTEGER)), ...tx.events]);
+  need(keep === null || scene.some((p) => p.round === keep.round && p.part === keep.part), "E_STATE_CONFLICT", "sync_keep_missing");
+  if (s.round?.phase === "held") {
+    w.lastDispatch = null; // 同 round.continue
+    openRound(tx, "play");
+  }
+  const cut = scene.length - keptCount(scene, keep, 0) > 0;
+  if (cut) tx.emit("story.truncated", { after: keep });
+  const slot = slots(w);
+  for (const item of items) {
+    if ("summary" in item) {
+      slot.reset();
+      if (w.status === "lobby") tx.emit("story.part", { round: ++w.roundNo, part: 0, speaker: { kind: "system", marker: "scene_summary" }, text: item.summary, interrupted: false, at: tx.now });
+      else syncScene(tx, item.summary);
+      continue;
+    }
+    tx.emit("story.part", { ...item.part, ...slot.next(item.part.speaker), at: tx.now });
+  }
+  const changed = cut || items.length > 0;
+  // 有補送內容：等著的回合作廢重開（已送出的退回草稿），新回合號排在補送段之後，收回才認得「上一回合」
+  if (changed && w.round?.phase === "acting") {
+    cancelRound(tx);
+    w.round = null;
+  }
+  if (w.status === "playing" && !w.round) openRound(tx, "play"); // 換過幕：新幕開頭單人時已玩過，不再開場
+  if (changed) w.lastDispatch = null; // 桌尾已不是房間最後那回合
+  Object.assign(w.exec, { sync: null, paused: false });
+  announceExec(tx);
+  pushDispatch(tx);
+}
+
 /** 工作：當前的照收；已收過的 jobId 回 ok 不重做（冪等）；其餘 E_DISPATCH_UNKNOWN */
 function findJob(tx: Tx, jobId: string): PendingJob | null {
   const j = tx.s.jobs.find((x) => x.job.jobId === jobId);
@@ -130,7 +192,24 @@ export const EXECUTOR: Record<string, (tx: Tx, p: any) => ReturnType<Handler>> =
     l.seed = null;
     tx.w.seeded = true;
     if (cards) replaceCards(tx, cleanCards(cards) ?? Fail.throw("E_BAD_FRAME"));
-    history.forEach((h, part) => tx.emit("story.part", { ...h, part }));
+    const slot = slots(tx.w);
+    for (const h of history) tx.emit("story.part", { ...h, ...slot.next(h.speaker) });
+  },
+  // 重開補送（§3.3）：分片規則同 room.seed；到齊才一筆交易落地
+  "story.sync": async (tx, p) => {
+    need(tx.s.exec.sync === "needed", "E_STATE_CONFLICT", "sync_not_needed");
+    const l = tx.ctx.live;
+    if (p.part === 0) {
+      const k = p.keepThrough ?? null;
+      need(k === null || (Number.isSafeInteger(k.round) && Number.isSafeInteger(k.part)), "E_BAD_FRAME");
+      l.sync = { next: 0, keep: k && { round: k.round, part: k.part }, items: [] };
+    }
+    need(l.sync && l.sync.next === p.part && p.part < p.total, "E_STATE_CONFLICT", "sync_restart");
+    if (p.items !== undefined) l.sync.items.push(...(cleanSyncItems(p.items, tx.s.cards) ?? Fail.throw("E_BAD_FRAME")));
+    if (++l.sync.next < p.total) return;
+    const { keep, items } = l.sync;
+    l.sync = null;
+    await applySync(tx, keep, items);
   },
   "roster.update": (tx, p) => replaceCards(tx, cleanCards(p.cards) ?? Fail.throw("E_BAD_FRAME")),
   // 執行端存好了重生的邀請密語：這時才換掉入場雜湊並回房主（舊連結到此作廢）；不是等著的那份就不理
@@ -240,7 +319,8 @@ export const EXECUTOR: Record<string, (tx: Tx, p: any) => ReturnType<Handler>> =
     tx.emit("pair.unbound", { memberId: payer });
   },
   status: (tx, p) => {
-    Object.assign(tx.w.exec, { keepAwake: p.keepAwake, busy: p.busy, paused: p.paused === true, imageGen: p.imageGen === true, imageGenRoute: p.imageGenRoute !== false });
+    // 閘門期間（§3.3）任何一則 status 都不解除暫停，要等 story.sync 補完
+    Object.assign(tx.w.exec, { keepAwake: p.keepAwake, busy: p.busy, paused: p.paused === true || tx.s.exec.sync === "needed", imageGen: p.imageGen === true, imageGenRoute: p.imageGenRoute !== false });
     announceExec(tx);
   },
   quota: (tx, p) => {

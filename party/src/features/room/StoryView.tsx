@@ -6,7 +6,7 @@ import type { Speaker } from "../../../server/core/types";
 import { t, type MsgKey } from "../../i18n";
 import type { RoomView } from "./room-state";
 
-const MARKER: Record<string, MsgKey> = { scene_summary: "markerSceneSummary", card_arrival: "markerCardArrival", person_arrival: "markerPersonArrival", state_update: "markerStateUpdate", round_undone: "markerRoundUndone" };
+const MARKER: Record<string, MsgKey> = { scene_summary: "markerSceneSummary", card_arrival: "markerCardArrival", person_arrival: "markerPersonArrival", state_update: "markerStateUpdate", round_undone: "markerRoundUndone", solo_before: "markerSoloBefore", solo_paused: "markerSoloPaused", room_reopened: "markerRoomReopened" };
 
 function Part({ view, speaker, text, flag }: { view: RoomView; speaker: Speaker; text: string; flag?: string }) {
   const name = speaker.kind === "gm" ? t("speakerGm") : speaker.kind === "system" ? t(MARKER[speaker.marker]) : speaker.name;

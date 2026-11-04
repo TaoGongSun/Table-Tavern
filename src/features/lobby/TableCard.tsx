@@ -18,8 +18,8 @@ interface TableCardProps {
   onEnter: (id: string) => void;
   onRename: (id: string, raw: string) => void;
   onDelete: (id: string) => void;
-  /** 可用現有桌開房的桌（單人聊天桌）：打開選單時 check 查有沒有遊玩過；fresh＝未遊玩、false＝已遊玩、undefined＝還沒查完 */
-  roomFromTable?: { fresh: boolean | undefined; check: () => void; onOpen: () => void };
+  /** 可用現有桌開房的桌（單人聊天桌；玩過的也行，種子最前面標「房主之前自己玩的」） */
+  roomFromTable?: { onOpen: () => void };
   /** 另一間房開著（一次只開一間） */
   otherRoomActive?: boolean;
   /** 開過房的桌（room-host-desktop-play）：徽章與「重開房間／回房間」「結束並刪除房間」 */
@@ -119,7 +119,6 @@ export function TableCard({ world, busy, onEnter, onRename, onDelete, room, room
         <MoreMenu
           label={t("itemOptionsAria", { name: world.name })}
           disabled={busy}
-          onOpen={roomFromTable?.check}
           items={[
             ...(room
               ? [
@@ -133,15 +132,15 @@ export function TableCard({ world, busy, onEnter, onRename, onDelete, room, room
                   },
                 ]
               : []),
-            // 一律列出，免得查完才多出一項、選單位移害人點到別項；查完前與不能開時停用並直接寫理由
+            // 另一間房開著時停用並直接寫理由
             ...(roomFromTable
               ? [
                   {
                     key: "room-open",
                     label: t("roomOpenFromTable"),
                     icon: <IconUsers />,
-                    disabled: roomFromTable.fresh !== true || otherRoomActive,
-                    note: otherRoomActive ? t("roomOtherTable") : roomFromTable.fresh === false ? t("roomFromTablePlayed") : undefined,
+                    disabled: otherRoomActive,
+                    note: otherRoomActive ? t("roomOtherTable") : undefined,
                     onSelect: roomFromTable.onOpen,
                   },
                 ]

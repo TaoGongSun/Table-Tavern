@@ -127,52 +127,123 @@ pub(super) fn card_ids(cards: &[Value]) -> Vec<String> {
         .collect()
 }
 
-/// 公開歷史投影：本幕的旁白、角色對白、玩家句與前情提要，從最新往回裝到 `budget` 位元組為止
+/// 某一幕的公開投影（正序）：旁白、角色對白、玩家句；GM 專屬與空白略過。開頭的幕摘要（上一幕的）另外回，
+/// 不當一般段落。說話者對不到名冊就改成 GM 段、正文前加「名字：」——劇情完整比說話者精確重要。
+/// 玩家句的 `memberId` 照座位（卡 → 成員）填，查不到留空。
+pub(super) struct Scene {
+    pub(super) summary: Option<String>,
+    pub(super) lines: Vec<Value>,
+    /// 第一則不是開場白的段落在 `lines` 裡的位置；有上一幕摘要就是 0（整幕都是玩出來的）。沒有＝這桌沒玩過
+    pub(super) played_from: Option<usize>,
+}
+
+pub(super) fn scene(
+    root: &Path,
+    world: &str,
+    scene: u64,
+    cards: &[Value],
+    seats: &std::collections::HashMap<String, String>,
+) -> Scene {
+    let events = data::read_transcript(root, world, scene).unwrap_or_default();
+    let card_of = |id: &str, name: &str| {
+        cards
+            .iter()
+            .find(|card| !id.is_empty() && card["cardId"] == id)
+            .or_else(|| cards.iter().find(|card| card["name"] == name))
+    };
+    let mut out = Scene {
+        summary: None,
+        lines: Vec::new(),
+        played_from: None,
+    };
+    for event in &events {
+        if event.gm_only || event.text.trim().is_empty() {
+            continue;
+        }
+        let card = card_of(&event.speaker_id, &event.speaker_name);
+        let (speaker, text) = match (&event.kind, &event.marker, card) {
+            (TranscriptKind::Narration, _, _) => (json!({ "kind": "gm" }), event.text.clone()),
+            (TranscriptKind::Dialogue, _, Some(card)) => (
+                json!({ "kind": "npc", "cardId": card["cardId"], "name": card["name"] }),
+                event.text.clone(),
+            ),
+            (TranscriptKind::Player, _, Some(card)) => {
+                let member = seats
+                    .get(card["cardId"].as_str().unwrap_or_default())
+                    .cloned()
+                    .unwrap_or_default();
+                (
+                    json!({ "kind": "player", "memberId": member, "cardId": card["cardId"], "name": card["name"] }),
+                    event.text.clone(),
+                )
+            }
+            (TranscriptKind::Dialogue | TranscriptKind::Player, _, None) => (
+                json!({ "kind": "gm" }),
+                format!("{}：{}", event.speaker_name.trim(), event.text),
+            ),
+            (TranscriptKind::System, Some(EventMarker::SceneSummary), _) => {
+                out.played_from = Some(0);
+                if out.lines.is_empty() && out.summary.is_none() {
+                    out.summary = Some(clip(&event.text, 64000));
+                }
+                continue;
+            }
+            _ => continue,
+        };
+        if !event.opening && out.played_from.is_none() {
+            out.played_from = Some(out.lines.len());
+        }
+        out.lines.push(json!({
+            "speaker": speaker, "text": clip(&text, 64000), "interrupted": event.truncated, "at": 0,
+        }));
+    }
+    out
+}
+
+/// 系統分隔段（房主單人玩的段落前後）
+pub(super) fn marker(name: &str) -> Value {
+    json!({ "speaker": { "kind": "system", "marker": name }, "text": "", "interrupted": false, "at": 0 })
+}
+
+/// 種子的公開歷史：本幕開頭的前情提要＋段落，從最新往回裝到 `budget` 位元組為止；這桌玩過就在第一個玩出來的
+/// 段落前放「房主之前自己玩的」分隔（開場白在分隔前；有前情提要或開頭被預算切掉就放最前面）
 fn history(root: &Path, world: &str, cards: &[Value], budget: usize) -> Vec<Value> {
     let Ok(state) = data::read_state(root, world) else {
         return Vec::new();
     };
-    let events = data::read_transcript(root, world, state.current_scene).unwrap_or_default();
+    let found = scene(root, world, state.current_scene, cards, &Default::default());
+    let lead = usize::from(found.summary.is_some());
+    let mut items: Vec<Value> = found
+        .summary
+        .map(|text| {
+            json!({ "speaker": { "kind": "system", "marker": "scene_summary" }, "text": text, "interrupted": false, "at": 0 })
+        })
+        .into_iter()
+        .chain(found.lines)
+        .collect();
+    let mut size = 0;
+    let cut = items
+        .iter()
+        .rposition(|item| {
+            size += item.to_string().len();
+            size > budget
+        })
+        .map_or(0, |i| i + 1);
+    let mut out = items.split_off(cut);
+    if let Some(from) = found.played_from.filter(|_| !out.is_empty()) {
+        let at = if lead > 0 {
+            0
+        } else {
+            from.saturating_sub(cut)
+        };
+        out.insert(at.min(out.len()), marker("solo_before"));
+    }
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |elapsed| elapsed.as_millis() as u64);
-    let card_named = |name: &str| cards.iter().find(|card| card["name"] == name);
-    let mut out = Vec::new();
-    let mut size = 0;
-    for event in events.iter().rev() {
-        if event.gm_only || event.text.trim().is_empty() {
-            continue;
-        }
-        let speaker = match (&event.kind, &event.marker) {
-            (TranscriptKind::Narration, _) => json!({ "kind": "gm" }),
-            (TranscriptKind::Dialogue, _) => match card_named(&event.speaker_name) {
-                Some(card) => {
-                    json!({ "kind": "npc", "cardId": card["cardId"], "name": card["name"] })
-                }
-                None => continue,
-            },
-            // 單人時期的玩家句：還沒有房間成員，memberId 留空
-            (TranscriptKind::Player, _) => match card_named(&event.speaker_name) {
-                Some(card) => {
-                    json!({ "kind": "player", "memberId": "", "cardId": card["cardId"], "name": card["name"] })
-                }
-                None => continue,
-            },
-            (TranscriptKind::System, Some(EventMarker::SceneSummary)) => {
-                json!({ "kind": "system", "marker": "scene_summary" })
-            }
-            _ => continue,
-        };
-        let item = json!({
-            "speaker": speaker, "text": clip(&event.text, 64000), "interrupted": event.truncated, "at": now,
-        });
-        size += item.to_string().len();
-        if size > budget {
-            break;
-        }
-        out.push(item);
+    for item in &mut out {
+        item["at"] = json!(now);
     }
-    out.reverse();
     out
 }
 

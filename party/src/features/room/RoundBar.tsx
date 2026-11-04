@@ -11,6 +11,7 @@ function status(v: RoomView, now: number): string {
   const r = v.round;
   if (v.room.status === "closed") return t("errRoomClosed");
   if (!v.executor.online && v.executor.paused) return t("roundHostPaused");
+  if (v.executor.syncing) return t("roundHostSyncing");
   if (v.room.status === "lobby") return t("roundLobby");
   if (v.room.status === "transition") return t(v.room.transition?.stalled ? "roundStalled" : "roundTransition");
   if (!r) return "";
@@ -34,7 +35,7 @@ export function RoundBar({ view, act }: { view: RoomView; act: Act }) {
   // 還沒送的人（純顯示，取自 roster）
   const waiting = r?.phase === "acting" ? r.roster.filter((e) => e.status === "pending" || e.status === "drafting") : [];
   const nameOf = (cardId: string) => view.cards.find((c) => c.cardId === cardId)?.name ?? cardId;
-  const blocked = !view.members.some((m) => m.cardId) ? t("startNeedPlayer") : !view.executor.online ? t("startNeedExecutor") : null;
+  const blocked = !view.members.some((m) => m.cardId) ? t("startNeedPlayer") : !view.executor.online ? t("startNeedExecutor") : view.executor.syncing ? t("roundHostSyncing") : null;
   return (
     <div className="round-bar" data-testid="round-bar">
       <div className="round-line">

@@ -1,7 +1,7 @@
 // 手機端的房間畫面狀態：快照整份換掉（§4.3），之後逐筆套持久事件（ev，序號只增）與即時訊息（vol）。
 // 規則是伺服器核心的鏡像但只管「畫面上看得到的」；對不上時伺服器為準（E_STATE_CONFLICT 會重抓快照）。
 // 劇情段落直接用伺服器的 storyOf 投影（玩家行動段號為負、幕摘要段號 32），快照與即時事件長得一樣。
-import { storyOf, type Snapshot } from "../../../server/core/snapshot";
+import { keptCount, storyOf, type Snapshot } from "../../../server/core/snapshot";
 import type { ExecutorError, Frame, RosterEntry, RouteOffer, StoryPart } from "../../../server/core/types";
 
 export interface RoomView extends Omit<Snapshot, "quotaDetail"> {
@@ -149,6 +149,9 @@ function onEvent(v: RoomView, e: any, at: number) {
     case "round.undone": // 房主收回：那回合的段落與玩家行動都撤掉（storyOf 另補一行提示）
       v.story = v.story.filter((p) => p.round !== e.round);
       if (v.story[v.story.length - 1]?.part === 33) v.story = v.story.slice(0, -1); // 連續收回只留一行（新的那行隨後補上）
+      break;
+    case "story.truncated": // 重開補送：本幕（上一幕摘要之後）保留到 after 為止
+      v.story = v.story.slice(0, keptCount(v.story, e.after, v.story.map((p) => p.part).lastIndexOf(32) + 1));
       break;
     case "gen.dispatched":
       if (v.round) v.round.dispatchId = e.dispatchId;

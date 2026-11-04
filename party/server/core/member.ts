@@ -1,13 +1,13 @@
 // 客戶端 → 伺服器指令（協定 §5.1）：每則先查角色再查狀態，失敗拋 Fail、狀態不動。
 import { resnapshot } from "./snapshot";
-import { announceExec, cancelRound, MIN, offered, openRound, resolve, seatedMembers, unseat } from "./round";
+import { announceExec, cancelRound, execReady, MIN, offered, openRound, resolve, seatedMembers, unseat } from "./round";
 import { CROCKFORD8, secret, sameHash, sha256Hex, ulid } from "./secrets";
 import { Fail, need, type Tx } from "./tx";
 import type { HostTurn, Member, RemoteCommand, SceneSettings, RoomState, RosterEntry, StoredEvent } from "./types";
 import { cleanName, cleanText, shape } from "./validate";
 
 export type Handler = (tx: Tx, p: any, m: Member) => void | "later" | Promise<void | "later">;
-const STORY = new Set(["story.part", "round.resolved", "round.undone", "scene.summary", "scene.started"]);
+const STORY = new Set(["story.part", "round.resolved", "round.undone", "story.truncated", "scene.summary", "scene.started"]);
 export const evFrame = (e: StoredEvent) => ({ seq: e.seq, at: e.at, e: { type: e.type, ...e.payload } });
 
 export function rate(tx: Tx, key: string, max: number, windowMs: number) {
@@ -114,6 +114,7 @@ function ctl(tx: Tx, m: Member, p: { ctlId: string; cmd: any }) {
   let settings;
   if (k === "retry" || k === "switch_model" || k === "switch_route") {
     need(!s.undo && r?.phase === "held" && (k === "retry" || r.hold?.actions.includes(k)), "E_STATE_CONFLICT"); // 收回在等執行端時不重試
+    need(execReady(s), "E_EXECUTOR_OFFLINE"); // 重開補送還沒完：桌上與房間還沒對齊，不重跑
     if (k !== "retry") {
       settings = offered(s, k === "switch_route" ? p.cmd.route : s.sceneSettings!.route, p.cmd.model);
       cmd = k === "switch_route" ? { kind: k, route: settings.route, model: settings.model } : { kind: k, model: settings.model };
@@ -206,7 +207,7 @@ export const MEMBER: Record<string, Handler> = {
   "round.resolve": (tx, p, m) => {
     host(tx, m);
     need(roundAt(tx, p.round).roster.length > 0, "E_STATE_CONFLICT");
-    need(tx.s.exec.online, "E_EXECUTOR_OFFLINE");
+    need(execReady(tx.s), "E_EXECUTOR_OFFLINE");
     resolve(tx, "host");
   },
   // 房主 GM 鈕（room-host-actions §3.1）：沒人入座也能按；這回合已送出的行動退回草稿，GM 跑完開新的 acting
@@ -214,7 +215,7 @@ export const MEMBER: Record<string, Handler> = {
     host(tx, m);
     const r = roundAt(tx, p.round);
     need(p.mode === "narrate" || p.mode === "advance" || p.mode === "call", "E_BAD_FRAME");
-    need(tx.s.exec.online, "E_EXECUTOR_OFFLINE");
+    need(execReady(tx.s), "E_EXECUTOR_OFFLINE");
     let turn: HostTurn = { mode: p.mode };
     if (p.mode === "call") {
       const card = tx.s.cards.find((c) => c.cardId === p.cardId);
@@ -233,7 +234,7 @@ export const MEMBER: Record<string, Handler> = {
     need(!s.undo && (p.mode === "regenerate" || p.mode === "edit"), "E_STATE_CONFLICT");
     const target = r && ld && ld.round === p.round && ld.scene === s.scene && ((r.phase === "acting" && r.round === ld.round + 1) || (r.phase === "held" && r.round === ld.round));
     need(target, "E_STATE_CONFLICT");
-    need(s.exec.online, "E_EXECUTOR_OFFLINE");
+    need(execReady(s), "E_EXECUTOR_OFFLINE");
     let next: SceneSettings | null = null;
     if (p.next !== undefined) {
       need(s.payerId === m.id, "E_FORBIDDEN"); // 只有出額度者能同時換路線／模型（同換幕）
@@ -269,7 +270,7 @@ export const MEMBER: Record<string, Handler> = {
     host(tx, m);
     const s = tx.s;
     need(s.status === "lobby" && seatedMembers(s).length > 0 && s.exec.caps, "E_STATE_CONFLICT");
-    need(s.exec.online, "E_EXECUTOR_OFFLINE");
+    need(execReady(s), "E_EXECUTOR_OFFLINE");
     const w = tx.w;
     Object.assign(w, { status: "playing", scene: 1, sceneSettings: w.nextSettings ?? s.exec.caps.current, nextSettings: null });
     tx.emit("room.started", { scene: 1, settings: w.sceneSettings });
@@ -364,7 +365,7 @@ export const MEMBER: Record<string, Handler> = {
     need(s.status === "playing" && r, "E_STATE_CONFLICT");
     need(p.round === r.round, "E_ROUND_STALE");
     need(!s.undo && (r.phase === "acting" || (r.phase === "held" && r.hold?.kind === "scene_full")), "E_ROUND_NOT_ACTING");
-    need(s.exec.online, "E_EXECUTOR_OFFLINE");
+    need(execReady(s), "E_EXECUTOR_OFFLINE");
     let next = s.nextSettings ?? s.sceneSettings!;
     if (p.next !== undefined) {
       need(s.payerId === m.id, "E_FORBIDDEN"); // 執行端不換，只換路線與模型（裁決 8）

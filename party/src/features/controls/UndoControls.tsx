@@ -19,7 +19,7 @@ export function UndoControls({ view, act }: { view: RoomView; act: Act }) {
   const undo = async (mode: "regenerate" | "edit", next?: { route: string; model: string }) => {
     if (await run("round.undo", { round: target, mode, ...(next ? { next } : {}) })) setAsk(null);
   };
-  const offline = !view.executor.online;
+  const offline = !view.executor.online ? t("startNeedExecutor") : view.executor.syncing ? t("roundHostSyncing") : null;
   // 卡住（held）時看上次失敗的種類：模型本身用不了就灰掉它；暫時性錯誤原模型照選、提示可以直接重試
   const failed = r?.phase === "held" && r.hold ? holdKind(r.hold.kind) : null;
   const cur = view.room.sceneSettings;
@@ -31,8 +31,8 @@ export function UndoControls({ view, act }: { view: RoomView; act: Act }) {
     <>
       {ask === null ? (
         <span className="panel-actions" data-testid="undo-controls">
-          <button type="button" className="ghost" disabled={offline} title={offline ? t("startNeedExecutor") : t("undoRegenerateHint")} onClick={() => setAsk("regenerate")}>{t("undoRegenerate")}</button>
-          <button type="button" className="ghost" disabled={offline} title={offline ? t("startNeedExecutor") : t("undoEditHint")} onClick={() => setAsk("edit")}>{t("undoEdit")}</button>
+          <button type="button" className="ghost" disabled={offline !== null} title={offline ?? t("undoRegenerateHint")} onClick={() => setAsk("regenerate")}>{t("undoRegenerate")}</button>
+          <button type="button" className="ghost" disabled={offline !== null} title={offline ?? t("undoEditHint")} onClick={() => setAsk("edit")}>{t("undoEdit")}</button>
         </span>
       ) : (
         <div className="undo-confirm" data-testid="undo-confirm">

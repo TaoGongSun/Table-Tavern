@@ -13,9 +13,12 @@ export const HELLO_MS = 10_000;
 export const seatedMembers = (s: RoomState) => s.members.filter((m) => m.cardId).sort((a, b) => a.seat - b.seat);
 export const cardName = (s: RoomState, cardId: string) => s.cards.find((c) => c.cardId === cardId)?.name ?? cardId;
 export const isOnline = (s: RoomState, who: string) => Object.values(s.conns).some((c) => c.who === who);
+/** 執行端可以接新派工：在線而且不在同步閘門裡（重開房間、還沒補完關房期間的劇情，§3.3） */
+export const execReady = (s: RoomState) => s.exec.online && s.exec.sync !== "needed";
 
 export const execView = (s: RoomState): ExecutorView => ({
   label: s.exec.label, online: s.exec.online, since: s.exec.since, keepAwake: s.exec.keepAwake, paused: !s.exec.online && s.exec.paused === true, imageGen: s.exec.imageGen === true, imageGenRoute: s.exec.imageGenRoute !== false,
+  syncing: s.exec.online && s.exec.sync === "needed",
   modelLabel: (s.nextSettings ?? s.sceneSettings ?? s.exec.caps?.current)?.modelLabel ?? null,
 });
 /** 給某位成員看的執行端狀態：出額度者另帶路線與模型清單（遠端控制要選） */
@@ -40,7 +43,7 @@ export function openRound(tx: Tx, kind: RoundKind, host?: HostTurn) {
     return { memberId: m.id, cardId: m.cardId!, status: s.drafts[m.id] ? "drafting" : "pending", text: null };
   });
   const ms = kind === "play" && s.settings.actionTimeoutSec !== null ? s.settings.actionTimeoutSec * 1000 : null;
-  const run = ms !== null && roster.length > 0 && s.exec.online;
+  const run = ms !== null && roster.length > 0 && execReady(s);
   s.lastError = null; // 新回合，上一回合的錯誤細節作廢（客戶端同樣在 round.opened 清掉）
   s.round = {
     round: ++s.roundNo, kind, scene: s.scene, phase: kind === "play" ? "acting" : "queued", roster,
@@ -116,7 +119,7 @@ export function reopen(tx: Tx, from: Dispatch) {
 }
 
 export function pushDispatch(tx: Tx) {
-  if (tx.s.exec.online && tx.s.round?.phase === "queued") tx.toExec("dispatch", ensureDispatch(tx));
+  if (execReady(tx.s) && tx.s.round?.phase === "queued") tx.toExec("dispatch", ensureDispatch(tx));
 }
 
 export function hold(tx: Tx, error: PublicExecutorError, code?: string) {
@@ -161,7 +164,7 @@ export function settle(tx: Tx) {
   const s = tx.s;
   const r = s.round;
   if (s.status !== "playing" || r?.phase !== "acting") return;
-  const run = r.roster.length > 0 && s.exec.online && !s.undo; // 收回在等執行端：倒數暫停、不結算
+  const run = r.roster.length > 0 && execReady(s) && !s.undo; // 收回在等執行端：倒數暫停、不結算
   if (run ? r.pausedRemainingMs !== null : r.deadline !== null) {
     const w = tx.w.round!;
     if (run) Object.assign(w, { deadline: tx.now + w.pausedRemainingMs!, pausedRemainingMs: null });
@@ -215,7 +218,7 @@ export function onAlarm(tx: Tx) {
   const s = tx.s;
   const r = s.round;
   const due = r?.phase === "acting" && r.deadline !== null && now >= r.deadline;
-  if (due && s.status === "playing" && s.exec.online && !s.undo && r.roster.length > 0) resolve(tx, "timeout");
+  if (due && s.status === "playing" && execReady(s) && !s.undo && r.roster.length > 0) resolve(tx, "timeout");
   else if (generating(tx.s) && now >= r!.genAt + GEN_IDLE_MS) hold(tx, { kind: "provider_unreachable", actions: ["retry", "switch_route"], resetsAt: null }, "E_GEN_TIMEOUT");
   const t = tx.s.transition;
   if (t && !t.stalled && now >= t.progressAt + GEN_IDLE_MS) {

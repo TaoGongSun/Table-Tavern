@@ -1,6 +1,6 @@
 # room-host-actions — 房間的房主操作（重來這一回合、GM 鈕、重開補送）
 
-**狀態：方案定案；包 1、包 2 施工中，包 3 等階段二包 2 落地。**
+**狀態：結案（2026-11-04）。部署注意見[交接檔](../handoffs/archive/room-host-actions.md)：伺服器要跟這版桌面版一起部署。**
 
 上層：[multiplayer-room.md](multiplayer-room.md)、協定 [multiplayer-room-protocol.md](multiplayer-room-protocol.md)、階段一 [room-host-desktop-play.md](room-host-desktop-play.md)。排序〔作者裁決 2026-11-03：「另排一個階段」〕：階段二 `room-player-cards` 之後、階段三 `room-seat-delegate` 之前。
 
@@ -70,14 +70,16 @@
 ### 3.3 重開補送與同步閘門
 
 **閘門**：
-- 執行端關房（暫停）時，`Saved` 記 `paused: true`，然後照階段一送 `status { paused: true }` 再斷線。
-- 伺服器的 `executorHello`（`reduce.ts`）如果看到 `exec.paused` 為 true，就**不清 `paused`**，改設 `exec.sync = "needed"`。之後到「完整分片的 `story.sync` 交易成功」為止，下列入口全部關閉：
+- 執行端關房（暫停）時，`Saved` 記 `paused: true`，然後照階段一送 `status { paused: true }` 再斷線。關房那一刻可能送不到，所以重連的 `hello` 也自報 `paused`〔模型判斷·未裁決〕。
+- 伺服器的 `executorHello`（`reduce.ts`）如果看到 `exec.paused` 或 `hello.paused` 為 true、而且房間送過種子（沒種子就沒有可比的故事串），就**不清 `paused`**，改設 `exec.sync = "needed"`。之後到「完整分片的 `story.sync` 交易成功」為止，下列入口全部關閉：
   - `welcome` 帶的 `dispatch` 一律給 null（執行端暫停時已中止鏈，本機不會有在跑的派工）；`executorHello` 結尾的 `pushDispatch` 不跑。
   - `round.ts` 的 `pushDispatch`、`settle`（結算條件 1）、`onAlarm` 的倒數到期結算都不動作，倒數保持暫停。
-  - 成員指令 `room.start`、`round.resolve`、`host.gm`、`round.undo`、`scene.advance`、`seat.create` 回 `E_EXECUTOR_OFFLINE`。
-  - 執行端 `status` 訊框（`link.rs` 的 `welcome` 會在同步前送一則 `paused: false`）在閘門期間不得清掉 `paused`。
+  - 成員指令 `room.start`、`round.resolve`、`host.gm`、`round.undo`、`scene.advance`，以及出額度者遠端控制的重試與換模型／路線，回 `E_EXECUTOR_OFFLINE`。`seat.create`（建立角色）算卡片類，照常放行〔模型判斷·未裁決〕。
+  - 執行端任何一則 `status`（它不帶 `paused` 欄位）在閘門期間都不清掉 `paused`。
+  - 手機回合列顯示「房主回來了，正在補前情…」（`ExecutorView.syncing`），GM 鈕、收回鈕停用並寫同一句〔模型判斷·未裁決；常識審查員〕。
 - 用一個 `execReady(s)`＝`online && sync !== "needed"` 取代上述各處現在的 `exec.online` 判斷，一處定義、各處共用。
 - 閘門期間仍照收：重送佇列裡的 `gen.part.end`／`gen.done`／`gen.failed`／`job.result`（這些是暫停前那批的結果，不是新派工；`gen.done` 開出的 `acting` 照開，但不結算）、`capabilities`、`roster.update`、`quota`。
+- 卡片類指令（階段二 room-player-cards 的讀卡、存卡、生圖、匯入、上傳）閘門期間照常放行：它們不改故事串，跟 `story.sync` 的比對無關。`executorHello` 改成「不清 `paused`」時，開頭的 `failPending`（上一條連線的讀卡、存卡、上傳回失敗）照留〔模型判斷·未裁決〕。
 - 一般斷網重連（`paused` 為 false）不設閘門、不送 `story.sync`，行為照現狀。
 - `story.sync` 交易成功時清 `sync` 與 `paused`，執行端收到最後一片的 ok 再清本機 `Saved.paused`；沒收到 ok 就斷線的話，下次重連照樣有閘門、重新送一次。
 
@@ -89,20 +91,25 @@
 
 伺服器的處理順序：
 1. 如果是 `held`，先照 `round.continue` 收掉。
-2. 發 `story.truncated { after: keepThrough }`：本幕故事串保留到該段為止，之後全部撤掉；`null`＝本幕全撤。`keepThrough` 指不到本幕現有段落就回 `E_STATE_CONFLICT`，執行端改送 `null` 全量重送。
+2. 發 `story.truncated { after: keepThrough }`（真的有段要撤才發）：本幕故事串保留到該段為止，之後全部撤掉；`null`＝本幕全撤。本幕的邊界＝上一則幕摘要之後（快照不帶 `scene.started`），三處讀者共用 `snapshot.ts::keptCount`。`keepThrough` 指不到本幕現有段落就回 `E_STATE_CONFLICT`（`sync_keep_missing`），分片緩衝遺失回 `sync_restart`；執行端兩種都改送一次 `null` 全量重送（不放分隔）。
 3. `items` 依序處理：
-   - 段落：發 `story.part`，新配一個回合號（`++roundNo`），段號依序，說話者照 `room.seed` 的驗法。
+   - 段落：發 `story.part`，說話者照 `room.seed` 的驗法。回合號新配（`++roundNo`），照「玩家句 → GM／NPC」分回合：玩家句段號 -1 起往下，GM／NPC 0 起、滿 32 段換下一回合。`room.seed` 的歷史也照這套配號（`executor.ts::slots`），所以任何段落都落在 -N…31，32（幕摘要）、33（收回提示）只留給那兩種，讀者靠段號認邊界不會認錯〔Sol 驗收第 2 輪〕。
+   - 大廳（還沒開始）時 `summary` 不換幕，當成一段幕摘要系統段（同種子）。
    - `summary`：比照 `executor.ts` 的 `sceneResult` 做完整換幕：當前有回合就發 `round.cancelled`（已送出的行動退回草稿）→ 發 `scene.summary`（帶 `round`），`summarySeqs` 推入它的 `seq` → `scene + 1`，幕設定不變，發 `scene.started` → `sceneStartSeq = seq`。之後的段落就屬於新幕。
 4. 有換過幕的話，最後開一個 `acting`（`play`）。不開 `scene_open`，因為新幕開頭單人時已經玩過，不要 GM 再開場一次。
-5. 有補送內容（`items` 非空或撤了段）而且當下是 `acting` 時，該回合已送出的行動退回草稿（廣播 `action.retracted`）〔作者裁決 2026-11-03〕。第 3 步已經 `round.cancelled` 過的不重複退。
+5. 有補送內容（`items` 非空或撤了段）而且當下是 `acting` 時，作廢該回合（`round.cancelled`，已送出的行動退回草稿〔作者裁決 2026-11-03〕）再開一個 `acting`：新回合號排在補送段之後，收回才認得「目前回合＝上一回合＋1」〔Sol 驗收第 1 輪〕。
 6. 清 `sync` 與 `paused`，重判結算，`pushDispatch`（處理閘門期間停在 `queued` 的回合）。
 
 - 沒有差異也要送一則（`keepThrough`＝最後一段、沒有 `items`），它就是開閘門的訊號。
-- **執行端怎麼比**：`welcome` 的快照帶房間本幕故事串。執行端用 `seed.rs` 的公開投影（抽成可指定幕號）算出桌上對應那一幕的段落，只比兩邊都有的種類（GM、NPC、玩家行動、幕摘要；觀望、狀態更新等系統段兩邊都略過），以（說話者種類、卡 id、正文）找最長共同前綴，得出 `keepThrough`；其後的桌上段落當 `items`。
+- **執行端怎麼比**（`room/sync.rs`）：`welcome` 的快照帶房間本幕故事串，再接上重送佇列裡同一回合派工的 `gen.part.end`（關房時中止的那段；伺服器處理 sync 前會先收到，沒有 `begin` 的只比正文）。執行端用 `seed.rs::scene` 的公開投影算出桌上對應那一幕的段落，只比 GM、NPC、玩家行動（系統段兩邊都略過），以（說話者種類、卡 id、去頭尾空白的正文）找最長共同前綴；`keepThrough`＝第一個對不上的房間段的前一段（中間的系統段留著），全對上就是本幕最後一段；其後的桌上段落當 `items`。
 - **單人時換過幕**：`Saved` 加 `synced_scene`，記房間目前那一幕對應的桌內幕號；建房、換幕工作、`story.sync` 成功時更新。桌上 `current_scene` 比它大時，`items` 依序是：舊幕剩下的段落 → 舊幕摘要 → 下一幕段落 → …… → 目前這幕的段落。
   - 桌面版把第 N 幕的摘要寫在第 N+1 幕逐字稿開頭（`SceneSummary` 標記，見 `run.rs::summary_of`）。那一則只拿來當 `summary` 項，**不再當一般段落補一次**；每一幕的投影都略過開頭的 `SceneSummary`。
-- 補送段落的說話者：玩家句照種子做法（`memberId` 空、卡 id 照名冊），NPC 照卡名對名冊，對不到的不送。
-- `welcome` 的送出順序：重送佇列 → `capabilities` → `status` → `roster.update`（暫停期間 CastRail 改過的卡）→ `story.sync` 各片。
+- 補送段落的說話者：玩家句的卡 id 照名冊，`memberId` 用執行端的座位對照（`cards::seats_from_snapshot`，卡 → 成員）查得到就填、查不到才留空（同種子），手機才認得是自己說的；角色先照卡 id、再照卡名對名冊，對不到的改成 GM 段、正文前加「名字：」（劇情完整比說話者精確重要；種子同一條投影）〔模型判斷·未裁決；常識審查員〕。
+- **分隔**〔模型判斷·未裁決；常識審查員〕：有補送內容時，執行端在最前面放系統段「房主在關房期間自己玩了這一段」（`solo_paused`）、最後放「房間重開，接著一起玩」（`room_reopened`）；跨幕時每一幕的補送段前面各放一次（新幕的快照看不到舊幕那條）。種子投影的桌有開場白以外的公開內容（含上一幕摘要）時，種子在第一個玩出來的段落前放「房主之前自己玩的」（`solo_before`）：開場白留在分隔前，有上一幕摘要或開頭被預算切掉就放最前面〔模型判斷·未裁決；常識審查員〕。三個標記進伺服器的說話者白名單。
+- **暫停期間朋友的玩家卡被 GM 當 NPC 演**：照實送成 NPC 段，不偽裝成玩家本人說的，靠上一條的分隔讓人看懂（同階段一「離席交給 GM 演」的呈現，沒有另做每句標記）〔模型判斷·未裁決；常識審查員〕。
+- `welcome` 的送出順序（階段二之後）：先記快照座位（`seats_from_snapshot`）→ 重送佇列 → `capabilities` → `status` → （還沒送過種子才有）`room.seed` → `seat.reserve` → `roster.update`（暫停期間 CastRail 改過的卡）→ `story.sync` 各片 → 最後才處理 `dispatch`／`job`〔模型判斷·未裁決〕。這次才送種子的不送 `story.sync`（種子就是桌上現況），種子最後一片 ok 時一併清 `paused`。
+- `Saved.synced_scene` 是 `Option`（桌內幕號從 0 起；沒有＝舊檔，當成桌上目前這幕）；送種子、換幕工作成功、`story.sync` 最後一片 ok 時記成桌上目前幕號。伺服器回 `sync_not_needed`（沒上閘門）也當補完。
+- 補送內容不會漏私設（已確認）：`story.sync` 用 `seed.rs` 的公開投影，私設（`CardPrivate`）與 GM 專屬段落本來就略過；階段二的玩家卡秘密情報存在卡上，不進逐字稿的公開段落，不必另外處理。
 
 ### 3.4 新事件與型別一覽
 
@@ -129,6 +136,9 @@
 - 只收一層：收回或重生之後，再往前一回合收不了（單人版可以連按往回收）。
 - 收回後故事串上留系統提示，GM 段消失對所有人可見。
 - 收回後不能復原（單人版有）〔作者裁決 2026-11-03〕：按之前確認；收錯只能重生。
+- 往回翻頁跨 200 筆邊界時，重開補送撤掉的段落可能被翻回來（同收回的限制）。
+- 還沒送過種子就關房、種子最後一片的 ok 又剛好遺失：伺服器有閘門、執行端以為不必補送，要到下一次重連才補（罕見，輕防）。
+- 關房時派工還沒落檔就被中止：房間已公開的那批行動在補送時會被撤掉（桌上沒有），那回合要等 15 分鐘無進度才轉 held。
 
 作者已裁決（2026-11-03）：收回不做復原；重開有補送內容時已送出的行動退回草稿；重生可換路線／模型（§3.2）。目前沒有待作者決定的題目。
 
@@ -158,4 +168,7 @@
 - 常識審查員驗收第 3 輪〔模型判斷·未裁決〕：執行端錯誤分類加 `model_unavailable`（404、`cli_model_unavailable`，可做的動作＝換模型／換路線／重試），回合列寫「GM 卡住：模型已下架或叫不到，等房主換模型」；`not_ready` 改寫「金鑰或登入失效，等房主處理」；`provider_unreachable` 原寫「重試中」但卡住時並不會自動重試，改成「等房主重試」。卡住且 GM 一段都沒寫出來時，重生警語改成「會用選的模型重跑這一回合」；停用的原模型鈕寫「用原模型重生（已下架）」；換模型下拉加「路線」「模型」標籤；「?」移到操作區最右邊。重生選單的灰掉判斷改看公開的卡住種類（`holdKind`，跟資訊列的錯誤碼對照放在同一個 `gm-error.ts`），非出額度的房主也看得到。
 - 送出行動後行動格上方寫「已送出：（前 20 字）…（結算前可以收回修改）」，取名冊上本人那格的原文，結算或收回後消失；階段一原本只有一行「已送出，結算前可以收回修改」、看不到送了什麼〔模型判斷·未裁決；常識審查員〕。
 - 帶回改成草稿與清原文同一筆交易（`action.returned_dismiss { draft }`）：合併後超過 2000 字存不進去，原文照留並提示先刪一些〔模型判斷·未裁決；Sol 驗收第 2 輪、常識審查員確認〕。
+- 桌面版單人桌提示改成「這張桌開過房間：現在單人玩的段落，重開房間時會補給朋友看。」（十語）〔模型判斷·未裁決；常識審查員〕。
+- 手機故事串把 GM 正文裡的 Markdown 圍欄（模型自己寫的 time／place／present 程式碼區塊）照原文整段顯示（三行加前後兩個圍欄）：手機端純文字渲染、不認 Markdown，是既有問題，不在投影或補送路徑（房間當下的 GM 段也一樣），回報主線另排〔模型判斷·未裁決〕。
+- 關房前提醒房主「關房期間單人玩，朋友的角色會交給 GM 演」：只記觀察，本案不做〔模型判斷·未裁決；常識審查員〕。
 - GM 旁白、請發言先開輸入框帶方向提示：單人桌面版沒有（`gm_narrate` 不收文字、按鈕不讀輸入框），照搬原則本案不做，留給之後的房間版面整理案一起考慮〔模型判斷·未裁決〕。

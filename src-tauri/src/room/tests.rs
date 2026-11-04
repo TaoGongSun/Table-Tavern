@@ -443,6 +443,10 @@ async fn dispatch_runs_gm_chain_and_resent_dispatch_is_not_landed_twice() {
         "私設、GM 專屬、原文不得上送：{seed}"
     );
     assert!(seeded.contains("雨下著。"), "公開旁白照送");
+    assert_eq!(
+        seed["history"][0]["speaker"]["marker"], "solo_before",
+        "玩過的桌：種子最前面放分隔"
+    );
     // 配對碼只在房間畫面進房時發（不在 welcome 自動發）
     link::request_pair(&running.room, true);
     assert_eq!(conn.expect("pair.create").await["p"]["grantHost"], true);
@@ -1110,3 +1114,4 @@ mod card_tests;
 #[path = "gallery_tests.rs"]
 mod gallery_tests;
 mod host;
+mod sync;

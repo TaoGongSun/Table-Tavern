@@ -1,5 +1,5 @@
 // 信任邊界（協定 §10）：訊框外形與欄位內容的純函式檢查。失敗一律由呼叫端回錯誤碼、狀態不動。
-import type { ErrorCode, ExecutorError, Frame, PublicCard, QuotaReport, Capabilities, Speaker, StoryPart } from "./types";
+import type { ErrorCode, ExecutorError, Frame, PublicCard, QuotaReport, Capabilities, Speaker, StoryPart, SyncItem } from "./types";
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 export const isCount = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0;
@@ -39,8 +39,8 @@ const MEMBER_FRAMES: Record<string, string> = {
   "image.gen": "cardId:s name:s description:s extraPrompt:s framing:s",
 };
 const EXECUTOR_FRAMES: Record<string, string> = {
-  hello: "protocol:i role:s roomCode:s executorToken:s lastSeq:i inflight:o~ client:o", hb: "",
-  capabilities: "routes:a current:o maxRoundSpeakers:i", "room.seed": "part:i total:i cards?:a history?:a",
+  hello: "protocol:i role:s roomCode:s executorToken:s lastSeq:i inflight:o~ client:o paused?:b", hb: "",
+  capabilities: "routes:a current:o maxRoundSpeakers:i", "room.seed": "part:i total:i cards?:a history?:a", "story.sync": "part:i total:i keepThrough?:o~ items?:a",
   "roster.update": "cards:a", "seat.reserve": "cardId:s~ deviceId:s", "invite.ack": "joinSecret:s", "dispatch.ack": "dispatchId:s", "gen.part.begin": "dispatchId:s part:i speaker:o",
   "gen.delta": "dispatchId:s part:i text:s", "gen.part.end": "dispatchId:s part:i text:s interrupted:b",
   "gen.done": "dispatchId:s aborted:b cardsArrived?:a called?:s", "gen.failed": "dispatchId:s atPart:i~ error:o",
@@ -143,7 +143,7 @@ export function cleanCards(list: unknown): PublicCard[] | null {
   return out;
 }
 
-const MARKERS = ["scene_summary", "card_arrival", "person_arrival", "state_update"];
+const MARKERS = ["scene_summary", "card_arrival", "person_arrival", "state_update", "solo_before", "solo_paused", "room_reopened"];
 export function cleanSpeaker(v: unknown, cards: PublicCard[]): Speaker | null {
   if (!shape(v, "kind:s")) return null;
   if (v.kind === "gm") return { kind: "gm" };
@@ -161,6 +161,21 @@ export function cleanHistory(list: unknown, cards: PublicCard[]): StoryPart[] | 
     const speaker = shape(h, "speaker:o text:s interrupted:b at:i") && str(h.text, 64000) ? cleanSpeaker(h.speaker, cards) : null;
     if (!speaker) return null;
     out.push({ round: 0, part: out.length, speaker, text: h.text, interrupted: h.interrupted, at: h.at });
+  }
+  return out;
+}
+
+/** `story.sync` 的項目：段落照 `room.seed` 的驗法，摘要 ≤ 64,000 字 */
+export function cleanSyncItems(list: unknown, cards: PublicCard[]): SyncItem[] | null {
+  if (!Array.isArray(list)) return null;
+  const out: SyncItem[] = [];
+  for (const x of list) {
+    if (shape(x, "summary:s") && str(x.summary, 64000)) out.push({ summary: x.summary });
+    else {
+      const part = shape(x, "part:o") ? cleanHistory([x.part], cards)?.[0] : null;
+      if (!part) return null;
+      out.push({ part });
+    }
   }
   return out;
 }

@@ -97,11 +97,15 @@ async function executorHello(tx: Tx, p: any) {
   const w = tx.w;
   if (w.execConn && w.execConn !== tx.conn) tx.shut(w.execConn, 4409, "E_EXECUTOR_REPLACED");
   w.conns[tx.conn].who = "exec";
-  Object.assign(w.exec, { online: true, since: tx.now, lastSeen: tx.now, paused: false });
+  // 同步閘門（room-host-actions §3.3）：房主關過房（暫停時報的，或 hello 自報——關房那一刻可能送不到）就等
+  // 完整的 story.sync 才放行結算與派工；還沒送種子的房間沒有可比對的故事串，不上閘門
+  const gate = s.seeded && (s.exec.paused === true || p.paused === true);
+  Object.assign(w.exec, { online: true, since: tx.now, lastSeen: tx.now, paused: gate, sync: gate ? "needed" : null });
   w.execConn = tx.conn;
   const r = w.round;
-  // 重連去重（§6.5）：同一回合的派工沿用原 dispatchId；執行端報告它已經接手（任何狀態）就視為 generating
-  const dispatch = r?.dispatch && (r.phase === "queued" || r.phase === "generating") ? r.dispatch : null;
+  // 重連去重（§6.5）：同一回合的派工沿用原 dispatchId；執行端報告它已經接手（任何狀態）就視為 generating。
+  // 閘門期間不帶派工：執行端關房時已中止鏈
+  const dispatch = !gate && r?.dispatch && (r.phase === "queued" || r.phase === "generating") ? r.dispatch : null;
   if (dispatch) {
     r!.genAt = tx.now;
     if (p.inflight?.dispatch?.dispatchId === dispatch.dispatchId) r!.phase = "generating";

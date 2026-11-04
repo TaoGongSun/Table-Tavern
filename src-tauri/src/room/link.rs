@@ -1,6 +1,6 @@
 //! 執行端連線（協定 §4.2、§6.1、§6.5、§7.4）：建房 HTTP、WebSocket、`hello`／`welcome`、心跳、退避重連、
 //! 重送佇列，以及把收到的訊框交給 `run`。
-use super::{cards, run, seed, Room, Saved};
+use super::{cards, run, seed, sync, Room, Saved};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -221,7 +221,7 @@ async fn session(
     let saved = room.saved();
     let hello = json!({ "t": "hello", "id": "hello", "p": {
         "protocol": 1, "role": "executor", "roomCode": saved.room_code,
-        "executorToken": saved.executor_token, "lastSeq": 0, "inflight": room.inflight(),
+        "executorToken": saved.executor_token, "lastSeq": 0, "inflight": room.inflight(), "paused": saved.paused,
         "client": { "name": CLIENT, "version": env!("CARGO_PKG_VERSION") },
     }});
     if sink.send(Message::text(hello.to_string())).await.is_err() {
@@ -322,7 +322,8 @@ fn welcome(room: &Arc<Room>, p: &Value) -> Vec<Value> {
     frames.push(run::status_frame(room));
     let lobby = snapshot["room"]["status"] == "lobby";
     let (_, root) = room.engine.roots();
-    if !saved.seeded && lobby {
+    let seeding = !saved.seeded && lobby;
+    if seeding {
         match seed::seed_frames(&root, &saved.world_id) {
             Ok((parts, ids)) => {
                 room.work().roster = ids;
@@ -341,6 +342,18 @@ fn welcome(room: &Arc<Room>, p: &Value) -> Vec<Value> {
     match super::device_id(room) {
         Ok(device) => frames.extend(seed::reserve_frame(&root, &saved.world_id, &device)),
         Err(error) => room.note_error(&error),
+    }
+    // 關房後重開（§3.3）：先重送名冊（暫停期間 CastRail 改過的卡），再補送單人玩的劇情；這次才送種子的不用補
+    if saved.paused && !seeding {
+        let catch_up = seed::roster(&root, &saved.world_id).and_then(|cards| {
+            room.work().roster = seed::card_ids(&cards);
+            frames.push(json!({ "t": "roster.update", "p": { "cards": cards } }));
+            sync::frames(room, Some(snapshot), &saved.queue)
+        });
+        match catch_up {
+            Ok(parts) => frames.extend(parts),
+            Err(error) => room.note_error(&format!("story.sync：{error}")),
+        }
     }
     if p["dispatch"].is_object() {
         run::on_dispatch(room, &p["dispatch"]);
@@ -423,7 +436,11 @@ fn on_reply(room: &Room, p: &Value, error: Option<&str>) {
         let restart = p["detail"] == "seed_restart";
         if (error.is_none() && last) || (error.is_some() && !restart) {
             room.update(|saved| saved.seeded = true);
+            sync::synced(room, &room.engine.roots().1); // 種子就是桌上現況：不必再補送
         }
+    }
+    if id.starts_with("sync-") || id.starts_with("syncf-") {
+        sync::on_reply(room, id, error, p["detail"].as_str().unwrap_or_default());
     }
     if id == "pair" && error.is_none() {
         let code = p["result"]["pairCode"].as_str().unwrap_or_default();

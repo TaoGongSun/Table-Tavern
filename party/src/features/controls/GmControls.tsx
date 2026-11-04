@@ -11,8 +11,7 @@ export function GmControls({ view, act }: { view: RoomView; act: Act }) {
   const [help, setHelp] = useState(false);
   const r = view.round;
   const npcs = view.cards.filter((c) => c.playable && !c.hidden && c.claimedBy === null && !c.reserved);
-  const offline = !view.executor.online;
-  const blocked = offline ? t("startNeedExecutor") : r?.phase !== "acting" ? t("gmBusy") : null;
+  const blocked = !view.executor.online ? t("startNeedExecutor") : view.executor.syncing ? t("roundHostSyncing") : r?.phase !== "acting" ? t("gmBusy") : null;
   const gm = (mode: string, extra: Record<string, unknown> = {}) => run("host.gm", { round: r?.round ?? 0, mode, ...extra });
   const called = r?.called ? npcs.find((c) => c.cardId === r.called) : undefined;
   const picked = npcs.find((c) => c.cardId === cardId) ?? npcs[0];
@@ -43,7 +42,7 @@ export function GmControls({ view, act }: { view: RoomView; act: Act }) {
           {[t("gmNarrateNote"), t("gmAdvanceNote"), t("requestReplyHint"), t("gmNoResolveNote")].map((line) => <div key={line}>{line}</div>)}
         </div>
       )}
-      {offline && <div className="action-hint">{blocked}</div>}
+      {(!view.executor.online || view.executor.syncing) && <div className="action-hint">{blocked}</div>}
       {error && <div className="field-error" data-testid="gm-error">{error}</div>}
     </>
   );

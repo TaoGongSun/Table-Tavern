@@ -47,12 +47,14 @@ export interface PublicCard {
   /** 房主保留給電腦自己的那張（桌面版開房前的玩家卡）：只有電腦那台裝置能認領 */
   reserved?: boolean;
 }
-export type SystemMarker = "scene_summary" | "card_arrival" | "person_arrival" | "state_update" | "round_undone";
+export type SystemMarker = "scene_summary" | "card_arrival" | "person_arrival" | "state_update" | "round_undone" | "solo_before" | "solo_paused" | "room_reopened";
 export type Speaker =
   | { kind: "gm" }
   | { kind: "npc"; cardId: string; name: string }
   | { kind: "player"; memberId: string; cardId: string; name: string }
   | { kind: "system"; marker: SystemMarker };
+/** `story.sync` 一項（§3.3）：補送段落（round／part 由伺服器配）或上一幕的摘要（換幕） */
+export type SyncItem = { part: StoryPart } | { summary: string };
 export interface StoryPart {
   round: number;
   part: number;
@@ -143,6 +145,8 @@ export interface ExecutorView {
   imageGen: boolean;
   /** GM 主機有房間能用的生圖路線（本機生圖來源是 API）；沒有就手機不顯示生圖段。舊版執行端沒報＝true */
   imageGenRoute: boolean;
+  /** 房主重開房間、執行端正在補送關房期間的劇情（同步閘門，room-host-actions §3.3）：補完前不結算 */
+  syncing: boolean;
   modelLabel: string | null;
 }
 
@@ -198,7 +202,7 @@ export interface RoomState {
   closedAt: number | null;
   joinHash: string;
   execHash: string | null;
-  exec: { label: string; online: boolean; since: number; lastSeen: number; keepAwake: boolean | null; busy: boolean; paused?: boolean; imageGen?: boolean; imageGenRoute?: boolean; caps: Capabilities | null; quota: QuotaReport | null };
+  exec: { label: string; online: boolean; since: number; lastSeen: number; keepAwake: boolean | null; busy: boolean; paused?: boolean; sync?: "needed" | null; imageGen?: boolean; imageGenRoute?: boolean; caps: Capabilities | null; quota: QuotaReport | null };
   execConn: string | null;
   seq: number;
   roundNo: number;
@@ -254,6 +258,7 @@ export interface CardReq {
 export interface Live {
   stream: { round: number; part: number; speaker: Speaker; text: string; announced: boolean } | null;
   seed: { next: number; cards: PublicCard[] | null; history: StoryPart[] } | null;
+  sync?: { next: number; keep: { round: number; part: number } | null; items: SyncItem[] } | null;
   buckets: Record<string, { start: number; n: number }>;
   uploads: Record<string, Upload>;
   cardReqs: Record<string, CardReq>;

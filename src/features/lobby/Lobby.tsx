@@ -1,7 +1,6 @@
 // 大廳：沒有載入任何桌時的畫面。頂列（品牌、版本、設定）、通知區、新桌區、牌桌卡片牆。
 // 新桌入口集中在「新桌區」一塊，日後換成引導精靈時整塊替換即可。
-import { invoke } from "@tauri-apps/api/core";
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { t } from "../../i18n";
 import type { WorldMeta } from "../../shared/contracts/backend-contracts";
 import { IconBook, IconPlus, IconSettings, IconSparkle, IconUsers } from "../../shared/ui/icons";
@@ -63,14 +62,6 @@ export function Lobby({
   onEndRoom,
 }: LobbyProps) {
   useWorkDrop(onImportWork);
-  // 未遊玩的單人桌才有「用這張桌開房」；沿用重構的「已遊玩」判定（除開場旁白外沒有任何輸入）。
-  // 判定要讀整份逐字稿，所以打開那張桌的選單才查
-  const [fresh, setFresh] = useState<Record<string, boolean>>({});
-  const checkFresh = (id: string) =>
-    void invoke<string>("refactor_rerun_status", { worldId: id }).then(
-      (status) => setFresh((prev) => ({ ...prev, [id]: status !== "played" })),
-      () => {},
-    );
   return (
     <div className="lobby">
       <header className="lobby-top">
@@ -161,7 +152,7 @@ export function Lobby({
               onDelete={onDeleteTable}
               roomFromTable={
                 world.table_kind === "chat" && !world.read_only && !world.needs_repair && !(world.id in rooms)
-                  ? { fresh: fresh[world.id], check: () => checkFresh(world.id), onOpen: () => onOpenRoomFrom(world.id) }
+                  ? { onOpen: () => onOpenRoomFrom(world.id) }
                   : undefined
               }
               otherRoomActive={activeRoom !== null}

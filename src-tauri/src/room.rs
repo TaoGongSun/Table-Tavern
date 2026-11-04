@@ -8,6 +8,7 @@ mod link;
 mod member;
 mod run;
 mod seed;
+mod sync;
 
 pub(crate) use member::{member_close, member_open, member_send};
 
@@ -148,6 +149,10 @@ pub(crate) struct Saved {
     pub(crate) gone: bool,
     /// 房主在資訊列關掉「允許玩家用 AI 生圖」（預設開；花的是這台電腦上設定的 AI 帳號）
     pub(crate) image_gen_off: bool,
+    /// 房主關過房、還沒補送（room-host-actions §3.3）：重開時先送 `story.sync` 才放行
+    pub(crate) paused: bool,
+    /// 房間目前那一幕對應的桌內幕號（送種子、換幕、補送成功時更新；沒有＝舊檔，當成桌上目前這幕）
+    pub(crate) synced_scene: Option<u64>,
 }
 
 /// 資訊列的最近生圖紀錄一行（只在這台電腦、不上送）
@@ -579,7 +584,10 @@ pub(crate) async fn exit() -> Result<(), String> {
         return Ok(());
     };
     let room = running.room.clone();
-    room.update(|saved| saved.active = false);
+    room.update(|saved| {
+        saved.active = false;
+        saved.paused = true; // 下次重開要補送這段期間的單人劇情；status 送不到也靠 hello 自報
+    });
     // 手機看到「房主暫時關房」而不是「GM 主機離線」；送不到（斷線中）就只剩離線
     room.send(
         "status",

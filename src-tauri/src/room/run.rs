@@ -777,6 +777,9 @@ fn settle_job(room: &Room, id: &str, error: Option<String>) {
         if let Some(run) = saved.job.as_mut().filter(|run| run.id == id) {
             run.state = RunState::Done;
         }
+        if let (true, Some(scene)) = (advanced, scene) {
+            saved.synced_scene = Some(scene); // 房間跟著換到這一幕
+        }
     });
 }
 

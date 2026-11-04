@@ -24,15 +24,29 @@ export interface Snapshot {
 /** 房主收回過的回合（§3.2 round.undone）：那回合的 GM／NPC／系統段與玩家行動段都不算數；匯出也用 */
 export const undoneRounds = (events: StoredEvent[]) => new Set(events.filter((e) => e.type === "round.undone").map((e) => e.payload.round as number));
 
+export type KeepThrough = { round: number; part: number } | null;
+/** 重開補送撤段（§3.3 story.truncated）：本幕（`from` 起）保留到 `after` 那段為止，之後撤掉；`null` 或指不到
+ *  ＝本幕全撤（往回翻頁時那段可能在更早的一頁）。快照、客戶端、匯出共用 */
+export function keptCount(keys: Array<{ round: number; part: number }>, after: KeepThrough, from: number): number {
+  const i = after ? keys.findIndex((p, k) => k >= from && p.round === after.round && p.part === after.part) : -1;
+  return i >= 0 ? i + 1 : Math.min(from, keys.length);
+}
+
 /** 段號約定：玩家行動用負數（-1 起，依批次順序），幕摘要用 32、收回提示用 33（GM 段號 0–31 之外），不與生成段撞號 */
 export function storyOf(events: StoredEvent[]): StoryPart[] {
-  const story: StoryPart[] = [];
+  let story: StoryPart[] = [];
+  let from = 0; // 本幕第一段在 story 裡的位置（上一幕摘要之後）
   const undone = undoneRounds(events);
   for (const { type, at, payload: p } of events) {
+    if (type === "scene.started") from = story.length;
+    if (type === "story.truncated") story = story.slice(0, keptCount(story, p.after as KeepThrough, from));
     if (type === "round.undone") story.push({ round: p.round as number, part: 33, speaker: { kind: "system", marker: "round_undone" }, text: "", interrupted: false, at });
     if (undone.has(p.round as number) && (type === "story.part" || type === "round.resolved")) continue;
     if (type === "story.part") story.push(p as unknown as StoryPart);
-    if (type === "scene.summary") story.push({ round: p.round as number, part: 32, speaker: { kind: "system", marker: "scene_summary" }, text: p.text as string, interrupted: false, at });
+    if (type === "scene.summary") {
+      story.push({ round: p.round as number, part: 32, speaker: { kind: "system", marker: "scene_summary" }, text: p.text as string, interrupted: false, at });
+      from = story.length; // 快照不帶 scene.started（它在 sceneStartSeq 本身），以摘要為界
+    }
     if (type !== "round.resolved") continue;
     (p.batch as ActionItem[]).forEach((a, i) => {
       if (a.kind === "act") story.push({ round: p.round as number, part: -1 - i, speaker: { kind: "player", memberId: a.memberId, cardId: a.cardId, name: a.name }, text: a.text!, interrupted: false, at });
