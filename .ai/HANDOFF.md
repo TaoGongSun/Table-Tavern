@@ -5,7 +5,6 @@
 分類規則：仍需程式施工／規格落地才放「進行中」；施工已完成、只剩可執行環境／使用者實機／外部條件驗收則移到「等實機驗收」，並同步列入[實測佇列](reference/verification-queue.md)。
 
 ## 進行中
-- [release-5-v0.5.0](handoffs/release-5-v0.5.0.md) — 桌面版 0.5.0（多人連線房間、視覺小說）：發佈說明寫好，等驗收與 CI 演練
 - [multiplayer-friends-test](handoffs/multiplayer-friends-test.md) — 給朋友測試的多人連線版：房間預設正式伺服器、簡中下載頁以多人連線為主軸（已上線，等朋友實機測試）
 - [card-mvu-shim](handoffs/card-mvu-shim.md) — 卡片介面沙盒墊 MVU 讀寫變數：全部已合併 main，剩實測佇列梯 1 項目（含 iframe 內按鈕實際互動）
 
