@@ -46,6 +46,8 @@ interface MoreMenuProps {
   ariaLabelTrigger?: boolean;
   /** 停用：觸發鈕停用，已開的選單一併收掉 */
   disabled?: boolean;
+  /** 彈層掛在哪裡；省略＝body。多人房間元件傳自己的 .app，才吃得到那邊的配色變數 */
+  portalTo?: Element | null;
 }
 
 // 彈層與視窗邊緣保留的距離
@@ -86,6 +88,7 @@ export function MoreMenu({
   className = "btn btn-ghost btn-icon",
   ariaLabelTrigger = true,
   disabled = false,
+  portalTo,
 }: MoreMenuProps) {
   const [open, setOpen] = useState(false);
   const [place, setPlace] = useState<{ top: number; left: number; maxHeight: number } | null>(
@@ -293,7 +296,7 @@ export function MoreMenu({
               </Fragment>
             ))}
           </div>,
-          document.body,
+          portalTo ?? document.body,
         )}
     </>
   );

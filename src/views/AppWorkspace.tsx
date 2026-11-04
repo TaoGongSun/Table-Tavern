@@ -414,7 +414,15 @@ export function AppWorkspace({
               vnTable={onShowVn !== undefined}
               playView={
                 roomMode ? (
-                  <DesktopRoom ctl={deskRoom} />
+                  <DesktopRoom
+                    ctl={deskRoom}
+                    seat={{
+                      playerName: characters.player?.name ?? null,
+                      onOpenPlayerCard: () => void openPlayerCard(),
+                      onImport: (file) => void imports.importFile(file),
+                      importLocked: tableOpBusy,
+                    }}
+                  />
                 ) : (
                 <PlayView
                   onboarding={

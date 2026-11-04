@@ -1,6 +1,6 @@
 // 房主頁的邀請（room-seat-delegate §2.2、§3.6）：「邀請新朋友」顯示現行連結＋QR、不重生（還沒到的老朋友手上的連結照樣能用）；
 // 「換新連結」另一顆，確認舊連結作廢才重生。桌面版直接用資訊列那條；手機帶自己網址上的密語問伺服器，對不上再問電腦。
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { t } from "../../i18n";
 import { Confirm } from "../room/Confirm";
 import { errorText } from "../room/error-text";
@@ -16,8 +16,8 @@ export interface InviteSource {
   joinSecret?: string | null;
 }
 
-/** `initialOpen`：桌面資訊列的彈層一打開就畫現行連結與 QR（朋友多半站在旁邊等掃），並跟著最新的連結走 */
-export function InviteControls({ view, act, src, initialOpen = false }: { view: RoomView; act: Act; src: InviteSource; initialOpen?: boolean }) {
+/** `initialOpen`：桌面資訊列的彈層一打開就畫現行連結與 QR（朋友多半站在旁邊等掃），並跟著最新的連結走；`children` 排在 QR 與換新連結之間 */
+export function InviteControls({ view, act, src, initialOpen = false, children }: { view: RoomView; act: Act; src: InviteSource; initialOpen?: boolean; children?: ReactNode }) {
   const [link, setLink] = useState<string | null>(initialOpen ? (src.inviteUrl ?? null) : null);
   // 桌面版握有現行連結：已經顯示著（或一開始就展開）時，換新連結後跟上
   useEffect(() => {
@@ -40,23 +40,45 @@ export function InviteControls({ view, act, src, initialOpen = false }: { view: 
     if (reply.ok) return void (setLink(url(reply.result.joinSecret)), setNote(null));
     setNote(errorText(reply.code, reply.retryAfterMs));
   };
-  return (
-    <>
-      <div className="panel-actions">
-        {!initialOpen && <button type="button" data-testid="invite-current" onClick={() => void show()}>{t("hostInviteCurrent")}</button>}
-        {/* 新連結要先存進電腦才生效：電腦離線時不給換 */}
-        <button type="button" className="ghost" disabled={!view.executor.online} title={view.executor.online ? undefined : t("hostInviteNeedsExecutor")} onClick={() => setAsking(true)}>{t("hostInviteNew")}</button>
+  // 會作廢舊連結的「換新連結」：新連結要先存進電腦才生效，電腦離線時不給換
+  const renew = (
+    <button type="button" className="ghost" disabled={!view.executor.online} title={view.executor.online ? undefined : t("hostInviteNeedsExecutor")} onClick={() => setAsking(true)}>{t("hostInviteNew")}</button>
+  );
+  const box = link && (
+    <div className="invite-box">
+      <div className="row invite-row">
+        <input className="invite" readOnly value={link} onFocus={(e) => e.currentTarget.select()} data-testid="invite" />
+        <button type="button" className="ghost" onClick={() => void navigator.clipboard?.writeText(link)}>{t("hostCopy")}</button>
       </div>
+      <QrCode value={link} label={t("hostInviteCurrent")} />
+    </div>
+  );
+  const notes = (
+    <>
       {!view.executor.online && <p className="muted">{t("hostInviteNeedsExecutor")}</p>}
       {note && <p className="muted" data-testid="invite-note">{note}</p>}
-      {link && (
-        <div className="invite-box">
-          <div className="row">
-            <input className="invite" readOnly value={link} onFocus={(e) => e.currentTarget.select()} data-testid="invite" />
-            <button type="button" className="ghost" onClick={() => void navigator.clipboard?.writeText(link)}>{t("hostCopy")}</button>
+    </>
+  );
+  return (
+    <>
+      {initialOpen ? (
+        // 桌面資訊列彈層：標題 → 連結＋複製 → QR → 呼叫端塞的（暱稱、交給手機）→ 最下面才是換新連結
+        <>
+          <h3 className="invite-title">{t("hostInviteTitle")}</h3>
+          {notes}
+          {box}
+          {children}
+          <div className="panel-actions invite-renew">{renew}</div>
+        </>
+      ) : (
+        <>
+          <div className="panel-actions">
+            <button type="button" data-testid="invite-current" onClick={() => void show()}>{t("hostInviteCurrent")}</button>
+            {renew}
           </div>
-          <QrCode value={link} label={t("hostInviteCurrent")} />
-        </div>
+          {notes}
+          {box}
+        </>
       )}
       {asking && (
         <Confirm title={t("hostInviteNew")} testId="invite-new-confirm" onCancel={() => setAsking(false)} actions={[{ label: t("hostInviteNew"), onClick: () => void regenerate(), danger: true }]}>

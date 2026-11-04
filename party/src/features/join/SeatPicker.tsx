@@ -1,5 +1,5 @@
 // 選角（協定 §2）：名冊中可玩、未隱藏、沒保留給電腦的卡；或匯入角色卡、建立角色（執行端在桌上建卡後替他入座，room-player-cards）。
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { t } from "../../i18n";
 import type { Upload } from "../my-card/card-upload";
 import { errorText } from "../room/error-text";
@@ -15,9 +15,11 @@ interface Props {
   onCreate: () => void;
   /** 匯入成功（入座後畫面換掉，提示由上層顯示） */
   onImported?: () => void;
+  /** 桌面版的入口（用左欄的玩家卡、匯入角色卡），取代建立與匯入 */
+  entry?: ReactNode;
 }
 
-export function SeatPicker({ view, act, desktop = false, upload, onCreate, onImported }: Props) {
+export function SeatPicker({ view, act, desktop = false, upload, onCreate, onImported, entry }: Props) {
   const { run, error, setError } = useRun(act);
   const [importing, setImporting] = useState(false);
   async function importCard(file: File | undefined) {
@@ -49,7 +51,9 @@ export function SeatPicker({ view, act, desktop = false, upload, onCreate, onImp
           </button>
         </div>
       ))}
-      {view.room.settings.allowCustomCards && (
+      {entry ? (
+        <div className="panel-actions seat-entries" data-testid="seat-create">{entry}</div>
+      ) : view.room.settings.allowCustomCards && (
         <div className="panel-actions seat-entries" data-testid="seat-create">
           {/* 匯入：房主電腦建出只有角色本身的卡後自動入座（桌面版有自己的匯入，不給） */}
           {upload && (

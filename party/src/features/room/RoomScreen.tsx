@@ -93,6 +93,8 @@ export interface RoomControls {
   joinSecret?: string | null;
   payerExtra?: ReactNode;
   heldDetail?: ReactNode;
+  /** 桌面版選角區的入口（建立／用我的角色卡、匯入角色卡），取代手機的建立與匯入 */
+  seatEntry?: ReactNode;
 }
 
 export function RoomScreen({ view, c }: { view: RoomView; c: RoomControls }) {
@@ -116,7 +118,10 @@ export function RoomScreen({ view, c }: { view: RoomView; c: RoomControls }) {
     if (wasPaused.current && !view.executor.paused && view.executor.online) setReopened(true);
     wasPaused.current = view.executor.paused;
   }, [view.executor.paused, view.executor.online]);
-  const bar = <RoundBar view={view} act={c.act} heldDetail={c.heldDetail} reopen={isHost ? { shown: reopened, dismiss: () => setReopened(false), openAttendance: () => (setTab("host"), setAttend((n) => n + 1)) } : undefined} />;
+  const bar = <RoundBar view={view} act={c.act} heldDetail={c.heldDetail} resumed={c.resumed} reopen={isHost ? { shown: reopened, dismiss: () => setReopened(false), openAttendance: () => (setTab("host"), setAttend((n) => n + 1)) } : undefined} />;
+  const hostPlaying = isHost && view.room.status === "playing";
+  const seated = !!view.me.cardId && open;
+  const gm = <GmControls view={view} act={c.act} />;
   const nav = (
     <nav className="tabs">
       {tabs.map((k) => (
@@ -142,31 +147,34 @@ export function RoomScreen({ view, c }: { view: RoomView; c: RoomControls }) {
       {c.pairForm !== false && nav}
       {tab === "story" && (
         <>
-          <StoryView view={view} loadOlder={c.loadOlder} />
-          {isHost && view.room.status === "playing" && (
-            // 房主的回合級故事按鈕：一列排開、放不下才換行，故事串留最多空間
-            <div className="host-controls">
-              <UndoControls view={view} act={c.act} />
-              <GmControls view={view} act={c.act} />
-            </div>
-          )}
-          {/* 電腦自己的座位照舊用 CastRail 的卡片編輯 */}
-          {view.me.cardId && open && c.pairForm !== false && (
-            <button type="button" className="ghost" data-testid="card-edit" onClick={() => (setImported(false), setSheet("edit"))}>{t("cardEdit")}</button>
-          )}
-          {imported && view.me.cardId && <p className="muted" data-testid="import-note">{t("seatImportedNote")}</p>}
-          {view.me.cardId && open ? <ActionBox view={view} act={c.act} sendDraft={c.sendDraft} cancelDraft={c.cancelDraft} /> : canSit && (folded ? (
-            <button type="button" className="ghost" data-testid="seat-unfold" onClick={() => setPicking(true)}>{t("seatShowPicker")}</button>
-          ) : (
-            <SeatPicker view={view} act={c.act} desktop={c.pairForm === false} upload={c.upload} onCreate={() => setSheet("create")} onImported={() => setImported(true)} />
-          ))}
+          <StoryView view={view} loadOlder={c.loadOlder} tail={hostPlaying && <UndoControls view={view} act={c.act} />} />
+          {/* 故事區下方整塊：桌面版高度有上限、自己捲（room-desktop-layout §2-9）；手機是 display: contents，版面照舊 */}
+          <div className="room-dock">
+            {hostPlaying && !seated && (
+              // 沒入座的房主：GM 鈕單獨一列，入座是列尾的小鈕
+              <div className="host-controls">
+                {gm}
+                {folded && <button type="button" className="ghost small seat-unfold" data-testid="seat-unfold" onClick={() => setPicking(true)}>{t("seatShowPicker")}</button>}
+              </div>
+            )}
+            {/* 電腦自己的座位照舊用 CastRail 的卡片編輯 */}
+            {seated && c.pairForm !== false && (
+              <button type="button" className="ghost" data-testid="card-edit" onClick={() => (setImported(false), setSheet("edit"))}>{t("cardEdit")}</button>
+            )}
+            {imported && view.me.cardId && <p className="muted" data-testid="import-note">{t("seatImportedNote")}</p>}
+            {seated ? (
+              <ActionBox view={view} act={c.act} sendDraft={c.sendDraft} cancelDraft={c.cancelDraft} leading={hostPlaying ? gm : undefined} />
+            ) : (
+              canSit && !folded && <SeatPicker view={view} act={c.act} desktop={c.pairForm === false} upload={c.upload} entry={c.seatEntry} onCreate={() => setSheet("create")} onImported={() => setImported(true)} />
+            )}
+          </div>
         </>
       )}
       {tab === "members" && <MemberList view={view} act={c.act} c={c} />}
       {tab === "host" && isHost && (
         <HostPanel view={view} act={c.act} invite={{ origin: c.origin, inviteUrl: c.inviteUrl, joinSecret: c.joinSecret }} exportRoom={c.exportRoom} phone={c.pairForm !== false} focusAttendance={attend > 0} key={attend} />
       )}
-      {tab === "payer" && isPayer && <PayerPanel view={view} act={c.act} resumed={c.resumed} desktop={c.pairForm === false} extra={c.payerExtra} />}
+      {tab === "payer" && isPayer && <PayerPanel view={view} act={c.act} desktop={c.pairForm === false} extra={c.payerExtra} />}
     </>
   );
 }

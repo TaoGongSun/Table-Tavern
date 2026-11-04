@@ -1,6 +1,6 @@
 // 故事串：GM 旁白、NPC 對話、玩家行動、系統標記；串流中那段即時長出，定稿整段取代。
 // 一律純文字（協定 §10：別人的行動與模型輸出都是不可信文字，不插 HTML）。
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { streamDisplayText } from "@desktop/features/play/stream-display";
 import type { Speaker } from "../../../server/core/types";
 import { t, type MsgKey } from "../../i18n";
@@ -20,7 +20,8 @@ function Part({ view, speaker, text, flag }: { view: RoomView; speaker: Speaker;
   );
 }
 
-export function StoryView({ view, loadOlder }: { view: RoomView; loadOlder: (beforeSeq: number) => Promise<number> }) {
+/** `tail`：故事串最尾的動作（房主的收回／重生），跟著故事一起捲 */
+export function StoryView({ view, loadOlder, tail }: { view: RoomView; loadOlder: (beforeSeq: number) => Promise<number>; tail?: ReactNode }) {
   const box = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const [cursor, setCursor] = useState<number | null>(null); // null＝還沒翻過；0＝沒有更早的了
@@ -56,6 +57,7 @@ export function StoryView({ view, loadOlder }: { view: RoomView; loadOlder: (bef
           <Part view={view} speaker={{ kind: "player", memberId: e.memberId, cardId: e.cardId, name: name(e.cardId) }} text={e.text ?? ""} flag={t("storySubmitted")} />
         </div>
       ))}
+      {tail}
     </div>
   );
 }

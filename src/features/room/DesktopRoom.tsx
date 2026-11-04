@@ -73,7 +73,43 @@ function ImageGenRow({ status }: { status: RoomStatus }) {
   );
 }
 
-export function DesktopRoom({ ctl }: { ctl: DesktopRoomCtl }) {
+/** 選角區的桌面版入口要的 app 動作（左欄的玩家卡與匯入，跟 CastRail 同一套） */
+export interface DesktopSeat {
+  playerName: string | null;
+  onOpenPlayerCard: () => void;
+  onImport: (file: File) => void;
+  importLocked: boolean;
+}
+
+/** 選角區：保留給電腦的玩家卡還空著就直接入座它；還沒有玩家卡就開左欄的編輯；匯入走左欄同一條匯入 */
+function SeatEntry({ seat, ctl }: { seat: DesktopSeat; ctl: DesktopRoomCtl }) {
+  const file = useRef<HTMLInputElement>(null);
+  const mine = ctl.view?.cards.find((c) => c.reserved && c.claimedBy === null);
+  const name = mine?.name ?? seat.playerName;
+  return (
+    <>
+      <button type="button" className="primary" onClick={() => (mine ? void ctl.room?.act("seat.claim", { cardId: mine.cardId }) : seat.onOpenPlayerCard())}>
+        {name ? t("roomUseMyCard", { name }) : t("roomCreateMyCard")}
+      </button>
+      <button type="button" disabled={seat.importLocked} onClick={() => file.current?.click()}>
+        {t("roomImportCard")}
+      </button>
+      <input
+        ref={file}
+        type="file"
+        accept=".png,.json,image/png,application/json"
+        hidden
+        onChange={(event) => {
+          const picked = event.currentTarget.files?.[0];
+          event.currentTarget.value = "";
+          if (picked) seat.onImport(picked);
+        }}
+      />
+    </>
+  );
+}
+
+export function DesktopRoom({ ctl, seat }: { ctl: DesktopRoomCtl; seat: DesktopSeat }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const bar = useRef<HTMLDivElement>(null);
@@ -97,6 +133,44 @@ export function DesktopRoom({ ctl }: { ctl: DesktopRoomCtl }) {
       setTimeout(() => setCopied(false), 1500);
     });
   };
+  // 彈層下半：暱稱、交給手機（交給手機的連結與配對碼出來時接在下面）
+  const more = (
+    <>
+      <hr className="room-sep" />
+      {v && (
+        <form
+          className="row"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const name = nickname.trim();
+            if (name && name !== v.me.nickname) void room?.act("profile.rename", { nickname: name });
+          }}
+        >
+          <label className="room-label" htmlFor="room-nickname">
+            {t("roomNickname")}
+          </label>
+          <input id="room-nickname" className="room-value" maxLength={24} value={nickname} onChange={(e) => ctl.setNickname(e.target.value)} />
+        </form>
+      )}
+      {v && iAmHost && !handoff && (
+        <div className="panel-actions">
+          <button type="button" disabled={busy || !status?.online} onClick={ctl.toPhone}>
+            {t("roomToPhone")}
+          </button>
+        </div>
+      )}
+      {handoff && (
+        <>
+          <p>{t("roomToPhoneLink")}</p>
+          <CopyRow label={t("roomToPhone")} value={handoff} />
+          <div className="row">
+            <span className="room-label">{t("roomPairCode")}</span>
+            <strong>{status?.pairCode ?? "—"}</strong>
+          </div>
+        </>
+      )}
+    </>
+  );
   // GM 錯誤只在回合列（卡住時）；這裡只出連線、伺服器過舊、遠端暫停、同步等非 GM 錯誤（處理完的舊 GM 錯誤不再掛著）
   const otherError = status?.lastError && status.lastErrorKind === null ? status.lastError : null;
   const gmDetail = status?.lastError && status.lastErrorKind !== null ? <ErrorDetail text={status.lastError} /> : undefined;
@@ -133,40 +207,13 @@ export function DesktopRoom({ ctl }: { ctl: DesktopRoomCtl }) {
         {popover && (
           <div className="room-popover party-themed" data-testid="room-popover">
             {v && room && iAmHost ? (
-              <InviteControls view={v} act={room.act} src={{ origin: ctl.origin, inviteUrl: status?.inviteUrl ?? null }} initialOpen />
+              <InviteControls view={v} act={room.act} src={{ origin: ctl.origin, inviteUrl: status?.inviteUrl ?? null }} initialOpen>
+                {more}
+              </InviteControls>
             ) : (
-              status?.inviteUrl && <QrCode value={status.inviteUrl} label={t("roomInvite")} />
-            )}
-            {v && (
-              <form
-                className="row"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  const name = nickname.trim();
-                  if (name && name !== v.me.nickname) void room?.act("profile.rename", { nickname: name });
-                }}
-              >
-                <label className="room-label" htmlFor="room-nickname">
-                  {t("roomNickname")}
-                </label>
-                <input id="room-nickname" className="room-value" maxLength={24} value={nickname} onChange={(e) => ctl.setNickname(e.target.value)} />
-              </form>
-            )}
-            {v && iAmHost && !handoff && (
-              <div className="panel-actions">
-                <button type="button" disabled={busy || !status?.online} onClick={ctl.toPhone}>
-                  {t("roomToPhone")}
-                </button>
-              </div>
-            )}
-            {handoff && (
               <>
-                <p>{t("roomToPhoneLink")}</p>
-                <CopyRow label={t("roomToPhone")} value={handoff} />
-                <div className="row">
-                  <span className="room-label">{t("roomPairCode")}</span>
-                  <strong>{status?.pairCode ?? "—"}</strong>
-                </div>
+                {status?.inviteUrl && <QrCode value={status.inviteUrl} label={t("roomInvite")} />}
+                {more}
               </>
             )}
           </div>
@@ -190,6 +237,7 @@ export function DesktopRoom({ ctl }: { ctl: DesktopRoomCtl }) {
               inviteUrl: status?.inviteUrl ?? null,
               payerExtra: status?.active && status.imageGenRoute ? <ImageGenRow status={status} /> : undefined,
               heldDetail: gmDetail,
+              seatEntry: <SeatEntry seat={seat} ctl={ctl} />,
             }}
           />
         </div>

@@ -15,6 +15,8 @@ export interface DesktopHooks {
   payerExtra?: ReactNode;
   /** 卡住時回合列的「詳情」：桌面用本機遮罩過的原文；沒給就用房間的分類說明 */
   heldDetail?: ReactNode;
+  /** 選角區的桌面版入口：建立／用我的角色卡（左欄玩家卡）、匯入角色卡 */
+  seatEntry?: ReactNode;
 }
 
 export function RoomBody({ room, origin, desktop }: { room: RoomSession; origin: string; desktop?: DesktopHooks }) {
@@ -43,6 +45,7 @@ export function RoomBody({ room, origin, desktop }: { room: RoomSession; origin:
           joinSecret: desktop ? null : room.joinSecret,
           payerExtra: desktop?.payerExtra,
           heldDetail: desktop?.heldDetail,
+          seatEntry: desktop?.seatEntry,
         }}
       />
     </>

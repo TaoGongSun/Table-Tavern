@@ -1,4 +1,4 @@
-// 房主收回／重生上一回合（room-host-actions §3.2）：放在故事串最後一段下方。兩者都先確認「GM 這段會作廢、大家都看得到它消失」，
+// 房主收回／重生上一回合（room-host-actions §3.2）：故事串尾的小鈕（照單人版 .story-actions，跟著故事捲）。兩者都先確認「GM 這段會作廢、大家都看得到它消失」，
 // 收回就定案、不能復原。出額度者重生時可同時換路線／模型。只收一層：上一回合的段落還在故事串最後才給按（伺服器為準）。
 import { useState } from "react";
 import { t } from "../../i18n";
@@ -27,29 +27,43 @@ export function UndoControls({ view, act }: { view: RoomView; act: Act }) {
   // 卡住且 GM 這回合一段都沒寫出來：沒有東西會消失，警語改講會重跑
   const empty = r?.phase === "held" && !view.story.some((p) => p.round === r.round && p.part >= 0 && p.part !== 33);
   const warn = !empty ? "undoConfirm" : ask === "regenerate" ? "undoConfirmHeldRegen" : "undoConfirmHeldEdit";
-  return (
+  const regen = ask === "regenerate";
+  const payer = view.room.payerId === view.me.memberId;
+  // 確認區：主按鈕排第一。原模型用不了時主按鈕是換模型重生，停用的原模型鈕排最後
+  const same = (
+    <button type="button" className="danger" disabled={regen && !!broken} onClick={() => undo(ask!)}>{regen && broken ? t("regenSameBroken", { why: t(failed === "model_unavailable" ? "whyGone" : "whyAuth") }) : t(regen ? "undoRegenerate" : "undoEdit")}</button>
+  );
+  const cancel = <button type="button" className="ghost" onClick={() => setAsk(null)}>{t("cancel")}</button>;
+  const picker = regen && payer && (
     <>
+      {failed && !broken && <p className="muted">{t("regenTransientNote")}</p>}
+      <RoutePicker routes={view.routes} current={cur} broken={broken} label={t("undoRegenerateSwitch")} onPick={(next) => undo("regenerate", next)} />
+    </>
+  );
+  return (
+    <div className="story-actions">
       {ask === null ? (
         <span className="panel-actions" data-testid="undo-controls">
-          <button type="button" className="ghost" disabled={offline !== null} title={offline ?? t("undoRegenerateHint")} onClick={() => setAsk("regenerate")}>{t("undoRegenerate")}</button>
-          <button type="button" className="ghost" disabled={offline !== null} title={offline ?? t("undoEditHint")} onClick={() => setAsk("edit")}>{t("undoEdit")}</button>
+          <button type="button" className="ghost small undo-regen" disabled={offline !== null} title={offline ?? t("undoRegenerateHint")} onClick={() => setAsk("regenerate")}>{t("undoRegenerate")}</button>
+          <button type="button" className="ghost small undo-edit" disabled={offline !== null} title={offline ?? t("undoEditHint")} onClick={() => setAsk("edit")}>{t("undoEdit")}</button>
         </span>
       ) : (
         <div className="undo-confirm" data-testid="undo-confirm">
           <p>{t(warn)}</p>
-          <div className="panel-actions">
-            <button type="button" className="danger" disabled={ask === "regenerate" && !!broken} onClick={() => undo(ask)}>{ask === "regenerate" && broken ? t("regenSameBroken", { why: t(failed === "model_unavailable" ? "whyGone" : "whyAuth") }) : t(ask === "regenerate" ? "undoRegenerate" : "undoEdit")}</button>
-            <button type="button" className="ghost" onClick={() => setAsk(null)}>{t("cancel")}</button>
-          </div>
-          {ask === "regenerate" && view.room.payerId === view.me.memberId && (
+          {regen && broken ? (
             <>
-              {failed && !broken && <p className="muted">{t("regenTransientNote")}</p>}
-              <RoutePicker routes={view.routes} current={cur} broken={broken} label={t("undoRegenerateSwitch")} onPick={(next) => undo("regenerate", next)} />
+              {picker}
+              <div className="panel-actions">{cancel}{same}</div>
+            </>
+          ) : (
+            <>
+              <div className="panel-actions">{same}{cancel}</div>
+              {picker}
             </>
           )}
         </div>
       )}
       {error && <div className="field-error" data-testid="undo-error">{error}</div>}
-    </>
+    </div>
   );
 }

@@ -4,7 +4,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { modelName, t } from "../../i18n";
 import { DelegateButton } from "./DelegateButton";
 import { allDelegated, offlineSeated } from "./delegation";
-import { clock, HOLD_TEXT, HOLD_TEXT_PAYER } from "./error-text";
+import { clock, HOLD_TEXT } from "./error-text";
+import { HeldActions } from "../controls/HeldActions";
 import type { RoomView } from "./room-state";
 import { useRun, type Act } from "./useRoom";
 
@@ -18,11 +19,20 @@ function status(v: RoomView, now: number): string {
   if (v.room.status === "lobby") return t("roundLobby");
   if (v.room.status === "transition") return t(v.room.transition?.stalled ? "roundStalled" : "roundTransition");
   if (!r) return "";
-  if (r.phase === "held" && r.hold) return r.hold.kind === "quota" && r.hold.resetsAt ? t("holdQuotaAt", { time: clock(r.hold.resetsAt) }) : t((v.room.payerId === v.me.memberId && HOLD_TEXT_PAYER[r.hold.kind]) || HOLD_TEXT[r.hold.kind]);
+  if (r.phase === "held" && r.hold) return held(v, r.hold);
   if (r.phase !== "acting") return t(v.executor.online ? "roundGenerating" : v.executor.paused ? "roundHostPaused" : "roundExecutorOffline");
   if (r.roster.length === 0 && allDelegated(v)) return t(v.room.hostId === v.me.memberId ? "roundAllDelegatedHost" : "roundAllDelegated");
   if (r.deadline !== null) return t("roundCountdown", { time: mmss(Math.max(0, r.deadline - now)) });
   return r.pausedRemainingMs !== null ? t("roundPaused", { time: mmss(r.pausedRemainingMs) }) : t("roundActing");
+}
+
+/** 卡住：只講發生什麼；能處理的人（出額度者）鈕就在旁邊，其他人寫等誰（換幕的句子本來就點名房主） */
+function held(v: RoomView, hold: NonNullable<NonNullable<RoomView["round"]>["hold"]>): string {
+  const base = hold.kind === "quota" && hold.resetsAt ? t("holdQuotaAt", { time: clock(hold.resetsAt) }) : t(HOLD_TEXT[hold.kind]);
+  if (v.room.payerId === v.me.memberId || hold.kind === "scene_full") return base;
+  const payer = v.members.find((m) => m.memberId === v.room.payerId)?.nickname;
+  if (v.room.hostId !== v.me.memberId) return t("holdWaitHost", { status: base });
+  return payer ? t("holdWaitPayer", { status: base, name: payer }) : base;
 }
 
 /** 重開後的提醒：房主剛把房間從暫停接回（客戶端記憶體，重新整理後就不再提醒） */
@@ -33,7 +43,7 @@ export interface Reopen {
 }
 
 /** `heldDetail`：桌面版本機遮罩過的錯誤原文；沒給就用房間的分類說明（只給出額度者，他才能處理） */
-export function RoundBar({ view, act, reopen, heldDetail }: { view: RoomView; act: Act; reopen?: Reopen; heldDetail?: ReactNode }) {
+export function RoundBar({ view, act, reopen, heldDetail, resumed }: { view: RoomView; act: Act; reopen?: Reopen; heldDetail?: ReactNode; resumed: (round: number) => void }) {
   const [now, setNow] = useState(Date.now());
   const { run, error } = useRun(act);
   const r = view.round;
@@ -71,6 +81,7 @@ export function RoundBar({ view, act, reopen, heldDetail }: { view: RoomView; ac
         {host && view.room.status === "lobby" && blocked && <span className="action-hint" data-testid="start-blocked">{blocked}</span>}
         {host && r?.phase === "acting" && r.roster.length > 0 && <button type="button" onClick={() => run("round.resolve", { round: r.round })}>{waiting.length > 0 ? t("hostResolvePending", { n: waiting.length }) : t("hostResolve")}</button>}
         {boss && r?.phase === "generating" && <button type="button" onClick={() => run("gen.abort", { round: r.round })}>{t("roundAbort")}</button>}
+        <HeldActions view={view} act={act} resumed={resumed} />
         {boss && r?.phase === "held" && r.hold?.actions.includes("continue") && <button type="button" onClick={() => run("round.continue", { round: r.round })}>{t("roundContinue")}</button>}
         {host && view.room.transition?.stalled && <button type="button" onClick={() => run("scene.advance_cancel")}>{t("hostAdvanceCancel")}</button>}
       </div>

@@ -213,7 +213,13 @@
 .app .round-detail summary {
   display: inline;
   cursor: pointer;
-  color: var(--muted);
+  color: var(--accent);
+}
+.app .round-detail summary::before {
+  content: "▸ ";
+}
+.app .round-detail[open] summary::before {
+  content: "▾ ";
 }
 .app .round-detail[open] small {
   display: block;
@@ -247,8 +253,128 @@
   flex-basis: 100%;
 }
 
-.app .host-controls .gm-help {
+/* 沒入座房主的 GM 列：「入座」小鈕在列尾 */
+.app .host-controls .seat-unfold {
   margin-left: auto;
+}
+
+/* GM 分段鈕：主鈕是上次用的動作，▾ 打開其他動作（點了直接執行） */
+.app .gm-seg {
+  display: inline-flex;
+}
+.app .gm-seg > button {
+  border-radius: 999px 0 0 999px;
+}
+.app .gm-seg .gm-seg-more {
+  min-width: 0;
+  padding: 6px 10px;
+  border-left: 0;
+  border-radius: 0 999px 999px 0;
+}
+
+/* 行動格動作列左側（房主的 GM 鈕），送出在右端 */
+.app .action-leading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-right: auto;
+}
+
+/* 故事串尾的收回／重生（照單人版的小幽靈鈕，跟著故事捲） */
+.app .story-actions {
+  margin-top: 8px;
+}
+.app .undo-regen::before {
+  content: "↻ ";
+}
+.app .undo-edit::before {
+  content: "↶ ";
+}
+
+/* 選單（PartyMenu 掛進 .app）：覆寫桌面版 .menu 的樣式，只用 party 的配色變數；手機與嵌在桌面同一份 */
+.app .menu {
+  position: fixed;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-width: 11rem;
+  max-width: calc(100vw - 16px);
+  padding: 4px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3);
+  font-family: system-ui, -apple-system, "PingFang TC", sans-serif;
+  font-size: 15px;
+}
+.app .menu .menu-item {
+  display: flex;
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 40px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+.app .menu .menu-item:focus {
+  outline: none;
+  background: var(--surface-2);
+}
+.app .menu .menu-item:focus-visible,
+.app .menu .menu-item[data-focus-ring]:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.app .menu .menu-item-danger,
+.app .menu .menu-item-danger:focus {
+  color: var(--danger);
+}
+.app .menu .menu-item[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: default;
+}
+.app .menu .btn-label {
+  display: flex;
+  flex-direction: column;
+}
+.app .menu .menu-note {
+  color: var(--muted);
+  font-size: 13px;
+}
+.app .menu .menu-sep {
+  margin: 4px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+/* 卡住時的換模型：錨在鈕下的小彈層（同選單外觀，但不是選單：裡面是兩個下拉＋套用） */
+.app .held-switch-anchor {
+  position: relative;
+}
+.app .menu.held-switch {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 18rem;
+  padding: 10px;
+}
+
+/* 邀請：桌面彈層的標題與連結列 */
+.app .invite-title,
+.party-themed .invite-title {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+.app .invite-row .invite,
+.party-themed .invite-row .invite {
+  flex: 1 1 12em;
+  margin-top: 0;
 }
 
 .app .picker-label {
@@ -285,6 +411,11 @@
   background: var(--surface-2);
   color: var(--text);
   font-weight: 600;
+}
+
+/* 故事區下方整塊（GM 列、行動格、選角）：手機不另成一個盒子，版面照舊；桌面版在 room.css 給高度上限 */
+.app .room-dock {
+  display: contents;
 }
 
 .app .story {

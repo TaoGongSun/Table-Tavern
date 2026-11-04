@@ -1,11 +1,12 @@
 // 行動格（協定 §3.3）：草稿節流上傳（不公開）、送出即公開、收回成草稿、跳過。GM 生成中可打字不可送；
 // 被拒（回合已往下走、GM 還在說）時草稿原樣保留。交給 AI 代管中照樣能打字存草稿，只是送不出（不在名單上）。
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { t } from "../../i18n";
 import type { RoomView } from "./room-state";
 import { useRun, type Act } from "./useRoom";
 
-export function ActionBox({ view, act, sendDraft, cancelDraft }: { view: RoomView; act: Act; sendDraft: (text: string) => void; cancelDraft: () => void }) {
+/** `leading`：動作列左側（房主的 GM 鈕，照單人版跟送出同一列） */
+export function ActionBox({ view, act, sendDraft, cancelDraft, leading }: { view: RoomView; act: Act; sendDraft: (text: string) => void; cancelDraft: () => void; leading?: ReactNode }) {
   const [text, setText] = useState(view.me.draft ?? "");
   const [taken, setTaken] = useState(false); // 房主收回、原文已直接放回輸入框：送出前提示一行
   const [tooLong, setTooLong] = useState(false);
@@ -92,8 +93,10 @@ export function ActionBox({ view, act, sendDraft, cancelDraft }: { view: RoomVie
       />
       {error && <div className="field-error" data-testid="action-error">{error}</div>}
       <div className="action-buttons">
-        {done ? (
-          <button type="button" disabled={!acting} onClick={() => run("action.retract")}>{t("actionRetract")}</button>
+        {leading && <span className="action-leading">{leading}</span>}
+        {/* 「收回修改」只在行動中：結算後（GM 生成中、卡住）收不回，照常給停用的跳過／送出，不留一顆一直灰著的收回 */}
+        {done && acting ? (
+          <button type="button" onClick={() => run("action.retract")}>{t("actionRetract")}</button>
         ) : (
           <>
             <button type="button" className="ghost" disabled={!acting} onClick={() => commit("action.skip")}>{t("actionSkip")}</button>

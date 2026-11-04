@@ -196,7 +196,9 @@ describe("手機客戶端對真伺服器核心", () => {
     B.click("跳過");
     await until(() => room.s.round?.phase === "queued");
     await until(() => A.text().includes("GM 生成中…") && B.text().includes("GM 生成中…"));
-    expect((A.button("收回修改") as HTMLButtonElement).disabled).toBe(true); // 結算後不能收回
+    // 結算後收不回：不留一顆灰著的「收回修改」，照常給停用的跳過／送出
+    expect(A.button("收回修改")).toBeNull();
+    expect((A.button("送出") as HTMLButtonElement).disabled).toBe(true);
     expect(room.events("round.resolved").at(-1)!.payload.by).toBe("all");
     expect(B.q('[data-testid="story"]')!.textContent).toContain("我拔劍"); // 結算後進故事串
   });
@@ -285,7 +287,10 @@ describe("手機客戶端對真伺服器核心", () => {
     await until(() => B.text().includes("GM 這段被供應商擋下，等房主處理"));
     expect(B.text()).not.toContain("AI_CONTENT_FILTERED");
     expect(B.text()).toContain("GM 卡住了，房主處理後再送");
-    expect(A.text()).toContain("GM 這段被供應商擋下，你可以重試、換模型或跳過"); // A 是出額度者
+    expect(A.text()).toContain("GM 這段被供應商擋下"); // A 是出額度者：只講發生什麼，鈕就在旁邊
+    expect(A.text()).not.toContain("等房主處理");
+    expect(A.button("重試")).toBeTruthy();
+    expect(B.button("重試")).toBeNull();
     expect(B.q('[data-testid="error-detail"]')).toBeNull(); // 細節在回合列，只給出額度者
 
     await until(() => A.q('[data-testid="error-detail"]'));
@@ -303,6 +308,66 @@ describe("手機客戶端對真伺服器核心", () => {
     await until(() => reloaded.text().includes("GM 生成中…"));
     expect(room.s.round!.phase).toBe("generating");
     expect(reloaded.button("重試")).toBeNull();
+  });
+
+  it("卡住時出額度者在回合列換模型：只出伺服器允許的鈕、被拒有錯誤、成功後離開 held", async () => {
+    const { room, hub, A, B } = await table();
+    A.click("結算這回合");
+    await until(() => room.s.round?.dispatchId && room.s.round.phase === "queued");
+    const dispatchId = room.dispatchId();
+    await hub.exec("dispatch.ack", { dispatchId });
+    await hub.exec("gen.failed", { dispatchId, atPart: null, error: { kind: "model_unavailable", code: "AI_HTTP_STATUS_404", message: "x", actions: ["switch_model", "continue"], resetsAt: null } });
+    await until(() => A.q('[data-testid="held-switch"]'));
+    expect(A.button("跳過這段，繼續")).toBeTruthy(); // 伺服器允許的其他動作照留
+    expect(B.q('[data-testid="held-switch"]')).toBeNull();
+    A.click("換模型 ▾");
+    expect(A.q<HTMLSelectElement>('.held-switch select[aria-label="模型"]')!.value).toBe("m-b"); // 下架的原模型灰掉、預設換能用的
+    A.click("切換並重送");
+    await until(() => room.frames("x1", "ctl").length === 1);
+    const first = room.frames("x1", "ctl")[0].p;
+    expect(first.cmd).toEqual({ kind: "switch_model", model: "m-b" });
+    await hub.exec("ctl.result", { ctlId: first.ctlId, ok: false, error: { code: "AI_HTTP_STATUS_404", message: "還是叫不到" } });
+    await until(() => A.q('[data-testid="held-error"]'));
+    expect(room.s.round!.phase).toBe("held");
+    A.click("切換並重送"); // 失敗時彈層留著，可以直接再試
+    await until(() => room.frames("x1", "ctl").length === 2);
+    await hub.exec("ctl.result", { ctlId: room.frames("x1", "ctl")[1].p.ctlId, ok: true });
+    await until(() => room.s.round!.phase === "generating" && A.text().includes("GM 生成中…"));
+    expect(A.q('[data-testid="held-switch"]')).toBeNull();
+  });
+
+  it("卡住時換模型照伺服器允許的動作送命令：只允許換路線時同路線也送 switch_route；只允許換模型時只列同一條路線", async () => {
+    const pick = (P: Phone, model: string) =>
+      act(() => {
+        const sel = P.q<HTMLSelectElement>('.held-switch select[aria-label="模型"]')!;
+        Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(sel, model);
+        sel.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    const hold = async (actions: string[]) => {
+      const t = await table();
+      t.A.click("結算這回合");
+      await until(() => t.room.s.round?.dispatchId && t.room.s.round.phase === "queued");
+      const dispatchId = t.room.dispatchId();
+      await t.hub.exec("dispatch.ack", { dispatchId });
+      await t.hub.exec("gen.failed", { dispatchId, atPart: null, error: { kind: "provider_unreachable", code: "E_GEN_TIMEOUT", message: "x", actions, resetsAt: null } });
+      await until(() => t.A.q('[data-testid="held-switch"]'));
+      t.A.click("換模型 ▾");
+      return t;
+    };
+    const r1 = await hold(["retry", "switch_route"]);
+    const route = r1.room.s.sceneSettings!.route;
+    pick(r1.A, "m-b");
+    r1.A.click("切換並重送");
+    await until(() => r1.room.frames("x1", "ctl").length === 1);
+    expect(r1.room.frames("x1", "ctl")[0].p.cmd).toEqual({ kind: "switch_route", route, model: "m-b" });
+
+    const r2 = await hold(["switch_model"]);
+    const routes = [...r2.A.el.querySelectorAll<HTMLOptionElement>('.held-switch select[aria-label="路線"] option')].map((o) => o.value);
+    expect(routes).toEqual([r2.room.s.sceneSettings!.route]);
+    pick(r2.A, "m-b");
+    r2.A.click("切換並重送");
+    await until(() => r2.room.frames("x1", "ctl").length === 1);
+    expect(r2.room.frames("x1", "ctl")[0].p.cmd).toEqual({ kind: "switch_model", model: "m-b" });
   });
 
   it("送出後節流中的草稿不會晚到：伺服器草稿保持清空，下一回合不會把舊行動當草稿", async () => {
@@ -368,7 +433,7 @@ describe("手機客戶端對真伺服器核心", () => {
     await until(() => A.q('[data-testid="submitted"]'));
     A.click("GM 旁白");
     await until(() => room.s.round?.kind === "host" && B.q<HTMLTextAreaElement>('[data-testid="action-text"]')!.value === "我點酒");
-    expect(A.q<HTMLButtonElement>('[data-testid="gm-narrate"]')!.disabled).toBe(true);
+    expect(A.q<HTMLButtonElement>('[data-testid="gm-main"]')!.disabled).toBe(true);
     const dispatchId = room.dispatchId();
     await hub.exec("dispatch.ack", { dispatchId });
     await hub.exec("gen.done", { dispatchId, aborted: false, called: "c3" });
@@ -376,6 +441,17 @@ describe("手機客戶端對真伺服器核心", () => {
     expect(B.button("讓角色3接話")).toBeNull();
     A.click("讓角色3接話");
     await until(() => room.s.round?.host?.call === true);
+  });
+
+  it("GM 分段鈕：選單點了直接執行並成為主鈕；主鈕與選單停用條件一致", async () => {
+    const { room, A } = await table();
+    act(() => A.q<HTMLButtonElement>(".gm-seg-more")!.click());
+    const item = [...A.el.querySelectorAll<HTMLButtonElement>(".menu .menu-item")].find((b) => b.textContent?.startsWith("GM 推進"))!;
+    act(() => item.click());
+    await until(() => room.s.round?.kind === "host");
+    expect(A.q('[data-testid="gm-main"]')!.textContent).toBe("GM 推進");
+    expect(A.q<HTMLButtonElement>('[data-testid="gm-main"]')!.disabled).toBe(true);
+    expect(A.q<HTMLButtonElement>(".gm-seg-more")!.disabled).toBe(true);
   });
 
   it("房主收回上一回合：確認後 GM 段從大家的故事串消失、留一行提示；被收回的行動只回到本人，帶回填進輸入框，不用重連", async () => {
@@ -452,7 +528,7 @@ describe("手機客戶端對真伺服器核心", () => {
     const model = A.q<HTMLSelectElement>('[data-testid="undo-confirm"] select[aria-label="模型"]')!;
     expect(model.value).toBe("m-b");
     expect(model.querySelector<HTMLOptionElement>('option[value="m-a"]')!.disabled).toBe(true);
-    expect(A.text()).toContain("GM 卡住：模型已下架或叫不到，等房主換模型");
+    expect(A.text()).toContain("GM 的模型已下架或叫不到");
     expect(A.text()).toContain("會用選的模型重跑這一回合。"); // 一段都沒寫出來：警語不說「會消失」
     expect(A.button("用原模型重生（已下架）")?.disabled).toBe(true);
     A.click("取消");
