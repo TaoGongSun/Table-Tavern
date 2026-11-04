@@ -704,6 +704,14 @@ async fn remote_control_replies_first_then_acts() {
     )
     .await;
     assert_eq!(conn.expect("ctl.result").await["p"]["ok"], false);
+    // 房主遠端暫停（room-seat-delegate）：先回結果、記下停止原因（這個執行端沒登記成全域，關房那步不會動到它）
+    conn.send(
+        "ctl",
+        json!({ "ctlId": "c4", "by": "m1", "cmd": { "kind": "pause" } }),
+    )
+    .await;
+    assert_eq!(conn.expect("ctl.result").await["p"]["ok"], true);
+    assert_eq!(stop_reason(&world).as_deref(), Some(PAUSED_REMOTELY));
     running.stop().await;
 }
 
@@ -998,6 +1006,24 @@ async fn invite_is_stored_before_ack() {
     assert_eq!(stored.join_secret, "fresh");
     assert_eq!(stored.invite_url, format!("{server}/r/ROOM#k=fresh"));
     assert_eq!(running.room.panel().invite_url, Some(stored.invite_url));
+}
+
+/// 手機房主問現行邀請連結：照憑證裡的密語回 `invite.get.result`，原樣帶回 reqId
+#[tokio::test]
+async fn invite_get_answers_with_stored_secret() {
+    let (root, world, _, _) = table("invite-get");
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let server = format!("http://{}", listener.local_addr().unwrap());
+    let fake = Fake::new(&root, Vec::new());
+    let mut first = saved(&server, &world);
+    first.seeded = true;
+    first.join_secret = "current".to_owned();
+    let _running = start(fake.clone(), first, FAST, false).await;
+    let mut conn = accept(&listener).await;
+    conn.welcome(false, Value::Null, Value::Null).await;
+    conn.send("invite.get", json!({ "reqId": "q1" })).await;
+    let got = conn.expect("invite.get.result").await;
+    assert_eq!(got["p"], json!({ "reqId": "q1", "joinSecret": "current" }));
 }
 
 /// 伺服器回壞訊框關閉（4400，多半是伺服器比 app 舊）：不照原樣一直重連，停下來；憑證留著，面板看得到原因

@@ -11,7 +11,9 @@
     "player_watch": "〈{name}〉這回合觀望",
     "player_arrival": "（玩家登場）〈{name}〉",
     "player_to_npc": "（玩家離席）〈{name}〉改由 GM 當 NPC 扮演",
-    "player_absent": "（玩家離席）〈{name}〉暫不登場"
+    "player_absent": "（玩家離席）〈{name}〉暫不登場",
+    "player_delegated": "（玩家暫離）〈{name}〉暫由 GM 代演，照角色原本個性行動，不替玩家做重大決定",
+    "player_returned": "（玩家回來）〈{name}〉"
   },
   "zh-CN": {
     "scene_summary": "【前情提要】",
@@ -25,7 +27,9 @@
     "player_watch": "〈{name}〉这回合观望",
     "player_arrival": "（玩家登场）〈{name}〉",
     "player_to_npc": "（玩家离席）〈{name}〉改由 GM 当 NPC 扮演",
-    "player_absent": "（玩家离席）〈{name}〉暂不登场"
+    "player_absent": "（玩家离席）〈{name}〉暂不登场",
+    "player_delegated": "（玩家暂离）〈{name}〉暂由 GM 代演，照角色原本个性行动，不替玩家做重大决定",
+    "player_returned": "（玩家回来）〈{name}〉"
   },
   "en": {
     "scene_summary": "Previously:",
@@ -39,7 +43,9 @@
     "player_watch": "“{name}” sits this round out",
     "player_arrival": "(Player joins) “{name}”",
     "player_to_npc": "(Player leaves) “{name}” is now an NPC played by the GM",
-    "player_absent": "(Player leaves) “{name}” is away"
+    "player_absent": "(Player leaves) “{name}” is away",
+    "player_delegated": "(Player steps away) “{name}” is played by the GM for now: stay in character and make no major decisions for the player",
+    "player_returned": "(Player returns) “{name}”"
   },
   "ja": {
     "scene_summary": "【前回までのあらすじ】",
@@ -53,7 +59,9 @@
     "player_watch": "〈{name}〉はこのラウンドは様子見",
     "player_arrival": "（プレイヤー参加）〈{name}〉",
     "player_to_npc": "（プレイヤー離席）〈{name}〉は以後GMがNPCとして演じる",
-    "player_absent": "（プレイヤー離席）〈{name}〉は不在"
+    "player_absent": "（プレイヤー離席）〈{name}〉は不在",
+    "player_delegated": "（プレイヤー一時離席）〈{name}〉は当面GMが代わりに演じる。本来の性格どおりに動かし、プレイヤーに代わって重大な決定はしない",
+    "player_returned": "（プレイヤー復帰）〈{name}〉"
   },
   "ko": {
     "scene_summary": "【지난 이야기】",
@@ -67,7 +75,9 @@
     "player_watch": "〈{name}〉 이번 라운드는 관망",
     "player_arrival": "(플레이어 합류) 〈{name}〉",
     "player_to_npc": "(플레이어 이탈) 〈{name}〉은(는) 이제 GM이 NPC로 연기함",
-    "player_absent": "(플레이어 이탈) 〈{name}〉 자리 비움"
+    "player_absent": "(플레이어 이탈) 〈{name}〉 자리 비움",
+    "player_delegated": "(플레이어 잠시 자리 비움) 〈{name}〉은(는) 당분간 GM이 대신 연기함. 원래 성격대로 행동하고 플레이어 대신 중대한 결정은 내리지 않음",
+    "player_returned": "(플레이어 복귀) 〈{name}〉"
   },
   "es": {
     "scene_summary": "Anteriormente:",
@@ -81,7 +91,9 @@
     "player_watch": "«{name}» observa esta ronda",
     "player_arrival": "(Se une un jugador) «{name}»",
     "player_to_npc": "(Un jugador se va) «{name}» pasa a ser un PNJ del GM",
-    "player_absent": "(Un jugador se va) «{name}» está ausente"
+    "player_absent": "(Un jugador se va) «{name}» está ausente",
+    "player_delegated": "(Un jugador se ausenta) «{name}» lo interpreta el GM por ahora: mantén su personalidad y no tomes decisiones importantes por el jugador",
+    "player_returned": "(Vuelve un jugador) «{name}»"
   },
   "pt-BR": {
     "scene_summary": "Anteriormente:",
@@ -95,7 +107,9 @@
     "player_watch": "“{name}” observa nesta rodada",
     "player_arrival": "(Jogador entra) “{name}”",
     "player_to_npc": "(Jogador sai) “{name}” agora é um NPC do GM",
-    "player_absent": "(Jogador sai) “{name}” está ausente"
+    "player_absent": "(Jogador sai) “{name}” está ausente",
+    "player_delegated": "(Jogador se ausenta) “{name}” é interpretado pelo GM por enquanto: mantenha a personalidade e não tome decisões importantes pelo jogador",
+    "player_returned": "(Jogador volta) “{name}”"
   },
   "de": {
     "scene_summary": "Bisher:",
@@ -109,7 +123,9 @@
     "player_watch": "„{name}“ wartet diese Runde ab",
     "player_arrival": "(Spieler kommt dazu) „{name}“",
     "player_to_npc": "(Spieler geht) „{name}“ wird jetzt vom GM als NSC gespielt",
-    "player_absent": "(Spieler geht) „{name}“ ist abwesend"
+    "player_absent": "(Spieler geht) „{name}“ ist abwesend",
+    "player_delegated": "(Spieler ist kurz weg) „{name}“ wird vorerst vom GM gespielt: im Charakter bleiben und keine wichtigen Entscheidungen für den Spieler treffen",
+    "player_returned": "(Spieler ist zurück) „{name}“"
   },
   "fr": {
     "scene_summary": "Précédemment\u00a0:",
@@ -123,7 +139,9 @@
     "player_watch": "«\u00a0{name}\u00a0» observe ce tour",
     "player_arrival": "(Un joueur arrive) «\u00a0{name}\u00a0»",
     "player_to_npc": "(Un joueur part) «\u00a0{name}\u00a0» devient un PNJ joué par le MJ",
-    "player_absent": "(Un joueur part) «\u00a0{name}\u00a0» est absent"
+    "player_absent": "(Un joueur part) «\u00a0{name}\u00a0» est absent",
+    "player_delegated": "(Un joueur s’absente) «\u00a0{name}\u00a0» est joué par le MJ pour l’instant : garder sa personnalité et ne prendre aucune décision importante à la place du joueur",
+    "player_returned": "(Un joueur revient) «\u00a0{name}\u00a0»"
   },
   "ru": {
     "scene_summary": "Ранее:",
@@ -137,6 +155,8 @@
     "player_watch": "«{name}» в этом раунде наблюдает",
     "player_arrival": "(Игрок присоединяется) «{name}»",
     "player_to_npc": "(Игрок уходит) «{name}» теперь NPC, которого играет ГМ",
-    "player_absent": "(Игрок уходит) «{name}» отсутствует"
+    "player_absent": "(Игрок уходит) «{name}» отсутствует",
+    "player_delegated": "(Игрок отошёл) «{name}» пока играет ГМ: сохранять характер и не принимать за игрока важных решений",
+    "player_returned": "(Игрок вернулся) «{name}»"
   }
 }

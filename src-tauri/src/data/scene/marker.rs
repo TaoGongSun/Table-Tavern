@@ -41,6 +41,14 @@ pub enum EventMarker {
     PlayerAbsent {
         name: String,
     },
+    /// 多人房間：真人玩家暫離、角色暫時交給 AI 代管（GM 當 NPC 演，座位保留）。
+    PlayerDelegated {
+        name: String,
+    },
+    /// 多人房間：真人玩家從 AI 代管接回自己的角色。
+    PlayerReturned {
+        name: String,
+    },
     #[serde(other)]
     Unknown,
 }
@@ -155,6 +163,12 @@ pub fn marker_heading(marker: &EventMarker, lang: &str) -> Option<String> {
         }
         EventMarker::PlayerToNpc { name } => template(lang, "player_to_npc", Some(("name", name))),
         EventMarker::PlayerAbsent { name } => template(lang, "player_absent", Some(("name", name))),
+        EventMarker::PlayerDelegated { name } => {
+            template(lang, "player_delegated", Some(("name", name)))
+        }
+        EventMarker::PlayerReturned { name } => {
+            template(lang, "player_returned", Some(("name", name)))
+        }
         EventMarker::Unknown => return None,
     })
 }

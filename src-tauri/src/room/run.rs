@@ -532,13 +532,14 @@ fn land_batch(
             .collect(),
         players: list("players").iter().map(|p| text(&p["cardId"])).collect(),
         arrivals: list("arrivals").iter().map(text).collect(),
+        returns: list("returns").iter().map(text).collect(),
         departures: list("departures")
             .iter()
             .map(|x| {
-                let mode = if x["mode"] == "npc" {
-                    DepartureMode::Npc
-                } else {
-                    DepartureMode::Absent
+                let mode = match x["mode"].as_str() {
+                    Some("npc") => DepartureMode::Npc,
+                    Some("delegate") => DepartureMode::Delegate,
+                    _ => DepartureMode::Absent,
                 };
                 (text(&x["cardId"]), mode)
             })
@@ -701,6 +702,14 @@ pub(super) fn on_ctl(room: &Arc<Room>, p: &Value) {
         }
         // 下一幕設定由伺服器存著、隨換幕後的派工帶來；額度不報，這兩樣只照實回
         "set_next" | "refresh_quota" => reply(true),
+        // 手機房主遠端暫停（room-seat-delegate §3.3）：先回結果，再走跟桌面「關房（暫停）」同一條流程。
+        // exit 要停掉這條連線迴圈，不能在迴圈裡等它，另開一個 task
+        "pause" => {
+            reply(true);
+            let world = room.world();
+            super::note_stop(&world, super::PAUSED_REMOTELY);
+            tokio::spawn(async move { super::exit_world(&world).await });
+        }
         _ => reply(false),
     }
 }

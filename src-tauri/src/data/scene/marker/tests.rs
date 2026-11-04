@@ -195,8 +195,8 @@ fn shared_dictionary_is_complete() {
     ];
     assert_eq!(dictionary.len(), langs.len());
     let keys: BTreeSet<&String> = dictionary["zh-TW"].keys().collect();
-    // 多人房間（multiplayer-room 包 3）加了觀望、登場、兩種離席四個
-    assert_eq!(keys.len(), 12);
+    // 多人房間（multiplayer-room 包 3）加了觀望、登場、兩種離席四個；AI 代管（room-seat-delegate）加暫離、回來兩個
+    assert_eq!(keys.len(), 14);
     for lang in langs {
         let entries = &dictionary[lang];
         assert_eq!(entries.keys().collect::<BTreeSet<_>>(), keys, "{lang}");
@@ -204,7 +204,9 @@ fn shared_dictionary_is_complete() {
             assert!(!text.trim().is_empty(), "{lang}.{key}");
             let placeholder = match key.as_str() {
                 "card_arrival" | "card_private" | "gm_call" | "player_watch" | "player_arrival"
-                | "player_to_npc" | "player_absent" => Some("{name}"),
+                | "player_to_npc" | "player_absent" | "player_delegated" | "player_returned" => {
+                    Some("{name}")
+                }
                 "person_arrival" => Some("{title}"),
                 _ => None,
             };

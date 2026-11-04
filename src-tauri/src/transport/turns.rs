@@ -550,6 +550,8 @@ fn summary_party_note(events: &[TranscriptEvent], en: bool) -> String {
                         | PlayerArrival { .. }
                         | PlayerToNpc { .. }
                         | PlayerAbsent { .. }
+                        | PlayerDelegated { .. }
+                        | PlayerReturned { .. }
                 )
             )
     });

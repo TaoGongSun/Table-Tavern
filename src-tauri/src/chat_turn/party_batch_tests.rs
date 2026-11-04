@@ -45,6 +45,7 @@ fn batch(dispatch_id: &str, players: &[&String], actions: Vec<PartyAction>) -> P
         players: players.iter().map(|id| (*id).clone()).collect(),
         arrivals: Vec::new(),
         departures: Vec::new(),
+        returns: Vec::new(),
     }
 }
 
@@ -487,5 +488,61 @@ fn stale_arrival_and_departure_are_skipped() {
     let state = data::read_state(&root, &world_id).unwrap();
     assert_eq!(state.player_card_ids, [tao.clone()]);
     assert!(state.absent_card_ids.is_empty());
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// AI 代管（room-seat-delegate）：暫離寫「暫離」、卡進 NPC 池可點名；接回時在 returns 裡的寫「回來」而不是「登場」
+#[test]
+fn delegate_and_return_markers() {
+    let (root, world_id, ids) = table("party-delegate");
+    let [tao, yu, ..] = &ids;
+    first_round(&root, &world_id, &ids);
+    let away = PartyBatch {
+        departures: vec![(yu.clone(), DepartureMode::Delegate)],
+        ..batch("e1", &[tao], vec![act(tao, "我先走。")])
+    };
+    assert_eq!(land(&root, &world_id, &away), BatchOutcome::Appended(2));
+    let markers = |from: usize| -> Vec<_> {
+        transcript(&root, &world_id)[from..]
+            .iter()
+            .map(|event| event.marker.clone())
+            .collect()
+    };
+    let name = |name: &str| name.to_owned();
+    assert_eq!(
+        markers(3),
+        [
+            Some(data::EventMarker::PlayerDelegated {
+                name: name("小雨")
+            }),
+            None,
+        ]
+    );
+    let state = data::read_state(&root, &world_id).unwrap();
+    assert_eq!(state.player_card_ids, [tao.clone()]);
+    assert!(!state.absent_card_ids.contains(yu), "代管不是離席");
+    let materials = chat_assembly::gm_materials(&root, &world_id).unwrap();
+    let call = |raw: &str| chat_assembly::gm_next_speaker(&materials, Some(raw.to_owned()));
+    assert_eq!(
+        call("小雨"),
+        (Some(yu.clone()), None),
+        "代管中由 GM 當 NPC 演"
+    );
+    let back = PartyBatch {
+        arrivals: vec![yu.clone()],
+        returns: vec![yu.clone()],
+        ..batch("e2", &[tao, yu], Vec::new())
+    };
+    land(&root, &world_id, &back);
+    assert_eq!(
+        markers(5),
+        [Some(data::EventMarker::PlayerReturned {
+            name: name("小雨")
+        })]
+    );
+    assert_eq!(
+        data::read_state(&root, &world_id).unwrap().player_card_ids,
+        [tao.clone(), yu.clone()]
+    );
     let _ = std::fs::remove_dir_all(&root);
 }

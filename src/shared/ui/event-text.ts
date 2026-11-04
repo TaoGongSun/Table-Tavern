@@ -10,6 +10,8 @@ const NAMED: Record<string, "name" | "title"> = {
   player_arrival: "name",
   player_to_npc: "name",
   player_absent: "name",
+  player_delegated: "name",
+  player_returned: "name",
 };
 const BARE = new Set(["scene_summary", "state_update"]);
 
@@ -49,6 +51,11 @@ export function markerHeading(marker: KnownMarker): string {
       return t("marker_player_to_npc", { name: marker.name });
     case "player_absent":
       return t("marker_player_absent", { name: marker.name });
+    // AI 代管（room-seat-delegate）：暫離與接回
+    case "player_delegated":
+      return t("marker_player_delegated", { name: marker.name });
+    case "player_returned":
+      return t("marker_player_returned", { name: marker.name });
   }
 }
 

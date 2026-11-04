@@ -489,6 +489,8 @@ fn stop_reason(world: &str) -> Option<String> {
 
 /// 前端認得的錯誤代碼：另一張桌正在房間模式
 const OTHER_TABLE: &str = "ROOM_OTHER_TABLE";
+/// 停止原因：手機上的房主暫停了房間（前端據此跳通知、回大廳）
+pub(crate) const PAUSED_REMOTELY: &str = "ROOM_PAUSED_REMOTELY";
 
 /// 全域那一份；連線迴圈已自己結束（房間關了、憑證失效、被取代）就移出，防休眠跟著放掉
 fn running() -> MutexGuard<'static, Option<Running>> {
@@ -623,6 +625,13 @@ pub(crate) async fn exit() -> Result<(), String> {
     }
     running.stop().await;
     release_table(&room, &room.world())
+}
+
+/// 遠端暫停：房間還開在這張桌才關（期間房主可能已在電腦上自己關了）
+pub(crate) async fn exit_world(world: &str) {
+    if active_world().as_deref() == Some(world) {
+        let _ = exit().await;
+    }
 }
 
 /// 發一張新的 grantHost 配對碼；結果在下次讀狀態時出現。`phone`：這張碼是要交給手機的（之後桌面成員連線不再自己拿房主），

@@ -406,6 +406,11 @@ fn on_frame(room: &Arc<Room>, frame: &Value) {
                 }
             }
         }
+        // 手機房主要現行邀請連結（seat-delegate §3.6）：照憑證裡的密語回，伺服器比對雜湊、只轉給發問的房主；不記日誌
+        "invite.get" => room.send(
+            "invite.get.result",
+            json!({ "reqId": p["reqId"], "joinSecret": room.saved().join_secret }),
+        ),
         // 出額度者配對好了：配對碼用掉，面板不再顯示
         "ev" if p["e"]["type"] == "pair.bound" => {
             let mut status = room.status();

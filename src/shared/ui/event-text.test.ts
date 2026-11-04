@@ -41,9 +41,9 @@ describe("parseMarker", () => {
   });
 });
 
-describe("多人房間的四個在場標記", () => {
-  it("parseMarker 認得四種、缺名字的不算", () => {
-    for (const type of ["player_watch", "player_arrival", "player_to_npc", "player_absent"]) {
+describe("多人房間的在場標記（含 AI 代管的暫離與回來）", () => {
+  it("parseMarker 認得六種、缺名字的不算", () => {
+    for (const type of ["player_watch", "player_arrival", "player_to_npc", "player_absent", "player_delegated", "player_returned"]) {
       expect(parseMarker({ type, name: "阿濤" })).toEqual({ type, name: "阿濤" });
       expect(parseMarker({ type })).toBeNull();
     }
@@ -56,6 +56,10 @@ describe("多人房間的四個在場標記", () => {
       "（玩家離席）〈守衛〉改由 GM 當 NPC 扮演",
     );
     expect(eventDisplayText(system({ type: "player_absent", name: "阿明" }, ""))).toBe("（玩家離席）〈阿明〉暫不登場");
+    expect(eventDisplayText(system({ type: "player_delegated", name: "小雨" }, ""))).toBe(
+      "（玩家暫離）〈小雨〉暫由 GM 代演，照角色原本個性行動，不替玩家做重大決定",
+    );
+    expect(eventDisplayText(system({ type: "player_returned", name: "小雨" }, ""))).toBe("（玩家回來）〈小雨〉");
   });
 });
 

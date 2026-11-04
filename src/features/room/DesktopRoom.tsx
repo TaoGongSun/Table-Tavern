@@ -114,7 +114,7 @@ export function DesktopRoom({ ctl }: { ctl: DesktopRoomCtl }) {
         {status?.lastError && (
           <div className="room-row">
             <span className="room-label">{t("roomLastError")}</span>
-            {status.lastError === "E_SERVER_OUTDATED" ? <span>{t("roomServerOutdated")}</span> : <LastError text={status.lastError} kind={status.lastErrorKind} />}
+            {status.lastError === "E_SERVER_OUTDATED" ? <span>{t("roomServerOutdated")}</span> : status.lastError === "ROOM_PAUSED_REMOTELY" ? <span>{t("roomPausedRemotely")}</span> : <LastError text={status.lastError} kind={status.lastErrorKind} />}
           </div>
         )}
         {(open || handoff) && (

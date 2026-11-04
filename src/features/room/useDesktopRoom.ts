@@ -2,7 +2,7 @@
 // 編輯卡、看世界書、回大廳都不斷線〔§2.1〕。進房時電腦自己用 grantHost 碼入座成房主＋出額度者（交給手機後就不再自己拿）；
 // 桌上有玩家卡就自動認領它（伺服器保留給這台裝置，朋友認不走）。
 import { invoke } from "@tauri-apps/api/core";
-import { confirm } from "@tauri-apps/plugin-dialog";
+import { confirm, message } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RoomSession } from "@party/features/room/useRoomSession";
 import { parseInvite, type Invite } from "@party/features/connection/invite";
@@ -55,6 +55,7 @@ export function useDesktopRoom(worldId: string | null, deps: { cast: unknown; pl
   const [busy, setBusy] = useState(false);
   const seatTried = useRef(false);
   const reentered = useRef(false);
+  const wasActive = useRef(false);
 
   // 換桌（或房間關了）：連線與這間房的暫存全部重來
   useEffect(() => {
@@ -67,6 +68,7 @@ export function useDesktopRoom(worldId: string | null, deps: { cast: unknown; pl
     setMine(null);
     seatTried.current = false;
     reentered.current = false;
+    wasActive.current = false;
     if (!worldId) return;
     let live = true;
     const poll = () => void readRoomStatus(worldId).then((s) => live && setStatus(s), () => {});
@@ -139,6 +141,16 @@ export function useDesktopRoom(worldId: string | null, deps: { cast: unknown; pl
   }, [view, act, mine]);
 
   const { onPaused } = deps;
+  // 手機上的房主遠端暫停了（執行端已自己走完關房）：跳通知、回大廳。只在這次看過房間開著時才算，
+  // 之後再進這張桌讀到的舊停止原因不再跳
+  useEffect(() => {
+    if (status?.active) wasActive.current = true;
+    if (!status || status.active || status.lastError !== "ROOM_PAUSED_REMOTELY" || !wasActive.current) return;
+    wasActive.current = false;
+    void message(t("roomPausedRemotely"), { title: t("roomPause"), kind: "info" });
+    onPaused();
+  }, [status, onPaused]);
+
   const pause = useCallback(async () => {
     const ok = await confirm(t("roomPauseConfirm"), { title: t("roomPause"), kind: "warning", okLabel: t("roomPause"), cancelLabel: t("dialogCancel") });
     if (!ok) return;

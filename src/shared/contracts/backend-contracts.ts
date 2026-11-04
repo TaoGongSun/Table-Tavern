@@ -436,6 +436,8 @@ export type KnownMarker =
   | { type: "player_watch"; name: string }
   | { type: "player_arrival"; name: string }
   | { type: "player_to_npc"; name: string }
-  | { type: "player_absent"; name: string };
+  | { type: "player_absent"; name: string }
+  | { type: "player_delegated"; name: string }
+  | { type: "player_returned"; name: string };
 export type UnknownMarker = { type: string };
 export type EventMarker = KnownMarker | UnknownMarker;

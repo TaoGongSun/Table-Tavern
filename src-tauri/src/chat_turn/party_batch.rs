@@ -18,6 +18,8 @@ pub(crate) enum DepartureMode {
     Npc,
     /// 標離席：卡留在桌上但不點名
     Absent,
+    /// 暫時交給 AI 代管：跟 Npc 一樣由 GM 演，只差標記寫「暫離」（座位在房間層保留，之後接回）
+    Delegate,
 }
 
 /// 一次派工要落的東西（協定 `Dispatch` 去掉房間層欄位）。
@@ -29,6 +31,8 @@ pub(crate) struct PartyBatch {
     pub players: Vec<String>,
     pub arrivals: Vec<String>,
     pub departures: Vec<(String, DepartureMode)>,
+    /// 本回合從 AI 代管接回的卡（arrivals 的子集）：寫「玩家回來」，不寫「玩家登場」
+    pub returns: Vec<String>,
 }
 
 /// `Duplicate`＝本幕已有 `action_id == dispatch_id` 的事件，整批跳過、什麼都沒寫；`Appended` 帶寫了幾則。
@@ -69,11 +73,11 @@ pub(crate) fn append_party_batch(
         Some(&batch.dispatch_id),
         &draft.join("\n"),
     )?;
-    let ids = |mode: DepartureMode| -> Vec<String> {
+    let ids = |modes: &[DepartureMode]| -> Vec<String> {
         batch
             .departures
             .iter()
-            .filter(|(_, departed)| *departed == mode)
+            .filter(|(_, departed)| modes.contains(departed))
             .map(|(id, _)| id.clone())
             .collect()
     };
@@ -86,8 +90,8 @@ pub(crate) fn append_party_batch(
             root,
             world_id,
             &batch.players,
-            &ids(DepartureMode::Absent),
-            &ids(DepartureMode::Npc),
+            &ids(&[DepartureMode::Absent]),
+            &ids(&[DepartureMode::Npc, DepartureMode::Delegate]),
         )
         .map_err(|error| error.to_string())?;
         let scene = data::read_state(root, world_id)
@@ -165,11 +169,14 @@ fn batch_events(
         events.push(system(match mode {
             DepartureMode::Npc => EventMarker::PlayerToNpc { name },
             DepartureMode::Absent => EventMarker::PlayerAbsent { name },
+            DepartureMode::Delegate => EventMarker::PlayerDelegated { name },
         }));
     }
     for card_id in batch.arrivals.iter().filter(|id| present(id)) {
-        events.push(system(EventMarker::PlayerArrival {
-            name: name(card_id)?,
+        let name = name(card_id)?;
+        events.push(system(match batch.returns.contains(card_id) {
+            true => EventMarker::PlayerReturned { name },
+            false => EventMarker::PlayerArrival { name },
         }));
     }
     for action in &batch.actions {
