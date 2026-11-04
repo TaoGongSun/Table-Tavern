@@ -905,27 +905,18 @@ function App() {
       if (speaker && speaker !== GM_TARGET && !cast.some((character) => character.id === speaker)) {
         setSpeaker(GM_TARGET);
       }
-      await cardInterface.refreshInterfaces(table);
+      await refreshTableCore(live);
       if (!live()) return;
-      // 復原的若是重構套用，磁碟上的介面殼檔已被刪，前端快取跟著重問一次
-      await cardInterface.refreshShell(table);
-      if (!live()) return;
-      await gmOnlyTable.refresh(table);
-      if (!live()) return;
+      // GM 圖與逐字稿只重讀各自的畫面資料，核心刷新不依賴它們，因此排在核心之後。
       // 復原的若是 PNG 世界書匯入，GM 卡的圖也被刪了，重讀一次回到書本圖
       await characters.reloadGmImage();
       if (!live()) return;
       // 貼出的開場白被一起收掉：檯面變了，重讀這一幕
       if (report.removed_opening) await chat.reload();
       if (!live()) return;
-      // 重構套用的復原會退回狀態樹與玩法標記：頂部狀態欄跟著重讀
-      await tableState.refresh();
-      if (!live()) return;
       const worldList = await invoke<WorldMeta[]>("list_worlds");
       if (!live()) return;
       setWorlds(worldList);
-      await imports.refreshReceipts(table);
-      if (!live()) return;
       // 撤銷重構可能退回玩家卡指定：側欄玩家卡重讀（失敗只報錯，不擋完成訊息）
       try {
         const state = await invoke<WorldState>("read_state", { worldId: table });
@@ -968,6 +959,22 @@ function App() {
     await characters.refresh();
   }
 
+  // 兩條跨域重讀鏈共用的核心；每個 await 邊界都確認仍在原桌。
+  async function refreshTableCore(live: () => boolean) {
+    await cardInterface.refreshInterfaces(table);
+    if (!live()) return;
+    // 復原的若是重構套用，磁碟上的介面殼檔已被刪，前端快取跟著重問一次。
+    await cardInterface.refreshShell(table);
+    if (!live()) return;
+    await gmOnlyTable.refresh(table);
+    if (!live()) return;
+    // 重構套用的復原會退回狀態樹與玩法標記：頂部狀態欄跟著重讀。
+    await tableState.refresh();
+    if (!live()) return;
+    await imports.refreshReceipts(table);
+    if (!live()) return;
+  }
+
   // AI 卡重構套用一次動到角色、玩家卡、介面殼、狀態樹與收據；這條跨域刷新刻意留在 root。
   // live() 為 false（刷新途中換桌或世界設定已卸載）就停下，不改發言對象、不刷新原桌。
   async function refreshAfterRefactorApplied(live: () => boolean) {
@@ -982,15 +989,7 @@ function App() {
     if (!live()) return;
     await characters.reloadPlayer(state.player_card_id);
     if (!live()) return;
-    await cardInterface.refreshInterfaces(table);
-    if (!live()) return;
-    await cardInterface.refreshShell(table);
-    if (!live()) return;
-    await gmOnlyTable.refresh(table);
-    if (!live()) return;
-    await tableState.refresh();
-    if (!live()) return;
-    await imports.refreshReceipts(table);
+    await refreshTableCore(live);
   }
 
   // 設定頁改語言時：既有範例桌內容還是舊語言，問一次要不要用新語言重生（答過就記住，之後改語言不再問）
