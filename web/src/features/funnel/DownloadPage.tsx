@@ -27,7 +27,7 @@ const pcloudOnly = (cn: boolean) => cn || getLang() === "zh-CN";
 const showVersion = (cn: boolean, status: ReleaseInfo["status"]) => !cn && (getLang() !== "zh-CN" || status === "ok");
 
 /** 下載鈕：沒有對應安裝檔就不出該平台鈕，「所有版本與檔案」永遠在（沒有平台檔時它就是主要按鈕） */
-function DownloadButtons({ release, cn, testId }: { release: ReleaseInfo; cn: boolean; testId: string }) {
+function DownloadButtons({ release, cn, testId, guide = false }: { release: ReleaseInfo; cn: boolean; testId: string; guide?: boolean }) {
   const link = (href: string, label: string, primary: boolean) => (
     <a className={primary ? "button primary" : "button"} href={href} target="_blank" rel="noopener noreferrer">
       {label}
@@ -36,7 +36,10 @@ function DownloadButtons({ release, cn, testId }: { release: ReleaseInfo; cn: bo
   return (
     <div className="tour-cta" data-testid={testId}>
       {pcloudOnly(cn) ? (
-        link(PCLOUD_PAGE, t("downloadPcloud"), true)
+        <>
+          {link(PCLOUD_PAGE, t("downloadPcloud"), true)}
+          {guide && <GuideButton />}
+        </>
       ) : (
         <>
           {release.windows && link(release.windows, t("downloadWindows"), true)}
@@ -45,6 +48,15 @@ function DownloadButtons({ release, cn, testId }: { release: ReleaseInfo; cn: bo
         </>
       )}
     </div>
+  );
+}
+
+/** 簡中頁的玩法說明入口：做成按鈕排在下載鈕旁，多人段結尾再放一顆，小字連結容易看漏 */
+function GuideButton() {
+  return (
+    <a className="button" href={ROOM_GUIDE_HASH} data-testid="room-guide-link">
+      {ROOM_TOUR_ZH_CN.more}
+    </a>
   );
 }
 
@@ -119,7 +131,7 @@ export function DownloadPage({ release, cn = false, onClose, images = TOUR_IMAGE
         <div className="tour-hero-text">
           <h1 id="tour-title">{t("tourTitle")}</h1>
           <p className="tour-lead">{t("tourLead")}</p>
-          <DownloadButtons release={release} cn={cn} testId="download-cta" />
+          <DownloadButtons release={release} cn={cn} testId="download-cta" guide={rooms.length > 0} />
           {showVersion(cn, release.status) && (
             <p className="download-version" data-testid="download-version">
               {release.status === "ok" ? t("downloadVersion", { version: release.version ?? "" }) : t(STATUS_TEXT[release.status])}
@@ -138,9 +150,9 @@ export function DownloadPage({ release, cn = false, onClose, images = TOUR_IMAGE
               {text(feature.title, feature.body)}
             </article>
           ))}
-          <a href={ROOM_GUIDE_HASH} data-testid="room-guide-link">
-            {ROOM_TOUR_ZH_CN.more}
-          </a>
+          <div className="tour-cta">
+            <GuideButton />
+          </div>
         </section>
       )}
 

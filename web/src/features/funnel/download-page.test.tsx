@@ -69,7 +69,8 @@ describe("the download page", () => {
     setLang("zh-CN");
     try {
       await render(<DownloadPage release={RELEASE} onClose={() => {}} />);
-      expect(groups()).toEqual(Array(2).fill([{ text: "从 pCloud 下载（国内可用）", href: PCLOUD_PAGE, rel: "noopener noreferrer" }]));
+      const pcloud = { text: "从 pCloud 下载（国内可用）", href: PCLOUD_PAGE, rel: "noopener noreferrer" };
+      expect(groups()).toEqual([[pcloud, { text: ROOM_TOUR_ZH_CN.more, href: "#guide/room", rel: null }], [pcloud]]);
       expect(host.querySelector("[data-testid=download-version]")?.textContent).toBe(`当前版本 v${RELEASE.version}`);
       await act(async () => root?.unmount());
       host.remove();
@@ -236,6 +237,10 @@ describe("the tour around the download buttons", () => {
       expect(host.querySelector("h1")?.textContent).toContain("手机");
       // 簡中沒拍的特色退圖示卡
       expect(host.querySelectorAll(".tour-icon-card")).toHaveLength(TOUR_FEATURES.length);
+      // 玩法說明是按鈕：下載鈕旁一顆、多人段結尾一顆
+      const guides = [...host.querySelectorAll("[data-testid=room-guide-link]")];
+      expect(guides.map((a) => [a.className, a.getAttribute("href")])).toEqual(Array(2).fill(["button", "#guide/room"]));
+      expect(host.querySelector("[data-testid=download-cta] [data-testid=room-guide-link]")).not.toBeNull();
     } finally {
       setLang("zh-TW");
     }
@@ -243,6 +248,7 @@ describe("the tour around the download buttons", () => {
     host.remove();
     await render(<DownloadPage release={NO_RELEASE} onClose={() => {}} images={images} />);
     expect(host.querySelector("[data-testid=tour-roomHost]")).toBeNull();
+    expect(host.querySelector("[data-testid=room-guide-link]")).toBeNull();
   });
 
   it("without shots every feature is an icon card, and a shot that fails to load turns its card into an icon card", async () => {
