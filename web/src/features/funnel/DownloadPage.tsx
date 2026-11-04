@@ -21,8 +21,10 @@ const STATUS_TEXT: Record<Exclude<ReleaseInfo["status"], "ok">, MsgKey> = {
 const SHOT_WIDTH = 1600;
 const SHOT_HEIGHT = 1136;
 
-/** 簡中頁與中國供應商模式只給 pCloud：GitHub 在中國連不上，且 GitHub 正式版還沒有多人連線 */
+/** 簡中頁與中國供應商模式只給 pCloud：GitHub 在中國連不上 */
 const pcloudOnly = (cn: boolean) => cn || getLang() === "zh-CN";
+/** 版本行：中國供應商模式不打 GitHub 就不畫；簡中頁只在讀到版本時畫，讀不到不提「到發布頁查看」（那頁沒有發布頁連結） */
+const showVersion = (cn: boolean, status: ReleaseInfo["status"]) => !cn && (getLang() !== "zh-CN" || status === "ok");
 
 /** 下載鈕：沒有對應安裝檔就不出該平台鈕，「所有版本與檔案」永遠在（沒有平台檔時它就是主要按鈕） */
 function DownloadButtons({ release, cn, testId }: { release: ReleaseInfo; cn: boolean; testId: string }) {
@@ -118,7 +120,7 @@ export function DownloadPage({ release, cn = false, onClose, images = TOUR_IMAGE
           <h1 id="tour-title">{t("tourTitle")}</h1>
           <p className="tour-lead">{t("tourLead")}</p>
           <DownloadButtons release={release} cn={cn} testId="download-cta" />
-          {!pcloudOnly(cn) && (
+          {showVersion(cn, release.status) && (
             <p className="download-version" data-testid="download-version">
               {release.status === "ok" ? t("downloadVersion", { version: release.version ?? "" }) : t(STATUS_TEXT[release.status])}
             </p>

@@ -65,11 +65,15 @@ describe("the download page", () => {
     expect(targets()).toEqual(Array(6).fill("_blank"));
   });
 
-  it("simplified Chinese: only pCloud, no GitHub links and no version line (the GitHub release has no multiplayer)", async () => {
+  it("simplified Chinese: only pCloud, no GitHub links; version line only once the version is known", async () => {
     setLang("zh-CN");
     try {
       await render(<DownloadPage release={RELEASE} onClose={() => {}} />);
       expect(groups()).toEqual(Array(2).fill([{ text: "从 pCloud 下载（国内可用）", href: PCLOUD_PAGE, rel: "noopener noreferrer" }]));
+      expect(host.querySelector("[data-testid=download-version]")?.textContent).toBe(`当前版本 v${RELEASE.version}`);
+      await act(async () => root?.unmount());
+      host.remove();
+      await render(<DownloadPage release={LOADING_RELEASE} onClose={() => {}} />);
       expect(host.querySelector("[data-testid=download-version]")).toBeNull();
     } finally {
       setLang("zh-TW");
