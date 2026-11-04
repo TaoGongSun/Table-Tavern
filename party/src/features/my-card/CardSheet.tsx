@@ -30,6 +30,7 @@ export function CardSheet({ view, act, mode, upload, onClose }: Props) {
   const [saved, setSaved] = useState<Fields | null>(mode === "create" ? { ...EMPTY, name: view.me.nickname } : null);
   const [f, setF] = useState<Fields>(saved ?? EMPTY);
   const [image, setImage] = useState<string | null>(null);
+  const [gallery, setGallery] = useState({ count: 0, inUse: null as string | null });
   // 圖一律暫存，按存檔才寫入、按返回就撤回（同桌面版 CardEditor）；undefined＝沒動過
   const [draftImage, setDraftImage] = useState<ImageDraft | undefined>(undefined);
   const [cardId, setCardId] = useState<string | null>(mode === "edit" ? view.me.cardId : null);
@@ -46,6 +47,7 @@ export function CardSheet({ view, act, mode, upload, onClose }: Props) {
       setSaved(loaded);
       setF(loaded);
       setImage(c.image);
+      setGallery({ count: c.gallery ?? 0, inUse: c.galleryFile ?? null });
       setCardId(c.cardId);
     });
   }, [mode, act, setError]);
@@ -72,7 +74,7 @@ export function CardSheet({ view, act, mode, upload, onClose }: Props) {
       setImage(d.preview);
       setDraftImage(undefined);
     } else if (d === null) patch.removeImage = true;
-    else if (d) patch.imageFromGallery = d.file;
+    else if (d) Object.assign(patch, { imageFromGallery: d.file }, d.crop && { crop: d.crop });
     if (Object.keys(patch).length && !(await run("card.save", { cardId: id, ...patch }))) return false;
     onClose();
     return true;
@@ -118,7 +120,7 @@ export function CardSheet({ view, act, mode, upload, onClose }: Props) {
             <p>{t("unsavedLeaveConfirm", { n: unsaved })}</p>
             <div className="panel-actions">
               <button type="button" autoFocus onClick={() => setLeaving(false)}>{t("unsavedLeaveCancel")}</button>
-              <button type="button" className="ghost" onClick={onClose}>{t("unsavedLeaveOk")}</button>
+              <button type="button" className="danger" onClick={onClose}>{t("unsavedLeaveOk")}</button>
             </div>
           </div>
         </div>
@@ -139,6 +141,8 @@ export function CardSheet({ view, act, mode, upload, onClose }: Props) {
               setDraft={setDraftImage}
               draft={{ name: f.name, description: f.publicMd }}
               canUpload={!!upload}
+              gallery={gallery}
+              hold={setBusy}
             />
           )}
           <label>

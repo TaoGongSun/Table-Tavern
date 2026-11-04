@@ -5,12 +5,12 @@ import { MIN } from "./round";
 import { sameHash, sha256Hex, ulid } from "./secrets";
 import { Fail, need, type Tx } from "./tx";
 import type { CardReq, CoreInput, ErrorCode, Job, Member, RoomState, Upload } from "./types";
-import { cleanIcon, cleanLong, cleanName, GALLERY_FILE, shape } from "./validate";
+import { cleanCrop, cleanIcon, cleanLong, cleanName, GALLERY_FILE, isCount, shape } from "./validate";
 
 const MiB = 1 << 20;
 export const UPLOAD_MAX = { card: 8 * MiB, image: 2 * MiB };
 const UPLOAD_TTL = 10 * MIN;
-const REQ_TTL: Record<CardReq["kind"], number> = { mine: 30_000, save: 30_000, gen: 10 * MIN };
+const REQ_TTL: Record<CardReq["kind"], number> = { mine: 30_000, save: 30_000, gen: 10 * MIN, gallery: 30_000 };
 const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 const PNG_URL = /^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/;
 const EXEC_CODES = new Set<ErrorCode>([
@@ -199,8 +199,21 @@ export const CARD_MEMBER: Record<string, Handler> = {
     need(!(p.removeImage && p.imageFromGallery !== undefined), "E_BAD_FRAME");
     if (p.removeImage) f.removeImage = true;
     if (p.imageFromGallery !== undefined) f.imageFromGallery = field(GALLERY_FILE.test(p.imageFromGallery) ? p.imageFromGallery : null, "E_TEXT_INVALID");
+    if (p.crop !== undefined) {
+      need(p.imageFromGallery !== undefined, "E_BAD_FRAME"); // 裁切框只用在圖庫圖（上傳的圖手機自己裁好）
+      f.crop = field(cleanCrop(p.crop), "E_TEXT_INVALID");
+    }
     rate(tx, `cs:${m.id}`, 1, 2000);
     return forward(tx, "save", m, "card.save", f);
+  },
+  // 自己座位那張卡的圖庫：列一頁（before＝上一頁最後一筆）或取單張預覽；兩種分開限流，剛展開就點縮圖不會撞到
+  "card.gallery": (tx, p, m) => {
+    mine(tx, m);
+    for (const k of ["before", "file"]) if (p[k] !== undefined) need(GALLERY_FILE.test(p[k]), "E_TEXT_INVALID");
+    need(p.before === undefined || p.file === undefined, "E_BAD_FRAME");
+    if (p.file !== undefined) rate(tx, `cgf:${m.id}`, 4, 2000);
+    else rate(tx, `cgl:${m.id}`, 3, 2000);
+    return forward(tx, "gallery", m, "card.gallery", p.file !== undefined ? { file: p.file } : p.before !== undefined ? { before: p.before } : {});
   },
   // 花的是 GM 主機上設定的 AI 帳號：主機關了開關就不轉；限流每人同時一件、每小時 6 件，全房同時 2 件
   "image.gen": (tx, p, m) => {
@@ -233,9 +246,14 @@ export const CARD_EXECUTOR: Record<string, (tx: Tx, p: any) => void> = {
     if (!seatedOn(tx.s, r.memberId, r.cardId)) return tx.err(r.conn, "E_STATE_CONFLICT", { id: r.id }); // 回覆前座位已變：不帶內容
     if (!p.ok) return failed(tx, r, p.code);
     const c = p.card;
-    const ok = shape(c, "name:s avatar:s publicMd:s privateMd:s image:s~") && c.name.length <= 200 && c.avatar.length <= 64 && (c.image === null || PNG_URL.test(c.image));
+    const ok =
+      shape(c, "name:s avatar:s publicMd:s privateMd:s image:s~ gallery?:i galleryFile?:s~") && c.name.length <= 200 && c.avatar.length <= 64 &&
+      (c.image === null || PNG_URL.test(c.image)) && (c.galleryFile == null || GALLERY_FILE.test(c.galleryFile));
     if (!ok) return tx.err(r.conn, "E_INTERNAL", { id: r.id });
-    const card = { cardId: r.cardId, name: c.name, avatar: c.avatar, publicMd: c.publicMd, privateMd: c.privateMd, image: c.image };
+    const card = {
+      cardId: r.cardId, name: c.name, avatar: c.avatar, publicMd: c.publicMd, privateMd: c.privateMd, image: c.image,
+      gallery: c.gallery ?? 0, galleryFile: c.galleryFile ?? null, // 舊執行端沒報：當沒有圖庫
+    };
     tx.send(r.conn, "ok", { id: r.id, result: { card } });
   },
   "card.save.result": (tx, p) => {
@@ -243,6 +261,18 @@ export const CARD_EXECUTOR: Record<string, (tx: Tx, p: any) => void> = {
     if (!r) return;
     if (!p.ok) return failed(tx, r, p.code);
     tx.send(r.conn, "ok", { id: r.id });
+  },
+  "card.gallery.result": (tx, p) => {
+    const r = take(tx, p.reqId, "gallery");
+    if (!r) return;
+    if (!seatedOn(tx.s, r.memberId, r.cardId)) return tx.err(r.conn, "E_STATE_CONFLICT", { id: r.id }); // 回覆前座位已變：不帶內容
+    if (!p.ok) return failed(tx, r, p.code);
+    const items: unknown[] = p.items ?? [];
+    const more = p.more ?? 0;
+    // 空頁不能說還有下一頁，免得手機一直翻空頁
+    const ok = items.length <= 24 && items.every((i) => shape(i, "file:s thumb:s") && GALLERY_FILE.test(i.file) && PNG_URL.test(i.thumb)) && isCount(more) && (items.length > 0 || more === 0);
+    if (!ok) return tx.err(r.conn, "E_INTERNAL", { id: r.id });
+    tx.send(r.conn, "ok", { id: r.id, result: { items: items.map((i: any) => ({ file: i.file, thumb: i.thumb })), more } });
   },
   "image.gen.result": (tx, p) => {
     const r = take(tx, p.reqId, "gen");

@@ -5,7 +5,7 @@ import { buildSnapshot } from "./snapshot";
 import { toWebSave } from "./export";
 import { CARDS, playing, STAGE, type Room } from "./room-test-kit";
 import { receiveUpload } from "./upload";
-import { validateFrame } from "./validate";
+import { cleanCrop, validateFrame } from "./validate";
 
 const MiB = 1 << 20;
 const SECRET = "祕密標記ZQX";
@@ -166,7 +166,7 @@ describe("讀卡、存卡、生圖（§3.2、§3.4）", () => {
     expect(r).toEqual({ reqId: r.reqId, memberId: "m1", cardId: "c1" });
     const card = { name: "甲", avatar: "🗡", publicMd: "公開", privateMd: SECRET, image: null };
     await room.send("x1", "card.read.result", { reqId: r.reqId, ok: true, card });
-    expect(room.frames("a", "ok").find((f) => f.p.id === "r1")!.p.result).toEqual({ card: { cardId: "c1", ...card } });
+    expect(room.frames("a", "ok").find((f) => f.p.id === "r1")!.p.result).toEqual({ card: { cardId: "c1", ...card, gallery: 0, galleryFile: null } });
     expect(JSON.stringify(room.out.b ?? [])).not.toContain(SECRET);
 
     room.clock += 1000;
@@ -268,4 +268,91 @@ it("不落地：上傳本體、秘密段、生成圖不進狀態、事件、快�
   const haystack = JSON.stringify([room.store.state, room.store.events, buildSnapshot(room.s, room.store.events, "m1", room.runner["live"]), toWebSave(room.s, room.store.events, 0)]);
   expect(haystack).not.toContain(SECRET);
   expect(haystack).not.toContain(preview.slice(22));
+});
+
+describe("手機圖庫（room-phone-gallery §3.1–§3.5）", () => {
+  const thumb = "data:image/png;base64,AAAA";
+  it("card.gallery 轉執行端、只給自己座位；檔名照規則；列頁與取單張分開限流；回覆前換座不帶內容；結果形狀要對", async () => {
+    const room = await table();
+    expect((await room.ask("c", "card.gallery"))!.p.code).toBe("E_SEAT_REQUIRED");
+    expect((await room.ask("a", "card.gallery", { before: "../x.png" }))!.p.code).toBe("E_TEXT_INVALID");
+    expect((await room.ask("a", "card.gallery", { file: "a/b.png" }))!.p.code).toBe("E_TEXT_INVALID");
+    await room.send("a", "card.gallery", {}, "g1");
+    const r = req(room, "card.gallery");
+    expect(r).toEqual({ reqId: r.reqId, memberId: "m1", cardId: "c1" });
+    const items = [{ file: "1700000000001.png", thumb }];
+    await room.send("x1", "card.gallery.result", { reqId: r.reqId, ok: true, items, more: 3 });
+    expect(room.frames("a", "ok").find((f) => f.p.id === "g1")!.p.result).toEqual({ items, more: 3 });
+    // 剛展開就點縮圖、連續翻頁：兩種各自的額度
+    await room.send("a", "card.gallery", { file: "1700000000001.png" }, "f1");
+    expect(req(room, "card.gallery")).toMatchObject({ file: "1700000000001.png" });
+    await room.send("a", "card.gallery", { before: "1700000000001.png" }, "g2");
+    await room.send("a", "card.gallery", { before: "1700000000001.png" }, "g3");
+    expect(room.frames("a", "err").filter((f) => ["f1", "g2", "g3"].includes(f.p.id))).toHaveLength(0);
+    expect((await room.ask("a", "card.gallery"))!.p.code).toBe("E_RATE_LIMITED");
+    // 結果形狀錯：檔名、縮圖、筆數、空頁卻說還有
+    const bad = [
+      { items: [{ file: "../x.png", thumb }], more: 0 },
+      { items: [{ file: "1.png", thumb: "data:image/jpeg;base64,AAAA" }], more: 0 },
+      { items: Array.from({ length: 25 }, (_, i) => ({ file: `${i}.png`, thumb })), more: 0 },
+      { items: [], more: 2 },
+    ];
+    const pending = room.frames("x1", "card.gallery").slice(-3).map((f) => f.p.reqId);
+    for (const [i, reqId] of pending.entries()) await room.send("x1", "card.gallery.result", { reqId, ok: true, ...bad[i] });
+    for (const id of ["f1", "g2", "g3"]) expect(room.frames("a", "err").find((f) => f.p.id === id)!.p.code).toBe("E_INTERNAL");
+    room.clock += 2000;
+    await room.send("a", "card.gallery", {}, "g4");
+    await room.send("x1", "card.gallery.result", { reqId: req(room, "card.gallery").reqId, ok: true, ...bad[3] });
+    expect(room.frames("a", "err").find((f) => f.p.id === "g4")!.p.code).toBe("E_INTERNAL");
+    // 回覆前換座：不帶內容
+    await room.send("a", "card.gallery", {}, "g5");
+    const r5 = req(room, "card.gallery");
+    await room.send("a", "seat.release");
+    expect(room.frames("a", "err").find((f) => f.p.id === "g5")!.p.code).toBe("E_STATE_CONFLICT");
+    await room.send("x1", "card.gallery.result", { reqId: r5.reqId, ok: true, items, more: 0 });
+    expect(room.frames("a").filter((f) => f.p?.id === "g5")).toHaveLength(1);
+    // 30 秒沒回逾時
+    await room.send("b", "card.gallery", {}, "g6");
+    await elapse(room, 30_000);
+    expect(room.frames("b", "err").find((f) => f.p.id === "g6")!.p.code).toBe("E_EXECUTOR_TIMEOUT");
+    // 兩個同時送是壞訊框（會斷線，所以放最後）
+    expect((await room.ask("b", "card.gallery", { before: "1.png", file: "2.png" }))!.p.code).toBe("E_BAD_FRAME");
+  });
+
+  it("card.read.result 的使用中檔名照圖庫檔名規則", async () => {
+    const room = await table();
+    await room.send("a", "card.mine", {}, "r1");
+    const card = { name: "甲", avatar: "🗡", publicMd: "", privateMd: "", image: null, gallery: 2, galleryFile: "../x.png" };
+    await room.send("x1", "card.read.result", { reqId: req(room, "card.read").reqId, ok: true, card });
+    expect(room.frames("a", "err").find((f) => f.p.id === "r1")!.p.code).toBe("E_INTERNAL");
+    room.clock += 1000;
+    await room.send("a", "card.mine", {}, "r2");
+    await room.send("x1", "card.read.result", { reqId: req(room, "card.read").reqId, ok: true, card: { ...card, galleryFile: "1.png" } });
+    expect(room.frames("a", "ok").find((f) => f.p.id === "r2")!.p.result.card).toMatchObject({ gallery: 2, galleryFile: "1.png" });
+  });
+
+  it("card.save 的裁切框：要跟圖庫圖一起、四欄有限數字、在原圖範圍內", async () => {
+    const room = await table();
+    const save = async (crop: unknown, extra: object = { imageFromGallery: "1.png" }) => {
+      room.clock += 2000;
+      return (await room.ask("a", "card.save", { cardId: "c1", ...extra, crop }))!.p;
+    };
+    for (const crop of [{ x: 0, y: 0, w: 1 }, { x: "0", y: 0, w: 1, h: 1 }, { x: -0.1, y: 0, w: 0.5, h: 1 }, { x: 0, y: 0, w: 0, h: 1 }, { x: 0.5, y: 0, w: 0.5002, h: 1 }])
+      expect((await save(crop)).code, JSON.stringify(crop)).toBe("E_TEXT_INVALID");
+    room.clock += 2000;
+    await room.send("a", "card.save", { cardId: "c1", imageFromGallery: "1.png", crop: { x: 0.5, y: 0, w: 0.5001, h: 1 } }, "s1");
+    expect(req(room, "card.save")).toMatchObject({ imageFromGallery: "1.png", crop: { x: 0.5, y: 0, w: 0.5001, h: 1 } });
+    // 壞訊框會斷線，各用一支手機
+    expect((await room.ask("b", "card.save", { cardId: "c2", crop: { x: 0, y: 0, w: 1, h: 1 } }))!.p.code).toBe("E_BAD_FRAME");
+    room.clock += 2000;
+    await room.send("a", "card.save", { cardId: "c1", imageFromGallery: "1.png", crop: 5 }); // 外形不對：連 id 都不回
+    expect(room.frames("a", "err").at(-1)!.p.code).toBe("E_BAD_FRAME");
+  });
+
+  it("cleanCrop 擋 NaN、Infinity、缺欄位；原始訊框裡的 NaN 整則拒收", () => {
+    for (const v of [{ x: NaN, y: 0, w: 1, h: 1 }, { x: 0, y: 0, w: Infinity, h: 1 }, { x: 0, y: 0, w: 1 }, null, "x"]) expect(cleanCrop(v)).toBeNull();
+    expect(cleanCrop({ x: 0, y: 0, w: 1.0001, h: 1 })).toEqual({ x: 0, y: 0, w: 1.0001, h: 1 });
+    const raw = '{"t":"card.save","id":"s1","p":{"cardId":"c1","imageFromGallery":"1.png","crop":{"x":NaN,"y":0,"w":1,"h":1}}}';
+    expect(validateFrame(raw, "member").ok).toBe(false);
+  });
 });

@@ -1105,3 +1105,5 @@ fn reserve_keeps_host_card() {
 
 #[path = "cards_tests.rs"]
 mod card_tests;
+#[path = "gallery_tests.rs"]
+mod gallery_tests;

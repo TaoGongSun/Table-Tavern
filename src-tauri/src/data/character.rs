@@ -558,7 +558,7 @@ fn character_attachments(
     root: &Path,
     world_id: &str,
     character_id: &str,
-) -> DataResult<[PathBuf; 8]> {
+) -> DataResult<[PathBuf; 9]> {
     let path = character_path(root, world_id, character_id)?;
     Ok([
         gallery_dir(root, world_id, character_id)?,
@@ -566,6 +566,7 @@ fn character_attachments(
         path.with_extension("avatar.png"),
         path.with_extension("card.png"),
         path.with_extension("import.json"),
+        path.with_extension("image-from"),
         // 匯入原子寫失敗時可能留下的暫存檔
         path.with_extension("card.png.tmp"),
         path.with_extension("import.json.tmp"),

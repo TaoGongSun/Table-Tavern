@@ -328,6 +328,8 @@
   height: 44px;
   border-radius: 50%;
   object-fit: cover;
+  /* 玩家卡的頭像就是 2:3 角色圖：對齊上緣保住臉 */
+  object-position: top;
 }
 
 .app .seat-info {
@@ -505,9 +507,11 @@
   font-size: 13px;
 }
 
-.app .card-image img {
+/* 角色圖照裁切比例 2:3 顯示，存檔後看到的就是裁好的那張 */
+.app .card-image > img,
+.app .card-gen-preview img {
   width: 120px;
-  height: 120px;
+  height: 180px;
   border-radius: 12px;
   object-fit: cover;
 }
@@ -556,4 +560,65 @@
 .app .round-waiting {
   color: var(--muted);
   font-size: 14px;
+}
+
+/* 手機圖庫與裁切窗（room-phone-gallery） */
+.app .card-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.app .card-gallery-thumb {
+  position: relative;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: none;
+  overflow: hidden;
+}
+
+.app .card-gallery-thumb.picked {
+  border-color: var(--accent);
+}
+
+.app .card-gallery-thumb img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+}
+
+.app .card-gallery-badge {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 2px 0;
+  font-size: 11px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.app .crop-sheet {
+  max-width: 480px;
+}
+
+.app .crop-area {
+  position: relative;
+  width: min(100%, 40vh);
+  aspect-ratio: 2 / 3;
+  margin: 8px auto 0;
+}
+
+.app .crop-zoom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.app .crop-zoom input {
+  flex: 1;
 }

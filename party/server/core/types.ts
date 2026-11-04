@@ -230,7 +230,7 @@ export interface Upload {
 }
 /** 轉給執行端、等回覆的讀卡／存卡／生圖（只在記憶體：私設與生成圖不落地） */
 export interface CardReq {
-  kind: "mine" | "save" | "gen";
+  kind: "mine" | "save" | "gen" | "gallery";
   conn: string;
   id?: string;
   memberId: string;

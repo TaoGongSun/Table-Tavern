@@ -84,3 +84,4 @@
 | [mvu-zod-semantics](../handoffs/archive/mvu-zod-semantics.md) 網頁 308 標頭 | 網頁版上線後抽查 Cloudflare Pages 上 `/mvu-zod`、`/mvu-zod.html`（308）的實際回應標頭帶隔離 CSP（本機託管伺服器的 308 不帶標頭，驗不到） |
 | [vn-mode](../handoffs/archive/vn-mode.md) 包 7b API 立繪來源 | 有額度的 OpenRouter 金鑰：VN 桌立繪來源選 API，生一張定稿（去背後入舞台）＋一張表情差分（裁頭圖當 `input_references` 參考圖），臉層對齊、無接縫。2026-11-01 依官方文件實作，測試金鑰額度 $0 未實測〔作者裁決 2026-11-01〕 |
 | [room-player-cards](../handoffs/archive/room-player-cards.md) 真手機 | 部署後用真手機（iOS Safari／Android Chrome）進房：匯入 PNG 卡、建立角色填秘密情報、換圖（相機照片 JPEG／HEIC 轉 PNG）、AI 生圖（房主本機生圖來源 API、有額度的金鑰）按「用這張」；通道只用瀏覽器窗格模擬手機、假圖片端點 |
+| [room-phone-gallery](../handoffs/archive/room-phone-gallery.md) 真手機 | iOS Safari、Android Chrome 各一次：編卡「從圖庫選」點縮圖開裁切窗，單指拖動、雙指縮放、滑桿縮放後套用、存檔；上傳相機照片也走一次裁切。通道只用瀏覽器窗格的滑鼠模擬拖動與滑桿 |

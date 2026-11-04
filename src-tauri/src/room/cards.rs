@@ -1,5 +1,6 @@
 //! 玩家卡（room-player-cards §3.1–§3.4、§3.6）：自建卡與玩家匯入卡檔（取檔、重驗、只收角色本身）、換圖、
 //! 讀卡與存卡（含秘密段，只回給伺服器轉本人）、玩家生圖（花這台電腦上設定的 AI 帳號，本機開關與紀錄）。
+//! 手機列自己卡的圖庫、從圖庫選圖（可帶裁切框）見 room-phone-gallery §3。
 //! 讀卡、存卡、生圖的結果用即時訊框：執行端斷線時伺服器已把等著的請求判失敗，重送沒有意義。
 use super::{run, seed, GenLog, Room};
 use crate::commands::image::ImageRequest;
@@ -16,6 +17,12 @@ const TEXT_MAX: usize = 64_000;
 /// 伺服器轉給手機時會再包一層，整則留在 1 MiB 訊框以內（§3.6）
 const READ_FRAME_MAX: usize = 1000 * 1024;
 const PREVIEW_PX: u32 = 320;
+/// 圖庫縮圖：320px 一張 base64 約 187 KB，一則只放得下 5 張；160px 約 51 KB（room-phone-gallery §3.4）
+const THUMB_PX: u32 = 160;
+/// 同桌面版生圖窗 `GALLERY_PAGE_SIZE`
+const GALLERY_PAGE: usize = 12;
+/// 同桌面版裁切窗：角色圖寬最多 1024
+const CROP_MAX_WIDTH: u32 = 1024;
 
 fn text(value: &Value) -> String {
     value.as_str().unwrap_or_default().to_owned()
@@ -212,9 +219,11 @@ async fn change_image(room: &Room, job: &Value) -> Result<String, &'static str> 
 // ── 讀卡、存卡 ──
 
 fn preview(png: &[u8]) -> Option<String> {
-    let image = image::load_from_memory(png)
-        .ok()?
-        .thumbnail(PREVIEW_PX, PREVIEW_PX);
+    thumbnail(png, PREVIEW_PX)
+}
+
+fn thumbnail(png: &[u8], px: u32) -> Option<String> {
+    let image = image::load_from_memory(png).ok()?.thumbnail(px, px);
     let mut out = Vec::new();
     image
         .write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)
@@ -236,9 +245,14 @@ pub(super) fn on_read(room: &Room, p: &Value) {
                 .flatten()
                 .and_then(|b64| base64::engine::general_purpose::STANDARD.decode(b64).ok())
                 .and_then(|png| preview(&png));
+            let files = crate::commands::image::list_gallery_image_files(&root, &world, &card.id)
+                .unwrap_or_default();
+            let source = import::character_image_source(&root, &world, &card.id)
+                .filter(|file| files.contains(file));
             json!({ "reqId": req, "ok": true, "card": {
                 "name": card.name, "avatar": card.avatar, "publicMd": card.public_md,
                 "privateMd": card.private_md, "image": image,
+                "gallery": files.len(), "galleryFile": source,
             }})
         }
     };
@@ -249,6 +263,176 @@ pub(super) fn on_read(room: &Room, p: &Value) {
             "card.read.result",
             json!({ "reqId": req, "ok": false, "code": "E_TEXT_INVALID" }),
         ),
+    }
+}
+
+/// 整則序列化後的 UTF-8 位元組數（伺服器轉給手機還會再包一層，所以上限是 `READ_FRAME_MAX`）
+fn frame_len(t: &str, p: &Value) -> usize {
+    json!({ "t": t, "p": p }).to_string().len()
+}
+
+/// 名字要在這張卡的圖庫清單裡才給路徑：手機送回的檔名只認執行端自己列得出來的
+fn gallery_file(
+    root: &Path,
+    world: &str,
+    card: &str,
+    name: &str,
+) -> Result<std::path::PathBuf, &'static str> {
+    let files = crate::commands::image::list_gallery_image_files(root, world, card)
+        .map_err(|_| "E_STATE_CONFLICT")?;
+    if !files.iter().any(|known| known == name) {
+        return Err("E_FORBIDDEN");
+    }
+    Ok(data::gallery_dir(root, world, card)
+        .map_err(|_| "E_INTERNAL")?
+        .join(name))
+}
+
+/// 列自己座位那張卡的圖庫（一頁）或取單張預覽；解縮圖吃 CPU，整段在 blocking 工作裡跑
+pub(super) fn on_gallery(room: &Arc<Room>, p: &Value) {
+    let (room, p) = (room.clone(), p.clone());
+    tokio::task::spawn_blocking(move || {
+        let req = text(&p["reqId"]);
+        let reply = gallery(&room, &p, &req)
+            .unwrap_or_else(|code| json!({ "reqId": req, "ok": false, "code": code }));
+        room.send("card.gallery.result", reply);
+    });
+}
+
+fn gallery(room: &Room, p: &Value, req: &str) -> Result<Value, &'static str> {
+    const T: &str = "card.gallery.result";
+    let card = seated_card(room, &text(&p["memberId"]), &text(&p["cardId"]))?.id;
+    let (root, world) = roots(room);
+    if let Some(file) = p["file"].as_str() {
+        let png = std::fs::read(gallery_file(&root, &world, &card, file)?)
+            .map_err(|_| "E_STATE_CONFLICT")?;
+        let thumb = preview(&png).ok_or("E_UNSUPPORTED_FORMAT")?;
+        let reply =
+            json!({ "reqId": req, "ok": true, "items": [{ "file": file, "thumb": thumb }] });
+        return match frame_len(T, &reply) <= READ_FRAME_MAX {
+            true => Ok(reply),
+            false => Err("E_TOO_LARGE"),
+        };
+    }
+    let files = crate::commands::image::list_gallery_image_files(&root, &world, &card)
+        .map_err(|_| "E_STATE_CONFLICT")?;
+    let dir = data::gallery_dir(&root, &world, &card).map_err(|_| "E_INTERNAL")?;
+    // 新的在前：`before` 只拿來比大小，不組路徑
+    let mut next = match p["before"].as_str() {
+        Some(before) => files
+            .iter()
+            .position(|f| f.as_str() < before)
+            .unwrap_or(files.len()),
+        None => 0,
+    };
+    // 固定包裝先用最大的 more 算進去；之後每加一筆算它序列化後的長度（含逗號）
+    let mut used = frame_len(
+        T,
+        &json!({ "reqId": req, "ok": true, "items": [], "more": files.len() }),
+    );
+    let mut items = Vec::new();
+    while next < files.len() && items.len() < GALLERY_PAGE {
+        let file = &files[next];
+        // 解不開的檔跳過：不佔頁數、不算進 more
+        let Some(thumb) = std::fs::read(dir.join(file))
+            .ok()
+            .and_then(|png| thumbnail(&png, THUMB_PX))
+        else {
+            next += 1;
+            continue;
+        };
+        let item = json!({ "file": file, "thumb": thumb });
+        let size = item.to_string().len() + 1;
+        if used + size > READ_FRAME_MAX {
+            if items.is_empty() {
+                next += 1; // 單獨一張就放不進空頁：跳過
+                continue;
+            }
+            break; // 這張留到下一頁
+        }
+        used += size;
+        items.push(item);
+        next += 1;
+    }
+    // 空頁只會發生在看到底的時候，所以 more 一定是 0
+    let reply = json!({ "reqId": req, "ok": true, "items": items, "more": files.len() - next });
+    match frame_len(T, &reply) <= READ_FRAME_MAX {
+        true => Ok(reply),
+        false => Err("E_TOO_LARGE"),
+    }
+}
+
+/// 裁切框（原圖比例 0–1）：沒帶回 None；帶了就要四欄都是有限數字、在原圖範圍內（伺服器驗過，這裡再驗一次）
+fn crop_box(value: &Value) -> Result<Option<[f64; 4]>, &'static str> {
+    if value.is_null() {
+        return Ok(None);
+    }
+    let field = |k: &str| {
+        value[k]
+            .as_f64()
+            .filter(|n| n.is_finite())
+            .ok_or("E_TEXT_INVALID")
+    };
+    let [x, y, w, h] = [field("x")?, field("y")?, field("w")?, field("h")?];
+    match x >= 0.0 && y >= 0.0 && w > 0.0 && h > 0.0 && x + w <= 1.0001 && y + h <= 1.0001 {
+        true => Ok(Some([x, y, w, h])),
+        false => Err("E_TEXT_INVALID"),
+    }
+}
+
+/// 照桌面版裁切窗：依框切原圖、寬超過 1024 就縮，存 PNG
+fn cropped(png: &[u8], [x, y, w, h]: [f64; 4]) -> Result<Vec<u8>, &'static str> {
+    let image = image::load_from_memory(png).map_err(|_| "E_UNSUPPORTED_FORMAT")?;
+    let (iw, ih) = (f64::from(image.width()), f64::from(image.height()));
+    let (left, top) = ((x * iw).round().min(iw), (y * ih).round().min(ih));
+    let (right, bottom) = (
+        ((x + w) * iw).round().min(iw),
+        ((y + h) * ih).round().min(ih),
+    );
+    if right - left < 1.0 || bottom - top < 1.0 {
+        return Err("E_TEXT_INVALID");
+    }
+    let mut out = image.crop_imm(
+        left as u32,
+        top as u32,
+        (right - left) as u32,
+        (bottom - top) as u32,
+    );
+    if out.width() > CROP_MAX_WIDTH {
+        out = out.resize(
+            CROP_MAX_WIDTH,
+            u32::MAX,
+            image::imageops::FilterType::Lanczos3,
+        );
+    }
+    let mut bytes = Vec::new();
+    out.write_to(
+        &mut std::io::Cursor::new(&mut bytes),
+        image::ImageFormat::Png,
+    )
+    .map_err(|_| "E_INTERNAL")?;
+    import::check_character_image(&bytes).map_err(|_| "E_UNSUPPORTED_FORMAT")?;
+    Ok(bytes)
+}
+
+/// 測試用：讓「裁切做完、寫入前」停在這裡，測試在這段換座再放行（只攔指定那張卡）
+#[cfg(test)]
+pub(super) type WriteHold = (
+    String,
+    std::sync::mpsc::Sender<()>,
+    std::sync::mpsc::Receiver<()>,
+);
+#[cfg(test)]
+pub(super) static HOLD_BEFORE_WRITE: std::sync::Mutex<Option<WriteHold>> =
+    std::sync::Mutex::new(None);
+#[cfg(test)]
+fn hold_before_write(card: &str) {
+    let mut slot = HOLD_BEFORE_WRITE.lock().unwrap();
+    if slot.as_ref().is_some_and(|(held, _, _)| held == card) {
+        let (_, reached, resume) = slot.take().unwrap();
+        drop(slot);
+        let _ = reached.send(());
+        let _ = resume.recv_timeout(Duration::from_secs(10));
     }
 }
 
@@ -270,13 +454,23 @@ fn long_text(value: &Value) -> Result<Option<String>, &'static str> {
     }
 }
 
-pub(super) fn on_save(room: &Room, p: &Value) {
-    let req = text(&p["reqId"]);
-    let reply = match save(room, p) {
-        Ok(()) => json!({ "reqId": req, "ok": true }),
-        Err(code) => json!({ "reqId": req, "ok": false, "code": code }),
+/// 帶圖庫圖的存檔（解碼、裁切、PNG 驗證都吃 CPU）連寫入整段在 blocking 工作裡跑，不卡連線迴圈；
+/// 只改文字或移除圖維持同步
+pub(super) fn on_save(room: &Arc<Room>, p: &Value) {
+    let reply = |room: &Room, p: &Value| {
+        let req = text(&p["reqId"]);
+        let reply = match save(room, p) {
+            Ok(()) => json!({ "reqId": req, "ok": true }),
+            Err(code) => json!({ "reqId": req, "ok": false, "code": code }),
+        };
+        room.send("card.save.result", reply);
     };
-    room.send("card.save.result", reply);
+    if p["imageFromGallery"].is_string() {
+        let (room, p) = (room.clone(), p.clone());
+        tokio::task::spawn_blocking(move || reply(&room, &p));
+    } else {
+        reply(room, p);
+    }
 }
 
 /// 只覆寫送來的欄位，沒送的照磁碟原值
@@ -297,27 +491,29 @@ fn save(room: &Room, p: &Value) -> Result<(), &'static str> {
     }) {
         return Err("E_TEXT_INVALID");
     }
+    let crop = crop_box(&p["crop"])?;
+    let member = text(&p["memberId"]);
     let (root, world) = roots(room);
+    // 鎖外先做完：驗座位、驗檔名、讀檔、裁切；寫入前在鎖底下再驗一次座位
     let gallery = match p["imageFromGallery"].as_str() {
+        None if crop.is_some() => return Err("E_TEXT_INVALID"),
         None => None,
         Some(file) => {
-            let files = crate::commands::image::list_gallery_image_files(
-                &root,
-                &world,
-                &text(&p["cardId"]),
-            )
-            .map_err(|_| "E_STATE_CONFLICT")?;
-            if !files.iter().any(|known| known == file) {
-                return Err("E_FORBIDDEN");
-            }
-            let dir =
-                data::gallery_dir(&root, &world, &text(&p["cardId"])).map_err(|_| "E_INTERNAL")?;
-            Some(std::fs::read(dir.join(file)).map_err(|_| "E_STATE_CONFLICT")?)
+            let card = seated_card(room, &member, &text(&p["cardId"]))?.id;
+            let png = std::fs::read(gallery_file(&root, &world, &card, file)?)
+                .map_err(|_| "E_STATE_CONFLICT")?;
+            let png = match crop {
+                Some(crop) => cropped(&png, crop)?,
+                None => png,
+            };
+            Some((file, png))
         }
     };
+    #[cfg(test)]
+    hold_before_write(&text(&p["cardId"]));
     {
         let _permit = data::world_write_permit(&world).map_err(|_| "E_INTERNAL")?;
-        let mut card = seated_card(room, &text(&p["memberId"]), &text(&p["cardId"]))?;
+        let mut card = seated_card(room, &member, &text(&p["cardId"]))?;
         if let Some(name) = name {
             card.name = name.to_owned();
         }
@@ -332,8 +528,9 @@ fn save(room: &Room, p: &Value) -> Result<(), &'static str> {
                 .and_then(|()| import::delete_character_avatar(&root, &world, &card.id))
                 .map_err(|_| "E_INTERNAL")?;
         }
-        if let Some(png) = gallery {
+        if let Some((file, png)) = gallery {
             save_image(&root, &world, &card.id, &png)?;
+            import::save_image_source(&root, &world, &card.id, file).map_err(|_| "E_INTERNAL")?;
         }
     }
     resend_roster(room);

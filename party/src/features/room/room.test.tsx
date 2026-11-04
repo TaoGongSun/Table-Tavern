@@ -11,6 +11,17 @@ import { applyLang } from "../../i18n";
 import { Hub, type FakeSocket } from "./fake-server";
 import type { RoomEnv } from "./useRoom";
 
+// happy-dom 沒有版面與圖片解碼：裁切元件一掛上就回報預設框（整張），其餘照真的流程
+vi.mock("react-easy-crop", async () => {
+  const { useEffect } = await import("react");
+  return {
+    default: ({ onCropComplete }: { onCropComplete: (a: object, p: object) => void }) => {
+      useEffect(() => onCropComplete({ x: 0, y: 0, width: 100, height: 100 }, { x: 0, y: 0, width: 1, height: 1 }), []);
+      return null;
+    },
+  };
+});
+
 beforeAll(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   applyLang("zh-TW");
@@ -471,14 +482,19 @@ describe("玩家卡（room-player-cards）", () => {
     expect(A.q('[data-testid="card-gen-preview"]')!.textContent).toContain("新生成的圖");
     // 預覽還沒決定前不能再生，免得以為沒成功又花一次額度
     expect((A.button("AI 生圖") as HTMLButtonElement).disabled).toBe(true);
+    // 用這張先過裁切窗，套用才進草稿
     A.click("用這張");
+    await until(() => A.q('[data-testid="crop-sheet"]'));
+    A.click("套用");
     await until(() => A.q<HTMLImageElement>('[data-testid="card-image-now"]')?.src.startsWith("data:image/png"));
-    expect(A.q('[data-testid="card-gen-preview"]')!.textContent).toContain("已選用，按存檔才會套用");
+    expect(A.q('[data-testid="card-image-chosen"]')!.textContent).toBe("已選用，按存檔才會套用");
+    expect(A.q('[data-testid="card-gen-preview"]')).toBeNull();
     // 有未存的修改按返回：照桌面版兩選確認，焦點預設在「繼續編輯」
     A.click("返回");
     await until(() => A.q('[data-testid="leave-confirm"]'));
     expect(A.q('[data-testid="leave-confirm"]')!.textContent).toContain("有 1 項修改未儲存");
     expect(document.activeElement?.textContent).toBe("繼續編輯");
+    expect(A.button("捨棄修改")!.className).toBe("danger");
     A.click("繼續編輯");
     await until(() => !A.q('[data-testid="leave-confirm"]'));
     expect(A.q('[data-testid="card-sheet"]')).not.toBeNull();
@@ -497,6 +513,9 @@ describe("玩家卡（room-player-cards）", () => {
     expect(A.q('[data-testid="card-image-now"]')).toBeNull();
     await gen(3);
     A.click("用這張");
+    await until(() => A.q('[data-testid="crop-sheet"]'));
+    A.click("套用");
+    await until(() => A.q('[data-testid="card-image-chosen"]'));
     A.click("AI 生圖");
     await until(() => room.frames("x1", "image.gen").length === 4);
     await hub.exec("image.gen.result", { reqId: last(room, "image.gen").reqId, ok: false, code: "E_GEN_QUOTA" });
@@ -504,7 +523,7 @@ describe("玩家卡（room-player-cards）", () => {
     A.click("存檔");
     await until(() => room.frames("x1", "card.save").length === 2);
     const { reqId: r2, memberId: _m2, ...sent2 } = last(room, "card.save");
-    expect(sent2).toEqual({ cardId: "c1", imageFromGallery: "1700.png" });
+    expect(sent2).toEqual({ cardId: "c1", imageFromGallery: "1700.png", crop: { x: 0, y: 0, w: 1, h: 1 } });
     await hub.exec("card.save.result", { reqId: r2, ok: true });
     await until(() => !A.q('[data-testid="card-sheet"]'));
 
@@ -520,5 +539,59 @@ describe("玩家卡（room-player-cards）", () => {
     // 沒有修改：直接返回，不問
     A.click("返回");
     await until(() => !A.q('[data-testid="card-sheet"]'));
+  });
+
+  it("從圖庫選：有圖才出現、按了才撈、標使用中、再載入接著最後一張、點縮圖取大預覽再裁切、取消不動草稿、套用才進草稿、存檔送檔名與裁切框", async () => {
+    const { room, hub, A } = await table();
+    A.click("編輯我的角色");
+    await until(() => room.frames("x1", "card.read").length === 1);
+    const card = { name: "角色1", avatar: "🗡", publicMd: "公開", privateMd: "", image: null, gallery: 3, galleryFile: "1700000000002.png" };
+    await hub.exec("card.read.result", { reqId: last(room, "card.read").reqId, ok: true, card });
+    await until(() => A.button("從圖庫選（3）"));
+    expect(room.frames("x1", "card.gallery")).toHaveLength(0);
+    A.click("從圖庫選（3）");
+    await until(() => room.frames("x1", "card.gallery").length === 1);
+    const thumb = "data:image/png;base64,AAAA";
+    const page1 = [{ file: "1700000000003.png", thumb }, { file: "1700000000002.png", thumb }];
+    await hub.exec("card.gallery.result", { reqId: last(room, "card.gallery").reqId, ok: true, items: page1, more: 1 });
+    await until(() => A.q(".card-gallery-thumb"));
+    expect(A.q('[data-testid="card-gallery"]')!.textContent).toContain("使用中");
+    A.click("載入更多（剩 1 張）");
+    await until(() => room.frames("x1", "card.gallery").length === 2);
+    expect(last(room, "card.gallery")).toMatchObject({ before: "1700000000002.png" });
+    await hub.exec("card.gallery.result", { reqId: last(room, "card.gallery").reqId, ok: true, items: [{ file: "1700000000001.png", thumb }], more: 0 });
+    await until(() => A.el.querySelectorAll(".card-gallery-thumb").length === 3);
+    // 點縮圖：取單張預覽 → 裁切窗；取消就什麼都不變
+    const thumbs = () => [...A.el.querySelectorAll<HTMLButtonElement>(".card-gallery-thumb")];
+    act(() => thumbs()[2].click());
+    await until(() => room.frames("x1", "card.gallery").length === 3);
+    expect(last(room, "card.gallery")).toMatchObject({ file: "1700000000001.png" });
+    expect(thumbs().every((b) => b.disabled)).toBe(true); // 取單張進行中不重複送
+    await hub.exec("card.gallery.result", { reqId: last(room, "card.gallery").reqId, ok: true, items: [{ file: "1700000000001.png", thumb }] });
+    await until(() => A.q('[data-testid="crop-sheet"]'));
+    A.click("取消");
+    await until(() => !A.q('[data-testid="crop-sheet"]'));
+    expect(A.q('[data-testid="card-image-now"]')).toBeNull();
+    act(() => thumbs()[2].click());
+    await until(() => room.frames("x1", "card.gallery").length === 4);
+    await hub.exec("card.gallery.result", { reqId: last(room, "card.gallery").reqId, ok: true, items: [{ file: "1700000000001.png", thumb }] });
+    await until(() => A.q('[data-testid="crop-sheet"]'));
+    // 套用後草稿還在做（切預覽慢）：裁切窗不關、兩顆鈕停用，編卡的存檔與返回也停用
+    let finish = () => {};
+    vi.stubGlobal("fetch", () => new Promise<Response>((r) => (finish = () => r(new Response(new Blob())))));
+    A.click("套用");
+    await until(() => A.button("套用")?.disabled);
+    expect((A.button("取消") as HTMLButtonElement).disabled).toBe(true);
+    expect((A.button("存檔") as HTMLButtonElement).disabled).toBe(true);
+    expect((A.button("返回") as HTMLButtonElement).disabled).toBe(true);
+    expect(A.q('[data-testid="card-image-chosen"]')).toBeNull();
+    await act(async () => finish());
+    await until(() => !A.q('[data-testid="crop-sheet"]') && A.q('[data-testid="card-image-chosen"]'));
+    expect((A.button("存檔") as HTMLButtonElement).disabled).toBe(false);
+    expect(thumbs()[2].className).toContain("picked");
+    A.click("存檔");
+    await until(() => room.frames("x1", "card.save").length === 1);
+    const { reqId: _r, memberId: _m, ...sent } = last(room, "card.save");
+    expect(sent).toEqual({ cardId: "c1", imageFromGallery: "1700000000001.png", crop: { x: 0, y: 0, w: 1, h: 1 } });
   });
 });

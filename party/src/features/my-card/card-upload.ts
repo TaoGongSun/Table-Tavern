@@ -33,15 +33,39 @@ export async function toPng(file: Blob): Promise<Blob | null> {
   } catch {
     return null;
   }
-  let scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));
-  for (let i = 0; i < 6; i++, scale *= 0.7) {
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-    canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    const png = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-    if (!png) return null;
-    if (png.size <= UPLOAD_MAX.image) return png;
+  try {
+    let scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+    for (let i = 0; i < 6; i++, scale *= 0.7) {
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      const png = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+      if (!png) return null;
+      if (png.size <= UPLOAD_MAX.image) return png;
+    }
+    return null;
+  } finally {
+    bitmap.close(); // 解碼後的點陣圖佔記憶體，用完就放
   }
-  return null;
+}
+
+/** 裁切框：原圖比例 0–1（room-phone-gallery §3.5），跟預覽解析度無關 */
+export type CropBox = { x: number; y: number; w: number; h: number };
+
+/** 依裁切框切圖、寬最多 maxWidth（同桌面版裁切窗 1024），出 PNG；瀏覽器解不開就回 null */
+export async function cropTo(src: Blob, box: CropBox, maxWidth: number): Promise<Blob | null> {
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(src);
+  } catch {
+    return null;
+  }
+  const [sx, sy, sw, sh] = [box.x * bitmap.width, box.y * bitmap.height, box.w * bitmap.width, box.h * bitmap.height];
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(Math.min(sw, maxWidth)));
+  canvas.height = Math.max(1, Math.round((sh * canvas.width) / sw));
+  canvas.getContext("2d")?.drawImage(bitmap, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
 }

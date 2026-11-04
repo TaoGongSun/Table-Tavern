@@ -370,6 +370,7 @@ fn on_frame(room: &Arc<Room>, frame: &Value) {
         }
         "card.read" => cards::on_read(room, p),
         "card.save" => cards::on_save(room, p),
+        "card.gallery" => cards::on_gallery(room, p),
         "image.gen" => cards::on_gen(room, p),
         "job.cancel" => run::on_cancel(room, p),
         "ok" => on_reply(room, p, None),

@@ -34,7 +34,8 @@ const MEMBER_FRAMES: Record<string, string> = {
   "member.departure": "cardId:s mode:s", "member.reassign": "from:s to:s", "member.leave": "",
   "scene.advance": "round:i next?:o", "scene.advance_cancel": "", "room.close": "", "pair.claim": "code:s",
   "pair.leave": "", ctl: "ctlId:s cmd:o", "history.page": "beforeSeq:i limit:i", ping: "",
-  "card.mine": "", "card.save": "cardId:s name?:s avatar?:s publicMd?:s privateMd?:s removeImage?:b imageFromGallery?:s",
+  "card.mine": "", "card.save": "cardId:s name?:s avatar?:s publicMd?:s privateMd?:s removeImage?:b imageFromGallery?:s crop?:o",
+  "card.gallery": "before?:s file?:s",
   "image.gen": "cardId:s name:s description:s extraPrompt:s framing:s",
 };
 const EXECUTOR_FRAMES: Record<string, string> = {
@@ -49,6 +50,7 @@ const EXECUTOR_FRAMES: Record<string, string> = {
   "ctl.result": "ctlId:s ok:b error?:o", "executor.leave": "",
   "card.read.result": "reqId:s ok:b card?:o code?:s", "card.save.result": "reqId:s ok:b code?:s",
   "image.gen.result": "reqId:s ok:b file?:s preview?:s code?:s",
+  "card.gallery.result": "reqId:s ok:b items?:a more?:i code?:s",
 };
 const LIMIT = { member: 16 * 1024, executor: 1024 * 1024 };
 /** 成員訊框只有 `card.save` 放寬（兩段各 64,000 字）；不分片（room-player-cards §6-2） */
@@ -112,6 +114,13 @@ export function cleanLong(v: unknown, max: number): string | null {
 export const cleanIcon = (v: unknown) => (typeof v === "string" && chars(v) >= 1 && chars(v) <= 16 && !/[\s\u0000-\u001f\u007f-\u009f]/.test(v) ? v : null);
 /** 圖庫檔名（桌面版 `<毫秒>.png`）：不含路徑與 `..`，執行端再對那張卡的圖庫驗一次 */
 export const GALLERY_FILE = /^(?!.*\.\.)[A-Za-z0-9_-][A-Za-z0-9_.-]{0,79}\.png$/;
+
+/** 裁切框（原圖比例 0–1，room-phone-gallery §3.5）：四欄都要是有限數字、在原圖範圍內（容差 0.0001）。不合回 null */
+export function cleanCrop(v: unknown): { x: number; y: number; w: number; h: number } | null {
+  if (!shape(v, "x:n y:n w:n h:n")) return null;
+  const { x, y, w, h } = v;
+  return x >= 0 && y >= 0 && w > 0 && h > 0 && x + w <= 1.0001 && y + h <= 1.0001 ? { x, y, w, h } : null;
+}
 
 const str = (v: unknown, max: number, min = 0) => typeof v === "string" && v.length >= min && chars(v) <= max;
 export const ID64 = /^[A-Za-z0-9_-]{1,64}$/;

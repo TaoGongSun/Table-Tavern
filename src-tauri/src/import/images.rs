@@ -64,7 +64,45 @@ pub fn save_character_image(
 }
 
 pub fn delete_character_image(root: &Path, world_id: &str, character_id: &str) -> DataResult<()> {
+    clear_image_source(root, world_id, character_id)?;
     delete_character_png(root, world_id, character_id, "png")
+}
+
+/// 角色圖從哪張圖庫圖來（`<id>.image-from`，房間手機標「使用中」用）；沒有或內容不對回 None
+pub fn character_image_source(root: &Path, world_id: &str, character_id: &str) -> Option<String> {
+    let path = data::character_path(root, world_id, character_id).ok()?;
+    let file = fs::read_to_string(path.with_extension("image-from")).ok()?;
+    let file = file.trim();
+    gallery_file_name(file).then(|| file.to_owned())
+}
+
+/// 圖庫檔名規則，同房間伺服器的 `GALLERY_FILE`：`[A-Za-z0-9_-][A-Za-z0-9_.-]{0,79}.png`、不含 `..`
+pub fn gallery_file_name(name: &str) -> bool {
+    let Some(stem) = name.strip_suffix(".png") else {
+        return false;
+    };
+    let ok = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '-';
+    (1..=80).contains(&stem.len())
+        && stem.starts_with(ok)
+        && stem.chars().all(|c| ok(c) || c == '.')
+        && !name.contains("..")
+}
+
+/// 角色圖剛換成圖庫那張之後才寫；別條路換圖、刪圖時由 `save_character_png`／`delete_character_image` 清掉
+pub fn save_image_source(
+    root: &Path,
+    world_id: &str,
+    character_id: &str,
+    file: &str,
+) -> DataResult<()> {
+    let path = data::character_path(root, world_id, character_id)?.with_extension("image-from");
+    data::commit_world_write_atomic(&path, file.as_bytes())
+}
+
+fn clear_image_source(root: &Path, world_id: &str, character_id: &str) -> DataResult<()> {
+    data::commit_world_remove(
+        &data::character_path(root, world_id, character_id)?.with_extension("image-from"),
+    )
 }
 
 pub fn character_avatar(
@@ -117,6 +155,10 @@ fn save_character_png(
             id: character_id.to_owned(),
         }
         .into_error());
+    }
+    // 驗過、要換圖了：來源標記先清（換圖失敗時舊圖與舊標記都還在，只差標記可能先沒了）
+    if extension == "png" {
+        clear_image_source(root, world_id, character_id)?;
     }
     // 原子寫：寫一半失敗時舊圖原樣留著，不會留下半張圖
     data::commit_world_write_atomic(&path.with_extension(extension), &stripped)?;

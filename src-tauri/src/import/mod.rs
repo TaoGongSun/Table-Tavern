@@ -31,10 +31,12 @@ pub use files::{
     import_character_file, import_worldbook_file, post_opening_text, post_opening_text_with,
     OpeningEffects,
 };
+#[cfg(test)]
+pub use images::gallery_file_name;
 pub use images::{
-    character_avatar, character_image, check_character_image, delete_character_avatar,
-    delete_character_image, gm_image, save_character_avatar, save_character_image, save_gm_image,
-    GmImage,
+    character_avatar, character_image, character_image_source, check_character_image,
+    delete_character_avatar, delete_character_image, gm_image, save_character_avatar,
+    save_character_image, save_gm_image, save_image_source, GmImage,
 };
 pub use interface::{
     card_format_entry, read_card_interfaces, reply_format_scripts, save_world_card, CardInterface,

@@ -19,6 +19,7 @@
   "dependencies": {
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "react-easy-crop": "^6.2.4",
     "ws": "~8.21.0"
   },
   "devDependencies": {
