@@ -38,6 +38,8 @@ When a new version comes out, the app lets you know and updates in one click; if
 
 ## Why it's fun — and easy on your budget
 
+- **Play with friends online**: open a room on your computer and friends join from their phone's browser through an invite link — no install. Everyone controls their own character, the GM runs on the host's AI, and the host keeps playing on the computer.
+- **Visual novel mode**: the AI writes the script while drawing backgrounds and character sprites; move the story with choices, with chapters, endings and branches. Export it as a package others can replay.
 - **Pick who speaks at multi-character tables**: **Let ○○ reply** appears under the GM's narration, and **Send + reply** sits next to the send button. Cards that provide setting but never speak (places, factions) can be made **stage cards**, so they're never asked to talk.
 - **Play completely free**: once OpenRouter is connected, the app picks a good free model for you. If that one is busy or temporarily unavailable, it switches to the next one and tells you in the chat.
 - **Use the subscription you already have**: with a Claude, ChatGPT, Gemini, or Grok subscription, you can route play through that provider's official command-line tool and spend the allowance you already pay for. The app installs it in one click, walks you through signing in, and shows **Connected** once it detects you're logged in. For Claude, Codex and Grok, the app prefers the tool version it was tested with (falling back to the latest if that can't be downloaded); Gemini always gets the latest. The app keeps the tool from updating itself while the app runs it; if a tool update breaks its output format, the app says so and offers **Check for CLI update**. Providers' rules on this kind of use differ; the app explains the risks before you switch, and the choice is yours.
@@ -48,7 +50,7 @@ When a new version comes out, the app lets you know and updates in one click; if
   - The GM and each character can run on different model tiers — the strong one for who matters, a cheaper one for the extras.
   - Runaway output stops on its own, and you can stop any reply yourself.
 - **AI character art**: generate a portrait for a character card. Needs a paid OpenRouter model or the ChatGPT / Gemini / Grok official command-line tool; the free tier can't generate images.
-- **Your data stays on your computer**: tables, cards, and chat logs are local files, and conversations go straight from your computer to the AI service you picked — no server of ours in between.
+- **Your data stays on your computer**: tables, cards, and chat logs are local files, and conversations go straight from your computer to the AI service you picked — no server of ours in between. Only multiplayer rooms go through our room server, which relays the story between the host and friends.
 - **Ten interface languages**: English, 繁體中文, 简体中文, 日本語, 한국어, Español, Português (Brasil), Deutsch, Français, Русский. The sample table follows your language too.
 
 ## FAQ

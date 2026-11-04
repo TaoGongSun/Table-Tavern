@@ -231,6 +231,8 @@ export const ja: WebMessages = {
   compare_ai_web: "OpenRouter の無料モデル（1 日の回数上限あり）",
   compare_ai_desktop: "無料・有料モデル、または Claude、ChatGPT、Gemini、Grok のサブスクリプション",
   compare_multi: "複数キャラクターの同席、GM のナレーションと発言順の決定",
+  compare_room: "友達とオンラインで同卓：友達はスマホのブラウザから参加",
+  compare_vn: "ビジュアルノベルモード：AI が脚本を書き、背景と立ち絵を描く",
   compare_oneLine: "一文で卓を作る",
   compare_status: "ステータスバーとゲームの仕組み",
   compare_scenes: "場面転換と長編ストーリー",

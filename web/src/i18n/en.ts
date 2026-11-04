@@ -232,6 +232,8 @@ export const en: WebMessages = {
   compare_ai_web: "Free OpenRouter models (daily limit)",
   compare_ai_desktop: "Free and paid models, or your Claude, ChatGPT, Gemini or Grok subscription",
   compare_multi: "Several characters at one table, GM narration and deciding who speaks next",
+  compare_room: "Play online with friends: they join from their phone browser",
+  compare_vn: "Visual novel mode: the AI writes the script and draws backgrounds and sprites",
   compare_oneLine: "Start a table from one sentence",
   compare_status: "Status bar and game mechanics",
   compare_scenes: "Scene changes and long stories",

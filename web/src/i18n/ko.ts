@@ -230,6 +230,8 @@ export const ko: WebMessages = {
   compare_ai_web: "OpenRouter 무료 모델(하루 횟수 제한)",
   compare_ai_desktop: "무료·유료 모델, 또는 Claude, ChatGPT, Gemini, Grok 구독",
   compare_multi: "여러 캐릭터가 한 테이블에, GM 내레이션과 다음 발언자 결정",
+  compare_room: "친구와 온라인으로 함께: 친구는 휴대폰 브라우저로 참가",
+  compare_vn: "비주얼 노벨 모드: AI가 대본을 쓰고 배경과 캐릭터 일러스트를 그림",
   compare_oneLine: "한 문장으로 테이블 만들기",
   compare_status: "상태 표시줄과 게임 메커니즘",
   compare_scenes: "장면 전환과 긴 이야기",

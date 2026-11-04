@@ -233,6 +233,8 @@ export const fr: WebMessages = {
   compare_ai_web: "Modèles gratuits d'OpenRouter (limite quotidienne)",
   compare_ai_desktop: "Modèles gratuits et payants, ou ton abonnement Claude, ChatGPT, Gemini ou Grok",
   compare_multi: "Plusieurs personnages à une table, narration du MJ et choix de qui parle ensuite",
+  compare_room: "Jouer en ligne entre amis : ils rejoignent depuis le navigateur de leur téléphone",
+  compare_vn: "Mode visual novel : l’IA écrit le scénario et dessine décors et personnages",
   compare_oneLine: "Créer une table en une phrase",
   compare_status: "Barre d'état et mécaniques de jeu",
   compare_scenes: "Changements de scène et longues histoires",

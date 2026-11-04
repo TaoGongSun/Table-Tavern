@@ -232,6 +232,8 @@ export const de: WebMessages = {
   compare_ai_web: "Kostenlose OpenRouter-Modelle (Tageslimit)",
   compare_ai_desktop: "Kostenlose und kostenpflichtige Modelle oder dein Claude-, ChatGPT-, Gemini- oder Grok-Abo",
   compare_multi: "Mehrere Figuren an einem Tisch, GM-Erzählung und wer als Nächstes spricht",
+  compare_room: "Online mit Freunden spielen: Sie treten über den Handy-Browser bei",
+  compare_vn: "Visual-Novel-Modus: Die KI schreibt das Skript und zeichnet Hintergründe und Figuren",
   compare_oneLine: "Einen Tisch aus einem Satz erstellen",
   compare_status: "Statusleiste und Spielmechaniken",
   compare_scenes: "Szenenwechsel und lange Geschichten",

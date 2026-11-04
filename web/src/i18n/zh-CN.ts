@@ -219,6 +219,8 @@ export const zhCN: WebMessages = {
   compare_ai_web: "OpenRouter 免费模型（每天有次数上限）",
   compare_ai_desktop: "免费与付费模型，或接 Claude、ChatGPT、Gemini、Grok 订阅",
   compare_multi: "多角色同桌、GM 旁白与决定谁接话",
+  compare_room: "和朋友联机同桌：朋友用手机浏览器加入",
+  compare_vn: "视觉小说模式：AI 写剧本并画背景与立绘",
   compare_oneLine: "一句话开一张桌",
   compare_status: "状态栏与游戏机制",
   compare_scenes: "换幕与长篇剧情",

@@ -16,6 +16,8 @@ export const FEATURE_COMPARE: CompareRow[] = [
   { feature: "compare_ai", web: "compare_ai_web", desktop: "compare_ai_desktop" },
   { feature: "compare_update", web: "compare_update_web", desktop: "compare_update_desktop" },
   { feature: "compare_multi", web: false, desktop: true },
+  { feature: "compare_room", web: false, desktop: true },
+  { feature: "compare_vn", web: false, desktop: true },
   { feature: "compare_oneLine", web: false, desktop: true },
   { feature: "compare_status", web: false, desktop: true },
   { feature: "compare_scenes", web: false, desktop: true },

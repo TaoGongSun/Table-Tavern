@@ -232,6 +232,8 @@ export const ptBR: WebMessages = {
   compare_ai_web: "Modelos gratuitos do OpenRouter (limite diário)",
   compare_ai_desktop: "Modelos gratuitos e pagos, ou sua assinatura de Claude, ChatGPT, Gemini ou Grok",
   compare_multi: "Vários personagens na mesma mesa, narração do GM e quem fala em seguida",
+  compare_room: "Jogue online com amigos: eles entram pelo navegador do celular",
+  compare_vn: "Modo visual novel: a IA escreve o roteiro e desenha cenários e personagens",
   compare_oneLine: "Criar uma mesa com uma frase",
   compare_status: "Barra de status e mecânicas de jogo",
   compare_scenes: "Trocas de cena e histórias longas",

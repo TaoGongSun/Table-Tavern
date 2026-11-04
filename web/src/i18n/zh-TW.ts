@@ -221,6 +221,8 @@ export const zhTW = {
   compare_ai_web: "OpenRouter 免費模型（每天有次數上限）",
   compare_ai_desktop: "免費與付費模型，或接 Claude、ChatGPT、Gemini、Grok 訂閱",
   compare_multi: "多角色同桌、GM 旁白與決定誰接話",
+  compare_room: "和朋友連線同桌：朋友用手機瀏覽器加入",
+  compare_vn: "視覺小說模式：AI 寫劇本並畫背景與立繪",
   compare_oneLine: "一句話開一張桌",
   compare_status: "狀態欄與遊戲機制",
   compare_scenes: "換幕與長篇劇情",
