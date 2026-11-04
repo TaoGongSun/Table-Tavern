@@ -524,6 +524,30 @@
   margin-top: 8px;
 }
 
+.app .leave-confirm {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.app .leave-box {
+  width: 100%;
+  max-width: 360px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.app .leave-box h3 {
+  margin: 0 0 8px;
+}
+
 .app .card-gen-preview > p {
   flex-basis: 100%;
   margin: 0;

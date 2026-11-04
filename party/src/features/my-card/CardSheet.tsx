@@ -35,6 +35,7 @@ export function CardSheet({ view, act, mode, upload, onClose }: Props) {
   const [cardId, setCardId] = useState<string | null>(mode === "edit" ? view.me.cardId : null);
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState(false); // 已建卡入座、秘密段還沒存上
+  const [leaving, setLeaving] = useState(false); // 有未存修改時按返回：先確認
 
   useEffect(() => {
     if (mode !== "edit") return;
@@ -98,14 +99,30 @@ export function CardSheet({ view, act, mode, upload, onClose }: Props) {
   }
 
   const loading = mode === "edit" && !saved;
+  // 未存修改照桌面版 CardEditor 算：欄位一項、圖的草稿（上傳、移除、用這張選進的生圖）一項
+  const unsaved = saved ? (Object.keys(changed(saved)).length ? 1 : 0) + (draftImage !== undefined ? 1 : 0) : 0;
+  const back = () => (unsaved ? setLeaving(true) : onClose());
   return (
     <form className="panel card-sheet" data-testid="card-sheet" onSubmit={(e) => (e.preventDefault(), void submit())}>
       <h2>{t(mode === "create" ? "seatCreate" : "cardEdit")}</h2>
       {/* 動作鈕置頂（標題正下方） */}
       <div className="panel-actions">
         <button type="submit" disabled={busy || loading || !f.name.trim()}>{t(pending ? "cardRetry" : "cardSave")}</button>
-        <button type="button" className="ghost" onClick={onClose}>{t("cardCancel")}</button>
+        <button type="button" className="ghost" disabled={busy} onClick={back}>{t("cardCancel")}</button>
       </div>
+      {leaving && (
+        // 照桌面版的離開確認：兩選，預設焦點在「繼續編輯」，誤按 Enter 不會捨棄
+        <div className="leave-confirm" role="alertdialog" aria-labelledby="leave-title" data-testid="leave-confirm" onKeyDown={(e) => e.key === "Escape" && setLeaving(false)}>
+          <div className="leave-box">
+            <h3 id="leave-title">{t("unsavedLeaveTitle")}</h3>
+            <p>{t("unsavedLeaveConfirm", { n: unsaved })}</p>
+            <div className="panel-actions">
+              <button type="button" autoFocus onClick={() => setLeaving(false)}>{t("unsavedLeaveCancel")}</button>
+              <button type="button" className="ghost" onClick={onClose}>{t("unsavedLeaveOk")}</button>
+            </div>
+          </div>
+        </div>
+      )}
       {pending && <div className="field-error" data-testid="card-pending">{t("cardSecretPending")}</div>}
       {error && <div className="field-error">{error}</div>}
       {loading ? (

@@ -425,7 +425,7 @@ describe("玩家卡（room-player-cards）", () => {
     expect(room.store.events.some((e) => JSON.stringify(e).includes("其實是公主"))).toBe(false);
   });
 
-  it("編輯我的角色：讀卡、只送改過的欄位、改名先確認；生圖同一房間只確認一次、預覽標新圖、用這張與返回撤回、丟掉、按存檔才寫入圖；存檔期間停用欄位；主機關掉生圖只留說明、沒路線整段不出現；別人看不到秘密段", async () => {
+  it("編輯我的角色：讀卡、只送改過的欄位、改名先確認；生圖同一房間只確認一次、預覽標新圖、用這張後標已選用、有未存修改返回先兩選確認、捨棄才撤回、丟掉、按存檔才寫入圖；存檔期間停用欄位；主機關掉生圖只留說明、沒路線整段不出現；別人看不到秘密段", async () => {
     const { room, hub, A, B } = await table();
     const confirm = vi.fn(() => true);
     vi.stubGlobal("confirm", confirm);
@@ -473,7 +473,19 @@ describe("玩家卡（room-player-cards）", () => {
     expect((A.button("AI 生圖") as HTMLButtonElement).disabled).toBe(true);
     A.click("用這張");
     await until(() => A.q<HTMLImageElement>('[data-testid="card-image-now"]')?.src.startsWith("data:image/png"));
+    expect(A.q('[data-testid="card-gen-preview"]')!.textContent).toContain("已選用，按存檔才會套用");
+    // 有未存的修改按返回：照桌面版兩選確認，焦點預設在「繼續編輯」
     A.click("返回");
+    await until(() => A.q('[data-testid="leave-confirm"]'));
+    expect(A.q('[data-testid="leave-confirm"]')!.textContent).toContain("有 1 項修改未儲存");
+    expect(document.activeElement?.textContent).toBe("繼續編輯");
+    A.click("繼續編輯");
+    await until(() => !A.q('[data-testid="leave-confirm"]'));
+    expect(A.q('[data-testid="card-sheet"]')).not.toBeNull();
+    A.click("返回");
+    await until(() => A.q('[data-testid="leave-confirm"]'));
+    A.click("捨棄修改");
+    await until(() => !A.q('[data-testid="card-sheet"]'));
     await reopen(3, { ...card, name: "新名字" });
     expect(A.q('[data-testid="card-image-now"]')).toBeNull();
     expect(room.frames("x1", "card.save")).toHaveLength(1);
@@ -505,5 +517,8 @@ describe("玩家卡（room-player-cards）", () => {
     // 主機沒有房間能用的生圖路線：整段不出現
     await hub.exec("status", { keepAwake: null, busy: false, imageGen: false, imageGenRoute: false });
     await until(() => !A.q('[data-testid="card-gen-notice"]'));
+    // 沒有修改：直接返回，不問
+    A.click("返回");
+    await until(() => !A.q('[data-testid="card-sheet"]'));
   });
 });

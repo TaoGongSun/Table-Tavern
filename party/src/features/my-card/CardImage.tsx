@@ -32,7 +32,8 @@ export type ImageDraft = { png: Blob; preview: string } | { file: string; previe
 export function CardImage({ view, act, cardId, image, setDraft, draft, canUpload }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<"" | "convert" | "gen">("");
-  const [preview, setPreview] = useState<{ file: string; preview: string } | null>(null);
+  // chosen：按了「用這張」，已進草稿、等存檔
+  const [preview, setPreview] = useState<{ file: string; preview: string; chosen?: boolean } | null>(null);
   const [extra, setExtra] = useState("");
   const [framing, setFraming] = useState<"full" | "half">("half");
   const host = view.executor.label;
@@ -46,6 +47,7 @@ export function CardImage({ view, act, cardId, image, setDraft, draft, canUpload
     if (!png) return setError(errorText("E_UNSUPPORTED_FORMAT"));
     setError(null);
     setDraft({ png, preview: URL.createObjectURL(png) });
+    setPreview(null); // 換成上傳的圖：先前選用的生圖不再是草稿
   }
 
   async function generate() {
@@ -82,7 +84,7 @@ export function CardImage({ view, act, cardId, image, setDraft, draft, canUpload
             />
           </label>
         )}
-        {image && <button type="button" className="ghost" disabled={!!busy} onClick={() => setDraft(null)}>{t("cardImageRemove")}</button>}
+        {image && <button type="button" className="ghost" disabled={!!busy} onClick={() => (setDraft(null), setPreview(null))}>{t("cardImageRemove")}</button>}
       </div>
       {view.executor.imageGenRoute && (
         <>
@@ -101,7 +103,7 @@ export function CardImage({ view, act, cardId, image, setDraft, draft, canUpload
               <option value="half">{t("cardFramingHalf")}</option>
               <option value="full">{t("cardFramingFull")}</option>
             </select>
-            <button type="button" disabled={!!busy || !!preview || !draft.name.trim()} onClick={() => void generate()}>
+            <button type="button" disabled={!!busy || (!!preview && !preview.chosen) || !draft.name.trim()} onClick={() => void generate()}>
               {busy === "gen" ? t("cardGenBusy") : t("cardGen")}
             </button>
           </div>
@@ -109,12 +111,14 @@ export function CardImage({ view, act, cardId, image, setDraft, draft, canUpload
       )}
       {preview && (
         <div className="card-gen-preview" data-testid="card-gen-preview">
-          <p className="muted">{t("cardGenNew")}</p>
+          <p className="muted">{t(preview.chosen ? "cardGenChosen" : "cardGenNew")}</p>
           <img src={preview.preview} alt="" />
-          <div className="panel-actions">
-            <button type="button" onClick={() => (setDraft(preview), setPreview(null))}>{t("cardGenUse")}</button>
-            <button type="button" className="ghost" onClick={() => setPreview(null)}>{t("cardGenDiscard")}</button>
-          </div>
+          {!preview.chosen && (
+            <div className="panel-actions">
+              <button type="button" onClick={() => (setDraft({ file: preview.file, preview: preview.preview }), setPreview({ ...preview, chosen: true }))}>{t("cardGenUse")}</button>
+              <button type="button" className="ghost" onClick={() => setPreview(null)}>{t("cardGenDiscard")}</button>
+            </div>
+          )}
         </div>
       )}
       {error && <div className="field-error">{error}</div>}
