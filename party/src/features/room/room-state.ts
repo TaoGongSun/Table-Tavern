@@ -66,7 +66,7 @@ function onEvent(v: RoomView, e: any, at: number) {
       v.room.status = "closed";
       break;
     case "member.joined":
-      if (!v.members.some((m) => m.memberId === e.memberId)) v.members.push({ memberId: e.memberId, nickname: e.nickname, cardId: null, connected: false });
+      if (!v.members.some((m) => m.memberId === e.memberId)) v.members.push({ memberId: e.memberId, nickname: e.nickname, cardId: null, connected: false, delegated: false });
       break;
     case "member.renamed":
       for (const m of v.members) if (m.memberId === e.memberId) m.nickname = e.nickname;

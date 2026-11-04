@@ -10,7 +10,7 @@ import { cleanCrop, cleanIcon, cleanLong, cleanName, GALLERY_FILE, isCount, shap
 const MiB = 1 << 20;
 export const UPLOAD_MAX = { card: 8 * MiB, image: 2 * MiB };
 const UPLOAD_TTL = 10 * MIN;
-const REQ_TTL: Record<CardReq["kind"], number> = { mine: 30_000, save: 30_000, gen: 10 * MIN, gallery: 30_000 };
+const REQ_TTL: Record<CardReq["kind"], number> = { mine: 30_000, save: 30_000, gen: 10 * MIN, gallery: 30_000, invite: 30_000 };
 const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 const PNG_URL = /^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/;
 const EXEC_CODES = new Set<ErrorCode>([
@@ -157,7 +157,7 @@ export function settleCards(tx: Tx) {
   const s = tx.s;
   if (s.status === "closed" || !s.exec.online) return failPending(tx, s.status === "closed" ? "E_ROOM_CLOSED" : "E_EXECUTOR_OFFLINE");
   for (const [reqId, r] of Object.entries(live.cardReqs)) {
-    const code = tx.now >= r.at + REQ_TTL[r.kind] ? "E_EXECUTOR_TIMEOUT" : r.kind !== "save" && !seatedOn(s, r.memberId, r.cardId) ? "E_STATE_CONFLICT" : null;
+    const code = tx.now >= r.at + REQ_TTL[r.kind] ? "E_EXECUTOR_TIMEOUT" : r.kind === "invite" ? (inviteAsker(s, r) ? null : "E_STATE_CONFLICT") : r.kind !== "save" && !seatedOn(s, r.memberId, r.cardId) ? "E_STATE_CONFLICT" : null;
     if (!code) continue;
     tx.err(r.conn, code, { id: r.id });
     delete live.cardReqs[reqId];
@@ -170,9 +170,13 @@ export function cardsAlarm(live: { uploads: Record<string, Upload>; cardReqs: Re
   return Math.min(Infinity, ...at);
 }
 
+/** 問現行邀請的人仍是房主、那條連線仍屬同一位成員 */
+const inviteAsker = (s: RoomState, r: CardReq) => s.hostId === r.memberId && s.conns[r.conn]?.who === r.memberId;
+const inviteHash = (s: RoomState, secret: string) => sha256Hex(`${s.code}:${secret}`);
+
 function forward(tx: Tx, kind: CardReq["kind"], m: Member, t: string, fields: Record<string, unknown>) {
   const reqId = ulid(tx.now, tx.ctx.rng);
-  tx.ctx.live.cardReqs[reqId] = { kind, conn: tx.conn, id: tx.reqId, memberId: m.id, cardId: m.cardId!, at: tx.now };
+  tx.ctx.live.cardReqs[reqId] = { kind, conn: tx.conn, id: tx.reqId, memberId: m.id, cardId: m.cardId, at: tx.now };
   tx.toExec(t, { reqId, memberId: m.id, cardId: m.cardId, ...fields });
   return "later" as const;
 }
@@ -228,6 +232,21 @@ export const CARD_MEMBER: Record<string, Handler> = {
     rate(tx, `g:${m.id}`, 6, 60 * MIN);
     return forward(tx, "gen", m, "image.gen", { name, description, extraPrompt, framing: p.framing });
   },
+  // 手機房主拿現行邀請連結（§3.6）：手上的候選密語對得上就直接回，否則問電腦；密語不進狀態、事件、日誌
+  "invite.current": async (tx, p, m) => {
+    need(tx.s.hostId === m.id, "E_FORBIDDEN");
+    need(tx.s.status !== "closed", "E_ROOM_CLOSED");
+    if (typeof p.candidate === "string" && p.candidate.length <= 64 && sameHash(await inviteHash(tx.s, p.candidate), tx.s.joinHash)) {
+      tx.ok({ joinSecret: p.candidate });
+      return "later" as const; // 已經回過
+    }
+    need(tx.s.exec.online, "E_EXECUTOR_OFFLINE");
+    rate(tx, `ic:${m.id}`, 3, 2000);
+    const reqId = ulid(tx.now, tx.ctx.rng);
+    tx.ctx.live.cardReqs[reqId] = { kind: "invite", conn: tx.conn, id: tx.reqId, memberId: m.id, cardId: null, at: tx.now };
+    tx.toExec("invite.get", { reqId });
+    return "later" as const;
+  },
 };
 
 /** 取出等著的請求；不認得（已逾時、已作廢）就不理 */
@@ -280,5 +299,13 @@ export const CARD_EXECUTOR: Record<string, (tx: Tx, p: any) => void> = {
     if (!p.ok) return failed(tx, r, p.code);
     if (!(GALLERY_FILE.test(p.file ?? "") && PNG_URL.test(p.preview ?? ""))) return tx.err(r.conn, "E_INTERNAL", { id: r.id });
     tx.send(r.conn, "ok", { id: r.id, result: { file: p.file, preview: p.preview } });
+  },
+  "invite.get.result": async (tx, p) => {
+    const r = take(tx, p.reqId, "invite");
+    if (!r) return;
+    // 回覆前重驗：房主轉讓了、連線換人了、或電腦回的不是現行密語（剛好在換新連結），都不帶內容
+    const ok = inviteAsker(tx.s, r) && typeof p.joinSecret === "string" && p.joinSecret.length <= 64 && sameHash(await inviteHash(tx.s, p.joinSecret), tx.s.joinHash);
+    if (!ok) return tx.err(r.conn, "E_STATE_CONFLICT", { id: r.id });
+    tx.send(r.conn, "ok", { id: r.id, result: { joinSecret: p.joinSecret } });
   },
 };

@@ -356,3 +356,58 @@ describe("手機圖庫（room-phone-gallery §3.1–§3.5）", () => {
     expect(validateFrame(raw, "member").ok).toBe(false);
   });
 });
+
+describe("手機房主拿現行邀請連結 invite.current（room-seat-delegate §3.6）", () => {
+  const reply = (room: Room, id: string, reqId: string) => room.out[id]?.find((f) => (f.t === "ok" || f.t === "err") && f.p.id === reqId);
+
+  it("候選密語對得上就直接回、不經電腦（電腦離線也行）；不是房主回 E_FORBIDDEN", async () => {
+    const room = await table();
+    expect((await room.ask("a", "invite.current", { candidate: room.joinSecret }))?.p.result).toEqual({ joinSecret: room.joinSecret });
+    expect(room.frames("x1", "invite.get")).toEqual([]);
+    expect((await room.ask("b", "invite.current", { candidate: room.joinSecret }))?.p.code).toBe("E_FORBIDDEN");
+    await room.disconnect("x1");
+    expect((await room.ask("a", "invite.current", { candidate: room.joinSecret }))?.p.result).toEqual({ joinSecret: room.joinSecret });
+    expect((await room.ask("a", "invite.current", { candidate: "old" }))?.p.code).toBe("E_EXECUTOR_OFFLINE");
+  });
+
+  it("候選過期或沒帶：轉電腦問、只回發問的連線；電腦回的不是現行密語就不帶內容", async () => {
+    const room = await table();
+    await room.send("a", "invite.current", { candidate: "old" }, "r1");
+    const { reqId } = req(room, "invite.get");
+    expect(reply(room, "a", "r1")).toBeUndefined();
+    await room.send("x1", "invite.get.result", { reqId, joinSecret: room.joinSecret });
+    expect(reply(room, "a", "r1")?.p.result).toEqual({ joinSecret: room.joinSecret });
+    for (const id of ["b", "c"]) expect(JSON.stringify(room.out[id])).not.toContain(room.joinSecret);
+
+    await room.send("a", "invite.current", {}, "r2");
+    await room.send("x1", "invite.get.result", { reqId: req(room, "invite.get").reqId, joinSecret: "stale" });
+    expect(reply(room, "a", "r2")?.p.code).toBe("E_STATE_CONFLICT");
+  });
+
+  it("回覆前房主轉讓了就不帶內容；電腦斷線即失敗；30 秒沒回逾時", async () => {
+    const room = await table();
+    await room.send("a", "invite.current", {}, "r1");
+    const { reqId } = req(room, "invite.get");
+    await room.send("a", "host.transfer", { memberId: "m2" });
+    expect(reply(room, "a", "r1")?.p.code).toBe("E_STATE_CONFLICT");
+    await room.send("x1", "invite.get.result", { reqId, joinSecret: room.joinSecret });
+    expect(JSON.stringify(room.out.a)).not.toContain(room.joinSecret);
+
+    await room.send("b", "invite.current", {}, "r2");
+    await elapse(room, 30_000);
+    expect(reply(room, "b", "r2")?.p.code).toBe("E_EXECUTOR_TIMEOUT");
+
+    await room.send("b", "invite.current", {}, "r3");
+    await room.disconnect("x1");
+    expect(reply(room, "b", "r3")?.p.code).toBe("E_EXECUTOR_OFFLINE");
+  });
+
+  it("不落地：密語不進狀態、事件、快照與匯出", async () => {
+    const room = await table();
+    await room.send("a", "invite.current", { candidate: room.joinSecret });
+    await room.send("a", "invite.current", {}, "r1");
+    await room.send("x1", "invite.get.result", { reqId: req(room, "invite.get").reqId, joinSecret: room.joinSecret });
+    const snap = buildSnapshot(room.s, room.store.events, "m1", { stream: null, seed: null, buckets: {}, uploads: {}, cardReqs: {} });
+    for (const blob of [room.s, room.store.events, snap, toWebSave(room.s, room.store.events, room.clock)]) expect(JSON.stringify(blob)).not.toContain(room.joinSecret);
+  });
+});

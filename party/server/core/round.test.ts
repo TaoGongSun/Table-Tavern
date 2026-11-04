@@ -97,7 +97,7 @@ describe("回合階段（§3.1–§3.2）", () => {
     expect(room.s.drafts.m2).toBe("第一版");
   });
 
-  it("acting → queued：倒數到期，有草稿的自動送出、沒草稿的算觀望（timeout）", async () => {
+  it("acting → queued：倒數到期比照房主結算，沒送出的一律算觀望（timeout）、草稿留著", async () => {
     const room = await playing();
     await room.send("a", "room.settings", { patch: { actionTimeoutSec: 60 } });
     await room.send("b", "action.submit", { round: 2, text: "x" });
@@ -112,8 +112,8 @@ describe("回合階段（§3.1–§3.2）", () => {
     await room.send("x1", "hb");
     await room.tick(15_000);
     const batch = room.events("round.resolved")[1].payload.batch;
-    expect(batch).toMatchObject([{ kind: "watch", watchReason: "timeout" }, { kind: "act", text: "草稿要送" }]);
-    expect(room.s.drafts.m2).toBeUndefined();
+    expect(batch).toMatchObject([{ kind: "watch", watchReason: "timeout" }, { kind: "watch", watchReason: "timeout" }]);
+    expect(room.s.drafts.m2).toBe("草稿要送");
   });
 
   it("generating → held → retry 回 generating；held → round.continue 開 acting(r+1)；錯誤細節只給出額度者", async () => {

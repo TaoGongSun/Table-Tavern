@@ -111,7 +111,8 @@ export type RemoteCommand =
   | { kind: "switch_route"; route: string; model: string }
   | { kind: "abort" }
   | { kind: "set_next"; route: string; model: string }
-  | { kind: "refresh_quota" };
+  | { kind: "refresh_quota" }
+  | { kind: "pause" }; // 房主下（其餘限出額度者）：執行端回結果後走關房（暫停）流程
 export interface Dispatch {
   dispatchId: string;
   round: number;
@@ -121,9 +122,13 @@ export interface Dispatch {
   actions: ActionItem[];
   players: Array<{ cardId: string; memberId: string; name: string; connected: boolean }>;
   arrivals: string[];
-  departures: Array<{ cardId: string; mode: "npc" | "absent" }>;
+  departures: Departure[];
+  /** 本回合從 AI 代管接回的卡（arrivals 的子集）：執行端寫「玩家回來」而不是「玩家登場」 */
+  returns: string[];
   host?: HostTurn;
 }
+/** 離席處置；delegate＝暫時交給 AI 代管（座位保留，執行端照 npc 演、標記寫暫離） */
+export type Departure = { cardId: string; mode: "npc" | "absent" | "delegate" };
 export type Job =
   | { jobId: string; kind: "scene_advance"; scene: number; nextSettings: SceneSettings }
   | { jobId: string; kind: "card_create"; memberId: string; name: string; blurb: string }
@@ -175,6 +180,7 @@ export interface Member {
   seat: number; // 入座序
   banned: boolean;
   arriving: boolean; // 中途入座、下一次開 acting 才進 roster
+  delegated?: boolean; // 座位暫時交給 AI 代管：不進 roster、不算在場玩家；舊房間沒有這欄
 }
 export interface RoundState extends RoundView {
   batch: ActionItem[];
@@ -220,7 +226,8 @@ export interface RoomState {
   reserved?: { cardId: string; dev: string } | null; // 電腦保留的玩家卡（執行端 seat.reserve）；dev＝電腦裝置雜湊
   pairFails: number;
   pairLockUntil: number;
-  departures: Array<{ cardId: string; mode: "npc" | "absent" }>;
+  departures: Departure[];
+  returning?: string[]; // 已派出暫離、之後接回的卡：等下一個帶到他登場的派工才放進 returns
   jobs: PendingJob[];
   doneJobs: string[];
   lastDoneDispatch: string | null;
@@ -246,11 +253,12 @@ export interface Upload {
 }
 /** 轉給執行端、等回覆的讀卡／存卡／生圖（只在記憶體：私設與生成圖不落地） */
 export interface CardReq {
-  kind: "mine" | "save" | "gen" | "gallery";
+  kind: "mine" | "save" | "gen" | "gallery" | "invite";
   conn: string;
   id?: string;
   memberId: string;
-  cardId: string;
+  /** invite＝房主要現行邀請密語（seat-delegate §3.6）：不看座位，回覆前重驗房主與連線 */
+  cardId: string | null;
   at: number;
 }
 

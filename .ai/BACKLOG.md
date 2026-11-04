@@ -59,7 +59,6 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 
 ## 多人連線
 **部署順序**：房間伺服器改了協定就先手動 `wrangler deploy` 並驗證，才打包新版 app（推 main 不會自動部署伺服器）；部署與打包都等作者說了才做〔主線裁定 2026-11-03〕。
-- [room-seat-delegate](tasks/room-seat-delegate.md) — 多人房間階段三：座位暫時交給 AI 代管、手機房主遠端暫停（案別與核心未估，方案未寫） — 下一步：排在 room-host-actions 之後
 - room-host-world-edit — 手機房主改世界書（W1，案別未估） — 下一步：等作者點頭才開工〔模型判斷·未裁決〕
 - [room-server-own-domain](tasks/room-server-own-domain.md) — 房間伺服器從暫用的 tt-room.pirahus.com 換成專用網域（小案，幾行＋部署打包） — 下一步：不急〔作者裁決 2026-11-03〕；朋友測試順利、作者買好網域後，跟下一次打包一起換
 

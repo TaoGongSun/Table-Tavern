@@ -201,3 +201,37 @@ describe("同步閘門（§3.3）", () => {
     expect(story(room).map((p) => p.text)).toEqual(["全量"]);
   });
 });
+
+describe("手機房主遠端暫停後重開（room-seat-delegate §3.3）", () => {
+  it("ctl pause 走同一條關房流程：重開照樣上閘門、補完放行；代管狀態保留，派工不帶代管的人", async () => {
+    const room = await Room.create();
+    await room.exec();
+    await room.send("x1", "room.seed", { part: 0, total: 1, cards: [...CARDS, STAGE], history: [gm("種子開場").part] });
+    for (const [i, id] of ["a", "b"].entries()) {
+      await room.join(id, id, i === 0 ? { pairCode: await room.pairCode(true) } : {});
+      await room.send(id, "seat.claim", { cardId: CARDS[i].cardId });
+    }
+    await room.send("a", "room.start");
+    await room.finishGen("開場");
+    await room.send("b", "seat.delegate", { memberId: "m2", on: true });
+    await room.send("a", "ctl", { ctlId: "p1", cmd: { kind: "pause" } }, "r1");
+    await room.send("x1", "ctl.result", { ctlId: "p1", ok: true });
+    await room.send("x1", "status", { keepAwake: null, busy: false, paused: true });
+    await room.disconnect("x1");
+    expect(room.frames("a", "ok").find((f) => f.p.id === "r1")?.p.result).toEqual({ ok: true });
+    expect(room.s.exec).toMatchObject({ online: false, paused: true });
+
+    await room.exec("x2", { paused: true });
+    expect(room.s.exec).toMatchObject({ online: true, sync: "needed" });
+    await room.send("x2", "roster.update", { cards: [...CARDS, STAGE] }); // 重開先重送名冊：代管的卡照樣在
+    const last = story(room).at(-1)!;
+    expect((await sync(room, { keepThrough: { round: last.round, part: last.part } }))?.t).toBe("ok");
+    expect(room.s.exec).toMatchObject({ sync: null, paused: false });
+    expect(room.s.members.find((m) => m.id === "m2")).toMatchObject({ cardId: CARDS[1].cardId, delegated: true });
+    expect(room.s.round!.roster.map((e) => e.memberId)).toEqual(["m1"]);
+    await room.send("a", "action.submit", { round: room.s.round!.round, text: "繼續" });
+    const d = room.frames("x2", "dispatch").at(-1)!.p;
+    expect(d.players.map((p: { cardId: string }) => p.cardId)).toEqual([CARDS[0].cardId]);
+    expect(d.departures).toEqual([{ cardId: CARDS[1].cardId, mode: "delegate" }]);
+  });
+});

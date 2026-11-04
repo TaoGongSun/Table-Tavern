@@ -11,6 +11,8 @@ export const CTL_TIMEOUT_MS = 30_000;
 export const HELLO_MS = 10_000;
 
 export const seatedMembers = (s: RoomState) => s.members.filter((m) => m.cardId).sort((a, b) => a.seat - b.seat);
+/** 入座而且不在 AI 代管中：行動名單、在場玩家、開始條件都只算這些人 */
+export const activeMembers = (s: RoomState) => seatedMembers(s).filter((m) => !m.delegated);
 export const cardName = (s: RoomState, cardId: string) => s.cards.find((c) => c.cardId === cardId)?.name ?? cardId;
 export const isOnline = (s: RoomState, who: string) => Object.values(s.conns).some((c) => c.who === who);
 /** 執行端可以接新派工：在線而且不在同步閘門裡（重開房間、還沒補完關房期間的劇情，§3.3） */
@@ -37,7 +39,7 @@ export function offered(s: RoomState, route: unknown, model: unknown): SceneSett
 export function openRound(tx: Tx, kind: RoundKind, host?: HostTurn) {
   const s = tx.w;
   const arrivals: string[] = [];
-  const roster = kind !== "play" ? [] : seatedMembers(s).map((m): RosterEntry => {
+  const roster = kind !== "play" ? [] : activeMembers(s).map((m): RosterEntry => {
     if (m.arriving) arrivals.push(m.cardId!);
     m.arriving = false;
     return { memberId: m.id, cardId: m.cardId!, status: s.drafts[m.id] ? "drafting" : "pending", text: null };
@@ -68,9 +70,8 @@ export function resolve(tx: Tx, by: "all" | "host" | "timeout") {
   }
   r.batch = order.map((e) => {
     const base = { memberId: e.memberId, cardId: e.cardId, name: cardName(s, e.cardId) };
-    const draft = by === "timeout" && e.status !== "skipped" && e.status !== "submitted" ? s.drafts[e.memberId] : undefined;
-    if (draft) delete s.drafts[e.memberId];
-    if (e.status === "submitted" || draft) return { ...base, kind: "act" as const, text: e.text ?? draft };
+    // 倒數到期比照房主結算：沒送出的算觀望、草稿留著〔作者裁決 2026-11-03〕
+    if (e.status === "submitted") return { ...base, kind: "act" as const, text: e.text! };
     return { ...base, kind: "watch" as const, watchReason: e.status === "skipped" ? ("skipped" as const) : by === "timeout" ? ("timeout" as const) : ("host_resolved" as const) };
   });
   Object.assign(r, { phase: "queued", deadline: null, pausedRemainingMs: null });
@@ -96,8 +97,11 @@ export function ensureDispatch(tx: Tx, from?: Dispatch): Dispatch {
   const ids = { dispatchId: ulid(tx.now, tx.ctx.rng), round: r.round, kind: r.kind, scene: r.scene, settings: s.sceneSettings!, actions: r.batch };
   if (from) r.dispatch = { ...from, ...ids };
   else {
-    const players = seatedMembers(s).filter((m) => !m.arriving).map((m) => ({ cardId: m.cardId!, memberId: m.id, name: cardName(s, m.cardId!), connected: isOnline(s, m.id) }));
-    r.dispatch = { ...ids, players, arrivals: r.arrivals, departures: s.departures, ...(r.host ? { host: r.host } : {}) };
+    const players = activeMembers(s).filter((m) => !m.arriving).map((m) => ({ cardId: m.cardId!, memberId: m.id, name: cardName(s, m.cardId!), connected: isOnline(s, m.id) }));
+    // 只消耗這次真的登場的接回卡（GM 推進之類 arrivals 為空的回合不吃掉 returning）
+    const returns = (s.returning ?? []).filter((c) => r.arrivals.includes(c));
+    if (returns.length) s.returning = s.returning!.filter((c) => !returns.includes(c));
+    r.dispatch = { ...ids, players, arrivals: r.arrivals, departures: s.departures, returns, ...(r.host ? { host: r.host } : {}) };
     s.departures = [];
   }
   Object.assign(r, { dispatchId: r.dispatch.dispatchId, genAt: tx.now });
@@ -129,16 +133,74 @@ export function hold(tx: Tx, error: PublicExecutorError, code?: string) {
   tx.emit("gen.failed", { round: r.round, error, ...(code ? { code } : {}) });
 }
 
-/** 離座（主動、被踢、名冊移除）：卡立刻從 roster 拿掉，房主沒決定前離席處置預設 absent（§3.4） */
-export function unseat(tx: Tx, m: Member) {
+/** 離座（主動、被踢、名冊移除）：卡立刻從 roster 拿掉，房主沒決定前離席處置預設 absent（§3.4）。
+ *  代管一併清掉；還沒派出的暫離項改寫成離席處置，不然卡會以「暫離」派出、之後卻沒人接回 */
+export function unseat(tx: Tx, m: Member, mode?: "npc" | "absent") {
   const s = tx.w;
   const cardId = m.cardId;
   if (!cardId) return;
-  Object.assign(m, { cardId: null, arriving: false });
+  Object.assign(m, { cardId: null, arriving: false, delegated: false });
   s.cards = s.cards.map((c) => (c.cardId === cardId ? { ...c, claimedBy: null } : c));
   if (s.round) s.round.roster = s.round.roster.filter((e) => e.memberId !== m.id);
-  if (s.status !== "lobby" && !s.departures.some((d) => d.cardId === cardId)) s.departures.push({ cardId, mode: "absent" });
+  if (s.returning?.includes(cardId)) s.returning = s.returning.filter((c) => c !== cardId);
+  if (s.status !== "lobby") {
+    const i = s.departures.findIndex((d) => d.cardId === cardId);
+    if (i < 0) s.departures.push({ cardId, mode: mode ?? "absent" });
+    else if (mode || s.departures[i].mode === "delegate") s.departures[i] = { cardId, mode: mode ?? "absent" };
+  }
   tx.emit("seat.released", { memberId: m.id, cardId });
+}
+
+/** 加進當前（acting）名單；`arrival`＝本回合算登場（名單空著停住時中途入座、從代管接回） */
+export function enterRoster(tx: Tx, m: Member, arrival: boolean) {
+  const r = tx.w.round!;
+  const status = tx.s.drafts[m.id] ? "drafting" : "pending";
+  r.roster.push({ memberId: m.id, cardId: m.cardId!, status, text: null });
+  if (arrival) r.arrivals.push(m.cardId!);
+  tx.toAll("vol", { type: "roster_status", round: r.round, memberId: m.id, status });
+}
+
+/** 交給 AI 代管（room-seat-delegate §3.1）：已送出的先退回草稿（action.retracted 讓手機即時拿回原文）、移出名單，
+ *  再記暫離項。不在這裡結算：交易尾端統一 settle，派工才帶得到這次暫離 */
+export function delegate(tx: Tx, m: Member) {
+  const s = tx.w;
+  const cardId = m.cardId!;
+  m.delegated = true;
+  if (s.status === "lobby") return void (m.arriving = true); // 還沒開演：開演時不算在場，接回時才登場
+  const r = s.round;
+  const e = r?.phase === "acting" ? r.roster.find((x) => x.memberId === m.id) : undefined;
+  if (r && e) {
+    if (e.status === "submitted" || e.status === "skipped") {
+      if (e.text) s.drafts[m.id] = e.text;
+      tx.emit("action.retracted", { round: r.round, memberId: m.id });
+    }
+    r.roster = r.roster.filter((x) => x !== e);
+    // 名單空著時剛加進來、本回合才要登場的人：當作還沒登場
+    if (r.arrivals.includes(cardId)) {
+      r.arrivals = r.arrivals.filter((c) => c !== cardId);
+      m.arriving = true;
+    }
+  }
+  if (m.arriving) return; // 執行端從沒把他當在場玩家：不寫暫離
+  s.departures = [...s.departures.filter((d) => d.cardId !== cardId), { cardId, mode: "delegate" }];
+}
+
+/** 從 AI 代管接回：還沒登場的只清旗標；暫離還沒派出就抵消（直接回名單、不寫登場）；否則照中途加入登場並記 returning */
+export function undelegate(tx: Tx, m: Member) {
+  const s = tx.w;
+  const cardId = m.cardId!;
+  m.delegated = false;
+  if (s.status === "lobby") return void (m.arriving = false);
+  if (m.arriving) return;
+  const r = s.round;
+  if (s.departures.some((d) => d.cardId === cardId && d.mode === "delegate")) {
+    s.departures = s.departures.filter((d) => d.cardId !== cardId);
+    if (r?.phase === "acting") enterRoster(tx, m, false);
+    return;
+  }
+  s.returning = [...(s.returning ?? []).filter((c) => c !== cardId), cardId];
+  if (r?.phase === "acting" && r.roster.length === 0) enterRoster(tx, m, true);
+  else m.arriving = true;
 }
 
 /** 遠端控制 retry／切換先把 held 轉成 generating；逾時或執行端離線而它之後沒送過任何 gen.*（genAt 仍是發令那一刻）就退回原錯誤 */
@@ -152,6 +214,13 @@ export function setExecOnline(tx: Tx, online: boolean) {
   Object.assign(s.exec, { online, since: tx.now, lastSeen: tx.now });
   if (!online) s.execConn = null;
   if (!online) for (const c of Object.values(s.ctls)) revertCtl(tx, c);
+  // 遠端暫停等回覆時執行端下線：它已報過暫停就算成功（關房流程送完 status 才斷線），否則回離線
+  if (!online) for (const [ctlId, c] of Object.entries(s.ctls)) {
+    if (c.cmd.kind !== "pause") continue;
+    if (s.exec.paused) tx.send(c.conn, "ok", { id: c.id, result: { ok: true } });
+    else tx.err(c.conn, "E_EXECUTOR_OFFLINE", { id: c.id });
+    delete s.ctls[ctlId];
+  }
   if (!online && s.inviteRegen) {
     tx.err(s.inviteRegen.conn, "E_EXECUTOR_OFFLINE", { id: s.inviteRegen.id }); // 舊連結照常有效
     s.inviteRegen = null;

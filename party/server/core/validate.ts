@@ -27,10 +27,10 @@ export function shape(v: unknown, spec: string): v is Record<string, any> {
 
 const MEMBER_FRAMES: Record<string, string> = {
   hello: "protocol:i role:s deviceId:s joinSecret?:s nickname?:s pairCode?:s lastSeq:i client:o",
-  "profile.rename": "nickname:s", "seat.claim": "cardId:s", "seat.release": "", "seat.create": "name:s blurb:s",
+  "profile.rename": "nickname:s", "seat.claim": "cardId:s", "seat.delegate": "memberId:s on:b", "seat.release": "", "seat.create": "name:s blurb:s",
   "action.draft": "text:s", "action.submit": "round:i text:s", "action.skip": "round:i", "action.retract": "round:i",
   "round.resolve": "round:i", "round.continue": "round:i", "gen.abort": "round:i", "host.gm": "round:i mode:s cardId?:s", "round.undo": "round:i mode:s next?:o", "action.returned_dismiss": "draft?:s", "room.start": "",
-  "room.settings": "patch:o", "invite.regenerate": "", "host.transfer": "memberId:s", "member.kick": "memberId:s ban:b",
+  "room.settings": "patch:o", "invite.regenerate": "", "invite.current": "candidate?:s", "host.transfer": "memberId:s", "member.kick": "memberId:s ban:b mode?:s",
   "member.departure": "cardId:s mode:s", "member.reassign": "from:s to:s", "member.leave": "",
   "scene.advance": "round:i next?:o", "scene.advance_cancel": "", "room.close": "", "pair.claim": "code:s",
   "pair.leave": "", ctl: "ctlId:s cmd:o", "history.page": "beforeSeq:i limit:i", ping: "",
@@ -50,7 +50,7 @@ const EXECUTOR_FRAMES: Record<string, string> = {
   "ctl.result": "ctlId:s ok:b error?:o", "executor.leave": "",
   "card.read.result": "reqId:s ok:b card?:o code?:s", "card.save.result": "reqId:s ok:b code?:s",
   "image.gen.result": "reqId:s ok:b file?:s preview?:s code?:s",
-  "card.gallery.result": "reqId:s ok:b items?:a more?:i code?:s",
+  "card.gallery.result": "reqId:s ok:b items?:a more?:i code?:s", "invite.get.result": "reqId:s joinSecret:s",
 };
 const LIMIT = { member: 16 * 1024, executor: 1024 * 1024 };
 /** 成員訊框只有 `card.save` 放寬（兩段各 64,000 字）；不分片（room-player-cards §6-2） */

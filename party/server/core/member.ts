@@ -1,6 +1,6 @@
 // 客戶端 → 伺服器指令（協定 §5.1）：每則先查角色再查狀態，失敗拋 Fail、狀態不動。
 import { resnapshot } from "./snapshot";
-import { announceExec, cancelRound, execReady, MIN, offered, openRound, resolve, seatedMembers, unseat } from "./round";
+import { activeMembers, announceExec, cancelRound, delegate, enterRoster, execReady, MIN, offered, openRound, resolve, seatedMembers, undelegate, unseat } from "./round";
 import { CROCKFORD8, secret, sameHash, sha256Hex, ulid } from "./secrets";
 import { Fail, need, type Tx } from "./tx";
 import type { HostTurn, Member, RemoteCommand, SceneSettings, RoomState, RosterEntry, StoredEvent } from "./types";
@@ -53,9 +53,7 @@ export function claim(tx: Tx, m: Member, cardId: unknown) {
   if (w.status !== "playing") return;
   // 名單空著停住的 acting：直接加進當前名單並算登場；其餘下一次開 acting 才進（§3.4）
   if (r?.phase !== "acting" || r.roster.length > 0) return void (m.arriving = true);
-  r.roster.push({ memberId: m.id, cardId: card.cardId, status: w.drafts[m.id] ? "drafting" : "pending", text: null });
-  r.arrivals.push(card.cardId);
-  tx.toAll("vol", { type: "roster_status", round: r.round, memberId: m.id, status: r.roster[0].status });
+  enterRoster(tx, m, true);
 }
 
 /** 結束房間（房主 `room.close` 或執行端憑證 HTTP）：關連線；執行端憑證雜湊留著給重送的結束請求驗身分，執行端連線另擋 */
@@ -100,10 +98,10 @@ export async function pairClaim(tx: Tx, m: Member, raw: string): Promise<"later"
   tx.toExec("pair.claimed", { memberId: m.id, nickname: m.nickname, grantHost: p.grantHost });
 }
 
-/** 遠端控制（§7.3）：只有出額度者；retry／切換會先把 held 轉回 generating，執行端回失敗再退回 */
+/** 遠端控制（§7.3）：pause 由房主下，其餘只有出額度者；retry／切換會先把 held 轉回 generating，執行端回失敗再退回 */
 function ctl(tx: Tx, m: Member, p: { ctlId: string; cmd: any }) {
   const s = tx.s;
-  need(s.payerId === m.id, "E_FORBIDDEN");
+  need(p.cmd.kind === "pause" ? s.hostId === m.id : s.payerId === m.id, "E_FORBIDDEN");
   need(s.exec.online, "E_EXECUTOR_OFFLINE");
   need(/^[A-Za-z0-9_-]{1,36}$/.test(p.ctlId) && !s.ctls[p.ctlId], "E_STATE_CONFLICT");
   const k = p.cmd.kind;
@@ -125,7 +123,8 @@ function ctl(tx: Tx, m: Member, p: { ctlId: string; cmd: any }) {
     w.nextSettings = offered(s, p.cmd.route, p.cmd.model);
     cmd = { kind: k, route: w.nextSettings.route, model: w.nextSettings.model };
     announceExec(tx);
-  } else need(k === "refresh_quota", "E_BAD_FRAME");
+  } else if (k === "pause") need(!Object.values(s.ctls).some((c) => c.cmd.kind === "pause"), "E_STATE_CONFLICT");
+  else need(k === "refresh_quota", "E_BAD_FRAME");
   w.ctls[p.ctlId] = { conn: tx.conn, id: tx.reqId, at: tx.now, cmd, settings, hold: prevHold };
   tx.toExec("ctl", { ctlId: p.ctlId, by: m.id, cmd });
   return "later" as const;
@@ -158,6 +157,16 @@ export const MEMBER: Record<string, Handler> = {
     tx.emit("member.renamed", { memberId: m.id, nickname });
   },
   "seat.claim": (tx, p, m) => claim(tx, m, p.cardId),
+  // 交給 AI 代管／接回（room-seat-delegate §3.1）：本人或房主；座位、卡的認領、草稿都保留
+  "seat.delegate": (tx, p, m) => {
+    need(p.memberId === m.id || tx.s.hostId === m.id, "E_FORBIDDEN");
+    const t = tx.w.members.find((x) => x.id === p.memberId && !x.banned);
+    need(t?.cardId, "E_SEAT_REQUIRED");
+    need(!!t.delegated !== p.on, "E_STATE_CONFLICT");
+    if (p.on) delegate(tx, t);
+    else undelegate(tx, t);
+    tx.emit("seat.delegated", { memberId: t.id, cardId: t.cardId, on: p.on, by: m.id });
+  },
   "seat.release": (tx, _p, m) => {
     open(tx.s);
     need(m.cardId, "E_SEAT_REQUIRED");
@@ -269,7 +278,7 @@ export const MEMBER: Record<string, Handler> = {
   "room.start": (tx, _p, m) => {
     host(tx, m);
     const s = tx.s;
-    need(s.status === "lobby" && seatedMembers(s).length > 0 && s.exec.caps, "E_STATE_CONFLICT");
+    need(s.status === "lobby" && activeMembers(s).length > 0 && s.exec.caps, "E_STATE_CONFLICT");
     need(execReady(s), "E_EXECUTOR_OFFLINE");
     const w = tx.w;
     Object.assign(w, { status: "playing", scene: 1, sceneSettings: w.nextSettings ?? s.exec.caps.current, nextSettings: null });
@@ -311,7 +320,10 @@ export const MEMBER: Record<string, Handler> = {
     const s = tx.w;
     const t = s.members.find((x) => x.id === p.memberId && !x.banned);
     need(t && t.id !== m.id, "E_STATE_CONFLICT");
-    unseat(tx, t);
+    need(p.mode === undefined || p.mode === "npc" || p.mode === "absent", "E_BAD_FRAME");
+    const cardId = t.cardId;
+    unseat(tx, t, p.mode); // 移除時一起決定角色處置（§3.2）：一則到位，不卡在中間狀態
+    if (cardId && p.mode && s.status !== "lobby") tx.emit("seat.departure", { cardId, mode: p.mode });
     if (s.payerId === t.id) {
       s.payerId = null;
       tx.emit("pair.unbound", { memberId: t.id });
@@ -339,8 +351,9 @@ export const MEMBER: Record<string, Handler> = {
     const from = s.members.find((x) => x.id === p.from && x.cardId);
     const to = s.members.find((x) => x.id === p.to && !x.banned && !x.cardId);
     need(from && to, "E_STATE_CONFLICT");
-    Object.assign(to, { cardId: from.cardId, seat: from.seat, arriving: from.arriving });
-    Object.assign(from, { cardId: null, arriving: false });
+    const wasDelegated = !!from.delegated;
+    Object.assign(to, { cardId: from.cardId, seat: from.seat, arriving: from.arriving, delegated: wasDelegated });
+    Object.assign(from, { cardId: null, arriving: false, delegated: false });
     if (s.drafts[from.id] !== undefined) s.drafts[to.id] = s.drafts[from.id];
     delete s.drafts[from.id];
     if (s.returned?.[from.id] !== undefined) {
@@ -350,6 +363,11 @@ export const MEMBER: Record<string, Handler> = {
     s.cards = s.cards.map((c) => (c.cardId === to.cardId ? { ...c, claimedBy: to.id } : c));
     for (const e of s.round?.roster ?? []) if (e.memberId === from.id) e.memberId = to.id;
     tx.emit("seat.reassigned", { from: from.id, to: to.id, cardId: to.cardId });
+    // 代管中的座位有人接手＝人在玩：照接回處理（暫離沒派出就抵消，否則下一回合登場）
+    if (wasDelegated) {
+      undelegate(tx, to);
+      tx.emit("seat.delegated", { memberId: to.id, cardId: to.cardId, on: false, by: m.id });
+    }
   },
   "member.leave": (tx, _p, m) => {
     if (tx.s.status !== "closed") unseat(tx, m);

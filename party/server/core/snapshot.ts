@@ -8,8 +8,8 @@ export interface Snapshot {
   room: Pick<RoomState, "code" | "status" | "settings" | "hostId" | "payerId" | "scene" | "sceneSettings" | "createdAt" | "idleDays"> & {
     transition: { jobId: string; since: number; stalled: boolean } | null;
   };
-  me: { memberId: string; nickname: string; cardId: string | null; isHost: boolean; isPayer: boolean; draft: string | null; returned: string | null } | null;
-  members: Array<{ memberId: string; nickname: string; cardId: string | null; connected: boolean }>;
+  me: { memberId: string; nickname: string; cardId: string | null; isHost: boolean; isPayer: boolean; draft: string | null; returned: string | null; delegated: boolean } | null;
+  members: Array<{ memberId: string; nickname: string; cardId: string | null; connected: boolean; delegated: boolean }>;
   cards: PublicCard[];
   executor: ExecutorView;
   round: RoundView | null;
@@ -79,8 +79,8 @@ export function buildSnapshot(s: RoomState, events: StoredEvent[], viewer: strin
   return {
     seq: s.seq,
     room: { code: s.code, status: s.status, settings: s.settings, hostId: s.hostId, payerId: s.payerId, scene: s.scene, sceneSettings: s.sceneSettings, createdAt: s.createdAt, idleDays: s.idleDays, transition: t && { jobId: t.jobId, since: t.since, stalled: t.stalled } },
-    me: me ? { memberId: me.id, nickname: me.nickname, cardId: me.cardId, isHost: s.hostId === me.id, isPayer: s.payerId === me.id, draft: s.drafts[me.id] ?? null, returned: s.returned?.[me.id] ?? null } : null,
-    members: s.members.filter((m) => !m.banned).map((m) => ({ memberId: m.id, nickname: m.nickname, cardId: m.cardId, connected: isOnline(s, m.id) })),
+    me: me ? { memberId: me.id, nickname: me.nickname, cardId: me.cardId, isHost: s.hostId === me.id, isPayer: s.payerId === me.id, draft: s.drafts[me.id] ?? null, returned: s.returned?.[me.id] ?? null, delegated: !!me.delegated } : null,
+    members: s.members.filter((m) => !m.banned).map((m) => ({ memberId: m.id, nickname: m.nickname, cardId: m.cardId, connected: isOnline(s, m.id), delegated: !!m.delegated })),
     cards: s.cards,
     executor,
     round: r && { round: r.round, kind: r.kind, scene: r.scene, phase: r.phase, roster: r.roster, deadline: r.deadline, pausedRemainingMs: r.pausedRemainingMs, dispatchId: r.dispatchId, hold: r.hold, called: viewer === s.hostId ? (r.called ?? null) : null },

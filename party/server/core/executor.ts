@@ -97,6 +97,9 @@ function undoResult(tx: Tx, j: PendingJob, p: any) {
   }
   for (const m of w.members) if (m.cardId && ld.arrivals.includes(m.cardId)) m.arriving = true;
   w.departures = [...ld.departures.filter((d) => !w.departures.some((x) => x.cardId === d.cardId)), ...w.departures];
+  // 從代管接回的卡一併放回（下次登場照樣寫「玩家回來」）；收回之後又被代管的就不放
+  const back = (ld.returns ?? []).filter((c) => !w.returning?.includes(c) && w.members.some((m) => m.cardId === c && !m.delegated));
+  if (back.length) w.returning = [...(w.returning ?? []), ...back];
   openRound(tx, "play");
 }
 
