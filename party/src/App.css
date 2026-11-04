@@ -34,7 +34,8 @@
 
 }
 
-.app * {
+.app *,
+.party-themed * {
   box-sizing: border-box;
 }
 
@@ -50,12 +51,17 @@
 .app button,
 .app input,
 .app textarea,
-.app select {
+.app select,
+.party-themed button,
+.party-themed input,
+.party-themed textarea,
+.party-themed select {
   font: inherit;
   color: inherit;
 }
 
-.app button {
+.app button,
+.party-themed button {
   min-height: 40px;
   padding: 6px 14px;
   border: 1px solid var(--line);
@@ -66,30 +72,37 @@
   cursor: pointer;
 }
 
-.app button.primary {
+.app button.primary,
+.party-themed button.primary {
   border-color: var(--accent);
   background: var(--accent);
   color: var(--accent-text);
   font-weight: 600;
 }
 
-.app button.ghost {
+.app button.ghost,
+.party-themed button.ghost {
   background: transparent;
 }
 
-.app button.danger {
+.app button.danger,
+.party-themed button.danger {
   color: var(--danger);
   border-color: var(--danger);
 }
 
-.app button:disabled {
+.app button:disabled,
+.party-themed button:disabled {
   opacity: 0.45;
   cursor: default;
 }
 
 .app input,
 .app textarea,
-.app select {
+.app select,
+.party-themed input,
+.party-themed textarea,
+.party-themed select {
   width: 100%;
   min-width: 0;
   padding: 8px 10px;
@@ -133,7 +146,8 @@
   font-size: 14px;
 }
 
-.app .muted {
+.app .muted,
+.party-themed .muted {
   color: var(--muted);
   font-size: 14px;
 }
@@ -191,9 +205,27 @@
   font-weight: 600;
 }
 
+/* 卡住時給出額度者的錯誤詳情：狀態句後面一個小展開 */
+.app .round-detail {
+  display: inline;
+  font-weight: 400;
+}
+.app .round-detail summary {
+  display: inline;
+  cursor: pointer;
+  color: var(--muted);
+}
+.app .round-detail[open] small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
 .app .round-actions,
 .app .panel-actions,
-.app .action-buttons {
+.app .action-buttons,
+.party-themed .round-actions,
+.party-themed .panel-actions,
+.party-themed .action-buttons {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -404,7 +436,8 @@
   width: auto;
 }
 
-.app .row {
+.app .row,
+.party-themed .row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -479,7 +512,8 @@
   flex: 1 1 140px;
 }
 
-.app .invite {
+.app .invite,
+.party-themed .invite {
   margin-top: 8px;
   font-size: 13px;
 }
@@ -556,7 +590,8 @@
   margin-top: 8px;
 }
 
-.app .leave-confirm {
+.app .leave-confirm,
+.party-themed .leave-confirm {
   position: fixed;
   inset: 0;
   z-index: 20;
@@ -567,7 +602,8 @@
   background: rgba(0, 0, 0, 0.45);
 }
 
-.app .leave-box {
+.app .leave-box,
+.party-themed .leave-box {
   width: 100%;
   max-width: 360px;
   padding: 16px;
@@ -661,7 +697,8 @@
   font-size: 14px;
 }
 
-.app .confirm-actions {
+.app .confirm-actions,
+.party-themed .confirm-actions {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -700,7 +737,8 @@
   margin: 8px 0 0;
 }
 
-.app .invite-box .room-qr {
+.app .invite-box .room-qr,
+.party-themed .invite-box .room-qr {
   display: block;
   width: 180px;
   height: 180px;

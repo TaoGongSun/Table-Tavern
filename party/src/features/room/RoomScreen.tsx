@@ -1,5 +1,5 @@
 // 房間畫面：回合列在上、代管中的常駐列、分頁（故事／名單／房主／出額度）、故事頁底部固定行動格（沒座位時換成選角）。
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { t, type MsgKey } from "../../i18n";
 import { GmControls } from "../controls/GmControls";
 import { HostPanel } from "../controls/HostPanel";
@@ -91,6 +91,8 @@ export interface RoomControls {
   /** 桌面版：資訊列那條邀請連結；手機：自己網址上的密語（邀請新朋友時給伺服器驗） */
   inviteUrl?: string | null;
   joinSecret?: string | null;
+  payerExtra?: ReactNode;
+  heldDetail?: ReactNode;
 }
 
 export function RoomScreen({ view, c }: { view: RoomView; c: RoomControls }) {
@@ -114,18 +116,30 @@ export function RoomScreen({ view, c }: { view: RoomView; c: RoomControls }) {
     if (wasPaused.current && !view.executor.paused && view.executor.online) setReopened(true);
     wasPaused.current = view.executor.paused;
   }, [view.executor.paused, view.executor.online]);
+  const bar = <RoundBar view={view} act={c.act} heldDetail={c.heldDetail} reopen={isHost ? { shown: reopened, dismiss: () => setReopened(false), openAttendance: () => (setTab("host"), setAttend((n) => n + 1)) } : undefined} />;
+  const nav = (
+    <nav className="tabs">
+      {tabs.map((k) => (
+        <button key={k} type="button" className={tab === k ? "tab on" : "tab"} onClick={() => setTab(k)} data-testid={`tab-${k}`}>
+          {t(`tab_${k}`)}
+        </button>
+      ))}
+    </nav>
+  );
   if (sheet && open) return <CardSheet view={view} act={c.act} mode={sheet} upload={c.upload} onClose={() => setSheet(null)} />;
   return (
     <>
-      <RoundBar view={view} act={c.act} reopen={isHost ? { shown: reopened, dismiss: () => setReopened(false), openAttendance: () => (setTab("host"), setAttend((n) => n + 1)) } : undefined} />
+      {c.pairForm === false ? (
+        // 桌面版：頁籤與回合列同一列（放不下自動換行），省一整列給故事；手機照原本的上下順序
+        <div className="room-head">
+          {nav}
+          {bar}
+        </div>
+      ) : (
+        bar
+      )}
       <DelegatedBanner view={view} act={c.act} />
-      <nav className="tabs">
-        {tabs.map((k) => (
-          <button key={k} type="button" className={tab === k ? "tab on" : "tab"} onClick={() => setTab(k)} data-testid={`tab-${k}`}>
-            {t(`tab_${k}`)}
-          </button>
-        ))}
-      </nav>
+      {c.pairForm !== false && nav}
       {tab === "story" && (
         <>
           <StoryView view={view} loadOlder={c.loadOlder} />
@@ -152,7 +166,7 @@ export function RoomScreen({ view, c }: { view: RoomView; c: RoomControls }) {
       {tab === "host" && isHost && (
         <HostPanel view={view} act={c.act} invite={{ origin: c.origin, inviteUrl: c.inviteUrl, joinSecret: c.joinSecret }} exportRoom={c.exportRoom} phone={c.pairForm !== false} focusAttendance={attend > 0} key={attend} />
       )}
-      {tab === "payer" && isPayer && <PayerPanel view={view} act={c.act} resumed={c.resumed} desktop={c.pairForm === false} />}
+      {tab === "payer" && isPayer && <PayerPanel view={view} act={c.act} resumed={c.resumed} desktop={c.pairForm === false} extra={c.payerExtra} />}
     </>
   );
 }

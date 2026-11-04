@@ -101,8 +101,8 @@ export function TableToolbar({
           </button>
         )}
       </span>
-      {/* 幕晶片＝前幕清單的入口；還沒換過幕就沒有前幕可看，只顯示文字 */}
-      {scene > 0 ? (
+      {/* 幕晶片＝前幕清單的入口；還沒換過幕就沒有前幕可看，只顯示文字。房間模式的幕號在回合列，這裡不重複 */}
+      {roomMode ? null : scene > 0 ? (
         <MoreMenu
           label={t("sceneListLabel")}
           className="scene-chip"

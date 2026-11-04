@@ -1,5 +1,5 @@
 // 房間畫面本體（連線狀態、致命錯誤、通知列＋RoomScreen）：手機外殼與桌面版嵌入共用。
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { t } from "../../i18n";
 import { errorText } from "./error-text";
 import { RoomScreen } from "./RoomScreen";
@@ -11,6 +11,10 @@ export interface DesktopHooks {
   onLeave: () => void;
   /** 資訊列那條邀請連結：房主頁「邀請新朋友」直接顯示它 */
   inviteUrl: string | null;
+  /** GM 額度頁多一段（生圖開關：花的是這台電腦的額度，只有桌面做得到） */
+  payerExtra?: ReactNode;
+  /** 卡住時回合列的「詳情」：桌面用本機遮罩過的原文；沒給就用房間的分類說明 */
+  heldDetail?: ReactNode;
 }
 
 export function RoomBody({ room, origin, desktop }: { room: RoomSession; origin: string; desktop?: DesktopHooks }) {
@@ -37,6 +41,8 @@ export function RoomBody({ room, origin, desktop }: { room: RoomSession; origin:
           pairForm: !desktop,
           inviteUrl: desktop?.inviteUrl,
           joinSecret: desktop ? null : room.joinSecret,
+          payerExtra: desktop?.payerExtra,
+          heldDetail: desktop?.heldDetail,
         }}
       />
     </>

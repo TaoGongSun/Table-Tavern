@@ -286,15 +286,15 @@ describe("手機客戶端對真伺服器核心", () => {
     expect(B.text()).not.toContain("AI_CONTENT_FILTERED");
     expect(B.text()).toContain("GM 卡住了，房主處理後再送");
     expect(A.text()).toContain("GM 這段被供應商擋下，你可以重試、換模型或跳過"); // A 是出額度者
+    expect(B.q('[data-testid="error-detail"]')).toBeNull(); // 細節在回合列，只給出額度者
 
-    A.tab("payer");
     await until(() => A.q('[data-testid="error-detail"]'));
     expect(A.q('[data-testid="error-detail"]')!.textContent).toContain("供應商拒答，建議切境外路線");
     // 重新整理（同一台裝置、整份快照）後錯誤細節還在：伺服器在快照帶給出額度者
     const reloaded = phone(hub, `k=${room.joinSecret}`, { storage: A.env.storage });
     await until(() => reloaded.q('[data-testid="tab-payer"]'));
-    reloaded.tab("payer");
     expect(reloaded.q('[data-testid="error-detail"]')?.textContent).toContain("供應商拒答，建議切境外路線");
+    reloaded.tab("payer");
     reloaded.click("重試");
     await until(() => room.frames("x1", "ctl").length === 1);
     const { ctlId, cmd } = room.frames("x1", "ctl")[0].p;

@@ -1,6 +1,6 @@
 // 房主頁的邀請（room-seat-delegate §2.2、§3.6）：「邀請新朋友」顯示現行連結＋QR、不重生（還沒到的老朋友手上的連結照樣能用）；
 // 「換新連結」另一顆，確認舊連結作廢才重生。桌面版直接用資訊列那條；手機帶自己網址上的密語問伺服器，對不上再問電腦。
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { t } from "../../i18n";
 import { Confirm } from "../room/Confirm";
 import { errorText } from "../room/error-text";
@@ -16,8 +16,13 @@ export interface InviteSource {
   joinSecret?: string | null;
 }
 
-export function InviteControls({ view, act, src }: { view: RoomView; act: Act; src: InviteSource }) {
-  const [link, setLink] = useState<string | null>(null);
+/** `initialOpen`：桌面資訊列的彈層一打開就畫現行連結與 QR（朋友多半站在旁邊等掃），並跟著最新的連結走 */
+export function InviteControls({ view, act, src, initialOpen = false }: { view: RoomView; act: Act; src: InviteSource; initialOpen?: boolean }) {
+  const [link, setLink] = useState<string | null>(initialOpen ? (src.inviteUrl ?? null) : null);
+  // 桌面版握有現行連結：已經顯示著（或一開始就展開）時，換新連結後跟上
+  useEffect(() => {
+    if (src.inviteUrl) setLink((cur) => (cur !== null || initialOpen ? src.inviteUrl! : cur));
+  }, [src.inviteUrl, initialOpen]);
   const [note, setNote] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
   const url = (secret: string) => `${src.origin}/r/${view.room.code}#k=${secret}`;
@@ -38,7 +43,7 @@ export function InviteControls({ view, act, src }: { view: RoomView; act: Act; s
   return (
     <>
       <div className="panel-actions">
-        <button type="button" data-testid="invite-current" onClick={() => void show()}>{t("hostInviteCurrent")}</button>
+        {!initialOpen && <button type="button" data-testid="invite-current" onClick={() => void show()}>{t("hostInviteCurrent")}</button>}
         {/* 新連結要先存進電腦才生效：電腦離線時不給換 */}
         <button type="button" className="ghost" disabled={!view.executor.online} title={view.executor.online ? undefined : t("hostInviteNeedsExecutor")} onClick={() => setAsking(true)}>{t("hostInviteNew")}</button>
       </div>

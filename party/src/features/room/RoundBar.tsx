@@ -1,6 +1,6 @@
 // 回合列：回合號與幕、倒數、GM 生成中／主機離線等待中、held 的公開錯誤；房主（與出額度者）的回合級按鈕也在這裡。
 // AI 代管（room-seat-delegate §5.1）：倒數說明、全員代管停住的原因、「還在等」裡離線者的代管鈕、重開後還沒連上的提醒。
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { modelName, t } from "../../i18n";
 import { DelegateButton } from "./DelegateButton";
 import { allDelegated, offlineSeated } from "./delegation";
@@ -32,7 +32,8 @@ export interface Reopen {
   openAttendance: () => void;
 }
 
-export function RoundBar({ view, act, reopen }: { view: RoomView; act: Act; reopen?: Reopen }) {
+/** `heldDetail`：桌面版本機遮罩過的錯誤原文；沒給就用房間的分類說明（只給出額度者，他才能處理） */
+export function RoundBar({ view, act, reopen, heldDetail }: { view: RoomView; act: Act; reopen?: Reopen; heldDetail?: ReactNode }) {
   const [now, setNow] = useState(Date.now());
   const { run, error } = useRun(act);
   const r = view.round;
@@ -48,12 +49,21 @@ export function RoundBar({ view, act, reopen }: { view: RoomView; act: Act; reop
   const nameOf = (cardId: string) => view.cards.find((c) => c.cardId === cardId)?.name ?? cardId;
   const offline = host ? offlineSeated(view) : [];
   const missing = reopen?.shown && view.room.status === "playing" ? offline : [];
+  const payer = view.room.payerId === view.me.memberId;
+  const classified = r?.phase === "held" && view.errorDetail?.round === r.round ? view.errorDetail.error : null;
+  const detail = payer && r?.phase === "held" ? (heldDetail ?? (classified && <><strong>{classified.code}</strong> {classified.message}</>)) : null;
   const blocked = !view.members.some((m) => m.cardId && !m.delegated) ? t("startNeedPlayer") : !view.executor.online ? t("startNeedExecutor") : view.executor.syncing ? t("roundHostSyncing") : null;
   return (
     <div className="round-bar" data-testid="round-bar">
       <div className="round-line">
         {r && <span className="round-no">{t("roundNumber", { round: r.round, scene: view.room.scene })}</span>}
         <span className="round-status">{status(view, now)}</span>
+        {detail && (
+          <details className="round-detail" data-testid="error-detail">
+            <summary>{t("gmErrDetail")}</summary>
+            <small>{detail}</small>
+          </details>
+        )}
         {view.room.sceneSettings && <span className="round-gm">{t("gmModel", { model: modelName(view.room.sceneSettings.modelLabel) })}</span>}
       </div>
       <div className="round-actions">
