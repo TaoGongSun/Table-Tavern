@@ -3,7 +3,9 @@
 // 手機熄螢幕或切 App 後 onclose 常收不到：記最後收到訊框的時間，心跳那一拍或畫面回到前景時太久沒收到就自己斷開重連。
 import type { ErrorCode, Frame } from "../../../server/core/types";
 
-export type Reply = { ok: true; result?: any } | { ok: false; code: ErrorCode | "E_OFFLINE"; retryAfterMs?: number; detail?: string };
+export type Reply =
+  | { ok: true; result?: any }
+  | { ok: false; code: ErrorCode | "E_OFFLINE"; retryAfterMs?: number; detail?: string };
 export interface SocketLike {
   readyState: number;
   send(text: string): void;
@@ -30,11 +32,24 @@ export interface SocketOptions {
   timing?: Partial<typeof TIMING>;
 }
 
-const FATAL = new Set<string>(["E_AUTH_FAILED", "E_ROOM_NOT_FOUND", "E_BANNED", "E_KICKED", "E_SESSION_REPLACED", "E_VERSION", "E_BAD_FRAME"]);
+const FATAL = new Set<string>([
+  "E_AUTH_FAILED",
+  "E_ROOM_NOT_FOUND",
+  "E_BANNED",
+  "E_KICKED",
+  "E_SESSION_REPLACED",
+  "E_VERSION",
+  "E_BAD_FRAME",
+]);
 // 只在 hello 被拒時才致命（別的指令回這兩個碼只是那一則不成）：重連也一樣被拒，不如停下來說原因
 const HELLO_FATAL = new Set<string>(["E_ROOM_FULL", "E_NAME_INVALID"]);
 const NO_RETRY_CLOSE = new Set([1000, 4400, 4403, 4404, 4409, 4410, 4426]);
-const CLOSE_CODE: Record<number, ErrorCode> = { 4404: "E_ROOM_NOT_FOUND", 4409: "E_SESSION_REPLACED", 4410: "E_ROOM_CLOSED", 4426: "E_VERSION" };
+const CLOSE_CODE: Record<number, ErrorCode> = {
+  4404: "E_ROOM_NOT_FOUND",
+  4409: "E_SESSION_REPLACED",
+  4410: "E_ROOM_CLOSED",
+  4426: "E_VERSION",
+};
 const DELAYS = [1000, 2000, 5000, 10000, 30000];
 
 export class RoomSocket {
@@ -51,7 +66,8 @@ export class RoomSocket {
   private helloId = "";
   private lastRx = 0;
   private readonly time: typeof TIMING;
-  private readonly onVisible = () => globalThis.document?.visibilityState === "visible" && this.checkAlive();
+  private readonly onVisible = () =>
+    globalThis.document?.visibilityState === "visible" && this.checkAlive();
 
   constructor(private readonly o: SocketOptions) {
     this.time = { ...TIMING, ...o.timing };
@@ -64,7 +80,13 @@ export class RoomSocket {
     this.o.onStatus("connecting", null);
     ws.onopen = () => {
       this.helloId = this.nextId();
-      ws.send(JSON.stringify({ t: "hello", id: this.helloId, p: this.o.hello(this.fresh ? 0 : this.o.lastSeq()) }));
+      ws.send(
+        JSON.stringify({
+          t: "hello",
+          id: this.helloId,
+          p: this.o.hello(this.fresh ? 0 : this.o.lastSeq()),
+        }),
+      );
     };
     ws.onmessage = (ev) => this.receive(String(ev.data));
     ws.onclose = (ev) => this.closed(ws, ev.code);
@@ -72,19 +94,29 @@ export class RoomSocket {
 
   /** 送請求並等回覆；斷線中或逾時回 E_OFFLINE（客戶端自己的碼，不是協定碼） */
   request(t: string, p: unknown = {}, waitMs = this.time.requestMs): Promise<Reply> {
-    if (!this.ready || this.ws?.readyState !== 1) return Promise.resolve({ ok: false, code: "E_OFFLINE" });
+    if (!this.ready || this.ws?.readyState !== 1)
+      return Promise.resolve({ ok: false, code: "E_OFFLINE" });
     const id = this.nextId();
     this.ws.send(JSON.stringify({ t, id, p }));
     return new Promise((resolve) => {
       this.pending.set(id, resolve);
-      setTimeout(() => this.pending.delete(id) && resolve({ ok: false, code: "E_OFFLINE" }), waitMs);
+      setTimeout(
+        () => this.pending.delete(id) && resolve({ ok: false, code: "E_OFFLINE" }),
+        waitMs,
+      );
     });
   }
 
   /** 太久沒收到任何訊框（pong 也算）＝連線其實死了：不等 onclose，直接當斷線走重連（補事件路徑） */
   checkAlive() {
     const ws = this.ws;
-    if (!ws || !this.ready || ws.readyState !== 1 || this.time.now() - this.lastRx <= this.time.staleMs) return;
+    if (
+      !ws ||
+      !this.ready ||
+      ws.readyState !== 1 ||
+      this.time.now() - this.lastRx <= this.time.staleMs
+    )
+      return;
     Object.assign(ws, { onclose: null, onmessage: null });
     ws.close(4000);
     this.closed(ws, 4000);
@@ -120,12 +152,18 @@ export class RoomSocket {
     const done = (f.t === "ok" || f.t === "err") && f.p.id ? this.pending.get(f.p.id) : undefined;
     if (done) {
       this.pending.delete(f.p.id);
-      done(f.t === "ok" ? { ok: true, result: f.p.result } : { ok: false, code: f.p.code, retryAfterMs: f.p.retryAfterMs, detail: f.p.detail });
+      done(
+        f.t === "ok"
+          ? { ok: true, result: f.p.result }
+          : { ok: false, code: f.p.code, retryAfterMs: f.p.retryAfterMs, detail: f.p.detail },
+      );
     } else if (f.t === "err") {
       // hello 的錯誤帶 hello 的 id、伺服器主動的錯誤不帶 id：都沒有請求在等，交給畫面顯示
       const helloRejected = !this.ready && f.p.id === this.helloId;
-      if (FATAL.has(f.p.code) || (helloRejected && HELLO_FATAL.has(f.p.code))) this.fatal = f.p.code;
-      if (this.fatal && helloRejected) this.ws?.close(1000); // 伺服器 10 秒後才斷，自己先停
+      if (FATAL.has(f.p.code) || (helloRejected && HELLO_FATAL.has(f.p.code)))
+        this.fatal = f.p.code;
+      if (this.fatal && helloRejected)
+        this.ws?.close(1000); // 伺服器 10 秒後才斷，自己先停
       else this.o.onNotice(f.p.code, f.p.retryAfterMs);
     }
     this.o.onFrame(f);

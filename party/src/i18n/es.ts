@@ -10,7 +10,8 @@ export const es: PartyMessages = {
   hostRemove: "Eliminar…",
   hostKick: "Eliminar",
   seatRelease: "Ceder el asiento",
-  seatReleaseConfirm: "¿Ceder tu asiento? Dejarás de controlar a este personaje y tendrás que elegir uno para volver a sentarte.",
+  seatReleaseConfirm:
+    "¿Ceder tu asiento? Dejarás de controlar a este personaje y tendrás que elegir uno para volver a sentarte.",
   badgePayer: "Usa su cuota",
   badgePayerSelf: "Usa mi cuota",
   badgePayerHint: "El GM funciona con la cuota de IA de esta persona",

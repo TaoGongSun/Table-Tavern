@@ -16,7 +16,14 @@ vi.mock("react-easy-crop", async () => {
   const { useEffect } = await import("react");
   return {
     default: ({ onCropComplete }: { onCropComplete: (a: object, p: object) => void }) => {
-      useEffect(() => onCropComplete({ x: 0, y: 0, width: 100, height: 100 }, { x: 0, y: 0, width: 1, height: 1 }), []);
+      useEffect(
+        () =>
+          onCropComplete(
+            { x: 0, y: 0, width: 100, height: 100 },
+            { x: 0, y: 0, width: 1, height: 1 },
+          ),
+        [],
+      );
       return null;
     },
   };
@@ -54,21 +61,40 @@ function phone(hub: Hub, hash: string, extra: Partial<RoomEnv> = {}) {
     mine.push(s);
     return s;
   };
-  const env = { href: `https://party.example/r/${hub.room.code}#${hash}`, storage: new MemoryStorage(), open, fetch, userAgent: "Mozilla/5.0", replaceHref: (h: string) => void hrefs.push(h), retryDelays: [0], ...extra };
+  const env = {
+    href: `https://party.example/r/${hub.room.code}#${hash}`,
+    storage: new MemoryStorage(),
+    open,
+    fetch,
+    userAgent: "Mozilla/5.0",
+    replaceHref: (h: string) => void hrefs.push(h),
+    retryDelays: [0],
+    ...extra,
+  };
   act(() => root.render(<App env={env} lang="zh-TW" />));
   const q = <T extends Element = HTMLElement>(sel: string) => el.querySelector<T>(sel);
   const buttons = () => [...el.querySelectorAll("button")];
   // 結算鈕會帶「（N 人還沒送）」：找不到完全相同的就認開頭
-  const button = (label: string) => buttons().find((b) => b.textContent === label) ?? buttons().find((b) => b.textContent?.startsWith(`${label}（`)) ?? null;
+  const button = (label: string) =>
+    buttons().find((b) => b.textContent === label) ??
+    buttons().find((b) => b.textContent?.startsWith(`${label}（`)) ??
+    null;
   return {
-    el, env, hrefs, q, button,
+    el,
+    env,
+    hrefs,
+    q,
+    button,
     text: () => el.textContent ?? "",
     click: (label: string) => act(() => button(label)!.click()),
     tab: (k: string) => act(() => q<HTMLButtonElement>(`[data-testid="tab-${k}"]`)!.click()),
     type: (sel: string, value: string) =>
       act(() => {
         const input = q<HTMLInputElement | HTMLTextAreaElement>(sel)!;
-        Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), "value")!.set!.call(input, value);
+        Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), "value")!.set!.call(
+          input,
+          value,
+        );
         input.dispatchEvent(new Event("input", { bubbles: true }));
       }),
     /** 這支手機目前（最新）的連線 */
@@ -116,7 +142,11 @@ async function table(bEnv: Partial<RoomEnv> = {}) {
     interrupted: false,
     state: { time: "夜", place: "", present: "阿明" },
   });
-  await until(() => !B.q('[data-testid="streaming"]') && B.q('[data-testid="scene-status"]')?.textContent?.includes("夜"));
+  await until(
+    () =>
+      !B.q('[data-testid="streaming"]') &&
+      B.q('[data-testid="scene-status"]')?.textContent?.includes("夜"),
+  );
   const line = B.q('[data-testid="scene-status"]')!;
   expect(line.textContent).toContain("時間 夜");
   expect(line.textContent).toContain("在場 阿明");
@@ -163,7 +193,15 @@ describe("手機客戶端對真伺服器核心", () => {
     await act(async () => A.q<HTMLFormElement>('[data-testid="card-sheet"]')!.requestSubmit());
     await until(() => room.s.jobs.length > 0);
     const jobId = room.s.jobs[0].job.jobId;
-    const card = { cardId: "mine", name: "阿明", color: null, avatar: null, blurb: "", playable: true, hidden: false };
+    const card = {
+      cardId: "mine",
+      name: "阿明",
+      color: null,
+      avatar: null,
+      blurb: "",
+      playable: true,
+      hidden: false,
+    };
     await hub.exec("roster.update", { cards: [card] });
     await hub.exec("job.result", { jobId, ok: true, result: { cardId: "mine" } });
     await until(() => A.q('[data-testid="action-box"]'));
@@ -207,7 +245,9 @@ describe("手機客戶端對真伺服器核心", () => {
     await until(() => B.q('[data-testid="submitted"]')?.textContent?.includes("我拔劍")); // 結算前就公開（裁決 9）
     expect(A.q<HTMLTextAreaElement>('[data-testid="action-text"]')!.value).toBe("");
     expect(A.button("收回修改")).toBeTruthy();
-    expect(A.q('[data-testid="submitted-note"]')!.textContent).toBe("已送出：我拔劍（結算前可以收回修改）"); // 輸入框清空了，寫出送了什麼
+    expect(A.q('[data-testid="submitted-note"]')!.textContent).toBe(
+      "已送出：我拔劍（結算前可以收回修改）",
+    ); // 輸入框清空了，寫出送了什麼
 
     B.click("跳過");
     await until(() => room.s.round?.phase === "queued");
@@ -230,7 +270,9 @@ describe("手機客戶端對真伺服器核心", () => {
 
     B.type('[data-testid="action-text"]', "我躲到吧台後面");
     B.click("送出");
-    await until(() => room.out[B.socket().id].some((f) => f.t === "err" && f.p.code === "E_ROUND_STALE"));
+    await until(() =>
+      room.out[B.socket().id].some((f) => f.t === "err" && f.p.code === "E_ROUND_STALE"),
+    );
     B.socket().held = false;
     hub.flush();
     await until(() => B.q('[data-testid="action-error"]'));
@@ -247,7 +289,13 @@ describe("手機客戶端對真伺服器核心", () => {
     A.click("送出");
     await until(() => room.events("action.submitted").length === 1);
     act(() => old.close(1006)); // 網路斷了：沒收到的訊框就此遺失
-    await until(() => B.socket() && B.socket() !== old && B.socket().readyState === 1 && B.text().includes("我推開門"));
+    await until(
+      () =>
+        B.socket() &&
+        B.socket() !== old &&
+        B.socket().readyState === 1 &&
+        B.text().includes("我推開門"),
+    );
     const hello = B.socket().sent[0];
     expect(hello.t).toBe("hello");
     expect(hello.p.lastSeq).toBeGreaterThan(0);
@@ -273,12 +321,24 @@ describe("手機客戶端對真伺服器核心", () => {
     const sockets = hub.sockets.length;
     // 到場整理的次要動作收進每人的選單，移除仍先確認角色處置
     expect(A.button("移除…")).toBeNull();
-    act(() => A.q<HTMLButtonElement>(`[data-testid="host-${room.s.members[1].id}"] [aria-haspopup="menu"]`)!.click());
+    act(() =>
+      A.q<HTMLButtonElement>(
+        `[data-testid="host-${room.s.members[1].id}"] [aria-haspopup="menu"]`,
+      )!.click(),
+    );
     expect(A.q('[role="menu"]')!.closest(".app")).not.toBeNull();
     expect([...A.q('[role="menu"]')!.querySelectorAll("button")].at(-1)!.textContent).toBe("封鎖");
     A.click("移除…");
-    act(() => A.q<HTMLInputElement>('[data-testid="remove-confirm"] input[type="radio"]:not(:checked)')!.click()); // 交給 GM 當 NPC
-    act(() => [...A.q('[data-testid="remove-confirm"]')!.querySelectorAll("button")].find((x) => x.textContent === "移除")!.click());
+    act(() =>
+      A.q<HTMLInputElement>(
+        '[data-testid="remove-confirm"] input[type="radio"]:not(:checked)',
+      )!.click(),
+    ); // 交給 GM 當 NPC
+    act(() =>
+      [...A.q('[data-testid="remove-confirm"]')!.querySelectorAll("button")]
+        .find((x) => x.textContent === "移除")!
+        .click(),
+    );
     await until(() => room.events("seat.departure").length === 1);
     expect(room.events("seat.departure")[0].payload).toMatchObject({ mode: "npc" });
     await until(() => B.q('[data-testid="fatal"]'));
@@ -303,7 +363,13 @@ describe("手機客戶端對真伺服器核心", () => {
     await until(() => room.s.round?.dispatchId && room.s.round.phase === "queued");
     const dispatchId = room.dispatchId();
     await hub.exec("dispatch.ack", { dispatchId });
-    const error = { kind: "refusal", code: "AI_CONTENT_FILTERED", message: "供應商拒答，建議切境外路線", actions: ["switch_route", "switch_model", "retry", "continue"], resetsAt: null };
+    const error = {
+      kind: "refusal",
+      code: "AI_CONTENT_FILTERED",
+      message: "供應商拒答，建議切境外路線",
+      actions: ["switch_route", "switch_model", "retry", "continue"],
+      resetsAt: null,
+    };
     await hub.exec("gen.failed", { dispatchId, atPart: null, error });
     await until(() => B.text().includes("GM 這段被供應商擋下，等房主處理"));
     expect(B.text()).not.toContain("AI_CONTENT_FILTERED");
@@ -315,11 +381,15 @@ describe("手機客戶端對真伺服器核心", () => {
     expect(B.q('[data-testid="error-detail"]')).toBeNull(); // 細節在回合列，只給出額度者
 
     await until(() => A.q('[data-testid="error-detail"]'));
-    expect(A.q('[data-testid="error-detail"]')!.textContent).toContain("供應商拒答，建議切境外路線");
+    expect(A.q('[data-testid="error-detail"]')!.textContent).toContain(
+      "供應商拒答，建議切境外路線",
+    );
     // 重新整理（同一台裝置、整份快照）後錯誤細節還在：伺服器在快照帶給出額度者
     const reloaded = phone(hub, `k=${room.joinSecret}`, { storage: A.env.storage });
     await until(() => reloaded.q('[data-testid="tab-payer"]'));
-    expect(reloaded.q('[data-testid="error-detail"]')?.textContent).toContain("供應商拒答，建議切境外路線");
+    expect(reloaded.q('[data-testid="error-detail"]')?.textContent).toContain(
+      "供應商拒答，建議切境外路線",
+    );
     reloaded.tab("payer");
     reloaded.click("重試");
     await until(() => room.frames("x1", "ctl").length === 1);
@@ -337,7 +407,17 @@ describe("手機客戶端對真伺服器核心", () => {
     await until(() => room.s.round?.dispatchId && room.s.round.phase === "queued");
     const dispatchId = room.dispatchId();
     await hub.exec("dispatch.ack", { dispatchId });
-    await hub.exec("gen.failed", { dispatchId, atPart: null, error: { kind: "model_unavailable", code: "AI_HTTP_STATUS_404", message: "x", actions: ["switch_model", "continue"], resetsAt: null } });
+    await hub.exec("gen.failed", {
+      dispatchId,
+      atPart: null,
+      error: {
+        kind: "model_unavailable",
+        code: "AI_HTTP_STATUS_404",
+        message: "x",
+        actions: ["switch_model", "continue"],
+        resetsAt: null,
+      },
+    });
     await until(() => A.q('[data-testid="held-switch"]'));
     expect(A.button("跳過這段，繼續")).toBeTruthy(); // 伺服器允許的其他動作照留
     expect(B.q('[data-testid="held-switch"]')).toBeNull();
@@ -347,7 +427,11 @@ describe("手機客戶端對真伺服器核心", () => {
     await until(() => room.frames("x1", "ctl").length === 1);
     const first = room.frames("x1", "ctl")[0].p;
     expect(first.cmd).toEqual({ kind: "switch_model", model: "m-b" });
-    await hub.exec("ctl.result", { ctlId: first.ctlId, ok: false, error: { code: "AI_HTTP_STATUS_404", message: "還是叫不到" } });
+    await hub.exec("ctl.result", {
+      ctlId: first.ctlId,
+      ok: false,
+      error: { code: "AI_HTTP_STATUS_404", message: "還是叫不到" },
+    });
     await until(() => A.q('[data-testid="held-error"]'));
     expect(room.s.round!.phase).toBe("held");
     A.click("切換並重送"); // 失敗時彈層留著，可以直接再試
@@ -361,7 +445,10 @@ describe("手機客戶端對真伺服器核心", () => {
     const pick = (P: Phone, model: string) =>
       act(() => {
         const sel = P.q<HTMLSelectElement>('.held-switch select[aria-label="模型"]')!;
-        Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(sel, model);
+        Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(
+          sel,
+          model,
+        );
         sel.dispatchEvent(new Event("change", { bubbles: true }));
       });
     const hold = async (actions: string[]) => {
@@ -370,7 +457,17 @@ describe("手機客戶端對真伺服器核心", () => {
       await until(() => t.room.s.round?.dispatchId && t.room.s.round.phase === "queued");
       const dispatchId = t.room.dispatchId();
       await t.hub.exec("dispatch.ack", { dispatchId });
-      await t.hub.exec("gen.failed", { dispatchId, atPart: null, error: { kind: "provider_unreachable", code: "E_GEN_TIMEOUT", message: "x", actions, resetsAt: null } });
+      await t.hub.exec("gen.failed", {
+        dispatchId,
+        atPart: null,
+        error: {
+          kind: "provider_unreachable",
+          code: "E_GEN_TIMEOUT",
+          message: "x",
+          actions,
+          resetsAt: null,
+        },
+      });
       await until(() => t.A.q('[data-testid="held-switch"]'));
       t.A.click("換模型 ▾");
       return t;
@@ -380,10 +477,18 @@ describe("手機客戶端對真伺服器核心", () => {
     pick(r1.A, "m-b");
     r1.A.click("切換並重送");
     await until(() => r1.room.frames("x1", "ctl").length === 1);
-    expect(r1.room.frames("x1", "ctl")[0].p.cmd).toEqual({ kind: "switch_route", route, model: "m-b" });
+    expect(r1.room.frames("x1", "ctl")[0].p.cmd).toEqual({
+      kind: "switch_route",
+      route,
+      model: "m-b",
+    });
 
     const r2 = await hold(["switch_model"]);
-    const routes = [...r2.A.el.querySelectorAll<HTMLOptionElement>('.held-switch select[aria-label="路線"] option')].map((o) => o.value);
+    const routes = [
+      ...r2.A.el.querySelectorAll<HTMLOptionElement>(
+        '.held-switch select[aria-label="路線"] option',
+      ),
+    ].map((o) => o.value);
     expect(routes).toEqual([r2.room.s.sceneSettings!.route]);
     pick(r2.A, "m-b");
     r2.A.click("切換並重送");
@@ -400,7 +505,11 @@ describe("手機客戶端對真伺服器核心", () => {
     await until(() => room.events("action.submitted").length === 1);
     await act(() => new Promise((r) => setTimeout(r, 700)));
     expect(room.s.drafts[a]).toBeUndefined();
-    expect(A.socket().sent.filter((f) => f.t === "action.draft").map((f) => f.p.text)).toEqual(["我"]);
+    expect(
+      A.socket()
+        .sent.filter((f) => f.t === "action.draft")
+        .map((f) => f.p.text),
+    ).toEqual(["我"]);
   });
 
   it("hello 那一刻的錯誤：過期的配對碼照樣加入並提示，可手動輸入配對碼；暱稱不合規停下顯示原因、不重連", async () => {
@@ -422,7 +531,9 @@ describe("手機客戶端對真伺服器核心", () => {
     B.type('[data-testid="nickname"]', "小\u202e華"); // 雙向覆寫字元：伺服器回 E_NAME_INVALID
     await act(async () => B.q<HTMLFormElement>("form")!.requestSubmit());
     await until(() => B.q('[data-testid="fatal"]'));
-    expect(B.q('[data-testid="fatal"]')!.textContent).toBe("名字不能空白，最多 24 個字，不能有特殊控制字元");
+    expect(B.q('[data-testid="fatal"]')!.textContent).toBe(
+      "名字不能空白，最多 24 個字，不能有特殊控制字元",
+    );
     const sockets = hub.sockets.length;
     await until(() => true, 5);
     expect(hub.sockets.length).toBe(sockets);
@@ -453,7 +564,11 @@ describe("手機客戶端對真伺服器核心", () => {
     B.click("送出");
     await until(() => A.q('[data-testid="submitted"]'));
     A.click("GM 旁白");
-    await until(() => room.s.round?.kind === "host" && B.q<HTMLTextAreaElement>('[data-testid="action-text"]')!.value === "我點酒");
+    await until(
+      () =>
+        room.s.round?.kind === "host" &&
+        B.q<HTMLTextAreaElement>('[data-testid="action-text"]')!.value === "我點酒",
+    );
     expect(A.q<HTMLButtonElement>('[data-testid="gm-main"]')!.disabled).toBe(true);
     const dispatchId = room.dispatchId();
     await hub.exec("dispatch.ack", { dispatchId });
@@ -467,7 +582,9 @@ describe("手機客戶端對真伺服器核心", () => {
   it("GM 分段鈕：選單點了直接執行並成為主鈕；主鈕與選單停用條件一致", async () => {
     const { room, A } = await table();
     act(() => A.q<HTMLButtonElement>(".gm-seg-more")!.click());
-    const item = [...A.el.querySelectorAll<HTMLButtonElement>(".menu .menu-item")].find((b) => b.textContent?.startsWith("GM 推進"))!;
+    const item = [...A.el.querySelectorAll<HTMLButtonElement>(".menu .menu-item")].find((b) =>
+      b.textContent?.startsWith("GM 推進"),
+    )!;
     act(() => item.click());
     await until(() => room.s.round?.kind === "host");
     expect(A.q('[data-testid="gm-main"]')!.textContent).toBe("GM 推進");
@@ -484,7 +601,12 @@ describe("手機客戶端對真伺服器核心", () => {
     const dispatchId = room.dispatchId();
     await hub.exec("dispatch.ack", { dispatchId });
     await hub.exec("gen.part.begin", { dispatchId, part: 0, speaker: { kind: "gm" } });
-    await hub.exec("gen.part.end", { dispatchId, part: 0, text: "門後是一片黑。", interrupted: false });
+    await hub.exec("gen.part.end", {
+      dispatchId,
+      part: 0,
+      text: "門後是一片黑。",
+      interrupted: false,
+    });
     await hub.exec("gen.done", { dispatchId, aborted: false });
     await until(() => A.button("收回上一回合") && B.text().includes("門後是一片黑。"));
     expect(B.q('[data-testid="undo-controls"]')).toBeNull();
@@ -493,10 +615,16 @@ describe("手機客戶端對真伺服器核心", () => {
     A.click("收回上一回合");
     await until(() => room.s.undo);
     await hub.exec("job.result", { jobId: room.s.undo!.jobId, ok: true });
-    await until(() => !B.text().includes("門後是一片黑。") && B.text().includes("房主收回了上一回合"));
+    await until(
+      () => !B.text().includes("門後是一片黑。") && B.text().includes("房主收回了上一回合"),
+    );
     expect(B.q('[data-testid="story"]')!.textContent).not.toContain("我推門");
     // 輸入框空著：原文直接放回去、上方一行提示，送出後提示消失；伺服器那份另存清掉
-    await until(() => B.q<HTMLTextAreaElement>('[data-testid="action-text"]')!.value === "我推門" && B.q('[data-testid="returned-notice"]'));
+    await until(
+      () =>
+        B.q<HTMLTextAreaElement>('[data-testid="action-text"]')!.value === "我推門" &&
+        B.q('[data-testid="returned-notice"]'),
+    );
     expect(B.q('[data-testid="returned"]')).toBeNull();
     await until(() => room.s.returned?.[room.s.members[1].id] === undefined);
     B.click("送出");
@@ -531,7 +659,9 @@ describe("手機客戶端對真伺服器核心", () => {
     B.type('[data-testid="action-text"]', "我想先看看");
     B.click("帶回");
     await until(() => !B.q('[data-testid="returned"]'));
-    expect(B.q<HTMLTextAreaElement>('[data-testid="action-text"]')!.value).toBe("我想先看看\n我推門");
+    expect(B.q<HTMLTextAreaElement>('[data-testid="action-text"]')!.value).toBe(
+      "我想先看看\n我推門",
+    );
     expect(room.s.drafts[room.s.members[1].id]).toBe("我想先看看\n我推門");
   });
 
@@ -541,7 +671,17 @@ describe("手機客戶端對真伺服器核心", () => {
     await until(() => room.s.round?.kind === "host");
     const dispatchId = room.dispatchId();
     await hub.exec("dispatch.ack", { dispatchId });
-    await hub.exec("gen.failed", { dispatchId, atPart: 0, error: { kind: "model_unavailable", code: "AI_HTTP_STATUS_404", message: "x", actions: ["switch_model", "switch_route", "retry"], resetsAt: null } });
+    await hub.exec("gen.failed", {
+      dispatchId,
+      atPart: 0,
+      error: {
+        kind: "model_unavailable",
+        code: "AI_HTTP_STATUS_404",
+        message: "x",
+        actions: ["switch_model", "switch_route", "retry"],
+        resetsAt: null,
+      },
+    });
     await until(() => A.button("收回上一回合"));
     // 上次是模型下架：重生的換模型選單灰掉它、預設換成能用的那個
     A.click("重生上一回合");
@@ -567,8 +707,14 @@ describe("玩家卡（room-player-cards）", () => {
       const bytes = new Uint8Array(await (init.body as Blob).arrayBuffer());
       const auth = (init.headers as Record<string, string>).Authorization;
       const r = await receiveUpload(hub.room.runner, {
-        kind: new URL(url, "https://party.example").searchParams.get("kind"), contentLength: String(bytes.length), origin: null, selfOrigin: "https://party.example",
-        deviceId: auth.slice("Bearer ".length), body: (async function* () { yield bytes; })(),
+        kind: new URL(url, "https://party.example").searchParams.get("kind"),
+        contentLength: String(bytes.length),
+        origin: null,
+        selfOrigin: "https://party.example",
+        deviceId: auth.slice("Bearer ".length),
+        body: (async function* () {
+          yield bytes;
+        })(),
       });
       hub.flush();
       return new Response(JSON.stringify(r.body), { status: r.status });
@@ -580,7 +726,15 @@ describe("玩家卡（room-player-cards）", () => {
       input.dispatchEvent(new Event("change", { bubbles: true }));
     });
   const last = (room: Room, t: string) => room.frames("x1", t).at(-1)!.p;
-  const NEW = { cardId: "c9", name: "匯入的", color: null, avatar: null, blurb: "", playable: true, hidden: false };
+  const NEW = {
+    cardId: "c9",
+    name: "匯入的",
+    color: null,
+    avatar: null,
+    blurb: "",
+    playable: true,
+    hidden: false,
+  };
 
   it("匯入角色卡：太大的檔不送；解析失敗只顯示原因；成功後自動入座", async () => {
     const calls: string[] = [];
@@ -600,14 +754,24 @@ describe("玩家卡（room-player-cards）", () => {
     await pickFile(C, sel, new File(['{"name":"x"}'], "bad.json"));
     await until(() => room.frames("x1", "job.card_import").length === 1);
     expect(calls[0]).toBe(`/api/rooms/${room.code}/cards?kind=card`);
-    await hub.exec("job.result", { jobId: last(room, "job.card_import").jobId, ok: false, error: { code: "E_CARD_INVALID" } });
+    await hub.exec("job.result", {
+      jobId: last(room, "job.card_import").jobId,
+      ok: false,
+      error: { code: "E_CARD_INVALID" },
+    });
     await until(() => C.text().includes("讀不出這張角色卡"));
     await pickFile(C, sel, new File(['{"name":"匯入的"}'], "ok.json"));
     await until(() => room.frames("x1", "job.card_import").length === 2);
     await hub.exec("roster.update", { cards: [...CARDS, NEW] });
-    await hub.exec("job.result", { jobId: last(room, "job.card_import").jobId, ok: true, result: { cardId: "c9" } });
+    await hub.exec("job.result", {
+      jobId: last(room, "job.card_import").jobId,
+      ok: true,
+      result: { cardId: "c9" },
+    });
     await until(() => C.q('[data-testid="action-box"]'));
-    await until(() => C.q('[data-testid="import-note"]')?.textContent === "匯入完成：只帶入名字、描述和圖");
+    await until(
+      () => C.q('[data-testid="import-note"]')?.textContent === "匯入完成：只帶入名字、描述和圖",
+    );
   });
 
   it("建立角色：秘密段不經 seat.create，入座後接著存；存失敗畫面不關、原文保留可重試", async () => {
@@ -627,11 +791,19 @@ describe("玩家卡（room-player-cards）", () => {
     expect(JSON.stringify(room.s.jobs)).not.toContain("其實是公主");
     expect(room.s.jobs[0].job).toMatchObject({ name: "小美", blurb: "紅髮劍士" });
     await hub.exec("roster.update", { cards: [{ ...NEW, name: "小美" }] });
-    await hub.exec("job.result", { jobId: room.s.jobs[0].job.jobId, ok: true, result: { cardId: "c9" } });
+    await hub.exec("job.result", {
+      jobId: room.s.jobs[0].job.jobId,
+      ok: true,
+      result: { cardId: "c9" },
+    });
     await until(() => room.frames("x1", "card.save").length === 1);
     expect(last(room, "card.save")).toMatchObject({ cardId: "c9", privateMd: "其實是公主" });
     expect(last(room, "card.save").publicMd).toBeUndefined();
-    await hub.exec("card.save.result", { reqId: last(room, "card.save").reqId, ok: false, code: "E_INTERNAL" });
+    await hub.exec("card.save.result", {
+      reqId: last(room, "card.save").reqId,
+      ok: false,
+      code: "E_INTERNAL",
+    });
     await until(() => C.q('[data-testid="card-pending"]'));
     expect(C.q<HTMLTextAreaElement>('[data-testid="card-private"]')!.value).toBe("其實是公主");
     room.clock += 3000; // 存卡每人 2 秒一次
@@ -649,7 +821,13 @@ describe("玩家卡（room-player-cards）", () => {
     await hub.exec("status", { keepAwake: null, busy: false, imageGen: true });
     A.click("編輯我的角色");
     await until(() => room.frames("x1", "card.read").length === 1);
-    const card = { name: "角色1", avatar: "🗡", publicMd: "公開", privateMd: "舊秘密", image: null };
+    const card = {
+      name: "角色1",
+      avatar: "🗡",
+      publicMd: "公開",
+      privateMd: "舊秘密",
+      image: null,
+    };
     await hub.exec("card.read.result", { reqId: last(room, "card.read").reqId, ok: true, card });
     await until(() => A.q<HTMLTextAreaElement>('[data-testid="card-private"]')?.value === "舊秘密");
     A.type('[data-testid="card-name"]', "新名字");
@@ -669,22 +847,40 @@ describe("玩家卡（room-player-cards）", () => {
       room.clock += 3000; // 讀卡每人每秒一次、存卡每人 2 秒一次
       A.click("編輯我的角色");
       await until(() => room.frames("x1", "card.read").length === n);
-      await hub.exec("card.read.result", { reqId: last(room, "card.read").reqId, ok: true, card: c });
+      await hub.exec("card.read.result", {
+        reqId: last(room, "card.read").reqId,
+        ok: true,
+        card: c,
+      });
       await until(() => A.q('[data-testid="card-gen-notice"]'));
     };
     const gen = async (n: number) => {
       A.click("AI 生圖");
       await until(() => room.frames("x1", "image.gen").length === n);
-      await hub.exec("image.gen.result", { reqId: last(room, "image.gen").reqId, ok: true, file: "1700.png", preview: "data:image/png;base64,AAAA" });
+      await hub.exec("image.gen.result", {
+        reqId: last(room, "image.gen").reqId,
+        ok: true,
+        file: "1700.png",
+        preview: "data:image/png;base64,AAAA",
+      });
       await until(() => A.q('[data-testid="card-gen-preview"]'));
     };
     // 「用這張」只進草稿：按返回就撤回，什麼都沒存
     await reopen(2, { ...card, name: "新名字" });
-    expect(A.q('[data-testid="card-gen-notice"]')!.textContent).toBe("會用 GM 主機「家裡的電腦」上設定的 AI 額度");
+    expect(A.q('[data-testid="card-gen-notice"]')!.textContent).toBe(
+      "會用 GM 主機「家裡的電腦」上設定的 AI 額度",
+    );
     confirm.mockClear();
     await gen(1);
-    expect(confirm).toHaveBeenCalledWith("這會用 GM 主機「家裡的電腦」的 AI 額度生一張圖，要繼續嗎？");
-    expect(last(room, "image.gen")).toMatchObject({ cardId: "c1", name: "新名字", description: "公開", framing: "half" });
+    expect(confirm).toHaveBeenCalledWith(
+      "這會用 GM 主機「家裡的電腦」的 AI 額度生一張圖，要繼續嗎？",
+    );
+    expect(last(room, "image.gen")).toMatchObject({
+      cardId: "c1",
+      name: "新名字",
+      description: "公開",
+      framing: "half",
+    });
     expect(A.q('[data-testid="card-gen-preview"]')!.textContent).toContain("新生成的圖");
     // 預覽還沒決定前不能再生，免得以為沒成功又花一次額度
     expect((A.button("AI 生圖") as HTMLButtonElement).disabled).toBe(true);
@@ -692,7 +888,9 @@ describe("玩家卡（room-player-cards）", () => {
     A.click("用這張");
     await until(() => A.q('[data-testid="crop-sheet"]'));
     A.click("套用");
-    await until(() => A.q<HTMLImageElement>('[data-testid="card-image-now"]')?.src.startsWith("data:image/png"));
+    await until(() =>
+      A.q<HTMLImageElement>('[data-testid="card-image-now"]')?.src.startsWith("data:image/png"),
+    );
     expect(A.q('[data-testid="card-image-chosen"]')!.textContent).toBe("已選用，按存檔才會套用");
     expect(A.q('[data-testid="card-gen-preview"]')).toBeNull();
     // 有未存的修改按返回：照桌面版兩選確認，焦點預設在「繼續編輯」
@@ -724,12 +922,20 @@ describe("玩家卡（room-player-cards）", () => {
     await until(() => A.q('[data-testid="card-image-chosen"]'));
     A.click("AI 生圖");
     await until(() => room.frames("x1", "image.gen").length === 4);
-    await hub.exec("image.gen.result", { reqId: last(room, "image.gen").reqId, ok: false, code: "E_GEN_QUOTA" });
+    await hub.exec("image.gen.result", {
+      reqId: last(room, "image.gen").reqId,
+      ok: false,
+      code: "E_GEN_QUOTA",
+    });
     await until(() => A.text().includes("GM 主機的 AI 額度用完了"));
     A.click("存檔");
     await until(() => room.frames("x1", "card.save").length === 2);
     const { reqId: r2, memberId: _m2, ...sent2 } = last(room, "card.save");
-    expect(sent2).toEqual({ cardId: "c1", imageFromGallery: "1700.png", crop: { x: 0, y: 0, w: 1, h: 1 } });
+    expect(sent2).toEqual({
+      cardId: "c1",
+      imageFromGallery: "1700.png",
+      crop: { x: 0, y: 0, w: 1, h: 1 },
+    });
     await hub.exec("card.save.result", { reqId: r2, ok: true });
     await until(() => !A.q('[data-testid="card-sheet"]'));
 
@@ -740,7 +946,12 @@ describe("玩家卡（room-player-cards）", () => {
     expect(A.button("AI 生圖")).toBeNull();
     expect(A.q('[data-testid="card-image"] select')).toBeNull();
     // 主機沒有房間能用的生圖路線：整段不出現
-    await hub.exec("status", { keepAwake: null, busy: false, imageGen: false, imageGenRoute: false });
+    await hub.exec("status", {
+      keepAwake: null,
+      busy: false,
+      imageGen: false,
+      imageGenRoute: false,
+    });
     await until(() => !A.q('[data-testid="card-gen-notice"]'));
     // 沒有修改：直接返回，不問
     A.click("返回");
@@ -751,21 +962,42 @@ describe("玩家卡（room-player-cards）", () => {
     const { room, hub, A } = await table();
     A.click("編輯我的角色");
     await until(() => room.frames("x1", "card.read").length === 1);
-    const card = { name: "角色1", avatar: "🗡", publicMd: "公開", privateMd: "", image: null, gallery: 3, galleryFile: "1700000000002.png" };
+    const card = {
+      name: "角色1",
+      avatar: "🗡",
+      publicMd: "公開",
+      privateMd: "",
+      image: null,
+      gallery: 3,
+      galleryFile: "1700000000002.png",
+    };
     await hub.exec("card.read.result", { reqId: last(room, "card.read").reqId, ok: true, card });
     await until(() => A.button("從圖庫選（3）"));
     expect(room.frames("x1", "card.gallery")).toHaveLength(0);
     A.click("從圖庫選（3）");
     await until(() => room.frames("x1", "card.gallery").length === 1);
     const thumb = "data:image/png;base64,AAAA";
-    const page1 = [{ file: "1700000000003.png", thumb }, { file: "1700000000002.png", thumb }];
-    await hub.exec("card.gallery.result", { reqId: last(room, "card.gallery").reqId, ok: true, items: page1, more: 1 });
+    const page1 = [
+      { file: "1700000000003.png", thumb },
+      { file: "1700000000002.png", thumb },
+    ];
+    await hub.exec("card.gallery.result", {
+      reqId: last(room, "card.gallery").reqId,
+      ok: true,
+      items: page1,
+      more: 1,
+    });
     await until(() => A.q(".card-gallery-thumb"));
     expect(A.q('[data-testid="card-gallery"]')!.textContent).toContain("使用中");
     A.click("載入更多（剩 1 張）");
     await until(() => room.frames("x1", "card.gallery").length === 2);
     expect(last(room, "card.gallery")).toMatchObject({ before: "1700000000002.png" });
-    await hub.exec("card.gallery.result", { reqId: last(room, "card.gallery").reqId, ok: true, items: [{ file: "1700000000001.png", thumb }], more: 0 });
+    await hub.exec("card.gallery.result", {
+      reqId: last(room, "card.gallery").reqId,
+      ok: true,
+      items: [{ file: "1700000000001.png", thumb }],
+      more: 0,
+    });
     await until(() => A.el.querySelectorAll(".card-gallery-thumb").length === 3);
     // 點縮圖：取單張預覽 → 裁切窗；取消就什麼都不變
     const thumbs = () => [...A.el.querySelectorAll<HTMLButtonElement>(".card-gallery-thumb")];
@@ -773,18 +1005,29 @@ describe("玩家卡（room-player-cards）", () => {
     await until(() => room.frames("x1", "card.gallery").length === 3);
     expect(last(room, "card.gallery")).toMatchObject({ file: "1700000000001.png" });
     expect(thumbs().every((b) => b.disabled)).toBe(true); // 取單張進行中不重複送
-    await hub.exec("card.gallery.result", { reqId: last(room, "card.gallery").reqId, ok: true, items: [{ file: "1700000000001.png", thumb }] });
+    await hub.exec("card.gallery.result", {
+      reqId: last(room, "card.gallery").reqId,
+      ok: true,
+      items: [{ file: "1700000000001.png", thumb }],
+    });
     await until(() => A.q('[data-testid="crop-sheet"]'));
     A.click("取消");
     await until(() => !A.q('[data-testid="crop-sheet"]'));
     expect(A.q('[data-testid="card-image-now"]')).toBeNull();
     act(() => thumbs()[2].click());
     await until(() => room.frames("x1", "card.gallery").length === 4);
-    await hub.exec("card.gallery.result", { reqId: last(room, "card.gallery").reqId, ok: true, items: [{ file: "1700000000001.png", thumb }] });
+    await hub.exec("card.gallery.result", {
+      reqId: last(room, "card.gallery").reqId,
+      ok: true,
+      items: [{ file: "1700000000001.png", thumb }],
+    });
     await until(() => A.q('[data-testid="crop-sheet"]'));
     // 套用後草稿還在做（切預覽慢）：裁切窗不關、兩顆鈕停用，編卡的存檔與返回也停用
     let finish = () => {};
-    vi.stubGlobal("fetch", () => new Promise<Response>((r) => (finish = () => r(new Response(new Blob())))));
+    vi.stubGlobal(
+      "fetch",
+      () => new Promise<Response>((r) => (finish = () => r(new Response(new Blob())))),
+    );
     A.click("套用");
     await until(() => A.button("套用")?.disabled);
     expect((A.button("取消") as HTMLButtonElement).disabled).toBe(true);
@@ -792,18 +1035,29 @@ describe("玩家卡（room-player-cards）", () => {
     expect((A.button("返回") as HTMLButtonElement).disabled).toBe(true);
     expect(A.q('[data-testid="card-image-chosen"]')).toBeNull();
     await act(async () => finish());
-    await until(() => !A.q('[data-testid="crop-sheet"]') && A.q('[data-testid="card-image-chosen"]'));
+    await until(
+      () => !A.q('[data-testid="crop-sheet"]') && A.q('[data-testid="card-image-chosen"]'),
+    );
     expect((A.button("存檔") as HTMLButtonElement).disabled).toBe(false);
     expect(thumbs()[2].className).toContain("picked");
     A.click("存檔");
     await until(() => room.frames("x1", "card.save").length === 1);
     const { reqId: _r, memberId: _m, ...sent } = last(room, "card.save");
-    expect(sent).toEqual({ cardId: "c1", imageFromGallery: "1700000000001.png", crop: { x: 0, y: 0, w: 1, h: 1 } });
+    expect(sent).toEqual({
+      cardId: "c1",
+      imageFromGallery: "1700000000001.png",
+      crop: { x: 0, y: 0, w: 1, h: 1 },
+    });
   });
 });
 
 describe("AI 代管（room-seat-delegate 包 3）", () => {
-  const inside = (p: Phone, testId: string, label: string) => act(() => [...p.q(`[data-testid="${testId}"]`)!.querySelectorAll("button")].find((x) => x.textContent === label)!.click());
+  const inside = (p: Phone, testId: string, label: string) =>
+    act(() =>
+      [...p.q(`[data-testid="${testId}"]`)!.querySelectorAll("button")]
+        .find((x) => x.textContent === label)!
+        .click(),
+    );
 
   it("已送出後自己交給 AI 代管：先確認，原文回到輸入框、常駐列出現、送出停用；別人名單看到標籤；接回後收起", async () => {
     const { room, A, B, b } = await table();
@@ -812,10 +1066,14 @@ describe("AI 代管（room-seat-delegate 包 3）", () => {
     await until(() => room.events("action.submitted").length === 1);
     B.tab("members");
     B.click("交給 AI 代管");
-    expect(B.q('[data-testid="delegate-confirm"]')!.textContent).toContain("你這回合已送出的行動會退回草稿、不計入");
+    expect(B.q('[data-testid="delegate-confirm"]')!.textContent).toContain(
+      "你這回合已送出的行動會退回草稿、不計入",
+    );
     inside(B, "delegate-confirm", "交給 AI 代管");
     await until(() => B.q('[data-testid="delegated-banner"]'));
-    expect(B.q('[data-testid="delegated-banner"]')!.textContent).toContain("接回後從下一回合開始行動");
+    expect(B.q('[data-testid="delegated-banner"]')!.textContent).toContain(
+      "接回後從下一回合開始行動",
+    );
     B.tab("story");
     expect(B.q<HTMLTextAreaElement>('[data-testid="action-text"]')!.value).toBe("我先走");
     expect(B.text()).toContain("你的角色代管中，接回後才能送行動");
@@ -825,7 +1083,9 @@ describe("AI 代管（room-seat-delegate 包 3）", () => {
     B.click("接回");
     await until(() => !B.q('[data-testid="delegated-banner"]'));
     expect(room.s.members.find((m) => m.id === b)!.delegated).toBe(false);
-    expect(B.q('[data-testid="delegate-returned"]')!.textContent).toBe("你離開期間的劇情在上面，往上翻可以看");
+    expect(B.q('[data-testid="delegate-returned"]')!.textContent).toBe(
+      "你離開期間的劇情在上面，往上翻可以看",
+    );
     B.type('[data-testid="action-text"]', "我回來了");
     expect(B.q('[data-testid="delegate-returned"]')).toBeNull();
   });
@@ -834,7 +1094,9 @@ describe("AI 代管（room-seat-delegate 包 3）", () => {
     const { room, B, b } = await table();
     B.tab("members");
     B.click("暫時離開");
-    expect(B.q('[data-testid="leave-confirm"]')!.textContent).toContain("你的座位會保留。要不要先把角色交給 AI 代管？");
+    expect(B.q('[data-testid="leave-confirm"]')!.textContent).toContain(
+      "你的座位會保留。要不要先把角色交給 AI 代管？",
+    );
     inside(B, "leave-confirm", "交給 AI 代管再離開");
     await until(() => B.text().includes("你已暫時離開"));
     expect(room.s.members.find((m) => m.id === b)!.delegated).toBe(true);
@@ -867,14 +1129,18 @@ describe("AI 代管（room-seat-delegate 包 3）", () => {
     inside(B, "leave-confirm", "直接離開（座位保留）");
     A.tab("host");
     await until(() => A.q('[data-testid="delegate-offline"]'));
-    expect(A.q('[data-testid="delegate-offline"]')!.textContent).toBe("把沒連線的人都交給 AI 代管（1 人）");
+    expect(A.q('[data-testid="delegate-offline"]')!.textContent).toBe(
+      "把沒連線的人都交給 AI 代管（1 人）",
+    );
     act(() => A.q<HTMLButtonElement>('[data-testid="delegate-offline"]')!.click());
     await until(() => !A.q('[data-testid="delegate-offline"]'));
     expect(A.q(`[data-testid="host-${b}"]`)!.textContent).toContain("AI 代管中");
 
     A.click("邀請新朋友");
     await until(() => A.q('[data-testid="invite"]'));
-    expect(A.q<HTMLInputElement>('[data-testid="invite"]')!.value).toBe(`https://party.example/r/${room.code}#k=${room.joinSecret}`);
+    expect(A.q<HTMLInputElement>('[data-testid="invite"]')!.value).toBe(
+      `https://party.example/r/${room.code}#k=${room.joinSecret}`,
+    );
     expect(room.frames("x1", "invite")).toEqual([]);
 
     A.click("暫停房間");
@@ -886,25 +1152,30 @@ describe("AI 代管（room-seat-delegate 包 3）", () => {
   });
 });
 
-
 describe("名單與接回提示（room-desktop-layout 包 C）", () => {
   it("讓出座位需確認，取消保留座位，確認才釋放", async () => {
     const { room, A, B, b } = await table();
     A.tab("members");
     expect(A.text()).toContain("用我的額度");
     B.tab("members");
-    expect(B.q('.badge[title]')!.getAttribute("title")).toBe("GM 用這個人的 AI 額度在跑");
+    expect(B.q(".badge[title]")!.getAttribute("title")).toBe("GM 用這個人的 AI 額度在跑");
     expect(B.text()).toContain("用他的額度");
     B.click("讓出座位");
     expect(room.s.members.find((m) => m.id === b)!.cardId).toBe("c2");
-    expect(B.q('[data-testid="seat-release-confirm"]')!.textContent).toContain("你將不再控制這個角色");
+    expect(B.q('[data-testid="seat-release-confirm"]')!.textContent).toContain(
+      "你將不再控制這個角色",
+    );
     B.click("取消");
     expect(B.q('[data-testid="seat-release-confirm"]')).toBeNull();
     // 失敗也收起遮罩，名單頁錯誤可見，座位保留。
     const socket = B.socket();
     const rejected = vi.spyOn(socket, "send").mockImplementationOnce((raw) => {
       const frame = JSON.parse(raw);
-      queueMicrotask(() => socket.onmessage?.({ data: JSON.stringify({ t: "err", p: { id: frame.id, code: "E_FORBIDDEN" } }) }));
+      queueMicrotask(() =>
+        socket.onmessage?.({
+          data: JSON.stringify({ t: "err", p: { id: frame.id, code: "E_FORBIDDEN" } }),
+        }),
+      );
     });
     B.click("讓出座位");
     act(() => B.q<HTMLButtonElement>('[data-testid="seat-release-confirm"] .danger')!.click());
@@ -940,7 +1211,9 @@ describe("名單與接回提示（room-desktop-layout 包 C）", () => {
     await until(() => room.s.members.find((m) => m.id === b)!.delegated);
     act(() => B.q<HTMLButtonElement>('[data-testid="self-delegate"]')!.click());
     await until(() => B.q('[data-testid="delegate-returned"]'));
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5050)); });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5050));
+    });
     expect(B.q('[data-testid="delegate-returned"]')).toBeNull();
   }, 10000);
 });

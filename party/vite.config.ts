@@ -15,7 +15,13 @@ export default defineConfig({
   server: {
     port: 1440,
     fs: { allow: [".."] },
-    proxy: { "/api": { target: "http://127.0.0.1:8787", ws: true, headers: { origin: "http://127.0.0.1:8787" } } },
+    proxy: {
+      "/api": {
+        target: "http://127.0.0.1:8787",
+        ws: true,
+        headers: { origin: "http://127.0.0.1:8787" },
+      },
+    },
   },
   build: { outDir: "dist", emptyOutDir: true },
 });

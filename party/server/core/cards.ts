@@ -5,20 +5,43 @@ import { MIN } from "./round";
 import { sameHash, sha256Hex, ulid } from "./secrets";
 import { Fail, need, type Tx } from "./tx";
 import type { CardReq, CoreInput, ErrorCode, Job, Member, RoomState, Upload } from "./types";
-import { cleanCrop, cleanIcon, cleanLong, cleanName, GALLERY_FILE, isCount, shape } from "./validate";
+import {
+  cleanCrop,
+  cleanIcon,
+  cleanLong,
+  cleanName,
+  GALLERY_FILE,
+  isCount,
+  shape,
+} from "./validate";
 
 const MiB = 1 << 20;
 export const UPLOAD_MAX = { card: 8 * MiB, image: 2 * MiB };
 const UPLOAD_TTL = 10 * MIN;
-const REQ_TTL: Record<CardReq["kind"], number> = { mine: 30_000, save: 30_000, gen: 10 * MIN, gallery: 30_000, invite: 30_000 };
+const REQ_TTL: Record<CardReq["kind"], number> = {
+  mine: 30_000,
+  save: 30_000,
+  gen: 10 * MIN,
+  gallery: 30_000,
+  invite: 30_000,
+};
 const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 const PNG_URL = /^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/;
 const EXEC_CODES = new Set<ErrorCode>([
-  "E_FORBIDDEN", "E_STATE_CONFLICT", "E_TEXT_INVALID", "E_NAME_INVALID", "E_TOO_LARGE", "E_UNSUPPORTED_FORMAT",
-  "E_CARD_INVALID", "E_GEN_QUOTA", "E_GEN_UNSUPPORTED", "E_GEN_REFUSED",
+  "E_FORBIDDEN",
+  "E_STATE_CONFLICT",
+  "E_TEXT_INVALID",
+  "E_NAME_INVALID",
+  "E_TOO_LARGE",
+  "E_UNSUPPORTED_FORMAT",
+  "E_CARD_INVALID",
+  "E_GEN_QUOTA",
+  "E_GEN_UNSUPPORTED",
+  "E_GEN_REFUSED",
 ]);
 /** 執行端回的錯誤只認白名單碼，不轉任何檔案內容或解析細節 */
-const execCode = (v: unknown): ErrorCode => (EXEC_CODES.has(v as ErrorCode) ? (v as ErrorCode) : "E_INTERNAL");
+const execCode = (v: unknown): ErrorCode =>
+  EXEC_CODES.has(v as ErrorCode) ? (v as ErrorCode) : "E_INTERNAL";
 type UploadJob = Extract<Job, { kind: "card_import" | "card_image" }>;
 const isUploadJob = (j: Job): j is UploadJob => j.kind === "card_import" || j.kind === "card_image";
 
@@ -27,7 +50,8 @@ export async function memberByDevice(s: RoomState, deviceId: string): Promise<Me
   const dev = await sha256Hex(`${s.code}:${deviceId}`);
   return s.members.find((m) => sameHash(m.dev, dev));
 }
-const seatedOn = (s: RoomState, memberId: string, cardId: string | null) => s.members.some((m) => m.id === memberId && !m.banned && m.cardId === cardId);
+const seatedOn = (s: RoomState, memberId: string, cardId: string | null) =>
+  s.members.some((m) => m.id === memberId && !m.banned && m.cardId === cardId);
 
 function signatureOk(kind: Upload["kind"], b: Uint8Array) {
   if (PNG.every((x, i) => b[i] === x)) return true;
@@ -38,7 +62,12 @@ function signatureOk(kind: Upload["kind"], b: Uint8Array) {
 }
 
 /** 結束一件上傳（成功、失敗、到期、執行端離線）：收回名額、撤工作、只通知上傳者 */
-function finishUpload(tx: Tx, memberId: string, uploadId: string, result: { ok: true; cardId: string } | { ok: false; code: ErrorCode }) {
+function finishUpload(
+  tx: Tx,
+  memberId: string,
+  uploadId: string,
+  result: { ok: true; cardId: string } | { ok: false; code: ErrorCode },
+) {
   delete tx.ctx.live.uploads[uploadId];
   // 用 uploadId 找工作：DO 被逐出後 live 已空，工作還留在 w.jobs
   const jobId = tx.s.jobs.find((j) => isUploadJob(j.job) && j.job.uploadId === uploadId)?.job.jobId;
@@ -51,7 +80,10 @@ function finishUpload(tx: Tx, memberId: string, uploadId: string, result: { ok: 
 }
 
 /** 第一段：驗身分、座位、限流，占名額；本體還沒讀（殼拿到 uploadId 才開始讀） */
-export async function uploadReserve(tx: Tx, input: Extract<CoreInput, { route: "upload_reserve" }>) {
+export async function uploadReserve(
+  tx: Tx,
+  input: Extract<CoreInput, { route: "upload_reserve" }>,
+) {
   need(tx.exists, "E_ROOM_NOT_FOUND");
   const s = tx.s;
   const m = await memberByDevice(s, input.deviceId);
@@ -67,10 +99,19 @@ export async function uploadReserve(tx: Tx, input: Extract<CoreInput, { route: "
   const live = tx.ctx.live;
   const all = Object.values(live.uploads);
   const total = all.reduce((n, u) => n + u.length, 0) + input.length;
-  if (all.some((u) => u.memberId === m.id) || all.length >= 3 || total > 16 * MiB) throw new Fail("E_RATE_LIMITED", undefined, 5000);
+  if (all.some((u) => u.memberId === m.id) || all.length >= 3 || total > 16 * MiB)
+    throw new Fail("E_RATE_LIMITED", undefined, 5000);
   rate(tx, `u:${m.id}`, 10, 60 * MIN); // 最後一道檢查：之前任何失敗都不吃每小時的額度
   const uploadId = ulid(tx.now, tx.ctx.rng);
-  live.uploads[uploadId] = { memberId: m.id, kind: input.uploadKind, cardId: m.cardId, length: input.length, state: "reserved", at: tx.now, bytes: null };
+  live.uploads[uploadId] = {
+    memberId: m.id,
+    kind: input.uploadKind,
+    cardId: m.cardId,
+    length: input.length,
+    state: "reserved",
+    at: tx.now,
+    bytes: null,
+  };
   tx.http = { status: 200, body: { uploadId } };
 }
 
@@ -96,8 +137,21 @@ export function uploadBody(tx: Tx, input: Extract<CoreInput, { route: "upload_bo
   const jobId = ulid(tx.now, tx.ctx.rng);
   const job: UploadJob =
     u.kind === "card"
-      ? { jobId, kind: "card_import", memberId: u.memberId, uploadId: input.uploadId, size: u.length }
-      : { jobId, kind: "card_image", memberId: u.memberId, cardId: u.cardId!, uploadId: input.uploadId, size: u.length };
+      ? {
+          jobId,
+          kind: "card_import",
+          memberId: u.memberId,
+          uploadId: input.uploadId,
+          size: u.length,
+        }
+      : {
+          jobId,
+          kind: "card_image",
+          memberId: u.memberId,
+          cardId: u.cardId!,
+          uploadId: input.uploadId,
+          size: u.length,
+        };
   Object.assign(u, { state: "ready", at: tx.now, bytes: input.bytes });
   tx.w.jobs.push({ job, reply: null });
   tx.toExec(`job.${job.kind}`, job);
@@ -109,7 +163,10 @@ export async function cardFetch(tx: Tx, input: Extract<CoreInput, { route: "card
   need(tx.exists, "E_ROOM_NOT_FOUND");
   const s = tx.s;
   const tokenOk = /^[A-Za-z0-9_-]{43}$/.test(input.executorToken) && s.execHash !== null;
-  need(tokenOk && sameHash(await sha256Hex(`${s.code}:${input.executorToken}`), s.execHash!), "E_AUTH_FAILED");
+  need(
+    tokenOk && sameHash(await sha256Hex(`${s.code}:${input.executorToken}`), s.execHash!),
+    "E_AUTH_FAILED",
+  );
   const u = tx.ctx.live.uploads[input.uploadId];
   need(u?.state === "ready" && u.bytes, "E_DISPATCH_UNKNOWN");
   if (u.kind === "image" && !seatedOn(s, u.memberId, u.cardId)) {
@@ -122,7 +179,11 @@ export async function cardFetch(tx: Tx, input: Extract<CoreInput, { route: "card
 }
 
 /** `job.result` 裡的上傳工作（executor.ts 已把工作移出 w.jobs） */
-export function uploadResult(tx: Tx, job: Job, p: { ok: boolean; result?: { cardId?: unknown }; error?: { code?: unknown } }) {
+export function uploadResult(
+  tx: Tx,
+  job: Job,
+  p: { ok: boolean; result?: { cardId?: unknown }; error?: { code?: unknown } },
+) {
   if (!isUploadJob(job)) return;
   let code: ErrorCode | null = p.ok ? null : execCode(p.error?.code);
   let cardId = job.kind === "card_image" ? job.cardId : p.result?.cardId;
@@ -136,7 +197,12 @@ export function uploadResult(tx: Tx, job: Job, p: { ok: boolean; result?: { card
       code = e.code;
     }
   }
-  finishUpload(tx, job.memberId, job.uploadId, code ? { ok: false, code } : { ok: true, cardId: cardId as string });
+  finishUpload(
+    tx,
+    job.memberId,
+    job.uploadId,
+    code ? { ok: false, code } : { ok: true, cardId: cardId as string },
+  );
 }
 
 /** 執行端離線、被取代或房間關閉：待處理的全部判失敗（含 DO 逐出後只剩 w.jobs 的上傳工作） */
@@ -146,8 +212,10 @@ export function failPending(tx: Tx, code: ErrorCode) {
     tx.err(r.conn, code, { id: r.id });
     delete live.cardReqs[reqId];
   }
-  for (const { job } of tx.s.jobs) if (isUploadJob(job)) finishUpload(tx, job.memberId, job.uploadId, { ok: false, code });
-  for (const [id, u] of Object.entries(live.uploads)) finishUpload(tx, u.memberId, id, { ok: false, code });
+  for (const { job } of tx.s.jobs)
+    if (isUploadJob(job)) finishUpload(tx, job.memberId, job.uploadId, { ok: false, code });
+  for (const [id, u] of Object.entries(live.uploads))
+    finishUpload(tx, u.memberId, id, { ok: false, code });
 }
 
 /** 每次輸入的結尾：執行端不在線就清、逾時、讀卡與生圖的人換了座位就作廢（存卡已轉出，照執行端結果回） */
@@ -155,28 +223,60 @@ export function settleCards(tx: Tx) {
   const live = tx.ctx.live;
   if (!tx.exists || tx.deleteRoom) return void Object.assign(live, { uploads: {}, cardReqs: {} });
   const s = tx.s;
-  if (s.status === "closed" || !s.exec.online) return failPending(tx, s.status === "closed" ? "E_ROOM_CLOSED" : "E_EXECUTOR_OFFLINE");
+  if (s.status === "closed" || !s.exec.online)
+    return failPending(tx, s.status === "closed" ? "E_ROOM_CLOSED" : "E_EXECUTOR_OFFLINE");
   for (const [reqId, r] of Object.entries(live.cardReqs)) {
-    const code = tx.now >= r.at + REQ_TTL[r.kind] ? "E_EXECUTOR_TIMEOUT" : r.kind === "invite" ? (inviteAsker(s, r) ? null : "E_STATE_CONFLICT") : r.kind !== "save" && !seatedOn(s, r.memberId, r.cardId) ? "E_STATE_CONFLICT" : null;
+    const code =
+      tx.now >= r.at + REQ_TTL[r.kind]
+        ? "E_EXECUTOR_TIMEOUT"
+        : r.kind === "invite"
+          ? inviteAsker(s, r)
+            ? null
+            : "E_STATE_CONFLICT"
+          : r.kind !== "save" && !seatedOn(s, r.memberId, r.cardId)
+            ? "E_STATE_CONFLICT"
+            : null;
     if (!code) continue;
     tx.err(r.conn, code, { id: r.id });
     delete live.cardReqs[reqId];
   }
-  for (const [id, u] of Object.entries(live.uploads)) if (tx.now >= u.at + UPLOAD_TTL) finishUpload(tx, u.memberId, id, { ok: false, code: "E_EXECUTOR_TIMEOUT" });
+  for (const [id, u] of Object.entries(live.uploads))
+    if (tx.now >= u.at + UPLOAD_TTL)
+      finishUpload(tx, u.memberId, id, { ok: false, code: "E_EXECUTOR_TIMEOUT" });
 }
 
-export function cardsAlarm(live: { uploads: Record<string, Upload>; cardReqs: Record<string, CardReq> }): number {
-  const at = [...Object.values(live.uploads).map((u) => u.at + UPLOAD_TTL), ...Object.values(live.cardReqs).map((r) => r.at + REQ_TTL[r.kind])];
+export function cardsAlarm(live: {
+  uploads: Record<string, Upload>;
+  cardReqs: Record<string, CardReq>;
+}): number {
+  const at = [
+    ...Object.values(live.uploads).map((u) => u.at + UPLOAD_TTL),
+    ...Object.values(live.cardReqs).map((r) => r.at + REQ_TTL[r.kind]),
+  ];
   return Math.min(Infinity, ...at);
 }
 
 /** 問現行邀請的人仍是房主、那條連線仍屬同一位成員 */
-const inviteAsker = (s: RoomState, r: CardReq) => s.hostId === r.memberId && s.conns[r.conn]?.who === r.memberId;
+const inviteAsker = (s: RoomState, r: CardReq) =>
+  s.hostId === r.memberId && s.conns[r.conn]?.who === r.memberId;
 const inviteHash = (s: RoomState, secret: string) => sha256Hex(`${s.code}:${secret}`);
 
-function forward(tx: Tx, kind: CardReq["kind"], m: Member, t: string, fields: Record<string, unknown>) {
+function forward(
+  tx: Tx,
+  kind: CardReq["kind"],
+  m: Member,
+  t: string,
+  fields: Record<string, unknown>,
+) {
   const reqId = ulid(tx.now, tx.ctx.rng);
-  tx.ctx.live.cardReqs[reqId] = { kind, conn: tx.conn, id: tx.reqId, memberId: m.id, cardId: m.cardId, at: tx.now };
+  tx.ctx.live.cardReqs[reqId] = {
+    kind,
+    conn: tx.conn,
+    id: tx.reqId,
+    memberId: m.id,
+    cardId: m.cardId,
+    at: tx.now,
+  };
   tx.toExec(t, { reqId, memberId: m.id, cardId: m.cardId, ...fields });
   return "later" as const;
 }
@@ -199,10 +299,15 @@ export const CARD_MEMBER: Record<string, Handler> = {
     const f: Record<string, unknown> = {};
     if (p.name !== undefined) f.name = field(cleanName(p.name, 40), "E_NAME_INVALID");
     if (p.avatar !== undefined) f.avatar = field(cleanIcon(p.avatar), "E_TEXT_INVALID");
-    for (const k of ["publicMd", "privateMd"]) if (p[k] !== undefined) f[k] = field(cleanLong(p[k], 64000), "E_TEXT_INVALID");
+    for (const k of ["publicMd", "privateMd"])
+      if (p[k] !== undefined) f[k] = field(cleanLong(p[k], 64000), "E_TEXT_INVALID");
     need(!(p.removeImage && p.imageFromGallery !== undefined), "E_BAD_FRAME");
     if (p.removeImage) f.removeImage = true;
-    if (p.imageFromGallery !== undefined) f.imageFromGallery = field(GALLERY_FILE.test(p.imageFromGallery) ? p.imageFromGallery : null, "E_TEXT_INVALID");
+    if (p.imageFromGallery !== undefined)
+      f.imageFromGallery = field(
+        GALLERY_FILE.test(p.imageFromGallery) ? p.imageFromGallery : null,
+        "E_TEXT_INVALID",
+      );
     if (p.crop !== undefined) {
       need(p.imageFromGallery !== undefined, "E_BAD_FRAME"); // 裁切框只用在圖庫圖（上傳的圖手機自己裁好）
       f.crop = field(cleanCrop(p.crop), "E_TEXT_INVALID");
@@ -213,11 +318,18 @@ export const CARD_MEMBER: Record<string, Handler> = {
   // 自己座位那張卡的圖庫：列一頁（before＝上一頁最後一筆）或取單張預覽；兩種分開限流，剛展開就點縮圖不會撞到
   "card.gallery": (tx, p, m) => {
     mine(tx, m);
-    for (const k of ["before", "file"]) if (p[k] !== undefined) need(GALLERY_FILE.test(p[k]), "E_TEXT_INVALID");
+    for (const k of ["before", "file"])
+      if (p[k] !== undefined) need(GALLERY_FILE.test(p[k]), "E_TEXT_INVALID");
     need(p.before === undefined || p.file === undefined, "E_BAD_FRAME");
     if (p.file !== undefined) rate(tx, `cgf:${m.id}`, 4, 2000);
     else rate(tx, `cgl:${m.id}`, 3, 2000);
-    return forward(tx, "gallery", m, "card.gallery", p.file !== undefined ? { file: p.file } : p.before !== undefined ? { before: p.before } : {});
+    return forward(
+      tx,
+      "gallery",
+      m,
+      "card.gallery",
+      p.file !== undefined ? { file: p.file } : p.before !== undefined ? { before: p.before } : {},
+    );
   },
   // 花的是 GM 主機上設定的 AI 帳號：主機關了開關就不轉；限流每人同時一件、每小時 6 件，全房同時 2 件
   "image.gen": (tx, p, m) => {
@@ -228,22 +340,39 @@ export const CARD_MEMBER: Record<string, Handler> = {
     const extraPrompt = field(cleanLong(p.extraPrompt, 1000), "E_TEXT_INVALID");
     need(p.framing === "full" || p.framing === "half", "E_BAD_FRAME");
     const gens = Object.values(tx.ctx.live.cardReqs).filter((r) => r.kind === "gen");
-    if (gens.some((r) => r.memberId === m.id) || gens.length >= 2) throw new Fail("E_RATE_LIMITED", undefined, 5000);
+    if (gens.some((r) => r.memberId === m.id) || gens.length >= 2)
+      throw new Fail("E_RATE_LIMITED", undefined, 5000);
     rate(tx, `g:${m.id}`, 6, 60 * MIN);
-    return forward(tx, "gen", m, "image.gen", { name, description, extraPrompt, framing: p.framing });
+    return forward(tx, "gen", m, "image.gen", {
+      name,
+      description,
+      extraPrompt,
+      framing: p.framing,
+    });
   },
   // 手機房主拿現行邀請連結（§3.6）：手上的候選密語對得上就直接回，否則問電腦；密語不進狀態、事件、日誌
   "invite.current": async (tx, p, m) => {
     need(tx.s.hostId === m.id, "E_FORBIDDEN");
     need(tx.s.status !== "closed", "E_ROOM_CLOSED");
-    if (typeof p.candidate === "string" && p.candidate.length <= 64 && sameHash(await inviteHash(tx.s, p.candidate), tx.s.joinHash)) {
+    if (
+      typeof p.candidate === "string" &&
+      p.candidate.length <= 64 &&
+      sameHash(await inviteHash(tx.s, p.candidate), tx.s.joinHash)
+    ) {
       tx.ok({ joinSecret: p.candidate });
       return "later" as const; // 已經回過
     }
     need(tx.s.exec.online, "E_EXECUTOR_OFFLINE");
     rate(tx, `ic:${m.id}`, 3, 2000);
     const reqId = ulid(tx.now, tx.ctx.rng);
-    tx.ctx.live.cardReqs[reqId] = { kind: "invite", conn: tx.conn, id: tx.reqId, memberId: m.id, cardId: null, at: tx.now };
+    tx.ctx.live.cardReqs[reqId] = {
+      kind: "invite",
+      conn: tx.conn,
+      id: tx.reqId,
+      memberId: m.id,
+      cardId: null,
+      at: tx.now,
+    };
     tx.toExec("invite.get", { reqId });
     return "later" as const;
   },
@@ -262,16 +391,26 @@ export const CARD_EXECUTOR: Record<string, (tx: Tx, p: any) => void> = {
   "card.read.result": (tx, p) => {
     const r = take(tx, p.reqId, "mine");
     if (!r) return;
-    if (!seatedOn(tx.s, r.memberId, r.cardId)) return tx.err(r.conn, "E_STATE_CONFLICT", { id: r.id }); // 回覆前座位已變：不帶內容
+    if (!seatedOn(tx.s, r.memberId, r.cardId))
+      return tx.err(r.conn, "E_STATE_CONFLICT", { id: r.id }); // 回覆前座位已變：不帶內容
     if (!p.ok) return failed(tx, r, p.code);
     const c = p.card;
     const ok =
-      shape(c, "name:s avatar:s publicMd:s privateMd:s image:s~ gallery?:i galleryFile?:s~") && c.name.length <= 200 && c.avatar.length <= 64 &&
-      (c.image === null || PNG_URL.test(c.image)) && (c.galleryFile == null || GALLERY_FILE.test(c.galleryFile));
+      shape(c, "name:s avatar:s publicMd:s privateMd:s image:s~ gallery?:i galleryFile?:s~") &&
+      c.name.length <= 200 &&
+      c.avatar.length <= 64 &&
+      (c.image === null || PNG_URL.test(c.image)) &&
+      (c.galleryFile == null || GALLERY_FILE.test(c.galleryFile));
     if (!ok) return tx.err(r.conn, "E_INTERNAL", { id: r.id });
     const card = {
-      cardId: r.cardId, name: c.name, avatar: c.avatar, publicMd: c.publicMd, privateMd: c.privateMd, image: c.image,
-      gallery: c.gallery ?? 0, galleryFile: c.galleryFile ?? null, // 舊執行端沒報：當沒有圖庫
+      cardId: r.cardId,
+      name: c.name,
+      avatar: c.avatar,
+      publicMd: c.publicMd,
+      privateMd: c.privateMd,
+      image: c.image,
+      gallery: c.gallery ?? 0,
+      galleryFile: c.galleryFile ?? null, // 舊執行端沒報：當沒有圖庫
     };
     tx.send(r.conn, "ok", { id: r.id, result: { card } });
   },
@@ -284,27 +423,42 @@ export const CARD_EXECUTOR: Record<string, (tx: Tx, p: any) => void> = {
   "card.gallery.result": (tx, p) => {
     const r = take(tx, p.reqId, "gallery");
     if (!r) return;
-    if (!seatedOn(tx.s, r.memberId, r.cardId)) return tx.err(r.conn, "E_STATE_CONFLICT", { id: r.id }); // 回覆前座位已變：不帶內容
+    if (!seatedOn(tx.s, r.memberId, r.cardId))
+      return tx.err(r.conn, "E_STATE_CONFLICT", { id: r.id }); // 回覆前座位已變：不帶內容
     if (!p.ok) return failed(tx, r, p.code);
     const items: unknown[] = p.items ?? [];
     const more = p.more ?? 0;
     // 空頁不能說還有下一頁，免得手機一直翻空頁
-    const ok = items.length <= 24 && items.every((i) => shape(i, "file:s thumb:s") && GALLERY_FILE.test(i.file) && PNG_URL.test(i.thumb)) && isCount(more) && (items.length > 0 || more === 0);
+    const ok =
+      items.length <= 24 &&
+      items.every(
+        (i) => shape(i, "file:s thumb:s") && GALLERY_FILE.test(i.file) && PNG_URL.test(i.thumb),
+      ) &&
+      isCount(more) &&
+      (items.length > 0 || more === 0);
     if (!ok) return tx.err(r.conn, "E_INTERNAL", { id: r.id });
-    tx.send(r.conn, "ok", { id: r.id, result: { items: items.map((i: any) => ({ file: i.file, thumb: i.thumb })), more } });
+    tx.send(r.conn, "ok", {
+      id: r.id,
+      result: { items: items.map((i: any) => ({ file: i.file, thumb: i.thumb })), more },
+    });
   },
   "image.gen.result": (tx, p) => {
     const r = take(tx, p.reqId, "gen");
     if (!r) return;
     if (!p.ok) return failed(tx, r, p.code);
-    if (!(GALLERY_FILE.test(p.file ?? "") && PNG_URL.test(p.preview ?? ""))) return tx.err(r.conn, "E_INTERNAL", { id: r.id });
+    if (!(GALLERY_FILE.test(p.file ?? "") && PNG_URL.test(p.preview ?? "")))
+      return tx.err(r.conn, "E_INTERNAL", { id: r.id });
     tx.send(r.conn, "ok", { id: r.id, result: { file: p.file, preview: p.preview } });
   },
   "invite.get.result": async (tx, p) => {
     const r = take(tx, p.reqId, "invite");
     if (!r) return;
     // 回覆前重驗：房主轉讓了、連線換人了、或電腦回的不是現行密語（剛好在換新連結），都不帶內容
-    const ok = inviteAsker(tx.s, r) && typeof p.joinSecret === "string" && p.joinSecret.length <= 64 && sameHash(await inviteHash(tx.s, p.joinSecret), tx.s.joinHash);
+    const ok =
+      inviteAsker(tx.s, r) &&
+      typeof p.joinSecret === "string" &&
+      p.joinSecret.length <= 64 &&
+      sameHash(await inviteHash(tx.s, p.joinSecret), tx.s.joinHash);
     if (!ok) return tx.err(r.conn, "E_STATE_CONFLICT", { id: r.id });
     tx.send(r.conn, "ok", { id: r.id, result: { joinSecret: p.joinSecret } });
   },

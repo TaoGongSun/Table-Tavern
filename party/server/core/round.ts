@@ -1,7 +1,17 @@
 // 回合狀態機（協定 §3）：開回合、結算、派工、離座、倒數暫停與單一鬧鐘。
 import { ulid } from "./secrets";
 import { Fail, type Tx } from "./tx";
-import type { Dispatch, ExecutorView, HostTurn, Member, PublicExecutorError, RoomState, RosterEntry, RoundKind, SceneSettings } from "./types";
+import type {
+  Dispatch,
+  ExecutorView,
+  HostTurn,
+  Member,
+  PublicExecutorError,
+  RoomState,
+  RosterEntry,
+  RoundKind,
+  SceneSettings,
+} from "./types";
 
 export const MIN = 60_000;
 export const DAY = 1440 * MIN;
@@ -10,28 +20,43 @@ export const HB_TIMEOUT_MS = 30_000;
 export const CTL_TIMEOUT_MS = 30_000;
 export const HELLO_MS = 10_000;
 
-export const seatedMembers = (s: RoomState) => s.members.filter((m) => m.cardId).sort((a, b) => a.seat - b.seat);
+export const seatedMembers = (s: RoomState) =>
+  s.members.filter((m) => m.cardId).sort((a, b) => a.seat - b.seat);
 /** 入座而且不在 AI 代管中：行動名單、在場玩家、開始條件都只算這些人 */
 export const activeMembers = (s: RoomState) => seatedMembers(s).filter((m) => !m.delegated);
-export const cardName = (s: RoomState, cardId: string) => s.cards.find((c) => c.cardId === cardId)?.name ?? cardId;
-export const isOnline = (s: RoomState, who: string) => Object.values(s.conns).some((c) => c.who === who);
+export const cardName = (s: RoomState, cardId: string) =>
+  s.cards.find((c) => c.cardId === cardId)?.name ?? cardId;
+export const isOnline = (s: RoomState, who: string) =>
+  Object.values(s.conns).some((c) => c.who === who);
 /** 執行端可以接新派工：在線而且不在同步閘門裡（重開房間、還沒補完關房期間的劇情，§3.3） */
 export const execReady = (s: RoomState) => s.exec.online && s.exec.sync !== "needed";
 
 export const execView = (s: RoomState): ExecutorView => ({
-  label: s.exec.label, online: s.exec.online, since: s.exec.since, keepAwake: s.exec.keepAwake, paused: !s.exec.online && s.exec.paused === true, imageGen: s.exec.imageGen === true, imageGenRoute: s.exec.imageGenRoute !== false,
+  label: s.exec.label,
+  online: s.exec.online,
+  since: s.exec.since,
+  keepAwake: s.exec.keepAwake,
+  paused: !s.exec.online && s.exec.paused === true,
+  imageGen: s.exec.imageGen === true,
+  imageGenRoute: s.exec.imageGenRoute !== false,
   syncing: s.exec.online && s.exec.sync === "needed",
   modelLabel: (s.nextSettings ?? s.sceneSettings ?? s.exec.caps?.current)?.modelLabel ?? null,
 });
 /** 給某位成員看的執行端狀態：出額度者另帶路線與模型清單（遠端控制要選） */
-export const execViewFor = (s: RoomState, who: string | null) => ({ ...execView(s), ...(who !== null && who === s.payerId ? { routes: s.exec.caps?.routes ?? null } : {}) });
+export const execViewFor = (s: RoomState, who: string | null) => ({
+  ...execView(s),
+  ...(who !== null && who === s.payerId ? { routes: s.exec.caps?.routes ?? null } : {}),
+});
 export const announceExec = (tx: Tx) => {
-  for (const [id, c] of Object.entries(tx.s.conns)) if (c.who !== null) tx.send(id, "vol", { type: "executor", ...execViewFor(tx.s, c.who) });
+  for (const [id, c] of Object.entries(tx.s.conns))
+    if (c.who !== null) tx.send(id, "vol", { type: "executor", ...execViewFor(tx.s, c.who) });
 };
 
 /** 路線／模型要在執行端自報的清單裡（§7.3） */
 export function offered(s: RoomState, route: unknown, model: unknown): SceneSettings {
-  const found = s.exec.caps?.routes.find((r) => r.route === route)?.models.find((m) => m.id === model);
+  const found = s.exec.caps?.routes
+    .find((r) => r.route === route)
+    ?.models.find((m) => m.id === model);
   if (!found) throw new Fail("E_MODEL_NOT_OFFERED");
   return { route: route as string, model: found.id, modelLabel: found.label };
 }
@@ -39,18 +64,43 @@ export function offered(s: RoomState, route: unknown, model: unknown): SceneSett
 export function openRound(tx: Tx, kind: RoundKind, host?: HostTurn) {
   const s = tx.w;
   const arrivals: string[] = [];
-  const roster = kind !== "play" ? [] : activeMembers(s).map((m): RosterEntry => {
-    if (m.arriving) arrivals.push(m.cardId!);
-    m.arriving = false;
-    return { memberId: m.id, cardId: m.cardId!, status: s.drafts[m.id] ? "drafting" : "pending", text: null };
-  });
-  const ms = kind === "play" && s.settings.actionTimeoutSec !== null ? s.settings.actionTimeoutSec * 1000 : null;
+  const roster =
+    kind !== "play"
+      ? []
+      : activeMembers(s).map((m): RosterEntry => {
+          if (m.arriving) arrivals.push(m.cardId!);
+          m.arriving = false;
+          return {
+            memberId: m.id,
+            cardId: m.cardId!,
+            status: s.drafts[m.id] ? "drafting" : "pending",
+            text: null,
+          };
+        });
+  const ms =
+    kind === "play" && s.settings.actionTimeoutSec !== null
+      ? s.settings.actionTimeoutSec * 1000
+      : null;
   const run = ms !== null && roster.length > 0 && execReady(s);
   s.lastError = null; // 新回合，上一回合的錯誤細節作廢（客戶端同樣在 round.opened 清掉）
   s.round = {
-    round: ++s.roundNo, kind, scene: s.scene, phase: kind === "play" ? "acting" : "queued", roster,
-    deadline: run ? tx.now + ms : null, pausedRemainingMs: run ? null : ms, dispatchId: null, hold: null,
-    batch: [], arrivals, dispatch: null, partsEnded: 0, speaker: null, genAt: tx.now, called: null, ...(host ? { host } : {}),
+    round: ++s.roundNo,
+    kind,
+    scene: s.scene,
+    phase: kind === "play" ? "acting" : "queued",
+    roster,
+    deadline: run ? tx.now + ms : null,
+    pausedRemainingMs: run ? null : ms,
+    dispatchId: null,
+    hold: null,
+    batch: [],
+    arrivals,
+    dispatch: null,
+    partsEnded: 0,
+    speaker: null,
+    genAt: tx.now,
+    called: null,
+    ...(host ? { host } : {}),
   };
   tx.emit("round.opened", { round: s.round.round, kind, roster, deadline: s.round.deadline });
   if (kind !== "play") pushDispatch(tx);
@@ -72,7 +122,16 @@ export function resolve(tx: Tx, by: "all" | "host" | "timeout") {
     const base = { memberId: e.memberId, cardId: e.cardId, name: cardName(s, e.cardId) };
     // 倒數到期比照房主結算：沒送出的算觀望、草稿留著〔作者裁決 2026-11-03〕
     if (e.status === "submitted") return { ...base, kind: "act" as const, text: e.text! };
-    return { ...base, kind: "watch" as const, watchReason: e.status === "skipped" ? ("skipped" as const) : by === "timeout" ? ("timeout" as const) : ("host_resolved" as const) };
+    return {
+      ...base,
+      kind: "watch" as const,
+      watchReason:
+        e.status === "skipped"
+          ? ("skipped" as const)
+          : by === "timeout"
+            ? ("timeout" as const)
+            : ("host_resolved" as const),
+    };
   });
   Object.assign(r, { phase: "queued", deadline: null, pausedRemainingMs: null });
   tx.emit("round.resolved", { round: r.round, by, batch: r.batch });
@@ -84,7 +143,8 @@ export function cancelRound(tx: Tx) {
   const w = tx.w;
   const r = w.round!;
   for (const e of r.roster) if (e.status === "submitted" && e.text) w.drafts[e.memberId] = e.text;
-  if (!r.dispatch) for (const m of w.members) if (m.cardId && r.arrivals.includes(m.cardId)) m.arriving = true;
+  if (!r.dispatch)
+    for (const m of w.members) if (m.cardId && r.arrivals.includes(m.cardId)) m.arriving = true;
   tx.emit("round.cancelled", { round: r.round });
 }
 
@@ -94,14 +154,35 @@ export function ensureDispatch(tx: Tx, from?: Dispatch): Dispatch {
   if (tx.s.round!.dispatch) return tx.s.round!.dispatch;
   const s = tx.w;
   const r = s.round!;
-  const ids = { dispatchId: ulid(tx.now, tx.ctx.rng), round: r.round, kind: r.kind, scene: r.scene, settings: s.sceneSettings!, actions: r.batch };
+  const ids = {
+    dispatchId: ulid(tx.now, tx.ctx.rng),
+    round: r.round,
+    kind: r.kind,
+    scene: r.scene,
+    settings: s.sceneSettings!,
+    actions: r.batch,
+  };
   if (from) r.dispatch = { ...from, ...ids };
   else {
-    const players = activeMembers(s).filter((m) => !m.arriving).map((m) => ({ cardId: m.cardId!, memberId: m.id, name: cardName(s, m.cardId!), connected: isOnline(s, m.id) }));
+    const players = activeMembers(s)
+      .filter((m) => !m.arriving)
+      .map((m) => ({
+        cardId: m.cardId!,
+        memberId: m.id,
+        name: cardName(s, m.cardId!),
+        connected: isOnline(s, m.id),
+      }));
     // 只消耗這次真的登場的接回卡（GM 推進之類 arrivals 為空的回合不吃掉 returning）
     const returns = (s.returning ?? []).filter((c) => r.arrivals.includes(c));
     if (returns.length) s.returning = s.returning!.filter((c) => !returns.includes(c));
-    r.dispatch = { ...ids, players, arrivals: r.arrivals, departures: s.departures, returns, ...(r.host ? { host: r.host } : {}) };
+    r.dispatch = {
+      ...ids,
+      players,
+      arrivals: r.arrivals,
+      departures: s.departures,
+      returns,
+      ...(r.host ? { host: r.host } : {}),
+    };
     s.departures = [];
   }
   Object.assign(r, { dispatchId: r.dispatch.dispatchId, genAt: tx.now });
@@ -113,11 +194,33 @@ export function reopen(tx: Tx, from: Dispatch) {
   const s = tx.w;
   s.lastError = null;
   s.round = {
-    round: ++s.roundNo, kind: from.kind, scene: s.scene, phase: "queued", roster: [], deadline: null, pausedRemainingMs: null, dispatchId: null, hold: null,
-    batch: from.actions, arrivals: from.arrivals, dispatch: null, partsEnded: 0, speaker: null, genAt: tx.now, called: null, ...(from.host ? { host: from.host } : {}),
+    round: ++s.roundNo,
+    kind: from.kind,
+    scene: s.scene,
+    phase: "queued",
+    roster: [],
+    deadline: null,
+    pausedRemainingMs: null,
+    dispatchId: null,
+    hold: null,
+    batch: from.actions,
+    arrivals: from.arrivals,
+    dispatch: null,
+    partsEnded: 0,
+    speaker: null,
+    genAt: tx.now,
+    called: null,
+    ...(from.host ? { host: from.host } : {}),
   };
-  tx.emit("round.opened", { round: s.round.round, kind: from.kind, roster: [], deadline: null, phase: "queued" });
-  if (from.kind === "play") tx.emit("round.resolved", { round: s.round.round, by: "host", batch: from.actions });
+  tx.emit("round.opened", {
+    round: s.round.round,
+    kind: from.kind,
+    roster: [],
+    deadline: null,
+    phase: "queued",
+  });
+  if (from.kind === "play")
+    tx.emit("round.resolved", { round: s.round.round, by: "host", batch: from.actions });
   ensureDispatch(tx, from);
   pushDispatch(tx);
 }
@@ -146,7 +249,8 @@ export function unseat(tx: Tx, m: Member, mode?: "npc" | "absent") {
   if (s.status !== "lobby") {
     const i = s.departures.findIndex((d) => d.cardId === cardId);
     if (i < 0) s.departures.push({ cardId, mode: mode ?? "absent" });
-    else if (mode || s.departures[i].mode === "delegate") s.departures[i] = { cardId, mode: mode ?? "absent" };
+    else if (mode || s.departures[i].mode === "delegate")
+      s.departures[i] = { cardId, mode: mode ?? "absent" };
   }
   tx.emit("seat.released", { memberId: m.id, cardId });
 }
@@ -206,7 +310,8 @@ export function undelegate(tx: Tx, m: Member) {
 /** 遠端控制 retry／切換先把 held 轉成 generating；逾時或執行端離線而它之後沒送過任何 gen.*（genAt 仍是發令那一刻）就退回原錯誤 */
 function revertCtl(tx: Tx, c: RoomState["ctls"][string]) {
   const r = tx.s.round;
-  if (c.hold && r?.phase === "generating" && r.genAt === c.at) Object.assign(tx.w.round!, { phase: "held", hold: c.hold });
+  if (c.hold && r?.phase === "generating" && r.genAt === c.at)
+    Object.assign(tx.w.round!, { phase: "held", hold: c.hold });
 }
 
 export function setExecOnline(tx: Tx, online: boolean) {
@@ -215,12 +320,13 @@ export function setExecOnline(tx: Tx, online: boolean) {
   if (!online) s.execConn = null;
   if (!online) for (const c of Object.values(s.ctls)) revertCtl(tx, c);
   // 遠端暫停等回覆時執行端下線：它已報過暫停就算成功（關房流程送完 status 才斷線），否則回離線
-  if (!online) for (const [ctlId, c] of Object.entries(s.ctls)) {
-    if (c.cmd.kind !== "pause") continue;
-    if (s.exec.paused) tx.send(c.conn, "ok", { id: c.id, result: { ok: true } });
-    else tx.err(c.conn, "E_EXECUTOR_OFFLINE", { id: c.id });
-    delete s.ctls[ctlId];
-  }
+  if (!online)
+    for (const [ctlId, c] of Object.entries(s.ctls)) {
+      if (c.cmd.kind !== "pause") continue;
+      if (s.exec.paused) tx.send(c.conn, "ok", { id: c.id, result: { ok: true } });
+      else tx.err(c.conn, "E_EXECUTOR_OFFLINE", { id: c.id });
+      delete s.ctls[ctlId];
+    }
   if (!online && s.inviteRegen) {
     tx.err(s.inviteRegen.conn, "E_EXECUTOR_OFFLINE", { id: s.inviteRegen.id }); // 舊連結照常有效
     s.inviteRegen = null;
@@ -238,13 +344,21 @@ export function settle(tx: Tx) {
     const w = tx.w.round!;
     if (run) Object.assign(w, { deadline: tx.now + w.pausedRemainingMs!, pausedRemainingMs: null });
     else Object.assign(w, { pausedRemainingMs: Math.max(0, w.deadline! - tx.now), deadline: null });
-    tx.emit("round.deadline", { round: w.round, deadline: w.deadline, pausedRemainingMs: w.pausedRemainingMs });
+    tx.emit("round.deadline", {
+      round: w.round,
+      deadline: w.deadline,
+      pausedRemainingMs: w.pausedRemainingMs,
+    });
   }
-  if (run && r.roster.every((e) => e.status === "submitted" || e.status === "skipped")) resolve(tx, "all");
+  if (run && r.roster.every((e) => e.status === "submitted" || e.status === "skipped"))
+    resolve(tx, "all");
 }
 
-const idleAt = (s: RoomState) => (s.closedAt !== null ? s.closedAt + 7 * DAY : s.lastActive + s.idleDays * DAY);
-const generating = (s: RoomState) => s.exec.online && (s.round?.phase === "generating" || (s.round?.phase === "queued" && s.round.dispatch !== null));
+const idleAt = (s: RoomState) =>
+  s.closedAt !== null ? s.closedAt + 7 * DAY : s.lastActive + s.idleDays * DAY;
+const generating = (s: RoomState) =>
+  s.exec.online &&
+  (s.round?.phase === "generating" || (s.round?.phase === "queued" && s.round.dispatch !== null));
 
 /** 單一鬧鐘：取所有計時器最早者（§12.1） */
 export function nextAlarm(s: RoomState | null): number | null {
@@ -266,7 +380,8 @@ export function onAlarm(tx: Tx) {
     tx.deleteRoom = true;
     return;
   }
-  for (const [id, c] of Object.entries(tx.s.conns)) if (c.who === null && now >= c.at + HELLO_MS) tx.shut(id, 4401, "E_AUTH_REQUIRED");
+  for (const [id, c] of Object.entries(tx.s.conns))
+    if (c.who === null && now >= c.at + HELLO_MS) tx.shut(id, 4401, "E_AUTH_REQUIRED");
   for (const [ctlId, c] of Object.entries(tx.s.ctls)) {
     if (now < c.at + CTL_TIMEOUT_MS) continue;
     tx.err(c.conn, "E_EXECUTOR_TIMEOUT", { id: c.id });
@@ -287,8 +402,14 @@ export function onAlarm(tx: Tx) {
   const s = tx.s;
   const r = s.round;
   const due = r?.phase === "acting" && r.deadline !== null && now >= r.deadline;
-  if (due && s.status === "playing" && execReady(s) && !s.undo && r.roster.length > 0) resolve(tx, "timeout");
-  else if (generating(tx.s) && now >= r!.genAt + GEN_IDLE_MS) hold(tx, { kind: "provider_unreachable", actions: ["retry", "switch_route"], resetsAt: null }, "E_GEN_TIMEOUT");
+  if (due && s.status === "playing" && execReady(s) && !s.undo && r.roster.length > 0)
+    resolve(tx, "timeout");
+  else if (generating(tx.s) && now >= r!.genAt + GEN_IDLE_MS)
+    hold(
+      tx,
+      { kind: "provider_unreachable", actions: ["retry", "switch_route"], resetsAt: null },
+      "E_GEN_TIMEOUT",
+    );
   const t = tx.s.transition;
   if (t && !t.stalled && now >= t.progressAt + GEN_IDLE_MS) {
     tx.w.transition!.stalled = true;

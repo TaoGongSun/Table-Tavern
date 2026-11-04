@@ -10,7 +10,8 @@ export const ja: PartyMessages = {
   hostRemove: "削除…",
   hostKick: "削除",
   seatRelease: "席を譲る",
-  seatReleaseConfirm: "席を譲りますか？このキャラクターの操作を終了します。再び参加するにはキャラクターを選び直して着席してください。",
+  seatReleaseConfirm:
+    "席を譲りますか？このキャラクターの操作を終了します。再び参加するにはキャラクターを選び直して着席してください。",
   badgePayer: "この人の利用枠",
   badgePayerSelf: "自分の利用枠",
   badgePayerHint: "GM はこの人の AI 利用枠で動いています",

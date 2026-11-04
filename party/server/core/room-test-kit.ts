@@ -29,9 +29,38 @@ export class MemStore implements RoomStore {
   }
 }
 
-export const CARDS = ["c1", "c2", "c3"].map((cardId, i) => ({ cardId, name: `角色${i + 1}`, color: null, avatar: null, blurb: "", playable: true, hidden: false }));
-export const STAGE = { cardId: "npc", name: "店主", color: "#aabbcc", avatar: null, blurb: "舞台卡", playable: false, hidden: false };
-const CAPS = { routes: [{ route: "or", label: "OpenRouter", models: [{ id: "m-a", label: "模型甲", laxity: 2 }, { id: "m-b", label: "模型乙", laxity: null }] }], current: { route: "or", model: "m-a", modelLabel: "模型甲" }, maxRoundSpeakers: 3 };
+export const CARDS = ["c1", "c2", "c3"].map((cardId, i) => ({
+  cardId,
+  name: `角色${i + 1}`,
+  color: null,
+  avatar: null,
+  blurb: "",
+  playable: true,
+  hidden: false,
+}));
+export const STAGE = {
+  cardId: "npc",
+  name: "店主",
+  color: "#aabbcc",
+  avatar: null,
+  blurb: "舞台卡",
+  playable: false,
+  hidden: false,
+};
+const CAPS = {
+  routes: [
+    {
+      route: "or",
+      label: "OpenRouter",
+      models: [
+        { id: "m-a", label: "模型甲", laxity: 2 },
+        { id: "m-b", label: "模型乙", laxity: null },
+      ],
+    },
+  ],
+  current: { route: "or", model: "m-a", modelLabel: "模型甲" },
+  maxRoundSpeakers: 3,
+};
 
 export class Room {
   readonly store = new MemStore();
@@ -52,7 +81,11 @@ export class Room {
         this.closed[id] = code;
         this.open.delete(id);
       },
-      list: () => [...this.open].map((id) => ({ id, role: id.startsWith("x") ? ("executor" as const) : ("member" as const) })),
+      list: () =>
+        [...this.open].map((id) => ({
+          id,
+          role: id.startsWith("x") ? ("executor" as const) : ("member" as const),
+        })),
     },
     { set: async (at) => void (this.alarmAt = at) },
     { now: () => this.clock, rng: (n) => crypto.getRandomValues(new Uint8Array(n)) },
@@ -66,30 +99,52 @@ export class Room {
   }
   static async create() {
     const room = new Room();
-    const out = await room.run({ kind: "http", route: "create", body: { protocol: 1, label: "家裡的電腦", client: { name: "desktop", version: "0" } }, code: room.code, origin: "https://t.example", idleDays: 30 });
+    const out = await room.run({
+      kind: "http",
+      route: "create",
+      body: { protocol: 1, label: "家裡的電腦", client: { name: "desktop", version: "0" } },
+      code: room.code,
+      origin: "https://t.example",
+      idleDays: 30,
+    });
     Object.assign(room, out!.http!.body);
     return room;
   }
   /** 「成員 a」連線 id 是 a，裝置碼由 id 衍生；執行端連線 id 以 x 開頭 */
   async connect(id: string) {
     this.open.add(id);
-    await this.run({ kind: "connect", conn: { id, role: id.startsWith("x") ? "executor" : "member" } });
+    await this.run({
+      kind: "connect",
+      conn: { id, role: id.startsWith("x") ? "executor" : "member" },
+    });
   }
   async disconnect(id: string) {
     this.open.delete(id);
-    await this.run({ kind: "disconnect", conn: { id, role: id.startsWith("x") ? "executor" : "member" } });
+    await this.run({
+      kind: "disconnect",
+      conn: { id, role: id.startsWith("x") ? "executor" : "member" },
+    });
   }
   send(id: string, t: string, p: unknown = {}, reqId = `q${++this.n}`) {
-    return this.run({ kind: "frame", conn: { id, role: id.startsWith("x") ? "executor" : "member" }, raw: JSON.stringify({ t, id: reqId, p }) });
+    return this.run({
+      kind: "frame",
+      conn: { id, role: id.startsWith("x") ? "executor" : "member" },
+      raw: JSON.stringify({ t, id: reqId, p }),
+    });
   }
   /** 送出並回傳這則的回覆（ok 或 err） */
   async ask(id: string, t: string, p: unknown = {}) {
     const reqId = `q${++this.n}`;
     await this.send(id, t, p, reqId);
-    return (this.out[id] ?? []).findLast((f) => (f.t === "ok" || f.t === "err") && f.p.id === reqId) ?? null;
+    return (
+      (this.out[id] ?? []).findLast((f) => (f.t === "ok" || f.t === "err") && f.p.id === reqId) ??
+      null
+    );
   }
   frames(id: string, t?: string, type?: string) {
-    return (this.out[id] ?? []).filter((f) => (!t || f.t === t) && (!type || f.p?.type === type || f.p?.e?.type === type));
+    return (this.out[id] ?? []).filter(
+      (f) => (!t || f.t === t) && (!type || f.p?.type === type || f.p?.e?.type === type),
+    );
   }
   events(type: string) {
     return this.store.events.filter((e) => e.type === type);
@@ -101,11 +156,29 @@ export class Room {
   deviceId = (id: string) => `dev-${id}`.padEnd(22, "x");
   async join(id: string, nickname = id, extra: Record<string, unknown> = {}) {
     await this.connect(id);
-    return this.ask(id, "hello", { protocol: 1, role: "member", deviceId: this.deviceId(id), joinSecret: this.joinSecret, nickname, lastSeq: 0, client: { name: "party", version: "0" }, ...extra });
+    return this.ask(id, "hello", {
+      protocol: 1,
+      role: "member",
+      deviceId: this.deviceId(id),
+      joinSecret: this.joinSecret,
+      nickname,
+      lastSeq: 0,
+      client: { name: "party", version: "0" },
+      ...extra,
+    });
   }
   async exec(id = "x1", extra: Record<string, unknown> = {}) {
     await this.connect(id);
-    const reply = await this.ask(id, "hello", { protocol: 1, role: "executor", roomCode: this.code, executorToken: this.executorToken, lastSeq: 0, inflight: null, client: { name: "desktop", version: "0" }, ...extra });
+    const reply = await this.ask(id, "hello", {
+      protocol: 1,
+      role: "executor",
+      roomCode: this.code,
+      executorToken: this.executorToken,
+      lastSeq: 0,
+      inflight: null,
+      client: { name: "desktop", version: "0" },
+      ...extra,
+    });
     await this.send(id, "capabilities", CAPS);
     return reply;
   }

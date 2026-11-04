@@ -31,7 +31,6 @@
     --user-text: #f2ede4;
     color-scheme: dark;
   }
-
 }
 
 .app *,
@@ -67,7 +66,11 @@
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--surface);
-  font-family: system-ui, -apple-system, "PingFang TC", sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    "PingFang TC",
+    sans-serif;
   font-size: 15px;
   cursor: pointer;
 }
@@ -132,7 +135,11 @@
   padding: 8px var(--gutter);
   border-bottom: 1px solid var(--line);
   background: var(--surface);
-  font-family: system-ui, -apple-system, "PingFang TC", sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    "PingFang TC",
+    sans-serif;
 }
 
 .app .brand {
@@ -186,7 +193,11 @@
   padding: 8px var(--gutter);
   border-bottom: 1px solid var(--line);
   background: var(--surface);
-  font-family: system-ui, -apple-system, "PingFang TC", sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    "PingFang TC",
+    sans-serif;
   font-size: 14px;
 }
 
@@ -307,7 +318,11 @@
   background: var(--surface);
   color: var(--text);
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3);
-  font-family: system-ui, -apple-system, "PingFang TC", sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    "PingFang TC",
+    sans-serif;
   font-size: 15px;
 }
 .app .menu .menu-item {
@@ -486,7 +501,11 @@
 }
 
 .app .part-name {
-  font-family: system-ui, -apple-system, "PingFang TC", sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    "PingFang TC",
+    sans-serif;
   font-size: 13px;
   font-weight: 600;
   opacity: 0.8;
@@ -635,7 +654,11 @@
   padding: 1px 8px;
   border-radius: 999px;
   background: var(--surface-2);
-  font-family: system-ui, -apple-system, "PingFang TC", sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    "PingFang TC",
+    sans-serif;
   font-size: 12px;
 }
 

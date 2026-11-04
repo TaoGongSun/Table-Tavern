@@ -25,7 +25,9 @@ export function ulid(now: number, rng: (n: number) => Uint8Array): string {
 }
 
 export async function sha256Hex(text: string): Promise<string> {
-  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)));
+  const digest = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)),
+  );
   return [...digest].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 

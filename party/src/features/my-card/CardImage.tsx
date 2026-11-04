@@ -34,21 +34,40 @@ interface Props {
 }
 
 /** 待存的圖：要上傳的 PNG，或 GM 主機圖庫裡的那張（可帶裁切框） */
-export type ImageDraft = { png: Blob; preview: string } | { file: string; preview: string; crop?: CropBox } | null;
+export type ImageDraft =
+  | { png: Blob; preview: string }
+  | { file: string; preview: string; crop?: CropBox }
+  | null;
 
 /** 草稿預覽：把預覽圖照同一個框切出來給玩家看；切不了回 null（用原預覽） */
 async function cutPreview(src: string, box: CropBox) {
-  const blob = await fetch(src).then((r) => r.blob()).catch(() => null);
+  const blob = await fetch(src)
+    .then((r) => r.blob())
+    .catch(() => null);
   return blob && (await cropTo(blob, box, 640));
 }
 
-export function CardImage({ view, act, cardId, image, setDraft, draft, canUpload, gallery, hold }: Props) {
+export function CardImage({
+  view,
+  act,
+  cardId,
+  image,
+  setDraft,
+  draft,
+  canUpload,
+  gallery,
+  hold,
+}: Props) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<"" | "convert" | "gen">("");
   const [preview, setPreview] = useState<{ file: string; preview: string } | null>(null);
   // picked：草稿裡選的圖庫圖（用這張或從圖庫選），等存檔
   const [picked, setPicked] = useState<string | null>(null);
-  const [cropping, setCropping] = useState<{ src: string; done: (box: CropBox) => Promise<void>; own?: boolean } | null>(null);
+  const [cropping, setCropping] = useState<{
+    src: string;
+    done: (box: CropBox) => Promise<void>;
+    own?: boolean;
+  } | null>(null);
   // 草稿預覽的 object URL：換掉、移除、關畫面時釋放
   const draftUrl = useRef<string | null>(null);
   useEffect(() => () => void (draftUrl.current && URL.revokeObjectURL(draftUrl.current)), []);
@@ -108,11 +127,20 @@ export function CardImage({ view, act, cardId, image, setDraft, draft, canUpload
     if (!confirmedRooms.has(room) && !window.confirm(t("cardGenConfirm", { host }))) return;
     confirmedRooms.add(room);
     setBusy("gen");
-    const payload = { cardId, name: draft.name.trim(), description: draft.description.slice(0, 3000), extraPrompt: extra, framing };
+    const payload = {
+      cardId,
+      name: draft.name.trim(),
+      description: draft.description.slice(0, 3000),
+      extraPrompt: extra,
+      framing,
+    };
     const reply = await act("image.gen", payload, GEN_WAIT_MS);
     setBusy("");
     // 主機關了開關：別說成「只有房主可以」
-    if (!reply.ok) return setError(reply.code === "E_FORBIDDEN" ? t("cardGenOff") : errorText(reply.code, reply.retryAfterMs));
+    if (!reply.ok)
+      return setError(
+        reply.code === "E_FORBIDDEN" ? t("cardGenOff") : errorText(reply.code, reply.retryAfterMs),
+      );
     setError(null);
     setPreview(reply.result);
     setCount((n) => n + 1);
@@ -122,7 +150,11 @@ export function CardImage({ view, act, cardId, image, setDraft, draft, canUpload
   return (
     <div className="card-image" data-testid="card-image">
       <h3>{t("cardImage")}</h3>
-      {image ? <img src={image} alt="" data-testid="card-image-now" /> : <p className="muted">{t("cardImageNone")}</p>}
+      {image ? (
+        <img src={image} alt="" data-testid="card-image-now" />
+      ) : (
+        <p className="muted">{t("cardImageNone")}</p>
+      )}
       <div className="panel-actions">
         {canUpload && (
           <label className="button-like">
@@ -140,18 +172,47 @@ export function CardImage({ view, act, cardId, image, setDraft, draft, canUpload
           </label>
         )}
         {count > 0 && (
-          <button type="button" className="ghost" disabled={!!busy} aria-expanded={galleryOpen} onClick={() => setGalleryOpen(!galleryOpen)}>
+          <button
+            type="button"
+            className="ghost"
+            disabled={!!busy}
+            aria-expanded={galleryOpen}
+            onClick={() => setGalleryOpen(!galleryOpen)}
+          >
             {t("cardGalleryOpen", { n: count })}
           </button>
         )}
-        {image && <button type="button" className="ghost" disabled={!!busy} onClick={() => (putDraft(null), setPreview(null), setPicked(null))}>{t("cardImageRemove")}</button>}
+        {image && (
+          <button
+            type="button"
+            className="ghost"
+            disabled={!!busy}
+            onClick={() => (putDraft(null), setPreview(null), setPicked(null))}
+          >
+            {t("cardImageRemove")}
+          </button>
+        )}
       </div>
-      {picked && <p className="muted" data-testid="card-image-chosen">{t("cardGenChosen")}</p>}
-      {galleryOpen && <CardGallery key={galleryKey} act={act} inUse={gallery.inUse} picked={picked} onPick={choose} />}
+      {picked && (
+        <p className="muted" data-testid="card-image-chosen">
+          {t("cardGenChosen")}
+        </p>
+      )}
+      {galleryOpen && (
+        <CardGallery
+          key={galleryKey}
+          act={act}
+          inUse={gallery.inUse}
+          picked={picked}
+          onPick={choose}
+        />
+      )}
       {view.executor.imageGenRoute && (
         <>
           <h3>{t("cardGen")}</h3>
-          <p className="muted" data-testid="card-gen-notice">{genOn ? t("cardGenNotice", { host }) : t("cardGenOff")}</p>
+          <p className="muted" data-testid="card-gen-notice">
+            {genOn ? t("cardGenNotice", { host }) : t("cardGenOff")}
+          </p>
         </>
       )}
       {genOn && (
@@ -161,11 +222,19 @@ export function CardImage({ view, act, cardId, image, setDraft, draft, canUpload
             <input value={extra} maxLength={1000} onChange={(e) => setExtra(e.target.value)} />
           </label>
           <div className="panel-actions">
-            <select value={framing} onChange={(e) => setFraming(e.target.value as "full" | "half")} aria-label={t("cardGenFraming")}>
+            <select
+              value={framing}
+              onChange={(e) => setFraming(e.target.value as "full" | "half")}
+              aria-label={t("cardGenFraming")}
+            >
               <option value="half">{t("cardFramingHalf")}</option>
               <option value="full">{t("cardFramingFull")}</option>
             </select>
-            <button type="button" disabled={!!busy || !!preview || !draft.name.trim()} onClick={() => void generate()}>
+            <button
+              type="button"
+              disabled={!!busy || !!preview || !draft.name.trim()}
+              onClick={() => void generate()}
+            >
               {busy === "gen" ? t("cardGenBusy") : t("cardGen")}
             </button>
           </div>
@@ -176,9 +245,13 @@ export function CardImage({ view, act, cardId, image, setDraft, draft, canUpload
           <p className="muted">{t("cardGenNew")}</p>
           <img src={preview.preview} alt="" />
           <div className="panel-actions">
-            <button type="button" onClick={() => choose(preview.file, preview.preview)}>{t("cardGenUse")}</button>
+            <button type="button" onClick={() => choose(preview.file, preview.preview)}>
+              {t("cardGenUse")}
+            </button>
             {/* 丟掉只收起預覽：圖還在圖庫，之後從圖庫選撿得回來 */}
-            <button type="button" className="ghost" onClick={() => setPreview(null)}>{t("cardGenDiscard")}</button>
+            <button type="button" className="ghost" onClick={() => setPreview(null)}>
+              {t("cardGenDiscard")}
+            </button>
           </div>
         </div>
       )}

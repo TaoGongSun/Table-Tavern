@@ -5,7 +5,8 @@ import { ask } from "./CardGallery";
 describe("圖庫請求的限流重送", () => {
   it("撞到限流等到期重送一次；其他錯誤與第二次限流照回", async () => {
     vi.useFakeTimers();
-    const act = vi.fn()
+    const act = vi
+      .fn()
       .mockResolvedValueOnce({ ok: false, code: "E_RATE_LIMITED", retryAfterMs: 1500 })
       .mockResolvedValueOnce({ ok: true, result: { items: [], more: 0 } });
     const reply = ask(act, { file: "1.png" });
@@ -14,7 +15,9 @@ describe("圖庫請求的限流重送", () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(await reply).toEqual({ ok: true, result: { items: [], more: 0 } });
     expect(act).toHaveBeenLastCalledWith("card.gallery", { file: "1.png" });
-    const twice = vi.fn().mockResolvedValue({ ok: false, code: "E_RATE_LIMITED", retryAfterMs: 10 });
+    const twice = vi
+      .fn()
+      .mockResolvedValue({ ok: false, code: "E_RATE_LIMITED", retryAfterMs: 10 });
     const second = ask(twice, {});
     await vi.advanceTimersByTimeAsync(10);
     expect((await second).ok).toBe(false);

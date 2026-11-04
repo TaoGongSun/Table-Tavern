@@ -16,7 +16,18 @@ import { zhTW, type PartyMessages } from "./zh-TW";
 export type MsgKey = keyof typeof zhTW;
 export type { Lang };
 
-export const MESSAGES: Record<Lang, PartyMessages> = { "zh-TW": zhTW, "zh-CN": zhCN, en, ja, ko, es, "pt-BR": ptBR, de, fr, ru };
+export const MESSAGES: Record<Lang, PartyMessages> = {
+  "zh-TW": zhTW,
+  "zh-CN": zhCN,
+  en,
+  ja,
+  ko,
+  es,
+  "pt-BR": ptBR,
+  de,
+  fr,
+  ru,
+};
 
 let current: Lang = "zh-TW";
 const KEY = "tt-party:lang";
@@ -24,7 +35,9 @@ const KEY = "tt-party:lang";
 export function t(key: MsgKey, vars: Record<string, string | number> = {}): string {
   const template = (MESSAGES[current] as Partial<PartyMessages>)[key] ?? zhTW[key];
   const text = expandPlural(template, current, vars) ?? template;
-  return text.replace(/\{(\w+)\}/g, (whole, name: string) => (Object.hasOwn(vars, name) ? String(vars[name]) : whole));
+  return text.replace(/\{(\w+)\}/g, (whole, name: string) =>
+    Object.hasOwn(vars, name) ? String(vars[name]) : whole,
+  );
 }
 
 /** 執行端沒有固定模型名（智慧免費、CLI 預設）時送 "default"，顯示時在地化 */

@@ -21,10 +21,23 @@ export function PauseRoom({ view, act }: { view: RoomView; act: Act }) {
   };
   return (
     <div className="panel-actions pause-room">
-      <button type="button" className="danger" disabled={offline || sent} data-testid="pause-room" onClick={() => setAsking(true)}>{t("hostPause")}</button>
+      <button
+        type="button"
+        className="danger"
+        disabled={offline || sent}
+        data-testid="pause-room"
+        onClick={() => setAsking(true)}
+      >
+        {t("hostPause")}
+      </button>
       {offline && <span className="muted">{t("hostPauseOffline")}</span>}
       {asking && (
-        <Confirm title={t("hostPauseTitle")} testId="pause-confirm" onCancel={() => setAsking(false)} actions={[{ label: t("hostPause"), onClick: () => void pause(), danger: true }]}>
+        <Confirm
+          title={t("hostPauseTitle")}
+          testId="pause-confirm"
+          onCancel={() => setAsking(false)}
+          actions={[{ label: t("hostPause"), onClick: () => void pause(), danger: true }]}
+        >
           <p>{t("hostPauseBody", { label: view.executor.label })}</p>
         </Confirm>
       )}

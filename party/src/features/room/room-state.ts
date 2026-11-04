@@ -2,7 +2,13 @@
 // 規則是伺服器核心的鏡像但只管「畫面上看得到的」；對不上時伺服器為準（E_STATE_CONFLICT 會重抓快照）。
 // 劇情段落直接用伺服器的 storyOf 投影（玩家行動段號為負、幕摘要段號 32），快照與即時事件長得一樣。
 import { keptCount, storyOf, type Snapshot } from "../../../server/core/snapshot";
-import type { ExecutorError, Frame, RosterEntry, RouteOffer, StoryPart } from "../../../server/core/types";
+import type {
+  ExecutorError,
+  Frame,
+  RosterEntry,
+  RouteOffer,
+  StoryPart,
+} from "../../../server/core/types";
 
 export interface RoomView extends Omit<Snapshot, "quotaDetail"> {
   me: NonNullable<Snapshot["me"]>;
@@ -28,15 +34,29 @@ export function mergeStory(story: StoryPart[], parts: StoryPart[], older = false
 }
 
 /** 事件 → 劇情段落（同伺服器快照的投影） */
-export const storyOfFrames = (frames: Frame[]) => storyOf(frames.map((f) => ({ seq: f.p.seq, at: f.p.at, type: f.p.e.type, payload: f.p.e })));
+export const storyOfFrames = (frames: Frame[]) =>
+  storyOf(frames.map((f) => ({ seq: f.p.seq, at: f.p.at, type: f.p.e.type, payload: f.p.e })));
 
 function fromSnapshot(s: Snapshot): RoomView {
-  return { ...s, me: s.me!, quotaDetail: s.quotaDetail ?? null, errorDetail: s.errorDetail ?? null, routes: s.routes ?? null, departed: [] };
+  return {
+    ...s,
+    me: s.me!,
+    quotaDetail: s.quotaDetail ?? null,
+    errorDetail: s.errorDetail ?? null,
+    routes: s.routes ?? null,
+    departed: [],
+  };
 }
 
 /** 寫時複製：成員、名單都很小，每筆淺拷貝；劇情只在有變動時換陣列 */
 function copy(v: RoomView): RoomView {
-  return { ...v, room: { ...v.room }, me: { ...v.me }, members: v.members.map((m) => ({ ...m })), round: v.round && { ...v.round, roster: v.round.roster.map((e) => ({ ...e })) } };
+  return {
+    ...v,
+    room: { ...v.room },
+    me: { ...v.me },
+    members: v.members.map((m) => ({ ...m })),
+    round: v.round && { ...v.round, roster: v.round.roster.map((e) => ({ ...e })) },
+  };
 }
 
 /** 座位異動（入座、離座、轉移）一律清掉代管旗標：伺服器那邊也清了，接手者要代管會另發 seat.delegated */
@@ -45,17 +65,29 @@ function setSeat(v: RoomView, memberId: string, cardId: string | null) {
   const prev = m?.cardId ?? null;
   if (m) Object.assign(m, { cardId, delegated: false });
   if (memberId === v.me.memberId) Object.assign(v.me, { cardId, delegated: false });
-  v.cards = v.cards.map((c) => (c.cardId === cardId ? { ...c, claimedBy: memberId } : c.cardId === prev && c.claimedBy === memberId ? { ...c, claimedBy: null } : c));
+  v.cards = v.cards.map((c) =>
+    c.cardId === cardId
+      ? { ...c, claimedBy: memberId }
+      : c.cardId === prev && c.claimedBy === memberId
+        ? { ...c, claimedBy: null }
+        : c,
+  );
 }
 
 function onEvent(v: RoomView, e: any, at: number) {
-  const entry = (memberId: string): RosterEntry | undefined => v.round?.roster.find((x) => x.memberId === memberId);
+  const entry = (memberId: string): RosterEntry | undefined =>
+    v.round?.roster.find((x) => x.memberId === memberId);
   const mine = e.memberId === v.me.memberId;
   const round = v.round;
   switch (e.type) {
     case "room.started":
     case "scene.started":
-      Object.assign(v.room, { status: "playing", scene: e.scene, sceneSettings: e.settings, transition: null });
+      Object.assign(v.room, {
+        status: "playing",
+        scene: e.scene,
+        sceneSettings: e.settings,
+        transition: null,
+      });
       break;
     case "scene.settings_switched":
       v.room.sceneSettings = e.settings;
@@ -67,7 +99,14 @@ function onEvent(v: RoomView, e: any, at: number) {
       v.room.status = "closed";
       break;
     case "member.joined":
-      if (!v.members.some((m) => m.memberId === e.memberId)) v.members.push({ memberId: e.memberId, nickname: e.nickname, cardId: null, connected: false, delegated: false });
+      if (!v.members.some((m) => m.memberId === e.memberId))
+        v.members.push({
+          memberId: e.memberId,
+          nickname: e.nickname,
+          cardId: null,
+          connected: false,
+          delegated: false,
+        });
       break;
     case "member.renamed":
       for (const m of v.members) if (m.memberId === e.memberId) m.nickname = e.nickname;
@@ -91,7 +130,8 @@ function onEvent(v: RoomView, e: any, at: number) {
     case "seat.released":
       setSeat(v, e.memberId, null);
       if (v.round) v.round.roster = v.round.roster.filter((x) => x.memberId !== e.memberId);
-      if (v.room.status !== "lobby") v.departed = [...v.departed.filter((c) => c !== e.cardId), e.cardId];
+      if (v.room.status !== "lobby")
+        v.departed = [...v.departed.filter((c) => c !== e.cardId), e.cardId];
       break;
     case "seat.reassigned":
       setSeat(v, e.from, null);
@@ -110,7 +150,10 @@ function onEvent(v: RoomView, e: any, at: number) {
       v.cards = e.cards;
       break;
     case "scene.advancing":
-      Object.assign(v.room, { status: "transition", transition: { jobId: e.jobId, since: at, stalled: false } });
+      Object.assign(v.room, {
+        status: "transition",
+        transition: { jobId: e.jobId, since: at, stalled: false },
+      });
       break;
     case "scene.stalled":
       if (v.room.transition) v.room.transition = { ...v.room.transition, stalled: true };
@@ -119,11 +162,22 @@ function onEvent(v: RoomView, e: any, at: number) {
       Object.assign(v.room, { status: "playing", transition: null });
       break;
     case "round.opened":
-      v.round = { round: e.round, kind: e.kind, scene: v.room.scene, phase: e.phase ?? (e.kind === "play" ? "acting" : "queued"), roster: e.roster, deadline: e.deadline, pausedRemainingMs: null, dispatchId: null, hold: null };
+      v.round = {
+        round: e.round,
+        kind: e.kind,
+        scene: v.room.scene,
+        phase: e.phase ?? (e.kind === "play" ? "acting" : "queued"),
+        roster: e.roster,
+        deadline: e.deadline,
+        pausedRemainingMs: null,
+        dispatchId: null,
+        hold: null,
+      };
       Object.assign(v, { streaming: null, errorDetail: null });
       break;
     case "round.deadline":
-      if (round && round.round === e.round) Object.assign(round, { deadline: e.deadline, pausedRemainingMs: e.pausedRemainingMs });
+      if (round && round.round === e.round)
+        Object.assign(round, { deadline: e.deadline, pausedRemainingMs: e.pausedRemainingMs });
       break;
     case "action.submitted": {
       const x = entry(e.memberId);
@@ -140,11 +194,15 @@ function onEvent(v: RoomView, e: any, at: number) {
       const x = entry(e.memberId);
       if (!x) break;
       if (mine && x.text) v.me.draft = x.text; // 原文回成草稿
-      Object.assign(x, { status: (mine ? v.me.draft : x.text) ? "drafting" : "pending", text: null });
+      Object.assign(x, {
+        status: (mine ? v.me.draft : x.text) ? "drafting" : "pending",
+        text: null,
+      });
       break;
     }
     case "round.resolved":
-      if (v.round) Object.assign(v.round, { phase: "queued", deadline: null, pausedRemainingMs: null });
+      if (v.round)
+        Object.assign(v.round, { phase: "queued", deadline: null, pausedRemainingMs: null });
       break;
     case "round.cancelled": {
       const x = entry(v.me.memberId);
@@ -157,7 +215,10 @@ function onEvent(v: RoomView, e: any, at: number) {
       if (v.story[v.story.length - 1]?.part === 33) v.story = v.story.slice(0, -1); // 連續收回只留一行（新的那行隨後補上）
       break;
     case "story.truncated": // 重開補送：本幕（上一幕摘要之後）保留到 after 為止
-      v.story = v.story.slice(0, keptCount(v.story, e.after, v.story.map((p) => p.part).lastIndexOf(32) + 1));
+      v.story = v.story.slice(
+        0,
+        keptCount(v.story, e.after, v.story.map((p) => p.part).lastIndexOf(32) + 1),
+      );
       break;
     case "gen.dispatched":
       if (v.round) v.round.dispatchId = e.dispatchId;
@@ -175,7 +236,12 @@ function onVolatile(v: RoomView, x: any) {
     case "delta": {
       const s = v.streaming;
       const same = s && s.round === x.round && s.part === x.part;
-      v.streaming = { round: x.round, part: x.part, speaker: x.speaker ?? (same ? s.speaker : { kind: "gm" }), text: (same ? s.text : "") + x.text };
+      v.streaming = {
+        round: x.round,
+        part: x.part,
+        speaker: x.speaker ?? (same ? s.speaker : { kind: "gm" }),
+        text: (same ? s.text : "") + x.text,
+      };
       if (round) Object.assign(round, { phase: "generating", hold: null });
       break;
     }
@@ -196,7 +262,8 @@ function onVolatile(v: RoomView, x: any) {
       const e = round.roster.find((r) => r.memberId === x.memberId);
       const cardId = v.members.find((m) => m.memberId === x.memberId)?.cardId;
       if (e) e.status = x.status;
-      else if (cardId) round.roster.push({ memberId: x.memberId, cardId, status: x.status, text: null }); // 空名單停住時入座
+      else if (cardId)
+        round.roster.push({ memberId: x.memberId, cardId, status: x.status, text: null }); // 空名單停住時入座
       break;
     }
     case "executor": {
@@ -235,7 +302,8 @@ export function applyFrame(view: RoomView | null, f: Frame): RoomView | null {
     onEvent(v, f.p.e, f.p.at);
     const parts = storyOfFrames([f]);
     v.story = mergeStory(v.story, parts);
-    if (parts.some((p) => p.round === v.streaming?.round && p.part === v.streaming.part)) v.streaming = null; // 定稿整段取代串流
+    if (parts.some((p) => p.round === v.streaming?.round && p.part === v.streaming.part))
+      v.streaming = null; // 定稿整段取代串流
   } else if (f.t === "vol") onVolatile(v, f.p);
   else return view;
   return v;

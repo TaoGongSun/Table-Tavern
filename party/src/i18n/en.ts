@@ -18,7 +18,8 @@ export const en: PartyMessages = {
   seatCreate: "Create a character",
   seatCreateName: "Character name",
   seatCreateBlurb: "Public description (everyone can see it)",
-  seatReleaseConfirm: "Give up your seat? You will stop controlling this character and need to choose a character to sit again.",
+  seatReleaseConfirm:
+    "Give up your seat? You will stop controlling this character and need to choose a character to sit again.",
   badgePayerHint: "The GM runs on this person's AI quota",
   delegatedReturned: "The story from while you were away is above. Scroll up to read it.",
   hostMemberOptions: "Manage {name}",
@@ -80,7 +81,8 @@ export const en: PartyMessages = {
   badgePayerSelf: "Using my quota",
   online: "Online",
   offline: "Offline",
-  idleNotice: "{days, plural, one {The room is deleted after # idle day} other {The room is deleted after # idle days}}; the story is kept on the host's computer.",
+  idleNotice:
+    "{days, plural, one {The room is deleted after # idle day} other {The room is deleted after # idle days}}; the story is kept on the host's computer.",
   seatShowPicker: "Take a seat",
 
   hostTitle: "Host controls",
@@ -89,7 +91,8 @@ export const en: PartyMessages = {
   hostResolvePending: "Resolve this round ({n} not sent yet)",
   hostAdvance: "Next scene",
   hostAdvanceCancel: "Cancel scene change",
-  hostInviteNeedsExecutor: "The computer is offline; wait for it to come back before making a new link",
+  hostInviteNeedsExecutor:
+    "The computer is offline; wait for it to come back before making a new link",
   hostExport: "Export log",
   hostTimeout: "Action timer",
   hostTimeoutOff: "No timer",
@@ -106,7 +109,8 @@ export const en: PartyMessages = {
   gmAdvance: "GM Advance",
   requestReplyHint: "Skip the GM and have this character say a line",
   callNominated: "Let {name} reply",
-  callNominatedHint: "Have “\u2060{name}\u2060”, whom the GM just named, reply without rerunning the GM",
+  callNominatedHint:
+    "Have “\u2060{name}\u2060”, whom the GM just named, reply without rerunning the GM",
   gmBusy: "Wait for the GM to finish this part",
   gmNarrateNote: "Narration: the GM writes one passage and stops",
   gmAdvanceNote: "Advance: after narrating, NPCs reply until a player is up",
@@ -114,13 +118,17 @@ export const en: PartyMessages = {
   whyAuth: "key failed",
   whyGone: "unavailable",
   regenSameBroken: "Regenerate with the same model ({why})",
-  undoConfirmHeldEdit: "This round will be discarded and everyone’s actions go back to them to edit.",
+  undoConfirmHeldEdit:
+    "This round will be discarded and everyone’s actions go back to them to edit.",
   undoConfirmHeldRegen: "This round will be rerun with the model you pick.",
   holdModelGone: "The GM model is unavailable",
   holdNotReady: "A GM key or sign-in failed",
-  gmErrGone: "The GM model is no longer available. Press “Regenerate last round” to rerun with another model",
-  gmErrAuth: "The GM model’s key or sign-in failed. Fix it in Settings, or press “Regenerate last round” to switch models",
-  gmErrQuota: "The GM hit a quota or rate limit. Retry in a moment, or press “Regenerate last round” to switch models",
+  gmErrGone:
+    "The GM model is no longer available. Press “Regenerate last round” to rerun with another model",
+  gmErrAuth:
+    "The GM model’s key or sign-in failed. Fix it in Settings, or press “Regenerate last round” to switch models",
+  gmErrQuota:
+    "The GM hit a quota or rate limit. Retry in a moment, or press “Regenerate last round” to switch models",
   gmErrNetwork: "The GM connection failed or timed out. You can just retry",
   gmErrOther: "The GM hit an error (code {code})",
   gmErrRefusal: "The provider blocked this GM turn. Retry with another model, or skip it",
@@ -129,13 +137,15 @@ export const en: PartyMessages = {
   roomErrOther: "Something went wrong with the room (code {code})",
   gmErrDetail: "Details",
   modelFailedLast: "failed last time",
-  regenTransientNote: "That was a connection or quota problem; you can just retry with the same model",
+  regenTransientNote:
+    "That was a connection or quota problem; you can just retry with the same model",
   undoRegenerate: "Regenerate last round",
   undoRegenerateHint: "Discard the GM's last round and rerun it with the same actions",
   undoRegenerateSwitch: "Regenerate with this model",
   undoEdit: "Take back last round",
   undoEditHint: "Discard the GM's last round and send everyone's actions back to them to edit",
-  undoConfirm: "This GM part will be discarded and everyone will see it disappear. This cannot be undone.",
+  undoConfirm:
+    "This GM part will be discarded and everyone will see it disappear. This cannot be undone.",
   cancel: "Cancel",
   markerRoundUndone: "The host took back the last round",
   markerSoloBefore: "The host played this part solo before",
@@ -145,7 +155,8 @@ export const en: PartyMessages = {
   returnedBring: "Bring back",
   returnedDrop: "Discard",
   returnedNotice: "The host took back the last round. Edit and send again, or send it as is.",
-  returnedTooLong: "Together they are too long to bring back. Delete some text first, then press Bring back.",
+  returnedTooLong:
+    "Together they are too long to bring back. Delete some text first, then press Bring back.",
 
   payerTitle: "GM quota (only you see this)",
   payerExecutor: "GM host",
@@ -195,7 +206,8 @@ export const en: PartyMessages = {
   errRemoved: "You were removed from the room",
   errRoomFull: "The room is full",
   errNameInvalid: "Names can't be blank, up to 24 characters, no control characters",
-  errTextInvalid: "Too long (2000 characters, 30 lines max) or contains characters that aren't allowed",
+  errTextInvalid:
+    "Too long (2000 characters, 30 lines max) or contains characters that aren't allowed",
   errForbidden: "Only the host or the quota owner can do that",
   errRoundStale: "The round already moved on; your text is still here",
   errRoundNotActing: "The GM is still talking; send later (you can keep typing)",
@@ -229,14 +241,16 @@ export const en: PartyMessages = {
   cardLoadFailed: "Couldn't load your character. Try again later.",
   cardTooLong: "This card is too long. Edit it on the computer.",
   cardRenameConfirm: "Rename your character to “{name}”?",
-  cardSecretPending: "Your character was created and seated, but the secret notes weren't saved yet. Please retry.",
+  cardSecretPending:
+    "Your character was created and seated, but the secret notes weren't saved yet. Please retry.",
   cardImage: "Character image",
   cardImageNone: "No image yet",
   cardImageUpload: "Upload image",
   cardImageRemove: "Remove image",
   cardGen: "AI image",
   cardGenNotice: "Uses the AI credits set up on GM host “{host}”",
-  cardGenConfirm: "This will use the AI credits on GM host “{host}” to generate an image. Continue?",
+  cardGenConfirm:
+    "This will use the AI credits on GM host “{host}” to generate an image. Continue?",
   cardGenOff: "The GM host turned off AI images",
   cardGenBusy: "Generating…",
   cardGenExtra: "Extra prompt (optional)",
@@ -256,7 +270,8 @@ export const en: PartyMessages = {
   cropCancel: "Cancel",
   zoomLabel: "Zoom",
   unsavedLeaveTitle: "Unsaved changes",
-  unsavedLeaveConfirm: "You have {n, plural, one {# unsaved change. Leave anyway? It will be lost.} other {# unsaved changes. Leave anyway? They will be lost.}}",
+  unsavedLeaveConfirm:
+    "You have {n, plural, one {# unsaved change. Leave anyway? It will be lost.} other {# unsaved changes. Leave anyway? They will be lost.}}",
   unsavedLeaveOk: "Discard changes",
   unsavedLeaveCancel: "Keep editing",
   errUploadFailed: "Upload failed. Please try again.",
@@ -293,7 +308,8 @@ export const en: PartyMessages = {
   hostDelegateOffline: "Let the AI play everyone who's offline ({n})",
   hostRemove: "Remove…",
   hostRemoveTitle: "Remove {name}?",
-  hostRemoveBody: "They lose their seat. If they come back with the old link, they pick a character again.",
+  hostRemoveBody:
+    "They lose their seat. If they come back with the old link, they pick a character again.",
   hostRemoveRole: "Their character:",
   hostRemoveAbsent: "Leaves the story",
   hostRemoveNpc: "GM plays them as an NPC",
@@ -302,10 +318,12 @@ export const en: PartyMessages = {
   hostInviteLoading: "Getting the invite link…",
   hostInviteOffline: "The computer is offline, so the current link isn't available",
   hostInviteNew: "New link",
-  hostInviteNewConfirm: "The old link stops working. Anyone who hasn't joined yet needs the new one.",
+  hostInviteNewConfirm:
+    "The old link stops working. Anyone who hasn't joined yet needs the new one.",
   hostCopy: "Copy",
   hostPause: "Pause room",
   hostPauseTitle: "Pause the room?",
-  hostPauseBody: "Everyone will see the host has paused the room. To continue, press “Reopen room” on the computer ({label}).",
+  hostPauseBody:
+    "Everyone will see the host has paused the room. To continue, press “Reopen room” on the computer ({label}).",
   hostPauseOffline: "The computer is offline; the room is already stopped",
 };

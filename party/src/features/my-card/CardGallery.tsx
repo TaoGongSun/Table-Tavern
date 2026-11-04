@@ -55,15 +55,30 @@ export function CardGallery({ act, inUse, picked, onPick }: Props) {
     <div className="card-gallery" data-testid="card-gallery">
       <div className="card-gallery-grid">
         {items.map((it) => (
-          <button key={it.file} type="button" className={`card-gallery-thumb${it.file === picked ? " picked" : ""}`} disabled={!!busy} onClick={() => void pick(it.file)}>
+          <button
+            key={it.file}
+            type="button"
+            className={`card-gallery-thumb${it.file === picked ? " picked" : ""}`}
+            disabled={!!busy}
+            onClick={() => void pick(it.file)}
+          >
             <img src={it.thumb} alt="" />
-            {it.file === inUse && <span className="card-gallery-badge">{t("cardGalleryInUse")}</span>}
+            {it.file === inUse && (
+              <span className="card-gallery-badge">{t("cardGalleryInUse")}</span>
+            )}
           </button>
         ))}
       </div>
       {busy === "list" && <p className="muted">{t("cardLoading")}</p>}
       {more > 0 && busy !== "list" && (
-        <button type="button" className="ghost" disabled={!!busy} onClick={() => void load(items[items.length - 1]?.file)}>{t("cardGalleryMore", { n: more })}</button>
+        <button
+          type="button"
+          className="ghost"
+          disabled={!!busy}
+          onClick={() => void load(items[items.length - 1]?.file)}
+        >
+          {t("cardGalleryMore", { n: more })}
+        </button>
       )}
       {error && <div className="field-error">{error}</div>}
     </div>

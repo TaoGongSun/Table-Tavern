@@ -11,7 +11,9 @@ describe("匯出成網頁存檔", () => {
     await room.send("a", "action.skip", { round: 2 });
     const dispatchId = room.dispatchId();
     const part = (n: number, speaker: unknown, text: string, interrupted = false) =>
-      room.send("x1", "gen.part.begin", { dispatchId, part: n, speaker }).then(() => room.send("x1", "gen.part.end", { dispatchId, part: n, text, interrupted }));
+      room
+        .send("x1", "gen.part.begin", { dispatchId, part: n, speaker })
+        .then(() => room.send("x1", "gen.part.end", { dispatchId, part: n, text, interrupted }));
     await part(0, { kind: "gm" }, "門開了");
     await part(1, { kind: "npc", cardId: "npc", name: "店主" }, "歡迎", true);
     await part(2, { kind: "system", marker: "state_update" }, "狀態");
@@ -24,7 +26,9 @@ describe("匯出成網頁存檔", () => {
     expect(deny?.http?.status).toBe(403);
     const out = await room.run({ kind: "http", route: "export", deviceId: room.deviceId("a") });
     const save = out!.http!.body as Record<string, any>;
-    expect(save.messages.map((m: { id: string; role: string; text: string }) => [m.id, m.role, m.text])).toEqual([
+    expect(
+      save.messages.map((m: { id: string; role: string; text: string }) => [m.id, m.role, m.text]),
+    ).toEqual([
       ["r1p0", "char", "開場"],
       ["r2a1", "user", "角色2：我推門"],
       ["r2p0", "char", "門開了"],
@@ -32,20 +36,40 @@ describe("匯出成網頁存檔", () => {
       ["s1", "char", "第一幕結束"],
     ]);
     expect(save.messages[3].interrupted).toBe(true);
-    expect(save.card).toEqual({ spec: "chara_card_v2", spec_version: "2.0", data: { name: "GM", first_mes: "開場" } });
+    expect(save.card).toEqual({
+      spec: "chara_card_v2",
+      spec_version: "2.0",
+      data: { name: "GM", first_mes: "開場" },
+    });
     expect(save.user_name).toBe("a");
     expect(save.extensions.table_tavern_room).toMatchObject({
       version: 1,
-      scenes: [{ scene: 1, firstMessageId: "r1p0", summaryMessageId: "s1" }, { scene: 2, firstMessageId: null, summaryMessageId: null }],
-      speakers: { r2a1: { kind: "player", cardId: "c2", name: "角色2" }, r2p1: { kind: "npc", cardId: "npc", name: "店主" } },
+      scenes: [
+        { scene: 1, firstMessageId: "r1p0", summaryMessageId: "s1" },
+        { scene: 2, firstMessageId: null, summaryMessageId: null },
+      ],
+      speakers: {
+        r2a1: { kind: "player", cardId: "c2", name: "角色2" },
+        r2p1: { kind: "npc", cardId: "npc", name: "店主" },
+      },
     });
-    expect(save.extensions.table_tavern_room.cast).toContainEqual({ cardId: "c1", name: "角色1", player: true });
+    expect(save.extensions.table_tavern_room.cast).toContainEqual({
+      cardId: "c1",
+      name: "角色1",
+      player: true,
+    });
     const text = JSON.stringify(save);
     expect(text).not.toMatch(/memberId|m1|m2|dev-/);
 
     const parsed = parseWebSave(text);
     expect(parsed.ok).toBe(true);
     const restored = restoreWebSaveText(text);
-    expect(restored.ok && restored.game.entries.map((e) => e.role)).toEqual(["char", "user", "char", "char", "char"]);
+    expect(restored.ok && restored.game.entries.map((e) => e.role)).toEqual([
+      "char",
+      "user",
+      "char",
+      "char",
+      "char",
+    ]);
   });
 });

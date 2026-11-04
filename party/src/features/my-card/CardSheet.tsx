@@ -27,7 +27,9 @@ interface Props {
 
 export function CardSheet({ view, act, mode, upload, onClose }: Props) {
   const { run, error, setError } = useRun(act);
-  const [saved, setSaved] = useState<Fields | null>(mode === "create" ? { ...EMPTY, name: view.me.nickname } : null);
+  const [saved, setSaved] = useState<Fields | null>(
+    mode === "create" ? { ...EMPTY, name: view.me.nickname } : null,
+  );
   const [f, setF] = useState<Fields>(saved ?? EMPTY);
   const [image, setImage] = useState<string | null>(null);
   const [gallery, setGallery] = useState({ count: 0, inUse: null as string | null });
@@ -41,9 +43,15 @@ export function CardSheet({ view, act, mode, upload, onClose }: Props) {
   useEffect(() => {
     if (mode !== "edit") return;
     void act("card.mine").then((reply) => {
-      if (!reply.ok) return setError(reply.code === "E_TEXT_INVALID" ? t("cardTooLong") : t("cardLoadFailed"));
+      if (!reply.ok)
+        return setError(reply.code === "E_TEXT_INVALID" ? t("cardTooLong") : t("cardLoadFailed"));
       const c = reply.result.card;
-      const loaded = { name: c.name, avatar: c.avatar, publicMd: c.publicMd, privateMd: c.privateMd };
+      const loaded = {
+        name: c.name,
+        avatar: c.avatar,
+        publicMd: c.publicMd,
+        privateMd: c.privateMd,
+      };
       setSaved(loaded);
       setF(loaded);
       setImage(c.image);
@@ -52,7 +60,8 @@ export function CardSheet({ view, act, mode, upload, onClose }: Props) {
     });
   }, [mode, act, setError]);
 
-  const set = (k: keyof Fields) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
+  const set = (k: keyof Fields) => (e: { target: { value: string } }) =>
+    setF({ ...f, [k]: e.target.value });
 
   /** 只送改過的欄位；圖示空白不送（伺服器要 1–16 字元） */
   function changed(base: Fields): Record<string, string> {
@@ -69,13 +78,16 @@ export function CardSheet({ view, act, mode, upload, onClose }: Props) {
     const patch: Record<string, unknown> = { ...fields };
     if (d && "png" in d) {
       // 新圖先上傳（執行端換好圖才回），成功就算已存，之後存欄位失敗重試也不用再傳
-      const r = upload ? await upload("image", d.png) : { ok: false as const, code: "E_INTERNAL" as const };
+      const r = upload
+        ? await upload("image", d.png)
+        : { ok: false as const, code: "E_INTERNAL" as const };
       if (!r.ok) return (setError(errorText(r.code ?? "E_INTERNAL")), false);
       setImage(d.preview);
       setDraftImage(undefined);
     } else if (d === null) patch.removeImage = true;
     else if (d) Object.assign(patch, { imageFromGallery: d.file }, d.crop && { crop: d.crop });
-    if (Object.keys(patch).length && !(await run("card.save", { cardId: id, ...patch }))) return false;
+    if (Object.keys(patch).length && !(await run("card.save", { cardId: id, ...patch })))
+      return false;
     onClose();
     return true;
   }
@@ -85,12 +97,20 @@ export function CardSheet({ view, act, mode, upload, onClose }: Props) {
     setBusy(true);
     if (cardId) {
       const patch = changed(saved);
-      if (!patch.name || mode === "create" || window.confirm(t("cardRenameConfirm", { name: patch.name }))) await saveTo(cardId, patch);
+      if (
+        !patch.name ||
+        mode === "create" ||
+        window.confirm(t("cardRenameConfirm", { name: patch.name }))
+      )
+        await saveTo(cardId, patch);
       return setBusy(false);
     }
     // 建立：seat.create 只收名字與公開描述（≤1000 字、30 行）；放不進的公開描述、圖示、秘密段入座後再存
     const blurbFits = cleanText(f.publicMd, 0, 1000) !== null;
-    const made = await run("seat.create", { name: f.name.trim(), blurb: blurbFits ? f.publicMd : "" });
+    const made = await run("seat.create", {
+      name: f.name.trim(),
+      blurb: blurbFits ? f.publicMd : "",
+    });
     if (made) {
       const base = { ...EMPTY, name: f.name.trim(), publicMd: blurbFits ? f.publicMd : "" };
       setCardId(made.cardId);
@@ -102,30 +122,54 @@ export function CardSheet({ view, act, mode, upload, onClose }: Props) {
 
   const loading = mode === "edit" && !saved;
   // 未存修改照桌面版 CardEditor 算：欄位一項、圖的草稿（上傳、移除、用這張選進的生圖）一項
-  const unsaved = saved ? (Object.keys(changed(saved)).length ? 1 : 0) + (draftImage !== undefined ? 1 : 0) : 0;
+  const unsaved = saved
+    ? (Object.keys(changed(saved)).length ? 1 : 0) + (draftImage !== undefined ? 1 : 0)
+    : 0;
   const back = () => (unsaved ? setLeaving(true) : onClose());
   return (
-    <form className="panel card-sheet" data-testid="card-sheet" onSubmit={(e) => (e.preventDefault(), void submit())}>
+    <form
+      className="panel card-sheet"
+      data-testid="card-sheet"
+      onSubmit={(e) => (e.preventDefault(), void submit())}
+    >
       <h2>{t(mode === "create" ? "seatCreate" : "cardEdit")}</h2>
       {/* 動作鈕置頂（標題正下方） */}
       <div className="panel-actions">
-        <button type="submit" disabled={busy || loading || !f.name.trim()}>{t(pending ? "cardRetry" : "cardSave")}</button>
-        <button type="button" className="ghost" disabled={busy} onClick={back}>{t("cardCancel")}</button>
+        <button type="submit" disabled={busy || loading || !f.name.trim()}>
+          {t(pending ? "cardRetry" : "cardSave")}
+        </button>
+        <button type="button" className="ghost" disabled={busy} onClick={back}>
+          {t("cardCancel")}
+        </button>
       </div>
       {leaving && (
         // 照桌面版的離開確認：兩選，預設焦點在「繼續編輯」，誤按 Enter 不會捨棄
-        <div className="leave-confirm" role="alertdialog" aria-labelledby="leave-title" data-testid="leave-confirm" onKeyDown={(e) => e.key === "Escape" && setLeaving(false)}>
+        <div
+          className="leave-confirm"
+          role="alertdialog"
+          aria-labelledby="leave-title"
+          data-testid="leave-confirm"
+          onKeyDown={(e) => e.key === "Escape" && setLeaving(false)}
+        >
           <div className="leave-box">
             <h3 id="leave-title">{t("unsavedLeaveTitle")}</h3>
             <p>{t("unsavedLeaveConfirm", { n: unsaved })}</p>
             <div className="panel-actions">
-              <button type="button" autoFocus onClick={() => setLeaving(false)}>{t("unsavedLeaveCancel")}</button>
-              <button type="button" className="danger" onClick={onClose}>{t("unsavedLeaveOk")}</button>
+              <button type="button" autoFocus onClick={() => setLeaving(false)}>
+                {t("unsavedLeaveCancel")}
+              </button>
+              <button type="button" className="danger" onClick={onClose}>
+                {t("unsavedLeaveOk")}
+              </button>
             </div>
           </div>
         </div>
       )}
-      {pending && <div className="field-error" data-testid="card-pending">{t("cardSecretPending")}</div>}
+      {pending && (
+        <div className="field-error" data-testid="card-pending">
+          {t("cardSecretPending")}
+        </div>
+      )}
       {error && <div className="field-error">{error}</div>}
       {loading ? (
         !error && <p className="muted">{t("cardLoading")}</p>
@@ -155,12 +199,25 @@ export function CardSheet({ view, act, mode, upload, onClose }: Props) {
           </label>
           <label>
             {t("seatCreateBlurb")}
-            <textarea value={f.publicMd} maxLength={64000} rows={5} onChange={set("publicMd")} data-testid="card-public" />
+            <textarea
+              value={f.publicMd}
+              maxLength={64000}
+              rows={5}
+              onChange={set("publicMd")}
+              data-testid="card-public"
+            />
           </label>
           <label>
             {t("cardPrivate")}
             <span className="muted">{t("cardPrivateHint")}</span>
-            <textarea value={f.privateMd} maxLength={64000} rows={5} placeholder={t("cardPrivatePlaceholder")} onChange={set("privateMd")} data-testid="card-private" />
+            <textarea
+              value={f.privateMd}
+              maxLength={64000}
+              rows={5}
+              placeholder={t("cardPrivatePlaceholder")}
+              onChange={set("privateMd")}
+              data-testid="card-private"
+            />
           </label>
         </fieldset>
       )}

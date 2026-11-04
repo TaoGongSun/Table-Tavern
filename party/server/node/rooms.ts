@@ -29,7 +29,10 @@ export class Room {
   readonly socks = new Map<string, Sock>();
   readonly runner: RoomRunner;
 
-  constructor(private readonly rooms: Rooms, readonly code: string) {
+  constructor(
+    private readonly rooms: Rooms,
+    readonly code: string,
+  ) {
     const conns: Connections = {
       send: (id, text) => tryIt(() => this.socks.get(id)?.ws.send(text)),
       close: (id, code) => tryIt(() => this.socks.get(id)?.ws.close(code)),
@@ -42,7 +45,9 @@ export class Room {
   /** 45 秒沒心跳的成員關掉並排進離線；同步排進佇列，不會和後面的訊框調換順序 */
   sweep(): Promise<unknown>[] {
     const now = this.rooms.now();
-    return [...this.socks.values()].filter((s) => s.info.role === "member" && now - s.lastPing > MEMBER_STALE_MS).map((s) => this.drop(s, 1001));
+    return [...this.socks.values()]
+      .filter((s) => s.info.role === "member" && now - s.lastPing > MEMBER_STALE_MS)
+      .map((s) => this.drop(s, 1001));
   }
 
   /** 斷線收尾：error、close、掃描共用，可重複呼叫，只送一次 disconnect */
@@ -67,7 +72,10 @@ export class Rooms {
   private readonly timers = new Map<string, unknown>();
   readonly now: () => number;
 
-  constructor(readonly db: RoomDb, private readonly opts: RoomsOpts = {}) {
+  constructor(
+    readonly db: RoomDb,
+    private readonly opts: RoomsOpts = {},
+  ) {
     this.now = opts.now ?? Date.now;
   }
 
@@ -87,7 +95,8 @@ export class Rooms {
       return await fn(room);
     } finally {
       room.work--;
-      if (room.work === 0 && room.socks.size === 0 && this.map.get(code) === room) this.map.delete(code);
+      if (room.work === 0 && room.socks.size === 0 && this.map.get(code) === room)
+        this.map.delete(code);
     }
   }
 
@@ -120,11 +129,14 @@ export class Rooms {
     this.timers.delete(code);
     if (at === null) return;
     const set = this.opts.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
-    const t = set(() => {
-      this.timers.delete(code);
-      if (this.now() < at) return this.arm(code, at);
-      guard(this.with(code, (room) => room.run({ kind: "alarm" })));
-    }, Math.min(MAX_TIMER_MS, Math.max(0, at - this.now())));
+    const t = set(
+      () => {
+        this.timers.delete(code);
+        if (this.now() < at) return this.arm(code, at);
+        guard(this.with(code, (room) => room.run({ kind: "alarm" })));
+      },
+      Math.min(MAX_TIMER_MS, Math.max(0, at - this.now())),
+    );
     this.timers.set(code, t);
   }
 
@@ -135,7 +147,8 @@ export class Rooms {
 
   /** 死 TCP 不一定有 close 事件：定期掃一次已載入房間的成員心跳 */
   sweepAll() {
-    for (const code of [...this.map.keys()]) guard(this.with(code, (room) => Promise.all(room.sweep())));
+    for (const code of [...this.map.keys()])
+      guard(this.with(code, (room) => Promise.all(room.sweep())));
   }
 
   /** 關機：全部連線 1001（客戶端照退避重連），等各房工作跑完 */
@@ -143,7 +156,8 @@ export class Rooms {
     const clear = this.opts.clearTimer ?? ((t) => clearTimeout(t as NodeJS.Timeout));
     for (const t of this.timers.values()) clear(t);
     this.timers.clear();
-    for (const room of this.map.values()) for (const s of room.socks.values()) tryIt(() => s.ws.close(1001));
+    for (const room of this.map.values())
+      for (const s of room.socks.values()) tryIt(() => s.ws.close(1001));
     const until = Date.now() + waitMs;
     while (this.map.size && Date.now() < until) await new Promise((r) => setTimeout(r, 50));
   }

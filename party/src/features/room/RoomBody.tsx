@@ -19,18 +19,39 @@ export interface DesktopHooks {
   seatEntry?: ReactNode;
 }
 
-export function RoomBody({ room, origin, desktop }: { room: RoomSession; origin: string; desktop?: DesktopHooks }) {
+export function RoomBody({
+  room,
+  origin,
+  desktop,
+}: {
+  room: RoomSession;
+  origin: string;
+  desktop?: DesktopHooks;
+}) {
   const [left, setLeft] = useState(false);
   // 房間關了仍留著畫面唯讀（房主還能匯出，§2）；其餘致命錯誤整頁顯示原因
   const closed = room.fatal === "E_ROOM_CLOSED" && room.view;
   if (left) return <p className="center-note">{t("leftRoom")}</p>;
-  if (room.fatal && !closed) return <p className="center-note" data-testid="fatal">{errorText(room.fatal)}</p>;
+  if (room.fatal && !closed)
+    return (
+      <p className="center-note" data-testid="fatal">
+        {errorText(room.fatal)}
+      </p>
+    );
   if (!room.view) return <p className="center-note">{t("connecting")}</p>;
   const notice = room.notice && errorText(room.notice);
   return (
     <>
-      {closed ? <div className="banner">{t("errRoomClosed")}</div> : room.status !== "online" && <div className="banner">{t("reconnecting")}</div>}
-      {notice && <button type="button" className="banner" onClick={room.clearNotice}>{notice}</button>}
+      {closed ? (
+        <div className="banner">{t("errRoomClosed")}</div>
+      ) : (
+        room.status !== "online" && <div className="banner">{t("reconnecting")}</div>
+      )}
+      {notice && (
+        <button type="button" className="banner" onClick={room.clearNotice}>
+          {notice}
+        </button>
+      )}
       <RoomScreen
         view={room.view}
         c={{

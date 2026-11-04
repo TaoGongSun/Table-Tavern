@@ -16,10 +16,23 @@ export function PairForm({ act }: { act: Act }) {
     >
       <label>
         {t("pairTitle")}
-        <input value={code} maxLength={9} placeholder="XXXX-XXXX" autoCapitalize="characters" data-testid="pair-code" onChange={(e) => setCode(e.target.value)} />
+        <input
+          value={code}
+          maxLength={9}
+          placeholder="XXXX-XXXX"
+          autoCapitalize="characters"
+          data-testid="pair-code"
+          onChange={(e) => setCode(e.target.value)}
+        />
       </label>
-      <button type="submit" disabled={!code.trim()}>{t("pairButton")}</button>
-      {error && <div className="field-error" data-testid="pair-error">{error}</div>}
+      <button type="submit" disabled={!code.trim()}>
+        {t("pairButton")}
+      </button>
+      {error && (
+        <div className="field-error" data-testid="pair-error">
+          {error}
+        </div>
+      )}
     </form>
   );
 }

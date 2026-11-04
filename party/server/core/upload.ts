@@ -36,7 +36,13 @@ async function receive(runner: RoomRunner, req: UploadRequest): Promise<Reply> {
   if (!/^\d{1,10}$/.test(req.contentLength ?? "")) return err(411, "E_LENGTH_REQUIRED");
   const length = Number(req.contentLength);
   if (length > UPLOAD_MAX[kind]) return err(413, "E_TOO_LARGE");
-  const reserved = await runner.run({ kind: "http", route: "upload_reserve", deviceId: req.deviceId, uploadKind: kind, length });
+  const reserved = await runner.run({
+    kind: "http",
+    route: "upload_reserve",
+    deviceId: req.deviceId,
+    uploadKind: kind,
+    length,
+  });
   if (reserved?.http?.status !== 200) return reserved?.http ?? err(500, "E_INTERNAL");
   const uploadId = (reserved.http.body as { uploadId: string }).uploadId;
   const buf = new Uint8Array(length);

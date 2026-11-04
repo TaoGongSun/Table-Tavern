@@ -10,7 +10,8 @@ export const fr: PartyMessages = {
   hostRemove: "Retirer…",
   hostKick: "Retirer",
   seatRelease: "Céder sa place",
-  seatReleaseConfirm: "Céder votre place ? Vous ne contrôlerez plus ce personnage et devrez en choisir un pour vous rasseoir.",
+  seatReleaseConfirm:
+    "Céder votre place ? Vous ne contrôlerez plus ce personnage et devrez en choisir un pour vous rasseoir.",
   badgePayer: "Utilise son quota",
   badgePayerSelf: "Utilise mon quota",
   badgePayerHint: "Le GM utilise le quota IA de cette personne",

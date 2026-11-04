@@ -29,6 +29,7 @@ const steps = [
   { name: "web vitest", cmd: "npm", args: ["test"], cwd: WEB, shell: WIN },
   { name: "web build", cmd: "npm", args: ["run", "build"], cwd: WEB, shell: WIN },
   // 多人房間（party/，自己一份 package.json）：伺服器核心＋Workers 殼＋手機客戶端；匯出測試引網頁版存檔解碼，排在 web 之後
+  { name: "party format", cmd: "npm", args: ["run", "format:check"], cwd: PARTY, shell: WIN },
   { name: "party vitest", cmd: "npm", args: ["test"], cwd: PARTY, shell: WIN },
   { name: "party typecheck", cmd: "npm", args: ["run", "typecheck"], cwd: PARTY, shell: WIN },
   { name: "party build", cmd: "npm", args: ["run", "build"], cwd: PARTY, shell: WIN },

@@ -10,7 +10,8 @@ export const ko: PartyMessages = {
   hostRemove: "제거…",
   hostKick: "제거",
   seatRelease: "자리 양보",
-  seatReleaseConfirm: "자리를 양보할까요? 이 캐릭터를 더 이상 조종하지 않습니다. 다시 앉으려면 캐릭터를 새로 선택해야 합니다.",
+  seatReleaseConfirm:
+    "자리를 양보할까요? 이 캐릭터를 더 이상 조종하지 않습니다. 다시 앉으려면 캐릭터를 새로 선택해야 합니다.",
   badgePayer: "이 사람의 한도 사용",
   badgePayerSelf: "내 한도 사용",
   badgePayerHint: "GM은 이 사람의 AI 사용 한도로 실행됩니다",

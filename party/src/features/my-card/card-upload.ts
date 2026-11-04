@@ -5,20 +5,33 @@ import type { ErrorCode } from "../../../server/core/types";
 import type { UploadResult } from "../room/useRoom";
 
 export type UploadKind = "card" | "image";
-export type Upload = (kind: UploadKind, body: Blob) => Promise<UploadResult & { retryAfterMs?: number }>;
+export type Upload = (
+  kind: UploadKind,
+  body: Blob,
+) => Promise<UploadResult & { retryAfterMs?: number }>;
 
-export function makeUpload(fetchFn: typeof fetch, code: string, deviceId: string, awaitUpload: (id: string) => Promise<UploadResult>): Upload {
+export function makeUpload(
+  fetchFn: typeof fetch,
+  code: string,
+  deviceId: string,
+  awaitUpload: (id: string) => Promise<UploadResult>,
+): Upload {
   return async (kind, body) => {
     // 宣告超過上限的請求伺服器回完 413 就斷線，瀏覽器常只看到連線錯誤：先擋
     if (body.size > UPLOAD_MAX[kind]) return { ok: false, code: "E_TOO_LARGE" };
     let res: Response;
     try {
-      res = await fetchFn(`/api/rooms/${code}/cards?kind=${kind}`, { method: "POST", headers: { Authorization: `Bearer ${deviceId}` }, body });
+      res = await fetchFn(`/api/rooms/${code}/cards?kind=${kind}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${deviceId}` },
+        body,
+      });
     } catch {
       return { ok: false, code: "E_OFFLINE" as ErrorCode };
     }
     const data = await res.json().catch(() => ({}));
-    if (res.status !== 202 || typeof data.uploadId !== "string") return { ok: false, code: data.code ?? "E_INTERNAL", retryAfterMs: data.retryAfterMs };
+    if (res.status !== 202 || typeof data.uploadId !== "string")
+      return { ok: false, code: data.code ?? "E_INTERNAL", retryAfterMs: data.retryAfterMs };
     return awaitUpload(data.uploadId);
   };
 }
@@ -61,7 +74,12 @@ export async function cropTo(src: Blob, box: CropBox, maxWidth: number): Promise
   } catch {
     return null;
   }
-  const [sx, sy, sw, sh] = [box.x * bitmap.width, box.y * bitmap.height, box.w * bitmap.width, box.h * bitmap.height];
+  const [sx, sy, sw, sh] = [
+    box.x * bitmap.width,
+    box.y * bitmap.height,
+    box.w * bitmap.width,
+    box.h * bitmap.height,
+  ];
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(Math.min(sw, maxWidth)));
   canvas.height = Math.max(1, Math.round((sh * canvas.width) / sw));

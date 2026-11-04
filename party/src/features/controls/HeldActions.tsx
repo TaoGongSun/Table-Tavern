@@ -8,7 +8,15 @@ import type { RoomView } from "../room/room-state";
 import { useRun, type Act } from "../room/useRoom";
 import { RoutePicker } from "./RoutePicker";
 
-export function HeldActions({ view, act, resumed }: { view: RoomView; act: Act; resumed: (round: number) => void }) {
+export function HeldActions({
+  view,
+  act,
+  resumed,
+}: {
+  view: RoomView;
+  act: Act;
+  resumed: (round: number) => void;
+}) {
   const { run, error, setError } = useRun(act);
   const [open, setOpen] = useState(false);
   const r = view.round;
@@ -26,16 +34,33 @@ export function HeldActions({ view, act, resumed }: { view: RoomView; act: Act; 
   const byRoute = actions.includes("switch_route");
   const byModel = actions.includes("switch_model");
   const canSwitch = byRoute || byModel;
-  const routes = byRoute ? view.routes : (view.routes?.filter((x) => x.route === cur?.route) ?? null);
+  const routes = byRoute
+    ? view.routes
+    : (view.routes?.filter((x) => x.route === cur?.route) ?? null);
   return (
     <>
       {actions.includes("retry") && (
         // 模型本身用不了時重試沒用：主按鈕讓給換模型
-        <button type="button" className={broken ? undefined : "primary"} onClick={() => void ctl({ kind: "retry" })}>{t("payerRetry")}</button>
+        <button
+          type="button"
+          className={broken ? undefined : "primary"}
+          onClick={() => void ctl({ kind: "retry" })}
+        >
+          {t("payerRetry")}
+        </button>
       )}
       {canSwitch && (
-        <span className="held-switch-anchor" onKeyDown={(e) => e.key === "Escape" && setOpen(false)}>
-          <button type="button" className={broken ? "primary" : undefined} aria-expanded={open} onClick={() => setOpen(!open)} data-testid="held-switch">
+        <span
+          className="held-switch-anchor"
+          onKeyDown={(e) => e.key === "Escape" && setOpen(false)}
+        >
+          <button
+            type="button"
+            className={broken ? "primary" : undefined}
+            aria-expanded={open}
+            onClick={() => setOpen(!open)}
+            data-testid="held-switch"
+          >
             {t("heldSwitch")} ▾
           </button>
           {open && (
@@ -45,13 +70,23 @@ export function HeldActions({ view, act, resumed }: { view: RoomView; act: Act; 
                 current={cur}
                 broken={broken}
                 label={t("payerSwitchApply")}
-                onPick={(c) => void ctl(byModel && c.route === cur?.route ? { kind: "switch_model", model: c.model } : { kind: "switch_route", ...c })}
+                onPick={(c) =>
+                  void ctl(
+                    byModel && c.route === cur?.route
+                      ? { kind: "switch_model", model: c.model }
+                      : { kind: "switch_route", ...c },
+                  )
+                }
               />
             </div>
           )}
         </span>
       )}
-      {error && <span className="field-error" data-testid="held-error">{error}</span>}
+      {error && (
+        <span className="field-error" data-testid="held-error">
+          {error}
+        </span>
+      )}
     </>
   );
 }

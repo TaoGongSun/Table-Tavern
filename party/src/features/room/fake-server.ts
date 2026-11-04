@@ -13,7 +13,10 @@ export class FakeSocket implements SocketLike {
   readonly sent: any[] = [];
   private cursor = 0;
 
-  constructor(private readonly hub: Hub, readonly id: string) {
+  constructor(
+    private readonly hub: Hub,
+    readonly id: string,
+  ) {
     void hub.room.connect(id).then(() => {
       this.readyState = 1;
       this.onopen?.({});
@@ -21,7 +24,9 @@ export class FakeSocket implements SocketLike {
   }
   send(text: string) {
     this.sent.push(JSON.parse(text));
-    void this.hub.room.run({ kind: "frame", conn: { id: this.id, role: "member" }, raw: text }).then(() => this.hub.flush());
+    void this.hub.room
+      .run({ kind: "frame", conn: { id: this.id, role: "member" }, raw: text })
+      .then(() => this.hub.flush());
   }
   close(code = 1000) {
     if (this.readyState === 3) return;

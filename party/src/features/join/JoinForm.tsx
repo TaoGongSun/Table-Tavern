@@ -9,10 +9,22 @@ const OPEN_IN_BROWSER = {
 };
 
 export function OpenInBrowserBanner({ app }: { app: "qq" | "wechat" }) {
-  return <div className="banner" lang="zh-CN" data-testid={`in-app-${app}`}>{OPEN_IN_BROWSER[app]}</div>;
+  return (
+    <div className="banner" lang="zh-CN" data-testid={`in-app-${app}`}>
+      {OPEN_IN_BROWSER[app]}
+    </div>
+  );
 }
 
-export function JoinForm({ code, canJoin, onJoin }: { code: string; canJoin: boolean; onJoin: (nickname: string) => void }) {
+export function JoinForm({
+  code,
+  canJoin,
+  onJoin,
+}: {
+  code: string;
+  canJoin: boolean;
+  onJoin: (nickname: string) => void;
+}) {
   const [nickname, setNickname] = useState("");
   if (!canJoin) return <p className="center-note">{t("joinNeedInvite")}</p>;
   return (
@@ -26,9 +38,17 @@ export function JoinForm({ code, canJoin, onJoin }: { code: string; canJoin: boo
       <h1>{t("joinTitle", { code })}</h1>
       <label>
         {t("joinNickname")}
-        <input value={nickname} maxLength={24} autoFocus data-testid="nickname" onChange={(e) => setNickname(e.target.value)} />
+        <input
+          value={nickname}
+          maxLength={24}
+          autoFocus
+          data-testid="nickname"
+          onChange={(e) => setNickname(e.target.value)}
+        />
       </label>
-      <button type="submit" className="primary" disabled={!nickname.trim()}>{t("joinButton")}</button>
+      <button type="submit" className="primary" disabled={!nickname.trim()}>
+        {t("joinButton")}
+      </button>
     </form>
   );
 }

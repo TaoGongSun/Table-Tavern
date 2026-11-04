@@ -1,21 +1,61 @@
 // 執行端 → 伺服器訊息（協定 §6.2）：派工結果以 dispatchId／(dispatchId, part)／jobId 冪等收下。
 import { uploadResult } from "./cards";
 import { claim, type Handler } from "./member";
-import { announceExec, cancelRound, hold, MIN, openRound, pushDispatch, reopen, unseat } from "./round";
+import {
+  announceExec,
+  cancelRound,
+  hold,
+  MIN,
+  openRound,
+  pushDispatch,
+  reopen,
+  unseat,
+} from "./round";
 import { keptCount, storyOf, type KeepThrough } from "./snapshot";
 import { crockford, sameHash, sha256Hex } from "./secrets";
 import { Fail, need, type Tx } from "./tx";
-import type { ErrorCode, Job, PendingJob, PublicCard, PublicExecutorError, RoomState, StoryPart, SyncItem } from "./types";
-import { cleanCapabilities, cleanCards, cleanError, cleanHistory, cleanQuota, cleanSceneState, cleanSpeaker, cleanSyncItems, ID64 } from "./validate";
+import type {
+  ErrorCode,
+  Job,
+  PendingJob,
+  PublicCard,
+  PublicExecutorError,
+  RoomState,
+  StoryPart,
+  SyncItem,
+} from "./types";
+import {
+  cleanCapabilities,
+  cleanCards,
+  cleanError,
+  cleanHistory,
+  cleanQuota,
+  cleanSceneState,
+  cleanSpeaker,
+  cleanSyncItems,
+  ID64,
+} from "./validate";
 
-const OTHER: PublicExecutorError = { kind: "other", actions: ["retry", "continue"], resetsAt: null };
-const pub = (e: { kind: PublicExecutorError["kind"]; actions: PublicExecutorError["actions"]; resetsAt: number | null } | null): PublicExecutorError =>
-  e ? { kind: e.kind, actions: e.actions, resetsAt: e.resetsAt } : OTHER;
+const OTHER: PublicExecutorError = {
+  kind: "other",
+  actions: ["retry", "continue"],
+  resetsAt: null,
+};
+const pub = (
+  e: {
+    kind: PublicExecutorError["kind"];
+    actions: PublicExecutorError["actions"];
+    resetsAt: number | null;
+  } | null,
+): PublicExecutorError => (e ? { kind: e.kind, actions: e.actions, resetsAt: e.resetsAt } : OTHER);
 
 /** 當前派工、而且還在跑（queued 或 generating）才收；收到即視為已接手（queued → generating） */
 function live(tx: Tx, dispatchId: string) {
   const r = tx.s.round;
-  need(r && r.dispatchId === dispatchId && (r.phase === "queued" || r.phase === "generating"), "E_DISPATCH_UNKNOWN");
+  need(
+    r && r.dispatchId === dispatchId && (r.phase === "queued" || r.phase === "generating"),
+    "E_DISPATCH_UNKNOWN",
+  );
   const w = tx.w.round!;
   Object.assign(w, { phase: "generating", genAt: tx.now });
   return w;
@@ -26,8 +66,13 @@ function replaceCards(tx: Tx, incoming: PublicCard[]) {
   need(JSON.stringify(incoming).length <= 1 << 20, "E_STATE_CONFLICT", "roster_too_large"); // 不關連線，免得執行端重連再送又被關
   const w = tx.w;
   const owner = new Map(w.cards.map((c) => [c.cardId, c.claimedBy]));
-  w.cards = incoming.map((c) => ({ ...c, claimedBy: owner.get(c.cardId) ?? null, ...(w.reserved?.cardId === c.cardId ? { reserved: true } : {}) }));
-  for (const m of w.members) if (m.cardId && !w.cards.some((c) => c.cardId === m.cardId && c.playable)) unseat(tx, m);
+  w.cards = incoming.map((c) => ({
+    ...c,
+    claimedBy: owner.get(c.cardId) ?? null,
+    ...(w.reserved?.cardId === c.cardId ? { reserved: true } : {}),
+  }));
+  for (const m of w.members)
+    if (m.cardId && !w.cards.some((c) => c.cardId === m.cardId && c.playable)) unseat(tx, m);
   tx.emit("roster.updated", { cards: w.cards });
 }
 
@@ -91,14 +136,20 @@ function undoResult(tx: Tx, j: PendingJob, p: any) {
   }
   // 原文一律另存給本人，草稿不動；登場與離席放回待帶清單
   for (const a of ld.actions) {
-    if (a.kind !== "act" || !a.text || !w.members.some((m) => m.id === a.memberId && !m.banned)) continue;
+    if (a.kind !== "act" || !a.text || !w.members.some((m) => m.id === a.memberId && !m.banned))
+      continue;
     (w.returned ??= {})[a.memberId] = a.text;
     tx.toMember(a.memberId, "vol", { type: "returned", text: a.text });
   }
   for (const m of w.members) if (m.cardId && ld.arrivals.includes(m.cardId)) m.arriving = true;
-  w.departures = [...ld.departures.filter((d) => !w.departures.some((x) => x.cardId === d.cardId)), ...w.departures];
+  w.departures = [
+    ...ld.departures.filter((d) => !w.departures.some((x) => x.cardId === d.cardId)),
+    ...w.departures,
+  ];
   // 從代管接回的卡一併放回（下次登場照樣寫「玩家回來」）；收回之後又被代管的就不放
-  const back = (ld.returns ?? []).filter((c) => !w.returning?.includes(c) && w.members.some((m) => m.cardId === c && !m.delegated));
+  const back = (ld.returns ?? []).filter(
+    (c) => !w.returning?.includes(c) && w.members.some((m) => m.cardId === c && !m.delegated),
+  );
   if (back.length) w.returning = [...(w.returning ?? []), ...back];
   openRound(tx, "play");
 }
@@ -111,7 +162,8 @@ function slots(w: RoomState) {
     reset: () => void (group = null),
     next: (speaker: StoryPart["speaker"]) => {
       const player = speaker.kind === "player";
-      if (!group || (player && group.gm > 0) || group.gm > 31) group = { round: ++w.roundNo, gm: 0, player: 0 };
+      if (!group || (player && group.gm > 0) || group.gm > 31)
+        group = { round: ++w.roundNo, gm: 0, player: 0 };
       return { round: group.round, part: player ? -1 - group.player++ : group.gm++ };
     },
   };
@@ -133,8 +185,15 @@ function syncScene(tx: Tx, summary: string) {
 async function applySync(tx: Tx, keep: KeepThrough, items: SyncItem[]) {
   const s = tx.s;
   const w = tx.w;
-  const scene = storyOf([...(await tx.ctx.store.eventsAfter(s.sceneStartSeq, Number.MAX_SAFE_INTEGER)), ...tx.events]);
-  need(keep === null || scene.some((p) => p.round === keep.round && p.part === keep.part), "E_STATE_CONFLICT", "sync_keep_missing");
+  const scene = storyOf([
+    ...(await tx.ctx.store.eventsAfter(s.sceneStartSeq, Number.MAX_SAFE_INTEGER)),
+    ...tx.events,
+  ]);
+  need(
+    keep === null || scene.some((p) => p.round === keep.round && p.part === keep.part),
+    "E_STATE_CONFLICT",
+    "sync_keep_missing",
+  );
   if (s.round?.phase === "held") {
     w.lastDispatch = null; // 同 round.continue
     openRound(tx, "play");
@@ -145,7 +204,15 @@ async function applySync(tx: Tx, keep: KeepThrough, items: SyncItem[]) {
   for (const item of items) {
     if ("summary" in item) {
       slot.reset();
-      if (w.status === "lobby") tx.emit("story.part", { round: ++w.roundNo, part: 0, speaker: { kind: "system", marker: "scene_summary" }, text: item.summary, interrupted: false, at: tx.now });
+      if (w.status === "lobby")
+        tx.emit("story.part", {
+          round: ++w.roundNo,
+          part: 0,
+          speaker: { kind: "system", marker: "scene_summary" },
+          text: item.summary,
+          interrupted: false,
+          at: tx.now,
+        });
       else syncScene(tx, item.summary);
       continue;
     }
@@ -176,7 +243,8 @@ function findJob(tx: Tx, jobId: string): PendingJob | null {
   return j ?? null;
 }
 function progress(tx: Tx, p: { jobId: string }) {
-  if (findJob(tx, p.jobId)?.job.kind === "scene_advance") Object.assign(tx.w.transition!, { progressAt: tx.now, stalled: false });
+  if (findJob(tx, p.jobId)?.job.kind === "scene_advance")
+    Object.assign(tx.w.transition!, { progressAt: tx.now, stalled: false });
 }
 
 export const EXECUTOR: Record<string, (tx: Tx, p: any) => ReturnType<Handler>> = {
@@ -193,8 +261,15 @@ export const EXECUTOR: Record<string, (tx: Tx, p: any) => ReturnType<Handler>> =
     if (p.part === 0) l.seed = { next: 0, cards: null, history: [] };
     // 分片緩衝在記憶體；DO 中途被逐出就從第 0 片重送
     need(l.seed && l.seed.next === p.part && p.part < p.total, "E_STATE_CONFLICT", "seed_restart");
-    if (p.cards !== undefined) l.seed.cards = [...(l.seed.cards ?? []), ...(cleanCards(p.cards) ?? Fail.throw("E_BAD_FRAME"))];
-    if (p.history !== undefined) l.seed.history.push(...(cleanHistory(p.history, l.seed.cards ?? tx.s.cards) ?? Fail.throw("E_BAD_FRAME")));
+    if (p.cards !== undefined)
+      l.seed.cards = [
+        ...(l.seed.cards ?? []),
+        ...(cleanCards(p.cards) ?? Fail.throw("E_BAD_FRAME")),
+      ];
+    if (p.history !== undefined)
+      l.seed.history.push(
+        ...(cleanHistory(p.history, l.seed.cards ?? tx.s.cards) ?? Fail.throw("E_BAD_FRAME")),
+      );
     if (++l.seed.next < p.total) return;
     const { cards, history } = l.seed;
     l.seed = null;
@@ -209,11 +284,15 @@ export const EXECUTOR: Record<string, (tx: Tx, p: any) => ReturnType<Handler>> =
     const l = tx.ctx.live;
     if (p.part === 0) {
       const k = p.keepThrough ?? null;
-      need(k === null || (Number.isSafeInteger(k.round) && Number.isSafeInteger(k.part)), "E_BAD_FRAME");
+      need(
+        k === null || (Number.isSafeInteger(k.round) && Number.isSafeInteger(k.part)),
+        "E_BAD_FRAME",
+      );
       l.sync = { next: 0, keep: k && { round: k.round, part: k.part }, items: [] };
     }
     need(l.sync && l.sync.next === p.part && p.part < p.total, "E_STATE_CONFLICT", "sync_restart");
-    if (p.items !== undefined) l.sync.items.push(...(cleanSyncItems(p.items, tx.s.cards) ?? Fail.throw("E_BAD_FRAME")));
+    if (p.items !== undefined)
+      l.sync.items.push(...(cleanSyncItems(p.items, tx.s.cards) ?? Fail.throw("E_BAD_FRAME")));
     if (++l.sync.next < p.total) return;
     const { keep, items } = l.sync;
     l.sync = null;
@@ -234,8 +313,13 @@ export const EXECUTOR: Record<string, (tx: Tx, p: any) => ReturnType<Handler>> =
     need(p.cardId === null || ID64.test(p.cardId), "E_BAD_FRAME");
     need(/^[A-Za-z0-9_-]{22}$/.test(p.deviceId), "E_BAD_FRAME");
     const w = tx.w;
-    w.reserved = p.cardId === null ? null : { cardId: p.cardId, dev: await sha256Hex(`${w.code}:${p.deviceId}`) };
-    w.cards = w.cards.map(({ reserved: _, ...c }) => (c.cardId === p.cardId ? { ...c, reserved: true } : c));
+    w.reserved =
+      p.cardId === null
+        ? null
+        : { cardId: p.cardId, dev: await sha256Hex(`${w.code}:${p.deviceId}`) };
+    w.cards = w.cards.map(({ reserved: _, ...c }) =>
+      c.cardId === p.cardId ? { ...c, reserved: true } : c,
+    );
     tx.emit("roster.updated", { cards: w.cards });
   },
   "dispatch.ack": (tx, p) => void live(tx, p.dispatchId),
@@ -243,7 +327,13 @@ export const EXECUTOR: Record<string, (tx: Tx, p: any) => ReturnType<Handler>> =
     const r = live(tx, p.dispatchId);
     need(p.part === r.partsEnded && p.part <= 31, "E_STATE_CONFLICT");
     r.speaker = cleanSpeaker(p.speaker, tx.s.cards) ?? Fail.throw("E_BAD_FRAME");
-    tx.ctx.live.stream = { round: r.round, part: p.part, speaker: r.speaker, text: "", announced: false };
+    tx.ctx.live.stream = {
+      round: r.round,
+      part: p.part,
+      speaker: r.speaker,
+      text: "",
+      announced: false,
+    };
   },
   "gen.delta": (tx, p) => {
     const r = tx.s.round;
@@ -255,17 +345,36 @@ export const EXECUTOR: Record<string, (tx: Tx, p: any) => ReturnType<Handler>> =
     const first = !st.announced;
     st.announced = true;
     for (const [id, c] of Object.entries(tx.s.conns)) {
-      if (c.who !== null && c.who !== "exec") tx.send(id, "vol", { type: "delta", round: r.round, part: p.part, ...(first ? { speaker: st.speaker } : {}), text: p.text });
+      if (c.who !== null && c.who !== "exec")
+        tx.send(id, "vol", {
+          type: "delta",
+          round: r.round,
+          part: p.part,
+          ...(first ? { speaker: st.speaker } : {}),
+          text: p.text,
+        });
     }
   },
   "gen.part.end": (tx, p) => {
     const s = tx.s;
-    if (p.dispatchId === s.lastDoneDispatch || (s.round?.dispatchId === p.dispatchId && p.part < s.round!.partsEnded)) return; // 重送
+    if (
+      p.dispatchId === s.lastDoneDispatch ||
+      (s.round?.dispatchId === p.dispatchId && p.part < s.round!.partsEnded)
+    )
+      return; // 重送
     const r = live(tx, p.dispatchId);
     need(p.part === r.partsEnded && r.speaker, "E_STATE_CONFLICT");
     need(p.text.length <= 64000, "E_TEXT_INVALID");
     const state = cleanSceneState(p.state);
-    tx.emit("story.part", { round: r.round, part: p.part, speaker: r.speaker, text: p.text, interrupted: p.interrupted, at: tx.now, ...(state ? { state } : {}) });
+    tx.emit("story.part", {
+      round: r.round,
+      part: p.part,
+      speaker: r.speaker,
+      text: p.text,
+      interrupted: p.interrupted,
+      at: tx.now,
+      ...(state ? { state } : {}),
+    });
     Object.assign(r, { partsEnded: r.partsEnded + 1, speaker: null });
     tx.ctx.live.stream = null;
   },
@@ -283,7 +392,11 @@ export const EXECUTOR: Record<string, (tx: Tx, p: any) => ReturnType<Handler>> =
     w.lastDispatch = r.dispatch;
     tx.emit("gen.done", { round: r.round, aborted: p.aborted });
     // 房主「GM 旁白」點到的 NPC：只信還能被請發言的卡，記在下一個 acting、只告訴房主（「讓 X 接話」）
-    const called = r.host?.mode === "narrate" && w.cards.some((c) => c.cardId === p.called && c.playable && !c.hidden && c.claimedBy === null) ? (p.called as string) : null;
+    const called =
+      r.host?.mode === "narrate" &&
+      w.cards.some((c) => c.cardId === p.called && c.playable && !c.hidden && c.claimedBy === null)
+        ? (p.called as string)
+        : null;
     openRound(tx, "play");
     if (called) {
       w.round!.called = called;
@@ -316,7 +429,11 @@ export const EXECUTOR: Record<string, (tx: Tx, p: any) => ReturnType<Handler>> =
   "pair.create": async (tx, p) => {
     need(tx.s.status !== "closed", "E_ROOM_CLOSED");
     const pairCode = crockford(tx.ctx.rng(8), 8);
-    const pair = { hash: await sha256Hex(`${tx.s.code}:${pairCode}`), expiresAt: tx.now + 10 * MIN, grantHost: p.grantHost };
+    const pair = {
+      hash: await sha256Hex(`${tx.s.code}:${pairCode}`),
+      expiresAt: tx.now + 10 * MIN,
+      grantHost: p.grantHost,
+    };
     tx.w.pair = pair; // 再發新碼＝舊碼作廢
     tx.ok({ pairCode, expiresAt: pair.expiresAt });
     return "later" as const;
@@ -329,7 +446,13 @@ export const EXECUTOR: Record<string, (tx: Tx, p: any) => ReturnType<Handler>> =
   },
   status: (tx, p) => {
     // 閘門期間（§3.3）任何一則 status 都不解除暫停，要等 story.sync 補完
-    Object.assign(tx.w.exec, { keepAwake: p.keepAwake, busy: p.busy, paused: p.paused === true || tx.s.exec.sync === "needed", imageGen: p.imageGen === true, imageGenRoute: p.imageGenRoute !== false });
+    Object.assign(tx.w.exec, {
+      keepAwake: p.keepAwake,
+      busy: p.busy,
+      paused: p.paused === true || tx.s.exec.sync === "needed",
+      imageGen: p.imageGen === true,
+      imageGenRoute: p.imageGenRoute !== false,
+    });
     announceExec(tx);
   },
   quota: (tx, p) => {
@@ -347,8 +470,9 @@ export const EXECUTOR: Record<string, (tx: Tx, p: any) => ReturnType<Handler>> =
       w.sceneSettings = c.settings; // 幕中切換之一（§7.3；另一種是重生），執行端切完自己接著重送
       tx.emit("scene.settings_switched", { settings: c.settings, reason: c.hold?.kind ?? "other" });
     }
-    if (!p.ok && c.hold && w.round?.phase === "generating") Object.assign(w.round, { phase: "held", hold: c.hold });
-    const error = p.ok ? undefined : cleanError(p.error) ?? undefined;
+    if (!p.ok && c.hold && w.round?.phase === "generating")
+      Object.assign(w.round, { phase: "held", hold: c.hold });
+    const error = p.ok ? undefined : (cleanError(p.error) ?? undefined);
     tx.send(c.conn, "ok", { id: c.id, result: { ok: p.ok, ...(error ? { error } : {}) } });
   },
   "executor.leave": () => Fail.throw("E_STATE_CONFLICT"), // 位子留給執行端交接另案（§11）

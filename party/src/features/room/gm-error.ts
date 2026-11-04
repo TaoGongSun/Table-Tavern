@@ -15,7 +15,8 @@ const TEXT: Record<ExecutorErrorKind, MsgKey> = {
 };
 
 /** 這個模型本身用不了：重生時灰掉它、預設換別的 */
-export const modelBroken = (kind: ExecutorErrorKind) => kind === "model_unavailable" || kind === "not_ready";
+export const modelBroken = (kind: ExecutorErrorKind) =>
+  kind === "model_unavailable" || kind === "not_ready";
 /** `kind` 為 null＝不是 GM 生成失敗（房間連線、名冊、種子、同步等），只講房間出了問題 */
 export const gmErrorText = (kind: ExecutorErrorKind | null, code: string) =>
   t(kind ? TEXT[kind] : "roomErrOther", { code: code.slice(0, 40) });

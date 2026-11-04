@@ -62,4 +62,5 @@ export const HOLD_TEXT: Record<ExecutorErrorKind, MsgKey> = {
   other: "holdOther",
 };
 
-export const clock = (at: number) => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+export const clock = (at: number) =>
+  new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });

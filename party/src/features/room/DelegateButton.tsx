@@ -7,8 +7,24 @@ import { cardName, sentThisRound } from "./delegation";
 import type { RoomView } from "./room-state";
 import { useRun, type Act } from "./useRoom";
 
-export function DelegateButton({ view, act, memberIds, on, label, className, testId, onDone }: {
-  view: RoomView; act: Act; memberIds: string[]; on: boolean; label: string; className?: string; testId?: string; onDone?: () => void;
+export function DelegateButton({
+  view,
+  act,
+  memberIds,
+  on,
+  label,
+  className,
+  testId,
+  onDone,
+}: {
+  view: RoomView;
+  act: Act;
+  memberIds: string[];
+  on: boolean;
+  label: string;
+  className?: string;
+  testId?: string;
+  onDone?: () => void;
 }) {
   const { run, error } = useRun(act);
   const [asking, setAsking] = useState(false);
@@ -16,16 +32,40 @@ export function DelegateButton({ view, act, memberIds, on, label, className, tes
   const go = async () => {
     setAsking(false);
     // 好幾位一次送：同一筆交易做完才結算，已送出的人不會先被算進這回合
-    const ok = memberIds.length > 1 ? await run("seat.delegate_many", { memberIds }) : await run("seat.delegate", { memberId: memberIds[0], on });
+    const ok =
+      memberIds.length > 1
+        ? await run("seat.delegate_many", { memberIds })
+        : await run("seat.delegate", { memberId: memberIds[0], on });
     if (ok) onDone?.();
   };
-  const who = (id: string) => (id === view.me.memberId ? null : cardName(view, view.members.find((m) => m.memberId === id)?.cardId ?? null));
+  const who = (id: string) =>
+    id === view.me.memberId
+      ? null
+      : cardName(view, view.members.find((m) => m.memberId === id)?.cardId ?? null);
   return (
     <>
-      <button type="button" className={className} data-testid={testId} onClick={() => (sent.length ? setAsking(true) : void go())}>{label}</button>
+      <button
+        type="button"
+        className={className}
+        data-testid={testId}
+        onClick={() => (sent.length ? setAsking(true) : void go())}
+      >
+        {label}
+      </button>
       {asking && (
-        <Confirm title={t("delegateConfirmTitle")} testId="delegate-confirm" onCancel={() => setAsking(false)} actions={[{ label, onClick: () => void go() }]}>
-          {sent.map((id) => <p key={id}>{who(id) === null ? t("delegateRetractSelf") : t("delegateRetractOther", { name: who(id)! })}</p>)}
+        <Confirm
+          title={t("delegateConfirmTitle")}
+          testId="delegate-confirm"
+          onCancel={() => setAsking(false)}
+          actions={[{ label, onClick: () => void go() }]}
+        >
+          {sent.map((id) => (
+            <p key={id}>
+              {who(id) === null
+                ? t("delegateRetractSelf")
+                : t("delegateRetractOther", { name: who(id)! })}
+            </p>
+          ))}
         </Confirm>
       )}
       {error && <span className="field-error">{error}</span>}

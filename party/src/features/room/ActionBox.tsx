@@ -6,7 +6,19 @@ import type { RoomView } from "./room-state";
 import { useRun, type Act } from "./useRoom";
 
 /** `leading`：動作列左側（房主的 GM 鈕，照單人版跟送出同一列） */
-export function ActionBox({ view, act, sendDraft, cancelDraft, leading }: { view: RoomView; act: Act; sendDraft: (text: string) => void; cancelDraft: () => void; leading?: ReactNode }) {
+export function ActionBox({
+  view,
+  act,
+  sendDraft,
+  cancelDraft,
+  leading,
+}: {
+  view: RoomView;
+  act: Act;
+  sendDraft: (text: string) => void;
+  cancelDraft: () => void;
+  leading?: ReactNode;
+}) {
   const [text, setText] = useState(view.me.draft ?? "");
   const [taken, setTaken] = useState(false); // 房主收回、原文已直接放回輸入框：送出前提示一行
   const [tooLong, setTooLong] = useState(false);
@@ -51,18 +63,40 @@ export function ActionBox({ view, act, sendDraft, cancelDraft, leading }: { view
     if (ok && tt === "action.submit") {
       setText("");
       setTaken(false);
-    }
-    else if (text) sendDraft(text);
+    } else if (text) sendDraft(text);
   };
-  const hint = !live ? t("actionWaitStart") : view.me.delegated ? t("actionDelegated") : r?.phase === "held" ? t("actionHeld") : r?.phase !== "acting" ? t("errRoundNotActing") : !entry ? t("actionNextRound") : done && !(entry?.status === "submitted" && entry.text) ? t("actionDone") : null;
+  const hint = !live
+    ? t("actionWaitStart")
+    : view.me.delegated
+      ? t("actionDelegated")
+      : r?.phase === "held"
+        ? t("actionHeld")
+        : r?.phase !== "acting"
+          ? t("errRoundNotActing")
+          : !entry
+            ? t("actionNextRound")
+            : done && !(entry?.status === "submitted" && entry.text)
+              ? t("actionDone")
+              : null;
   return (
     <div className="action-box" data-testid="action-box">
       {hint && <div className="action-hint">{hint}</div>}
       {/* 送出後輸入框清空：寫出送了什麼，免得以為沒送出又打一次（原文就在名單上，結算後消失） */}
       {r?.phase === "acting" && entry?.status === "submitted" && entry.text && (
-        <div className="action-hint" data-testid="submitted-note">{t("actionSubmittedNote", { text: [...entry.text].length > 20 ? `${[...entry.text].slice(0, 20).join("")}…` : entry.text })}</div>
+        <div className="action-hint" data-testid="submitted-note">
+          {t("actionSubmittedNote", {
+            text:
+              [...entry.text].length > 20
+                ? `${[...entry.text].slice(0, 20).join("")}…`
+                : entry.text,
+          })}
+        </div>
       )}
-      {taken && <div className="action-hint" data-testid="returned-notice">{t("returnedNotice")}</div>}
+      {taken && (
+        <div className="action-hint" data-testid="returned-notice">
+          {t("returnedNotice")}
+        </div>
+      )}
       {returned && (text.trim() || stuck) && (
         // 房主收回的行動原文：只給本人；已有草稿時不覆蓋，帶回接到草稿尾端
         <div className="returned" data-testid="returned">
@@ -75,9 +109,19 @@ export function ActionBox({ view, act, sendDraft, cancelDraft, leading }: { view
             >
               {t("returnedBring")}
             </button>
-            <button type="button" className="ghost" onClick={() => void send("action.returned_dismiss")}>{t("returnedDrop")}</button>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => void send("action.returned_dismiss")}
+            >
+              {t("returnedDrop")}
+            </button>
           </div>
-          {tooLong && <div className="field-error" data-testid="returned-too-long">{t("returnedTooLong")}</div>}
+          {tooLong && (
+            <div className="field-error" data-testid="returned-too-long">
+              {t("returnedTooLong")}
+            </div>
+          )}
         </div>
       )}
       <textarea
@@ -91,16 +135,34 @@ export function ActionBox({ view, act, sendDraft, cancelDraft, leading }: { view
           if (live && !done) sendDraft(e.target.value);
         }}
       />
-      {error && <div className="field-error" data-testid="action-error">{error}</div>}
+      {error && (
+        <div className="field-error" data-testid="action-error">
+          {error}
+        </div>
+      )}
       <div className="action-buttons">
         {leading && <span className="action-leading">{leading}</span>}
         {/* 「收回修改」只在行動中：結算後（GM 生成中、卡住）收不回，照常給停用的跳過／送出，不留一顆一直灰著的收回 */}
         {done && acting ? (
-          <button type="button" onClick={() => run("action.retract")}>{t("actionRetract")}</button>
+          <button type="button" onClick={() => run("action.retract")}>
+            {t("actionRetract")}
+          </button>
         ) : (
           <>
-            <button type="button" className="ghost" disabled={!acting} onClick={() => commit("action.skip")}>{t("actionSkip")}</button>
-            <button type="button" className="primary" disabled={!acting || !text.trim()} onClick={() => commit("action.submit", { text })}>
+            <button
+              type="button"
+              className="ghost"
+              disabled={!acting}
+              onClick={() => commit("action.skip")}
+            >
+              {t("actionSkip")}
+            </button>
+            <button
+              type="button"
+              className="primary"
+              disabled={!acting || !text.trim()}
+              onClick={() => commit("action.submit", { text })}
+            >
               {t("actionSubmit")}
             </button>
           </>

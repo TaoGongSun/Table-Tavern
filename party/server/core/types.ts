@@ -13,7 +13,11 @@ export interface SceneSettings {
 }
 export type RoundKind = "open" | "scene_open" | "play" | "host";
 /** 房主 GM 鈕（room-host-actions §3.1）：narrate＝只旁白、advance＝旁白接力、call＝請某張卡接一句（call＝先寫點名列） */
-export interface HostTurn { mode: "narrate" | "advance" | "call"; cardId?: string; call?: boolean }
+export interface HostTurn {
+  mode: "narrate" | "advance" | "call";
+  cardId?: string;
+  call?: boolean;
+}
 export type RoundPhase = "acting" | "queued" | "generating" | "held";
 export type ActStatus = "pending" | "drafting" | "submitted" | "skipped";
 export interface RosterEntry {
@@ -47,7 +51,15 @@ export interface PublicCard {
   /** 房主保留給電腦自己的那張（桌面版開房前的玩家卡）：只有電腦那台裝置能認領 */
   reserved?: boolean;
 }
-export type SystemMarker = "scene_summary" | "card_arrival" | "person_arrival" | "state_update" | "round_undone" | "solo_before" | "solo_paused" | "room_reopened";
+export type SystemMarker =
+  | "scene_summary"
+  | "card_arrival"
+  | "person_arrival"
+  | "state_update"
+  | "round_undone"
+  | "solo_before"
+  | "solo_paused"
+  | "room_reopened";
 export type Speaker =
   | { kind: "gm" }
   | { kind: "npc"; cardId: string; name: string }
@@ -78,7 +90,15 @@ export interface ActionItem {
   text?: string;
   watchReason?: "skipped" | "timeout" | "host_resolved";
 }
-export type ExecutorErrorKind = "refusal" | "quota" | "tool_format" | "provider_unreachable" | "scene_full" | "not_ready" | "model_unavailable" | "other";
+export type ExecutorErrorKind =
+  | "refusal"
+  | "quota"
+  | "tool_format"
+  | "provider_unreachable"
+  | "scene_full"
+  | "not_ready"
+  | "model_unavailable"
+  | "other";
 export type RemoteAction = "retry" | "switch_model" | "switch_route" | "continue" | "scene_advance";
 export interface ExecutorError {
   kind: ExecutorErrorKind;
@@ -140,10 +160,21 @@ export type Job =
   | { jobId: string; kind: "scene_advance"; scene: number; nextSettings: SceneSettings }
   | { jobId: string; kind: "card_create"; memberId: string; name: string; blurb: string }
   | { jobId: string; kind: "card_import"; memberId: string; uploadId: string; size: number }
-  | { jobId: string; kind: "card_image"; memberId: string; cardId: string; uploadId: string; size: number }
+  | {
+      jobId: string;
+      kind: "card_image";
+      memberId: string;
+      cardId: string;
+      uploadId: string;
+      size: number;
+    }
   | { jobId: string; kind: "undo"; dispatchId: string };
 export interface InflightReport {
-  dispatch: { dispatchId: string; state: "running" | "done" | "failed"; lastEndedPart: number | null } | null;
+  dispatch: {
+    dispatchId: string;
+    state: "running" | "done" | "failed";
+    lastEndedPart: number | null;
+  } | null;
   job: { jobId: string; state: "running" | "done" } | null;
 }
 export interface ExecutorView {
@@ -163,20 +194,61 @@ export interface ExecutorView {
 }
 
 export type ErrorCode =
-  | "E_BAD_FRAME" | "E_VERSION" | "E_AUTH_REQUIRED" | "E_AUTH_FAILED" | "E_ROOM_NOT_FOUND" | "E_ROOM_CLOSED"
-  | "E_BANNED" | "E_KICKED" | "E_ROOM_FULL" | "E_NAME_INVALID" | "E_TEXT_INVALID" | "E_FORBIDDEN"
-  | "E_ROUND_STALE" | "E_ROUND_NOT_ACTING" | "E_STATE_CONFLICT" | "E_SEAT_TAKEN" | "E_SEAT_REQUIRED"
-  | "E_EXECUTOR_OFFLINE" | "E_EXECUTOR_TIMEOUT" | "E_GEN_TIMEOUT" | "E_PAIR_CODE_INVALID" | "E_PAIR_LOCKED"
-  | "E_MODEL_NOT_OFFERED" | "E_SETTING_INVALID" | "E_RATE_LIMITED" | "E_DISPATCH_UNKNOWN"
-  | "E_SESSION_REPLACED" | "E_EXECUTOR_REPLACED" | "E_INTERNAL"
-  | "E_LENGTH_REQUIRED" | "E_TOO_LARGE" | "E_UNSUPPORTED_FORMAT" | "E_CARD_INVALID" | "E_GEN_QUOTA" | "E_GEN_UNSUPPORTED" | "E_GEN_REFUSED";
+  | "E_BAD_FRAME"
+  | "E_VERSION"
+  | "E_AUTH_REQUIRED"
+  | "E_AUTH_FAILED"
+  | "E_ROOM_NOT_FOUND"
+  | "E_ROOM_CLOSED"
+  | "E_BANNED"
+  | "E_KICKED"
+  | "E_ROOM_FULL"
+  | "E_NAME_INVALID"
+  | "E_TEXT_INVALID"
+  | "E_FORBIDDEN"
+  | "E_ROUND_STALE"
+  | "E_ROUND_NOT_ACTING"
+  | "E_STATE_CONFLICT"
+  | "E_SEAT_TAKEN"
+  | "E_SEAT_REQUIRED"
+  | "E_EXECUTOR_OFFLINE"
+  | "E_EXECUTOR_TIMEOUT"
+  | "E_GEN_TIMEOUT"
+  | "E_PAIR_CODE_INVALID"
+  | "E_PAIR_LOCKED"
+  | "E_MODEL_NOT_OFFERED"
+  | "E_SETTING_INVALID"
+  | "E_RATE_LIMITED"
+  | "E_DISPATCH_UNKNOWN"
+  | "E_SESSION_REPLACED"
+  | "E_EXECUTOR_REPLACED"
+  | "E_INTERNAL"
+  | "E_LENGTH_REQUIRED"
+  | "E_TOO_LARGE"
+  | "E_UNSUPPORTED_FORMAT"
+  | "E_CARD_INVALID"
+  | "E_GEN_QUOTA"
+  | "E_GEN_UNSUPPORTED"
+  | "E_GEN_REFUSED";
 
 // 欄位內容由核心各處理器再驗（validate.ts）；信封只保證 t 在白名單、p 是物件
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export interface Frame { t: string; id?: string; p: any }
-export interface StoredEvent { seq: number; at: number; type: string; payload: Record<string, unknown> }
+export interface Frame {
+  t: string;
+  id?: string;
+  p: any;
+}
+export interface StoredEvent {
+  seq: number;
+  at: number;
+  type: string;
+  payload: Record<string, unknown>;
+}
 export type ConnRole = "member" | "executor";
-export interface ConnInfo { id: string; role: ConnRole }
+export interface ConnInfo {
+  id: string;
+  role: ConnRole;
+}
 
 // ── 房間狀態（整份可序列化；殼一筆交易落地） ──
 export interface Member {
@@ -198,7 +270,10 @@ export interface RoundState extends RoundView {
   speaker: Speaker | null; // 進行中那一段的說話者（gen.part.end 不帶 speaker）
   genAt: number; // 最後一則 gen.* 的時間，15 分鐘無進度轉 held
 }
-export interface PendingJob { job: Job; reply: { conn: string; id?: string } | null }
+export interface PendingJob {
+  job: Job;
+  reply: { conn: string; id?: string } | null;
+}
 export interface RoomState {
   code: string;
   status: RoomStatus;
@@ -215,7 +290,20 @@ export interface RoomState {
   closedAt: number | null;
   joinHash: string;
   execHash: string | null;
-  exec: { label: string; online: boolean; since: number; lastSeen: number; keepAwake: boolean | null; busy: boolean; paused?: boolean; sync?: "needed" | null; imageGen?: boolean; imageGenRoute?: boolean; caps: Capabilities | null; quota: QuotaReport | null };
+  exec: {
+    label: string;
+    online: boolean;
+    since: number;
+    lastSeen: number;
+    keepAwake: boolean | null;
+    busy: boolean;
+    paused?: boolean;
+    sync?: "needed" | null;
+    imageGen?: boolean;
+    imageGenRoute?: boolean;
+    caps: Capabilities | null;
+    quota: QuotaReport | null;
+  };
   execConn: string | null;
   seq: number;
   roundNo: number;
@@ -240,11 +328,26 @@ export interface RoomState {
   lastDoneDispatch: string | null;
   /** 最後一個做完（gen.done／gen.failed）的派工：收回與重生的目標（只收一層，收過或換幕就清） */
   lastDispatch?: Dispatch | null;
-  undo?: { jobId: string; round: number; mode: "regenerate" | "edit"; next: SceneSettings | null } | null;
+  undo?: {
+    jobId: string;
+    round: number;
+    mode: "regenerate" | "edit";
+    next: SceneSettings | null;
+  } | null;
   /** 被收回的行動原文，只給本人（帶回／丟掉） */
   returned?: Record<string, string>;
   lastError?: { round: number; error: ExecutorError } | null; // 最近一筆錯誤細節，只給出額度者（重連後還看得到）；舊房間沒有這欄
-  ctls: Record<string, { conn: string; id?: string; at: number; cmd: RemoteCommand; settings?: SceneSettings; hold?: PublicExecutorError | null }>;
+  ctls: Record<
+    string,
+    {
+      conn: string;
+      id?: string;
+      at: number;
+      cmd: RemoteCommand;
+      settings?: SceneSettings;
+      hold?: PublicExecutorError | null;
+    }
+  >;
   conns: Record<string, { role: ConnRole; who: string | null; at: number }>; // who＝memberId／"exec"；null＝還沒 hello
 }
 
@@ -271,7 +374,13 @@ export interface CardReq {
 
 /** 不落地的記憶體值：串流緩衝、分片建房緩衝、頻率桶、上傳與卡片請求。DO 被逐出就遺失（協定 §4.3 已容許）。 */
 export interface Live {
-  stream: { round: number; part: number; speaker: Speaker; text: string; announced: boolean } | null;
+  stream: {
+    round: number;
+    part: number;
+    speaker: Speaker;
+    text: string;
+    announced: boolean;
+  } | null;
   seed: { next: number; cards: PublicCard[] | null; history: StoryPart[] } | null;
   sync?: { next: number; keep: { round: number; part: number } | null; items: SyncItem[] } | null;
   buckets: Record<string, { start: number; n: number }>;
@@ -283,7 +392,10 @@ export interface CoreCtx {
   now: number;
   rng: (bytes: number) => Uint8Array;
   live: Live;
-  store: { eventsAfter(seq: number, limit: number): Promise<StoredEvent[]>; eventsBefore(seq: number, limit: number): Promise<StoredEvent[]> };
+  store: {
+    eventsAfter(seq: number, limit: number): Promise<StoredEvent[]>;
+    eventsBefore(seq: number, limit: number): Promise<StoredEvent[]>;
+  };
 }
 export type CoreInput =
   | { kind: "frame"; conn: ConnInfo; raw: string }
@@ -292,7 +404,13 @@ export type CoreInput =
   | { kind: "http"; route: "create"; body: unknown; code: string; origin: string; idleDays: number }
   | { kind: "http"; route: "export"; deviceId: string }
   | { kind: "http"; route: "close"; executorToken: string }
-  | { kind: "http"; route: "upload_reserve"; deviceId: string; uploadKind: "card" | "image"; length: number }
+  | {
+      kind: "http";
+      route: "upload_reserve";
+      deviceId: string;
+      uploadKind: "card" | "image";
+      length: number;
+    }
   | { kind: "http"; route: "upload_body"; uploadId: string; bytes: Uint8Array | null } // null＝讀本體中途斷掉
   | { kind: "http"; route: "card_fetch"; executorToken: string; uploadId: string };
 /** 寄給執行端的訊框用這個收件者，由殼的 ExecutorPort 轉送（v1 WebSocket、v2 程序內） */

@@ -8,17 +8,44 @@ export interface ConfirmAction {
   danger?: boolean;
 }
 
-export function Confirm({ title, children, actions, onCancel, testId }: { title: string; children?: ReactNode; actions: ConfirmAction[]; onCancel: () => void; testId?: string }) {
+export function Confirm({
+  title,
+  children,
+  actions,
+  onCancel,
+  testId,
+}: {
+  title: string;
+  children?: ReactNode;
+  actions: ConfirmAction[];
+  onCancel: () => void;
+  testId?: string;
+}) {
   return (
-    <div className="leave-confirm" role="alertdialog" aria-label={title} data-testid={testId} onKeyDown={(e) => e.key === "Escape" && onCancel()}>
+    <div
+      className="leave-confirm"
+      role="alertdialog"
+      aria-label={title}
+      data-testid={testId}
+      onKeyDown={(e) => e.key === "Escape" && onCancel()}
+    >
       <div className="leave-box">
         <h3>{title}</h3>
         {children}
         <div className="confirm-actions">
           {actions.map((a) => (
-            <button key={a.label} type="button" className={a.danger ? "danger" : undefined} onClick={a.onClick}>{a.label}</button>
+            <button
+              key={a.label}
+              type="button"
+              className={a.danger ? "danger" : undefined}
+              onClick={a.onClick}
+            >
+              {a.label}
+            </button>
           ))}
-          <button type="button" className="ghost" autoFocus onClick={onCancel}>{t("cancel")}</button>
+          <button type="button" className="ghost" autoFocus onClick={onCancel}>
+            {t("cancel")}
+          </button>
         </div>
       </div>
     </div>

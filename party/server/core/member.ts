@@ -1,24 +1,60 @@
 // 客戶端 → 伺服器指令（協定 §5.1）：每則先查角色再查狀態，失敗拋 Fail、狀態不動。
 import { resnapshot } from "./snapshot";
-import { activeMembers, announceExec, cancelRound, delegate, enterRoster, execReady, MIN, offered, openRound, resolve, seatedMembers, undelegate, unseat } from "./round";
+import {
+  activeMembers,
+  announceExec,
+  cancelRound,
+  delegate,
+  enterRoster,
+  execReady,
+  MIN,
+  offered,
+  openRound,
+  resolve,
+  seatedMembers,
+  undelegate,
+  unseat,
+} from "./round";
 import { CROCKFORD8, secret, sameHash, sha256Hex, ulid } from "./secrets";
 import { Fail, need, type Tx } from "./tx";
-import type { HostTurn, Member, RemoteCommand, SceneSettings, RoomState, RosterEntry, StoredEvent } from "./types";
+import type {
+  HostTurn,
+  Member,
+  RemoteCommand,
+  SceneSettings,
+  RoomState,
+  RosterEntry,
+  StoredEvent,
+} from "./types";
 import { cleanName, cleanText, shape } from "./validate";
 
 export type Handler = (tx: Tx, p: any, m: Member) => void | "later" | Promise<void | "later">;
-const STORY = new Set(["story.part", "round.resolved", "round.undone", "story.truncated", "scene.summary", "scene.started"]);
-export const evFrame = (e: StoredEvent) => ({ seq: e.seq, at: e.at, e: { type: e.type, ...e.payload } });
+const STORY = new Set([
+  "story.part",
+  "round.resolved",
+  "round.undone",
+  "story.truncated",
+  "scene.summary",
+  "scene.started",
+]);
+export const evFrame = (e: StoredEvent) => ({
+  seq: e.seq,
+  at: e.at,
+  e: { type: e.type, ...e.payload },
+});
 
 export function rate(tx: Tx, key: string, max: number, windowMs: number) {
   const b = tx.ctx.live.buckets;
   if (!b[key] || tx.now >= b[key].start + windowMs) b[key] = { start: tx.now, n: 0 };
-  if (++b[key].n > max) throw new Fail("E_RATE_LIMITED", undefined, b[key].start + windowMs - tx.now);
+  if (++b[key].n > max)
+    throw new Fail("E_RATE_LIMITED", undefined, b[key].start + windowMs - tx.now);
 }
 
 const host = (tx: Tx, m: Member) => need(tx.s.hostId === m.id, "E_FORBIDDEN");
-const hostOrPayer = (tx: Tx, m: Member) => need(tx.s.hostId === m.id || tx.s.payerId === m.id, "E_FORBIDDEN");
-const open = (s: RoomState) => need(s.status === "lobby" || s.status === "playing", "E_STATE_CONFLICT");
+const hostOrPayer = (tx: Tx, m: Member) =>
+  need(tx.s.hostId === m.id || tx.s.payerId === m.id, "E_FORBIDDEN");
+const open = (s: RoomState) =>
+  need(s.status === "lobby" || s.status === "playing", "E_STATE_CONFLICT");
 
 /** 針對某回合的指令：回合號＝版本號（§3.3） */
 function roundAt(tx: Tx, round: number, phase = "acting") {
@@ -60,7 +96,14 @@ export function claim(tx: Tx, m: Member, cardId: unknown) {
 export function closeRoom(tx: Tx) {
   need(tx.s.status !== "closed", "E_ROOM_CLOSED");
   const w = tx.w;
-  Object.assign(w, { status: "closed", closedAt: tx.now, transition: null, jobs: [], pair: null, execConn: null });
+  Object.assign(w, {
+    status: "closed",
+    closedAt: tx.now,
+    transition: null,
+    jobs: [],
+    pair: null,
+    execConn: null,
+  });
   w.exec.online = false;
   if (w.round) Object.assign(w.round, { deadline: null, pausedRemainingMs: null }); // 關房後倒數不再到期
   tx.emit("room.closed");
@@ -71,10 +114,18 @@ export function closeRoom(tx: Tx) {
 export async function pairClaim(tx: Tx, m: Member, raw: string): Promise<"later" | void> {
   const s = tx.s;
   need(s.status !== "closed", "E_ROOM_CLOSED");
-  if (s.pairLockUntil > tx.now) throw new Fail("E_PAIR_LOCKED", undefined, s.pairLockUntil - tx.now);
+  if (s.pairLockUntil > tx.now)
+    throw new Fail("E_PAIR_LOCKED", undefined, s.pairLockUntil - tx.now);
   const code = raw.toUpperCase().replace(/-/g, "");
   const p = s.pair;
-  if (!(CROCKFORD8.test(code) && p && p.expiresAt > tx.now && sameHash(await sha256Hex(`${s.code}:${code}`), p.hash))) {
+  if (
+    !(
+      CROCKFORD8.test(code) &&
+      p &&
+      p.expiresAt > tx.now &&
+      sameHash(await sha256Hex(`${s.code}:${code}`), p.hash)
+    )
+  ) {
     const w = tx.w;
     if (++w.pairFails >= 5) Object.assign(w, { pairFails: 0, pairLockUntil: tx.now + 10 * MIN });
     tx.err(tx.conn, "E_PAIR_CODE_INVALID", { id: tx.reqId });
@@ -111,11 +162,21 @@ function ctl(tx: Tx, m: Member, p: { ctlId: string; cmd: any }) {
   let cmd: RemoteCommand = { kind: k };
   let settings;
   if (k === "retry" || k === "switch_model" || k === "switch_route") {
-    need(!s.undo && r?.phase === "held" && (k === "retry" || r.hold?.actions.includes(k)), "E_STATE_CONFLICT"); // 收回在等執行端時不重試
+    need(
+      !s.undo && r?.phase === "held" && (k === "retry" || r.hold?.actions.includes(k)),
+      "E_STATE_CONFLICT",
+    ); // 收回在等執行端時不重試
     need(execReady(s), "E_EXECUTOR_OFFLINE"); // 重開補送還沒完：桌上與房間還沒對齊，不重跑
     if (k !== "retry") {
-      settings = offered(s, k === "switch_route" ? p.cmd.route : s.sceneSettings!.route, p.cmd.model);
-      cmd = k === "switch_route" ? { kind: k, route: settings.route, model: settings.model } : { kind: k, model: settings.model };
+      settings = offered(
+        s,
+        k === "switch_route" ? p.cmd.route : s.sceneSettings!.route,
+        p.cmd.model,
+      );
+      cmd =
+        k === "switch_route"
+          ? { kind: k, route: settings.route, model: settings.model }
+          : { kind: k, model: settings.model };
     }
     Object.assign(w.round!, { phase: "generating", hold: null, genAt: tx.now });
   } else if (k === "abort") need(r?.phase === "generating", "E_STATE_CONFLICT");
@@ -123,7 +184,8 @@ function ctl(tx: Tx, m: Member, p: { ctlId: string; cmd: any }) {
     w.nextSettings = offered(s, p.cmd.route, p.cmd.model);
     cmd = { kind: k, route: w.nextSettings.route, model: w.nextSettings.model };
     announceExec(tx);
-  } else if (k === "pause") need(!Object.values(s.ctls).some((c) => c.cmd.kind === "pause"), "E_STATE_CONFLICT");
+  } else if (k === "pause")
+    need(!Object.values(s.ctls).some((c) => c.cmd.kind === "pause"), "E_STATE_CONFLICT");
   else need(k === "refresh_quota", "E_BAD_FRAME");
   w.ctls[p.ctlId] = { conn: tx.conn, id: tx.reqId, at: tx.now, cmd, settings, hold: prevHold };
   tx.toExec("ctl", { ctlId: p.ctlId, by: m.id, cmd });
@@ -139,10 +201,16 @@ function setDraft(tx: Tx, m: Member, raw: unknown) {
   const s = tx.w;
   if (text) s.drafts[m.id] = text;
   else delete s.drafts[m.id];
-  const e = s.round?.phase === "acting" ? s.round.roster.find((x) => x.memberId === m.id) : undefined;
+  const e =
+    s.round?.phase === "acting" ? s.round.roster.find((x) => x.memberId === m.id) : undefined;
   if (!e || e.status === "submitted" || e.status === "skipped") return;
   e.status = text ? "drafting" : "pending";
-  tx.toAll("vol", { type: "roster_status", round: s.round!.round, memberId: m.id, status: e.status });
+  tx.toAll("vol", {
+    type: "roster_status",
+    round: s.round!.round,
+    memberId: m.id,
+    status: e.status,
+  });
 }
 
 /** 開或關一位的代管；狀態沒變回 E_STATE_CONFLICT（整筆交易不動） */
@@ -176,7 +244,13 @@ export const MEMBER: Record<string, Handler> = {
   "seat.delegate_many": (tx, p, m) => {
     host(tx, m);
     const ids: unknown[] = p.memberIds;
-    need(ids.length > 0 && ids.length <= 12 && ids.every((x) => typeof x === "string") && new Set(ids).size === ids.length, "E_BAD_FRAME");
+    need(
+      ids.length > 0 &&
+        ids.length <= 12 &&
+        ids.every((x) => typeof x === "string") &&
+        new Set(ids).size === ids.length,
+      "E_BAD_FRAME",
+    );
     for (const id of ids as string[]) setDelegated(tx, m, id, true);
   },
   "seat.release": (tx, _p, m) => {
@@ -194,7 +268,13 @@ export const MEMBER: Record<string, Handler> = {
     need(name, "E_NAME_INVALID");
     need(blurb !== null, "E_TEXT_INVALID");
     need(s.exec.online, "E_EXECUTOR_OFFLINE");
-    const job = { jobId: ulid(tx.now, tx.ctx.rng), kind: "card_create" as const, memberId: m.id, name, blurb };
+    const job = {
+      jobId: ulid(tx.now, tx.ctx.rng),
+      kind: "card_create" as const,
+      memberId: m.id,
+      name,
+      blurb,
+    };
     tx.w.jobs.push({ job, reply: { conn: tx.conn, id: tx.reqId } }); // 等執行端建好卡、替他入座後才回
     tx.toExec("job.card_create", job);
     return "later" as const;
@@ -253,7 +333,13 @@ export const MEMBER: Record<string, Handler> = {
     const r = s.round;
     const ld = s.lastDispatch;
     need(!s.undo && (p.mode === "regenerate" || p.mode === "edit"), "E_STATE_CONFLICT");
-    const target = r && ld && ld.round === p.round && ld.scene === s.scene && ((r.phase === "acting" && r.round === ld.round + 1) || (r.phase === "held" && r.round === ld.round));
+    const target =
+      r &&
+      ld &&
+      ld.round === p.round &&
+      ld.scene === s.scene &&
+      ((r.phase === "acting" && r.round === ld.round + 1) ||
+        (r.phase === "held" && r.round === ld.round));
     need(target, "E_STATE_CONFLICT");
     need(execReady(s), "E_EXECUTOR_OFFLINE");
     let next: SceneSettings | null = null;
@@ -262,7 +348,11 @@ export const MEMBER: Record<string, Handler> = {
       need(p.mode === "regenerate" && shape(p.next, "route:s model:s"), "E_BAD_FRAME");
       next = offered(s, p.next.route, p.next.model);
     }
-    const job = { jobId: ulid(tx.now, tx.ctx.rng), kind: "undo" as const, dispatchId: ld!.dispatchId };
+    const job = {
+      jobId: ulid(tx.now, tx.ctx.rng),
+      kind: "undo" as const,
+      dispatchId: ld!.dispatchId,
+    };
     tx.w.undo = { jobId: job.jobId, round: ld!.round, mode: p.mode, next };
     tx.w.jobs.push({ job, reply: { conn: tx.conn, id: tx.reqId } });
     tx.toExec("job.undo", job);
@@ -293,7 +383,12 @@ export const MEMBER: Record<string, Handler> = {
     need(s.status === "lobby" && activeMembers(s).length > 0 && s.exec.caps, "E_STATE_CONFLICT");
     need(execReady(s), "E_EXECUTOR_OFFLINE");
     const w = tx.w;
-    Object.assign(w, { status: "playing", scene: 1, sceneSettings: w.nextSettings ?? s.exec.caps.current, nextSettings: null });
+    Object.assign(w, {
+      status: "playing",
+      scene: 1,
+      sceneSettings: w.nextSettings ?? s.exec.caps.current,
+      nextSettings: null,
+    });
     tx.emit("room.started", { scene: 1, settings: w.sceneSettings });
     openRound(tx, "open");
   },
@@ -302,8 +397,14 @@ export const MEMBER: Record<string, Handler> = {
     open(tx.s);
     const next: Record<string, unknown> = { ...tx.s.settings };
     for (const [k, v] of Object.entries(p.patch)) {
-      const int = (lo: number, hi: number) => Number.isInteger(v) && (v as number) >= lo && (v as number) <= hi;
-      const ok = k === "maxPlayers" ? int(2, 8) : k === "actionTimeoutSec" ? v === null || int(30, 3600) : (k === "shuffleOrder" || k === "allowCustomCards") && typeof v === "boolean";
+      const int = (lo: number, hi: number) =>
+        Number.isInteger(v) && (v as number) >= lo && (v as number) <= hi;
+      const ok =
+        k === "maxPlayers"
+          ? int(2, 8)
+          : k === "actionTimeoutSec"
+            ? v === null || int(30, 3600)
+            : (k === "shuffleOrder" || k === "allowCustomCards") && typeof v === "boolean";
       need(ok, "E_SETTING_INVALID", k);
       next[k] = v;
     }
@@ -317,13 +418,21 @@ export const MEMBER: Record<string, Handler> = {
     const prev = tx.s.inviteRegen;
     if (prev) tx.err(prev.conn, "E_STATE_CONFLICT", { id: prev.id }); // 上一次還在等：作廢，以這次為準
     const joinSecret = secret(tx.ctx.rng, 16);
-    tx.w.inviteRegen = { hash: await sha256Hex(`${tx.s.code}:${joinSecret}`), conn: tx.conn, id: tx.reqId, at: tx.now };
+    tx.w.inviteRegen = {
+      hash: await sha256Hex(`${tx.s.code}:${joinSecret}`),
+      conn: tx.conn,
+      id: tx.reqId,
+      at: tx.now,
+    };
     tx.toExec("invite", { joinSecret });
     return "later" as const; // 執行端 ack 之後才回房主
   },
   "host.transfer": (tx, p, m) => {
     host(tx, m);
-    need(tx.s.members.some((x) => x.id === p.memberId && !x.banned), "E_STATE_CONFLICT");
+    need(
+      tx.s.members.some((x) => x.id === p.memberId && !x.banned),
+      "E_STATE_CONFLICT",
+    );
     tx.w.hostId = p.memberId;
     tx.emit("host.changed", { memberId: p.memberId });
   },
@@ -335,25 +444,34 @@ export const MEMBER: Record<string, Handler> = {
     need(p.mode === undefined || p.mode === "npc" || p.mode === "absent", "E_BAD_FRAME");
     const cardId = t.cardId;
     unseat(tx, t, p.mode); // 移除時一起決定角色處置（§3.2）：一則到位，不卡在中間狀態
-    if (cardId && p.mode && s.status !== "lobby") tx.emit("seat.departure", { cardId, mode: p.mode });
+    if (cardId && p.mode && s.status !== "lobby")
+      tx.emit("seat.departure", { cardId, mode: p.mode });
     if (s.payerId === t.id) {
       s.payerId = null;
       tx.emit("pair.unbound", { memberId: t.id });
     }
-    if (p.ban) t.banned = true; // 封鎖只記裝置雜湊
+    if (p.ban)
+      t.banned = true; // 封鎖只記裝置雜湊
     else s.members = s.members.filter((x) => x !== t);
     delete s.drafts[t.id];
     if (s.returned) delete s.returned[t.id];
     tx.emit("member.kicked", { memberId: t.id, ban: p.ban });
-    for (const [id, c] of Object.entries(s.conns)) if (c.who === t.id) tx.shut(id, 4403, p.ban ? "E_BANNED" : "E_KICKED");
+    for (const [id, c] of Object.entries(s.conns))
+      if (c.who === t.id) tx.shut(id, 4403, p.ban ? "E_BANNED" : "E_KICKED");
   },
   "member.departure": (tx, p, m) => {
     host(tx, m);
     need(tx.s.status === "playing", "E_STATE_CONFLICT");
     need(p.mode === "npc" || p.mode === "absent", "E_BAD_FRAME");
-    need(tx.s.cards.some((c) => c.cardId === p.cardId && c.claimedBy === null), "E_STATE_CONFLICT");
+    need(
+      tx.s.cards.some((c) => c.cardId === p.cardId && c.claimedBy === null),
+      "E_STATE_CONFLICT",
+    );
     const w = tx.w;
-    w.departures = [...w.departures.filter((d) => d.cardId !== p.cardId), { cardId: p.cardId, mode: p.mode }];
+    w.departures = [
+      ...w.departures.filter((d) => d.cardId !== p.cardId),
+      { cardId: p.cardId, mode: p.mode },
+    ];
     tx.emit("seat.departure", { cardId: p.cardId, mode: p.mode });
   },
   "member.reassign": (tx, p, m) => {
@@ -364,7 +482,12 @@ export const MEMBER: Record<string, Handler> = {
     const to = s.members.find((x) => x.id === p.to && !x.banned && !x.cardId);
     need(from && to, "E_STATE_CONFLICT");
     const wasDelegated = !!from.delegated;
-    Object.assign(to, { cardId: from.cardId, seat: from.seat, arriving: from.arriving, delegated: wasDelegated });
+    Object.assign(to, {
+      cardId: from.cardId,
+      seat: from.seat,
+      arriving: from.arriving,
+      delegated: wasDelegated,
+    });
     Object.assign(from, { cardId: null, arriving: false, delegated: false });
     if (s.drafts[from.id] !== undefined) s.drafts[to.id] = s.drafts[from.id];
     delete s.drafts[from.id];
@@ -394,7 +517,10 @@ export const MEMBER: Record<string, Handler> = {
     const r = s.round;
     need(s.status === "playing" && r, "E_STATE_CONFLICT");
     need(p.round === r.round, "E_ROUND_STALE");
-    need(!s.undo && (r.phase === "acting" || (r.phase === "held" && r.hold?.kind === "scene_full")), "E_ROUND_NOT_ACTING");
+    need(
+      !s.undo && (r.phase === "acting" || (r.phase === "held" && r.hold?.kind === "scene_full")),
+      "E_ROUND_NOT_ACTING",
+    );
     need(execReady(s), "E_EXECUTOR_OFFLINE");
     let next = s.nextSettings ?? s.sceneSettings!;
     if (p.next !== undefined) {
@@ -404,8 +530,17 @@ export const MEMBER: Record<string, Handler> = {
     }
     const w = tx.w;
     cancelRound(tx);
-    const job = { jobId: ulid(tx.now, tx.ctx.rng), kind: "scene_advance" as const, scene: s.scene, nextSettings: next };
-    Object.assign(w, { round: null, status: "transition", transition: { jobId: job.jobId, since: tx.now, progressAt: tx.now, stalled: false } });
+    const job = {
+      jobId: ulid(tx.now, tx.ctx.rng),
+      kind: "scene_advance" as const,
+      scene: s.scene,
+      nextSettings: next,
+    };
+    Object.assign(w, {
+      round: null,
+      status: "transition",
+      transition: { jobId: job.jobId, since: tx.now, progressAt: tx.now, stalled: false },
+    });
     w.jobs.push({ job, reply: null });
     tx.emit("scene.advancing", { jobId: job.jobId });
     tx.toExec("job.scene_advance", job);
@@ -434,7 +569,10 @@ export const MEMBER: Record<string, Handler> = {
     rate(tx, `h:${tx.conn}`, 2, 1000);
     const scanned = await tx.ctx.store.eventsBefore(p.beforeSeq, p.limit);
     // 只回劇情類；`before` 是這次掃到的最小序號，濾掉之後客戶端拿它接著往回翻
-    tx.ok({ events: scanned.filter((e) => STORY.has(e.type)).map((e) => ({ t: "ev", p: evFrame(e) })), before: scanned[0]?.seq ?? 0 });
+    tx.ok({
+      events: scanned.filter((e) => STORY.has(e.type)).map((e) => ({ t: "ev", p: evFrame(e) })),
+      before: scanned[0]?.seq ?? 0,
+    });
     return "later" as const;
   },
 };

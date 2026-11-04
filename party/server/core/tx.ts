@@ -1,8 +1,20 @@
 // 一次輸入的交易：讀舊狀態、寫時才複製、收集事件與要送的訊框。拋 Fail＝整筆作廢、只回錯誤。
-import { TO_EXECUTOR, type CoreCtx, type CoreOutput, type ErrorCode, type Frame, type RoomState, type StoredEvent } from "./types";
+import {
+  TO_EXECUTOR,
+  type CoreCtx,
+  type CoreOutput,
+  type ErrorCode,
+  type Frame,
+  type RoomState,
+  type StoredEvent,
+} from "./types";
 
 export class Fail extends Error {
-  constructor(readonly code: ErrorCode, readonly detail?: string, readonly retryAfterMs?: number) {
+  constructor(
+    readonly code: ErrorCode,
+    readonly detail?: string,
+    readonly retryAfterMs?: number,
+  ) {
     super(code);
   }
   static throw(code: ErrorCode): never {
@@ -14,7 +26,10 @@ export function need(cond: unknown, code: ErrorCode, detail?: string): asserts c
 }
 
 // 名冊（含頭像）可能上 MiB，不跟著深拷貝；改名冊一律換新陣列
-const clone = (s: RoomState): RoomState => ({ ...structuredClone({ ...s, cards: [] }), cards: s.cards });
+const clone = (s: RoomState): RoomState => ({
+  ...structuredClone({ ...s, cards: [] }),
+  cards: s.cards,
+});
 
 export class Tx {
   private copy: RoomState | null = null;
@@ -24,7 +39,12 @@ export class Tx {
   http?: CoreOutput["http"];
   deleteRoom = false;
 
-  constructor(private readonly orig: RoomState | null, readonly ctx: CoreCtx, readonly conn = "", readonly reqId?: string) {}
+  constructor(
+    private readonly orig: RoomState | null,
+    readonly ctx: CoreCtx,
+    readonly conn = "",
+    readonly reqId?: string,
+  ) {}
   get now() {
     return this.ctx.now;
   }
@@ -53,7 +73,8 @@ export class Tx {
     for (const [id, c] of Object.entries(this.s.conns)) if (c.who !== null) this.send(id, t, p);
   }
   toMember(memberId: string | null, t: string, p: unknown) {
-    for (const [id, c] of Object.entries(this.s.conns)) if (memberId !== null && c.who === memberId) this.send(id, t, p);
+    for (const [id, c] of Object.entries(this.s.conns))
+      if (memberId !== null && c.who === memberId) this.send(id, t, p);
   }
   toExec(t: string, p: unknown) {
     if (this.s.exec.online) this.send(TO_EXECUTOR, t, p);
@@ -68,9 +89,14 @@ export class Tx {
     this.toAll("ev", { seq: ev.seq, at: ev.at, e: { type, ...payload } });
   }
   ok(result?: unknown) {
-    if (this.reqId !== undefined) this.send(this.conn, "ok", { id: this.reqId, ...(result !== undefined ? { result } : {}) });
+    if (this.reqId !== undefined)
+      this.send(this.conn, "ok", { id: this.reqId, ...(result !== undefined ? { result } : {}) });
   }
-  err(conn: string, code: ErrorCode, extra: { id?: string; retryAfterMs?: number; detail?: string } = {}) {
+  err(
+    conn: string,
+    code: ErrorCode,
+    extra: { id?: string; retryAfterMs?: number; detail?: string } = {},
+  ) {
     this.send(conn, "err", { code, ...extra });
   }
   shut(conn: string, code: number, err?: ErrorCode) {

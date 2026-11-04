@@ -7,15 +7,31 @@ import { buildSnapshot } from "./snapshot";
 
 const LIVE = { stream: null, seed: null, buckets: {}, uploads: {}, cardReqs: {} };
 const story = (room: Room) => buildSnapshot(room.s, room.store.events, "m2", LIVE).story;
-const gm = (text: string) => ({ part: { speaker: { kind: "gm" }, text, interrupted: false, at: 0 } });
-const npc = (text: string) => ({ part: { speaker: { kind: "npc", cardId: "c3", name: "角色3" }, text, interrupted: false, at: 0 } });
-const said = (text: string) => ({ part: { speaker: { kind: "player", memberId: "m1", cardId: "c1", name: "角色1" }, text, interrupted: false, at: 0 } });
+const gm = (text: string) => ({
+  part: { speaker: { kind: "gm" }, text, interrupted: false, at: 0 },
+});
+const npc = (text: string) => ({
+  part: { speaker: { kind: "npc", cardId: "c3", name: "角色3" }, text, interrupted: false, at: 0 },
+});
+const said = (text: string) => ({
+  part: {
+    speaker: { kind: "player", memberId: "m1", cardId: "c1", name: "角色1" },
+    text,
+    interrupted: false,
+    at: 0,
+  },
+});
 
 /** 送過種子的房間（種子佔回合 1）：a 房主、a b 入座、開場跑完、第 3 回合 a 送出 → 房主關房（status paused）斷線 */
 async function paused() {
   const room = await Room.create();
   await room.exec();
-  await room.send("x1", "room.seed", { part: 0, total: 1, cards: [...CARDS, STAGE], history: [gm("種子開場").part] });
+  await room.send("x1", "room.seed", {
+    part: 0,
+    total: 1,
+    cards: [...CARDS, STAGE],
+    history: [gm("種子開場").part],
+  });
   for (const [i, id] of ["a", "b"].entries()) {
     await room.join(id, id, i === 0 ? { pairCode: await room.pairCode(true) } : {});
     await room.send(id, "seat.claim", { cardId: CARDS[i].cardId });
@@ -30,8 +46,12 @@ async function paused() {
 }
 /** b 從加入那一刻起看到的畫面（第一份快照＋之後逐筆套事件） */
 const clientView = (room: Room, id = "b") =>
-  (room.out[id] ?? []).reduce<RoomView | null>((v, f) => (f.t === "welcome" && v ? v : applyFrame(v, f)), null)!;
-const sync = (room: Room, p: Record<string, unknown>, id = "x2") => room.ask(id, "story.sync", { part: 0, total: 1, ...p });
+  (room.out[id] ?? []).reduce<RoomView | null>(
+    (v, f) => (f.t === "welcome" && v ? v : applyFrame(v, f)),
+    null,
+  )!;
+const sync = (room: Room, p: Record<string, unknown>, id = "x2") =>
+  room.ask(id, "story.sync", { part: 0, total: 1, ...p });
 
 describe("同步閘門（§3.3）", () => {
   it("閘門期間：welcome 不帶派工、status 不解除、全員送出與倒數到期都不結算、回合指令回 E_EXECUTOR_OFFLINE；空的 story.sync 才放行", async () => {
@@ -41,15 +61,26 @@ describe("同步閘門（§3.3）", () => {
     expect(room.s.exec).toMatchObject({ online: true, sync: "needed", paused: true });
     await room.send("x2", "status", { keepAwake: null, busy: false });
     expect(room.s.exec.paused).toBe(true);
-    expect(room.frames("b", "vol", "executor").at(-1)?.p).toMatchObject({ online: true, syncing: true, paused: false });
+    expect(room.frames("b", "vol", "executor").at(-1)?.p).toMatchObject({
+      online: true,
+      syncing: true,
+      paused: false,
+    });
     await room.send("b", "action.submit", { round: 3, text: "我推門" });
     expect(room.s.round).toMatchObject({ round: 3, phase: "acting", deadline: null }); // 倒數停著，不會到期
     expect(room.s.round!.pausedRemainingMs).toBeGreaterThan(0);
-    for (const [t, p] of [["round.resolve", { round: 3 }], ["host.gm", { round: 3, mode: "advance" }], ["round.undo", { round: 2, mode: "edit" }], ["scene.advance", { round: 3 }]] as const)
+    for (const [t, p] of [
+      ["round.resolve", { round: 3 }],
+      ["host.gm", { round: 3, mode: "advance" }],
+      ["round.undo", { round: 2, mode: "edit" }],
+      ["scene.advance", { round: 3 }],
+    ] as const)
       expect((await room.ask("a", t, p))?.p.code).toBe("E_EXECUTOR_OFFLINE");
     expect(room.frames("x2", "dispatch")).toEqual([]);
     const last = story(room).at(-1)!;
-    expect((await sync(room, { keepThrough: { round: last.round, part: last.part } }))?.t).toBe("ok");
+    expect((await sync(room, { keepThrough: { round: last.round, part: last.part } }))?.t).toBe(
+      "ok",
+    );
     expect(room.s.exec).toMatchObject({ sync: null, paused: false });
     expect(room.events("story.truncated")).toEqual([]);
     expect(room.s.round).toMatchObject({ round: 3, phase: "queued" }); // 補完才結算、派工 // 沒有補送內容：已送出的不動，照常結算
@@ -93,15 +124,50 @@ describe("同步閘門（§3.3）", () => {
     const before = story(room).map((p) => p.text);
     expect(before).toEqual(["種子開場", "開場"]);
     const seed = story(room)[0];
-    const reply = await sync(room, { keepThrough: { round: seed.round, part: seed.part }, items: [{ part: { speaker: { kind: "system", marker: "solo_paused" }, text: "", interrupted: false, at: 0 } }, gm("開場（改過）"), said("我搜身"), gm("找到鑰匙"), npc("還我"), said("不還")] });
+    const reply = await sync(room, {
+      keepThrough: { round: seed.round, part: seed.part },
+      items: [
+        {
+          part: {
+            speaker: { kind: "system", marker: "solo_paused" },
+            text: "",
+            interrupted: false,
+            at: 0,
+          },
+        },
+        gm("開場（改過）"),
+        said("我搜身"),
+        gm("找到鑰匙"),
+        npc("還我"),
+        said("不還"),
+      ],
+    });
     expect(reply?.t).toBe("ok");
-    expect(room.events("story.truncated").at(-1)?.payload).toEqual({ after: { round: seed.round, part: seed.part } });
+    expect(room.events("story.truncated").at(-1)?.payload).toEqual({
+      after: { round: seed.round, part: seed.part },
+    });
     const texts = ["種子開場", "", "開場（改過）", "我搜身", "找到鑰匙", "還我", "不還"];
     expect(story(room).map((p) => p.text)).toEqual(texts);
     expect(clientView(room).story.map((p) => p.text)).toEqual(texts);
-    expect(toWebSave(room.s, room.store.events, room.clock).messages.map((m) => m.text)).toEqual(["種子開場", "開場（改過）", "角色1：我搜身", "找到鑰匙", "角色3：還我", "角色1：不還"]);
-    const parts = story(room).slice(1).map((p) => [p.round - story(room)[1].round, p.part]);
-    expect(parts).toEqual([[0, 0], [0, 1], [1, -1], [1, 0], [1, 1], [2, -1]]);
+    expect(toWebSave(room.s, room.store.events, room.clock).messages.map((m) => m.text)).toEqual([
+      "種子開場",
+      "開場（改過）",
+      "角色1：我搜身",
+      "找到鑰匙",
+      "角色3：還我",
+      "角色1：不還",
+    ]);
+    const parts = story(room)
+      .slice(1)
+      .map((p) => [p.round - story(room)[1].round, p.part]);
+    expect(parts).toEqual([
+      [0, 0],
+      [0, 1],
+      [1, -1],
+      [1, 0],
+      [1, 1],
+      [2, -1],
+    ]);
     expect(room.s.drafts.m1).toBe("我拔劍");
     expect(room.s.round!.roster.find((e) => e.memberId === "m1")?.status).toBe("drafting");
     expect(room.s.lastDispatch).toBeNull();
@@ -134,7 +200,10 @@ describe("同步閘門（§3.3）", () => {
     const room = await paused();
     await room.exec("x2");
     const last = story(room).at(-1)!;
-    await sync(room, { keepThrough: { round: last.round, part: last.part }, items: [gm("單人旁白")] });
+    await sync(room, {
+      keepThrough: { round: last.round, part: last.part },
+      items: [gm("單人旁白")],
+    });
     const r = room.s.round!.round;
     expect(r).toBeGreaterThan(Math.max(...story(room).map((p) => p.round)));
     await room.send("a", "action.submit", { round: r, text: "我拔劍" });
@@ -142,7 +211,9 @@ describe("同步閘門（§3.3）", () => {
     await room.finishGen("門開了", "x2");
     expect(room.s.round!.round).toBe(r + 1);
     await room.send("a", "round.undo", { round: r, mode: "edit" });
-    expect(room.frames("x2", "job.undo").at(-1)?.p.dispatchId).toBe(room.s.lastDispatch!.dispatchId);
+    expect(room.frames("x2", "job.undo").at(-1)?.p.dispatchId).toBe(
+      room.s.lastDispatch!.dispatchId,
+    );
   });
 
   it("保留到收回提示那段：三處一致（匯出也認得那一段）", async () => {
@@ -153,7 +224,10 @@ describe("同步閘門（§3.3）", () => {
     await room.send("b", "action.submit", { round: 3, text: "我推門" });
     await room.finishGen("門開了", "x2");
     await room.send("a", "round.undo", { round: 3, mode: "edit" });
-    await room.send("x2", "job.result", { jobId: room.frames("x2", "job.undo").at(-1)!.p.jobId, ok: true });
+    await room.send("x2", "job.result", {
+      jobId: room.frames("x2", "job.undo").at(-1)!.p.jobId,
+      ok: true,
+    });
     const note = story(room).at(-1)!;
     expect(note.part).toBe(33);
     await room.send("a", "host.gm", { round: room.s.round!.round, mode: "narrate" });
@@ -161,27 +235,55 @@ describe("同步閘門（§3.3）", () => {
     await room.send("x2", "status", { keepAwake: null, busy: false, paused: true });
     await room.disconnect("x2");
     await room.exec("x3");
-    expect((await sync(room, { keepThrough: { round: note.round, part: note.part }, items: [gm("單人補的")] }, "x3"))?.t).toBe("ok");
+    expect(
+      (
+        await sync(
+          room,
+          { keepThrough: { round: note.round, part: note.part }, items: [gm("單人補的")] },
+          "x3",
+        )
+      )?.t,
+    ).toBe("ok");
     expect(room.events("story.truncated")).toHaveLength(1);
     const texts = story(room).map((p) => p.text);
     expect(texts.slice(-2)).toEqual(["", "單人補的"]); // 收回提示留著、旁白撤掉
     expect(clientView(room).story.map((p) => p.text)).toEqual(texts);
-    expect(toWebSave(room.s, room.store.events, room.clock).messages.map((m) => m.text)).toEqual(texts.filter((x) => x !== "")); // 系統段不輸出
+    expect(toWebSave(room.s, room.store.events, room.clock).messages.map((m) => m.text)).toEqual(
+      texts.filter((x) => x !== ""),
+    ); // 系統段不輸出
   });
 
   it("單人時換過幕：比照換幕補摘要（不重複）、開新的 play 回合、sceneStartSeq 與快照一致", async () => {
     const room = await paused();
     await room.exec("x2");
     const last = story(room).at(-1)!;
-    await sync(room, { keepThrough: { round: last.round, part: last.part }, items: [gm("第一幕尾聲"), { summary: "第一幕摘要" }, gm("第二幕")] });
+    await sync(room, {
+      keepThrough: { round: last.round, part: last.part },
+      items: [gm("第一幕尾聲"), { summary: "第一幕摘要" }, gm("第二幕")],
+    });
     expect(room.s).toMatchObject({ scene: 2, round: { kind: "play", phase: "acting" } });
     expect(room.events("scene.started").at(-1)!.seq).toBe(room.s.sceneStartSeq);
     expect(room.s.summarySeqs).toEqual([room.events("scene.summary")[0].seq]);
-    expect(story(room).map((p) => p.text)).toEqual(["種子開場", "開場", "第一幕尾聲", "第一幕摘要", "第二幕"]);
+    expect(story(room).map((p) => p.text)).toEqual([
+      "種子開場",
+      "開場",
+      "第一幕尾聲",
+      "第一幕摘要",
+      "第二幕",
+    ]);
     await room.disconnect("b");
     await room.join("b"); // 重開頁面：快照只帶本幕與上幾幕摘要
-    expect(room.frames("b", "welcome").at(-1)!.p.snapshot.story.map((p: { text: string }) => p.text)).toEqual(["第一幕摘要", "第二幕"]);
-    expect(clientView(room).story.map((p) => p.text).filter((x) => x === "第一幕摘要")).toHaveLength(1);
+    expect(
+      room
+        .frames("b", "welcome")
+        .at(-1)!
+        .p.snapshot.story.map((p: { text: string }) => p.text),
+    ).toEqual(["第一幕摘要", "第二幕"]);
+    expect(
+      clientView(room)
+        .story.map((p) => p.text)
+        .filter((x) => x === "第一幕摘要"),
+    ).toHaveLength(1);
     expect(room.s.drafts.m1).toBe("我拔劍"); // 換幕作廢回合：已送出的退回草稿
   });
 
@@ -189,12 +291,16 @@ describe("同步閘門（§3.3）", () => {
     const room = await paused();
     await room.exec("x2");
     const seq = room.s.seq;
-    expect((await sync(room, { keepThrough: { round: 99, part: 0 } }))?.p.detail).toBe("sync_keep_missing");
+    expect((await sync(room, { keepThrough: { round: 99, part: 0 } }))?.p.detail).toBe(
+      "sync_keep_missing",
+    );
     expect(room.s.seq).toBe(seq);
     await room.ask("x2", "story.sync", { part: 0, total: 2, keepThrough: null, items: [gm("一")] });
     expect(room.s.seq).toBe(seq);
     room.runner["live"].sync = null; // 殼被逐出：記憶體緩衝遺失
-    expect((await room.ask("x2", "story.sync", { part: 1, total: 2, items: [gm("二")] }))?.p.detail).toBe("sync_restart");
+    expect(
+      (await room.ask("x2", "story.sync", { part: 1, total: 2, items: [gm("二")] }))?.p.detail,
+    ).toBe("sync_restart");
     expect(room.s.seq).toBe(seq);
     expect(room.s.exec.sync).toBe("needed");
     await sync(room, { keepThrough: null, items: [gm("全量")] });
@@ -206,7 +312,12 @@ describe("手機房主遠端暫停後重開（room-seat-delegate §3.3）", () =
   it("ctl pause 走同一條關房流程：重開照樣上閘門、補完放行；代管狀態保留，派工不帶代管的人", async () => {
     const room = await Room.create();
     await room.exec();
-    await room.send("x1", "room.seed", { part: 0, total: 1, cards: [...CARDS, STAGE], history: [gm("種子開場").part] });
+    await room.send("x1", "room.seed", {
+      part: 0,
+      total: 1,
+      cards: [...CARDS, STAGE],
+      history: [gm("種子開場").part],
+    });
     for (const [i, id] of ["a", "b"].entries()) {
       await room.join(id, id, i === 0 ? { pairCode: await room.pairCode(true) } : {});
       await room.send(id, "seat.claim", { cardId: CARDS[i].cardId });
@@ -225,9 +336,14 @@ describe("手機房主遠端暫停後重開（room-seat-delegate §3.3）", () =
     expect(room.s.exec).toMatchObject({ online: true, sync: "needed" });
     await room.send("x2", "roster.update", { cards: [...CARDS, STAGE] }); // 重開先重送名冊：代管的卡照樣在
     const last = story(room).at(-1)!;
-    expect((await sync(room, { keepThrough: { round: last.round, part: last.part } }))?.t).toBe("ok");
+    expect((await sync(room, { keepThrough: { round: last.round, part: last.part } }))?.t).toBe(
+      "ok",
+    );
     expect(room.s.exec).toMatchObject({ sync: null, paused: false });
-    expect(room.s.members.find((m) => m.id === "m2")).toMatchObject({ cardId: CARDS[1].cardId, delegated: true });
+    expect(room.s.members.find((m) => m.id === "m2")).toMatchObject({
+      cardId: CARDS[1].cardId,
+      delegated: true,
+    });
     expect(room.s.round!.roster.map((e) => e.memberId)).toEqual(["m1"]);
     await room.send("a", "action.submit", { round: room.s.round!.round, text: "繼續" });
     const d = room.frames("x2", "dispatch").at(-1)!.p;

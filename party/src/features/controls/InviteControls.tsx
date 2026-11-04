@@ -17,7 +17,19 @@ export interface InviteSource {
 }
 
 /** `initialOpen`：桌面資訊列的彈層一打開就畫現行連結與 QR（朋友多半站在旁邊等掃），並跟著最新的連結走；`children` 排在 QR 與換新連結之間 */
-export function InviteControls({ view, act, src, initialOpen = false, children }: { view: RoomView; act: Act; src: InviteSource; initialOpen?: boolean; children?: ReactNode }) {
+export function InviteControls({
+  view,
+  act,
+  src,
+  initialOpen = false,
+  children,
+}: {
+  view: RoomView;
+  act: Act;
+  src: InviteSource;
+  initialOpen?: boolean;
+  children?: ReactNode;
+}) {
   const [link, setLink] = useState<string | null>(initialOpen ? (src.inviteUrl ?? null) : null);
   // 桌面版握有現行連結：已經顯示著（或一開始就展開）時，換新連結後跟上
   useEffect(() => {
@@ -32,7 +44,11 @@ export function InviteControls({ view, act, src, initialOpen = false, children }
     const reply = await act("invite.current", src.joinSecret ? { candidate: src.joinSecret } : {});
     if (reply.ok) return void (setLink(url(reply.result.joinSecret)), setNote(null));
     setLink(null);
-    setNote(reply.code === "E_EXECUTOR_OFFLINE" ? t("hostInviteOffline") : errorText(reply.code, reply.retryAfterMs));
+    setNote(
+      reply.code === "E_EXECUTOR_OFFLINE"
+        ? t("hostInviteOffline")
+        : errorText(reply.code, reply.retryAfterMs),
+    );
   };
   const regenerate = async () => {
     setAsking(false);
@@ -42,13 +58,33 @@ export function InviteControls({ view, act, src, initialOpen = false, children }
   };
   // 會作廢舊連結的「換新連結」：新連結要先存進電腦才生效，電腦離線時不給換
   const renew = (
-    <button type="button" className="ghost" disabled={!view.executor.online} title={view.executor.online ? undefined : t("hostInviteNeedsExecutor")} onClick={() => setAsking(true)}>{t("hostInviteNew")}</button>
+    <button
+      type="button"
+      className="ghost"
+      disabled={!view.executor.online}
+      title={view.executor.online ? undefined : t("hostInviteNeedsExecutor")}
+      onClick={() => setAsking(true)}
+    >
+      {t("hostInviteNew")}
+    </button>
   );
   const box = link && (
     <div className="invite-box">
       <div className="row invite-row">
-        <input className="invite" readOnly value={link} onFocus={(e) => e.currentTarget.select()} data-testid="invite" />
-        <button type="button" className="ghost" onClick={() => void navigator.clipboard?.writeText(link)}>{t("hostCopy")}</button>
+        <input
+          className="invite"
+          readOnly
+          value={link}
+          onFocus={(e) => e.currentTarget.select()}
+          data-testid="invite"
+        />
+        <button
+          type="button"
+          className="ghost"
+          onClick={() => void navigator.clipboard?.writeText(link)}
+        >
+          {t("hostCopy")}
+        </button>
       </div>
       <QrCode value={link} label={t("hostInviteCurrent")} />
     </div>
@@ -56,7 +92,11 @@ export function InviteControls({ view, act, src, initialOpen = false, children }
   const notes = (
     <>
       {!view.executor.online && <p className="muted">{t("hostInviteNeedsExecutor")}</p>}
-      {note && <p className="muted" data-testid="invite-note">{note}</p>}
+      {note && (
+        <p className="muted" data-testid="invite-note">
+          {note}
+        </p>
+      )}
     </>
   );
   return (
@@ -73,7 +113,9 @@ export function InviteControls({ view, act, src, initialOpen = false, children }
       ) : (
         <>
           <div className="panel-actions">
-            <button type="button" data-testid="invite-current" onClick={() => void show()}>{t("hostInviteCurrent")}</button>
+            <button type="button" data-testid="invite-current" onClick={() => void show()}>
+              {t("hostInviteCurrent")}
+            </button>
             {renew}
           </div>
           {notes}
@@ -81,7 +123,12 @@ export function InviteControls({ view, act, src, initialOpen = false, children }
         </>
       )}
       {asking && (
-        <Confirm title={t("hostInviteNew")} testId="invite-new-confirm" onCancel={() => setAsking(false)} actions={[{ label: t("hostInviteNew"), onClick: () => void regenerate(), danger: true }]}>
+        <Confirm
+          title={t("hostInviteNew")}
+          testId="invite-new-confirm"
+          onCancel={() => setAsking(false)}
+          actions={[{ label: t("hostInviteNew"), onClick: () => void regenerate(), danger: true }]}
+        >
           <p>{t("hostInviteNewConfirm")}</p>
         </Confirm>
       )}

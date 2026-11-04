@@ -11,7 +11,17 @@ const yesNo = (v: boolean | null) => t(v === null ? "unknown" : v ? "yes" : "no"
 
 /** `desktop`：桌面版自己就是執行端，不給「更新額度」「解除配對」（額度在資訊列、交出去走「交給手機」） */
 /** `extra`：桌面版塞進來的生圖開關（花這台電腦的額度），放在下一幕設定之上 */
-export function PayerPanel({ view, act, desktop = false, extra }: { view: RoomView; act: Act; desktop?: boolean; extra?: ReactNode }) {
+export function PayerPanel({
+  view,
+  act,
+  desktop = false,
+  extra,
+}: {
+  view: RoomView;
+  act: Act;
+  desktop?: boolean;
+  extra?: ReactNode;
+}) {
   const { run, error, setError } = useRun(act);
   const x = view.executor;
   const q = view.quotaDetail;
@@ -26,7 +36,9 @@ export function PayerPanel({ view, act, desktop = false, extra }: { view: RoomVi
       <h2>{t("payerTitle")}</h2>
       <dl className="facts">
         <dt>{t("payerExecutor")}</dt>
-        <dd>{x.label} · {t(x.online ? "online" : "offline")}</dd>
+        <dd>
+          {x.label} · {t(x.online ? "online" : "offline")}
+        </dd>
         <dt>{t("payerKeepAwake")}</dt>
         <dd>{yesNo(x.keepAwake)}</dd>
         <dt>{t("payerNextModel")}</dt>
@@ -44,14 +56,35 @@ export function PayerPanel({ view, act, desktop = false, extra }: { view: RoomVi
         )}
       </dl>
       <div className="panel-actions">
-        {r?.phase === "generating" && <button type="button" onClick={() => ctl({ kind: "abort" })}>{t("roundAbort")}</button>}
-        {!desktop && <button type="button" className="ghost" onClick={() => ctl({ kind: "refresh_quota" })}>{t("payerRefreshQuota")}</button>}
+        {r?.phase === "generating" && (
+          <button type="button" onClick={() => ctl({ kind: "abort" })}>
+            {t("roundAbort")}
+          </button>
+        )}
+        {!desktop && (
+          <button type="button" className="ghost" onClick={() => ctl({ kind: "refresh_quota" })}>
+            {t("payerRefreshQuota")}
+          </button>
+        )}
       </div>
       {extra}
       <h3>{t("payerSetNext")}</h3>
-      <RoutePicker routes={view.routes} current={view.room.sceneSettings} label={t("payerSetNextApply")} onPick={(c) => ctl({ kind: "set_next", ...c })} />
-      {error && <div className="field-error" data-testid="payer-error">{error}</div>}
-      {!desktop && <button type="button" className="ghost danger" onClick={() => run("pair.leave")}>{t("payerUnpair")}</button>}
+      <RoutePicker
+        routes={view.routes}
+        current={view.room.sceneSettings}
+        label={t("payerSetNextApply")}
+        onPick={(c) => ctl({ kind: "set_next", ...c })}
+      />
+      {error && (
+        <div className="field-error" data-testid="payer-error">
+          {error}
+        </div>
+      )}
+      {!desktop && (
+        <button type="button" className="ghost danger" onClick={() => run("pair.leave")}>
+          {t("payerUnpair")}
+        </button>
+      )}
     </div>
   );
 }

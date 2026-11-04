@@ -6,7 +6,13 @@ export function QrCode({ value, label }: { value: string; label: string }) {
   const cells: string[] = [];
   data.forEach((row, y) => row.forEach((on, x) => on && cells.push(`M${x} ${y}h1v1h-1z`)));
   return (
-    <svg className="room-qr" viewBox={`0 0 ${size} ${size}`} role="img" aria-label={label} shapeRendering="crispEdges">
+    <svg
+      className="room-qr"
+      viewBox={`0 0 ${size} ${size}`}
+      role="img"
+      aria-label={label}
+      shapeRendering="crispEdges"
+    >
       <rect width={size} height={size} fill="#fff" />
       <path d={cells.join("")} fill="#000" />
     </svg>

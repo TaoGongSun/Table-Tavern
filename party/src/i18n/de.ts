@@ -10,12 +10,14 @@ export const de: PartyMessages = {
   hostRemove: "Entfernen…",
   hostKick: "Entfernen",
   seatRelease: "Platz freigeben",
-  seatReleaseConfirm: "Deinen Platz freigeben? Du steuerst diese Figur dann nicht mehr und musst zum erneuten Platznehmen eine Figur auswählen.",
+  seatReleaseConfirm:
+    "Deinen Platz freigeben? Du steuerst diese Figur dann nicht mehr und musst zum erneuten Platznehmen eine Figur auswählen.",
   badgePayer: "Nutzt deren Kontingent",
   badgePayerSelf: "Nutzt mein Kontingent",
   badgePayerHint: "Der GM läuft mit dem KI-Kontingent dieser Person",
   pairTitle: "Mein Kontingent für den GM nutzen: Kopplungscode vom Computer eingeben",
   roundAllDelegatedHost: "Alle mit KI: GM fortsetzen oder die KI für jemanden ausschalten",
-  delegatedReturned: "Die Geschichte während deiner Abwesenheit steht weiter oben. Scrolle hoch, um sie zu lesen.",
+  delegatedReturned:
+    "Die Geschichte während deiner Abwesenheit steht weiter oben. Scrolle hoch, um sie zu lesen.",
   hostMemberOptions: "{name} verwalten",
 };

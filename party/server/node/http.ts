@@ -21,9 +21,17 @@ const ROOM_PATH = /^\/api\/rooms\/([0-9A-Za-z]{8})(?:\/(ws|export|cards)(?:\/([0
 const CREATE_PER_HOUR = 10; // 協定 §6.1：同 IP 每小時 10 次（Workers 只能近似每分鐘 1 次）
 const HOUR = 3_600_000;
 const MIME: Record<string, string> = {
-  ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json",
-  ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".webp": "image/webp", ".woff2": "font/woff2",
-  ".webmanifest": "application/manifest+json", ".txt": "text/plain; charset=utf-8",
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript",
+  ".css": "text/css",
+  ".json": "application/json",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
+  ".webp": "image/webp",
+  ".woff2": "font/woff2",
+  ".webmanifest": "application/manifest+json",
+  ".txt": "text/plain; charset=utf-8",
 };
 
 const json = (res: ServerResponse, status: number, body: unknown) => {
@@ -36,7 +44,12 @@ export function createPartyServer(rooms: Rooms, cfg: ServerConfig) {
 
   const clientIp = (req: IncomingMessage) => {
     // 只有 Node 被可信代理擋在前面（外部連不到 Node）時，最右一段才是代理補寫的真實來源
-    const fwd = cfg.trustProxy ? String(req.headers["x-forwarded-for"] ?? "").split(",").pop()?.trim() : "";
+    const fwd = cfg.trustProxy
+      ? String(req.headers["x-forwarded-for"] ?? "")
+          .split(",")
+          .pop()
+          ?.trim()
+      : "";
     return fwd || req.socket.remoteAddress || "unknown";
   };
   const limited = (ip: string, now: number) => {
@@ -47,7 +60,8 @@ export function createPartyServer(rooms: Rooms, cfg: ServerConfig) {
     return 0;
   };
   const pruneLimiter = () => {
-    for (const [ip, hits] of created) if (!hits.some((t) => t > rooms.now() - HOUR)) created.delete(ip);
+    for (const [ip, hits] of created)
+      if (!hits.some((t) => t > rooms.now() - HOUR)) created.delete(ip);
   };
 
   async function readBody(req: IncomingMessage, max: number): Promise<string | null> {
@@ -71,11 +85,27 @@ export function createPartyServer(rooms: Rooms, cfg: ServerConfig) {
         json(res, 400, { code: "E_BAD_FRAME" });
         return void req.destroy();
       }
-      const parsed = (() => { try { return JSON.parse(body) as unknown; } catch { return null; } })();
+      const parsed = (() => {
+        try {
+          return JSON.parse(body) as unknown;
+        } catch {
+          return null;
+        }
+      })();
       for (let i = 0; i < 5; i++) {
         const code = crockford(crypto.getRandomValues(new Uint8Array(8)), 8);
-        const out = await rooms.with(code, (r) => r.run({ kind: "http", route: "create", body: parsed, code, origin: cfg.publicOrigin, idleDays: cfg.idleDays }));
-        if (out?.http?.status !== 409) return json(res, out?.http?.status ?? 500, out?.http?.body ?? { code: "E_INTERNAL" });
+        const out = await rooms.with(code, (r) =>
+          r.run({
+            kind: "http",
+            route: "create",
+            body: parsed,
+            code,
+            origin: cfg.publicOrigin,
+            idleDays: cfg.idleDays,
+          }),
+        );
+        if (out?.http?.status !== 409)
+          return json(res, out?.http?.status ?? 500, out?.http?.body ?? { code: "E_INTERNAL" });
       }
       return json(res, 503, { code: "E_INTERNAL" });
     }
@@ -84,33 +114,51 @@ export function createPartyServer(rooms: Rooms, cfg: ServerConfig) {
       const code = m?.[1].toUpperCase() ?? "";
       if (!m || !CROCKFORD8.test(code)) return json(res, 404, { code: "E_ROOM_NOT_FOUND" });
       if (m[2] === "ws") return json(res, 426, { code: "E_BAD_FRAME" });
-      if (m[3] !== undefined && m[2] !== "cards") return json(res, 404, { code: "E_ROOM_NOT_FOUND" });
+      if (m[3] !== undefined && m[2] !== "cards")
+        return json(res, 404, { code: "E_ROOM_NOT_FOUND" });
       const bearer = String(req.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
       if (m[2] === "cards" && m[3] !== undefined) {
         if (req.method !== "GET") return json(res, 405, { code: "E_BAD_FRAME" });
-        const out = await rooms.with(code, (r) => r.run({ kind: "http", route: "card_fetch", executorToken: bearer, uploadId: m[3] }));
-        if (!out?.http?.bytes) return json(res, out?.http?.status ?? 500, out?.http?.body ?? { code: "E_INTERNAL" });
-        return void res.writeHead(200, { "content-type": "application/octet-stream" }).end(out.http.bytes);
+        const out = await rooms.with(code, (r) =>
+          r.run({ kind: "http", route: "card_fetch", executorToken: bearer, uploadId: m[3] }),
+        );
+        if (!out?.http?.bytes)
+          return json(res, out?.http?.status ?? 500, out?.http?.body ?? { code: "E_INTERNAL" });
+        return void res
+          .writeHead(200, { "content-type": "application/octet-stream" })
+          .end(out.http.bytes);
       }
       if (m[2] === "cards") {
         if (req.method !== "POST") return json(res, 405, { code: "E_BAD_FRAME" });
         const origin = req.headers.origin ?? null;
         const reply = await rooms.with(code, (r) =>
-          receiveUpload(r.runner, { kind: url.searchParams.get("kind"), contentLength: req.headers["content-length"] ?? null, origin, selfOrigin: cfg.publicOrigin, deviceId: bearer, body: req }),
+          receiveUpload(r.runner, {
+            kind: url.searchParams.get("kind"),
+            contentLength: req.headers["content-length"] ?? null,
+            origin,
+            selfOrigin: cfg.publicOrigin,
+            deviceId: bearer,
+            body: req,
+          }),
         );
         if (!req.complete) res.once("finish", () => req.destroy()); // 宣告超大或沒宣告長度的本體不讀，回完就斷
         return json(res, reply.status, reply.body);
       }
       if (m[2] === undefined) {
         if (req.method !== "DELETE") return json(res, 405, { code: "E_BAD_FRAME" });
-        const out = await rooms.with(code, (r) => r.run({ kind: "http", route: "close", executorToken: bearer }));
+        const out = await rooms.with(code, (r) =>
+          r.run({ kind: "http", route: "close", executorToken: bearer }),
+        );
         return json(res, out?.http?.status ?? 500, out?.http?.body ?? { code: "E_INTERNAL" });
       }
       if (req.method !== "GET") return json(res, 405, { code: "E_BAD_FRAME" });
-      const out = await rooms.with(code, (r) => r.run({ kind: "http", route: "export", deviceId: bearer }));
+      const out = await rooms.with(code, (r) =>
+        r.run({ kind: "http", route: "export", deviceId: bearer }),
+      );
       return json(res, out?.http?.status ?? 500, out?.http?.body ?? { code: "E_INTERNAL" });
     }
-    if (req.method !== "GET" && req.method !== "HEAD") return json(res, 405, { code: "E_BAD_FRAME" });
+    if (req.method !== "GET" && req.method !== "HEAD")
+      return json(res, 405, { code: "E_BAD_FRAME" });
     return serveStatic(url.pathname, req, res);
   }
 
@@ -138,14 +186,19 @@ export function createPartyServer(rooms: Rooms, cfg: ServerConfig) {
     if (!body) return json(res, 404, { code: "E_NOT_FOUND" });
     const rel = relative(root, target);
     const immutable = isFile && rel.split(sep)[0] === "assets";
-    res.writeHead(200, { "content-type": MIME[extname(target)] ?? "application/octet-stream", "cache-control": immutable ? "public, max-age=31536000, immutable" : "no-cache" });
+    res.writeHead(200, {
+      "content-type": MIME[extname(target)] ?? "application/octet-stream",
+      "cache-control": immutable ? "public, max-age=31536000, immutable" : "no-cache",
+    });
     res.end(req.method === "HEAD" ? undefined : body);
   }
 
   function upgrade(req: IncomingMessage, socket: Duplex, head: Buffer) {
     const reject = (status: number, code: string) => {
       const body = JSON.stringify({ code });
-      socket.end(`HTTP/1.1 ${status} ${code}\r\ncontent-type: application/json\r\ncontent-length: ${body.length}\r\nconnection: close\r\n\r\n${body}`);
+      socket.end(
+        `HTTP/1.1 ${status} ${code}\r\ncontent-type: application/json\r\ncontent-length: ${body.length}\r\nconnection: close\r\n\r\n${body}`,
+      );
     };
     const url = new URL(req.url ?? "/", cfg.publicOrigin);
     const m = url.pathname.match(ROOM_PATH);
@@ -154,7 +207,8 @@ export function createPartyServer(rooms: Rooms, cfg: ServerConfig) {
     const role = url.searchParams.get("role") === "executor" ? "executor" : "member";
     // 成員連線只收 party/ 自己的來源；執行端（桌面版）不看來源、只看憑證
     const origin = req.headers.origin;
-    if (role === "member" && origin !== undefined && origin !== cfg.publicOrigin) return reject(403, "E_FORBIDDEN");
+    if (role === "member" && origin !== undefined && origin !== cfg.publicOrigin)
+      return reject(403, "E_FORBIDDEN");
     wss.handleUpgrade(req, socket, head, (ws) => guard(rooms.attach(code, ws, role)));
   }
 

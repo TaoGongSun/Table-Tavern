@@ -19,7 +19,15 @@ interface Props {
   entry?: ReactNode;
 }
 
-export function SeatPicker({ view, act, desktop = false, upload, onCreate, onImported, entry }: Props) {
+export function SeatPicker({
+  view,
+  act,
+  desktop = false,
+  upload,
+  onCreate,
+  onImported,
+  entry,
+}: Props) {
   const { run, error, setError } = useRun(act);
   const [importing, setImporting] = useState(false);
   async function importCard(file: File | undefined) {
@@ -31,7 +39,9 @@ export function SeatPicker({ view, act, desktop = false, upload, onCreate, onImp
     if (r.ok) onImported?.();
   }
   // 保留給電腦（房主自己的玩家卡）的卡：手機上不列，認走之後照常顯示「已有人」
-  const cards = view.cards.filter((c) => c.playable && !c.hidden && (desktop || !c.reserved || c.claimedBy !== null));
+  const cards = view.cards.filter(
+    (c) => c.playable && !c.hidden && (desktop || !c.reserved || c.claimedBy !== null),
+  );
   return (
     <div className="seat-picker" data-testid="seat-picker">
       <h2>{t("seatTitle")}</h2>
@@ -52,18 +62,33 @@ export function SeatPicker({ view, act, desktop = false, upload, onCreate, onImp
         </div>
       ))}
       {entry ? (
-        <div className="panel-actions seat-entries" data-testid="seat-create">{entry}</div>
-      ) : view.room.settings.allowCustomCards && (
         <div className="panel-actions seat-entries" data-testid="seat-create">
-          {/* 匯入：房主電腦建出只有角色本身的卡後自動入座（桌面版有自己的匯入，不給） */}
-          {upload && (
-            <label className="button-like">
-              {importing ? t("seatImporting") : t("seatImport")}
-              <input type="file" accept=".png,.json,image/png,application/json" hidden disabled={importing} onChange={(e) => (void importCard(e.target.files?.[0]), (e.currentTarget.value = ""))} />
-            </label>
-          )}
-          <button type="button" onClick={onCreate}>{t("seatCreate")}</button>
+          {entry}
         </div>
+      ) : (
+        view.room.settings.allowCustomCards && (
+          <div className="panel-actions seat-entries" data-testid="seat-create">
+            {/* 匯入：房主電腦建出只有角色本身的卡後自動入座（桌面版有自己的匯入，不給） */}
+            {upload && (
+              <label className="button-like">
+                {importing ? t("seatImporting") : t("seatImport")}
+                <input
+                  type="file"
+                  accept=".png,.json,image/png,application/json"
+                  hidden
+                  disabled={importing}
+                  onChange={(e) => (
+                    void importCard(e.target.files?.[0]),
+                    (e.currentTarget.value = "")
+                  )}
+                />
+              </label>
+            )}
+            <button type="button" onClick={onCreate}>
+              {t("seatCreate")}
+            </button>
+          </div>
+        )
       )}
       {error && <div className="field-error">{error}</div>}
     </div>

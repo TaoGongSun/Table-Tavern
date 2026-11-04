@@ -10,7 +10,8 @@ export const ptBR: PartyMessages = {
   hostRemove: "Remover…",
   hostKick: "Remover",
   seatRelease: "Ceder o lugar",
-  seatReleaseConfirm: "Ceder seu lugar? Você deixará de controlar este personagem e precisará escolher um para se sentar de novo.",
+  seatReleaseConfirm:
+    "Ceder seu lugar? Você deixará de controlar este personagem e precisará escolher um para se sentar de novo.",
   badgePayer: "Usando a cota desta pessoa",
   badgePayerSelf: "Usando minha cota",
   badgePayerHint: "O GM usa a cota de IA desta pessoa",

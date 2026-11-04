@@ -1,7 +1,16 @@
 // 核心與平台殼之間的接線（協定 §12.1）：每房一條序列化佇列 → reduce → 一筆交易落地 → 成功後才送訊框。
 // Workers 殼與 Node 殼（包 7）都只實作下面四個介面，再交給 RoomRunner。
 import { reduce } from "./reduce";
-import { TO_EXECUTOR, type ConnInfo, type CoreInput, type CoreOutput, type Frame, type Live, type RoomState, type StoredEvent } from "./types";
+import {
+  TO_EXECUTOR,
+  type ConnInfo,
+  type CoreInput,
+  type CoreOutput,
+  type Frame,
+  type Live,
+  type RoomState,
+  type StoredEvent,
+} from "./types";
 
 export interface RoomStore {
   load(): Promise<{ state: RoomState | null }>; // 協定 §12.1 另回 tailSeq；這裡序號在狀態裡，不必另回
@@ -25,14 +34,24 @@ export interface ExecutorPort {
 
 export class RoomRunner {
   private state: RoomState | null | undefined; // undefined＝還沒從 storage 載入（DO 剛喚醒）
-  private readonly live: Live = { stream: null, seed: null, buckets: {}, uploads: {}, cardReqs: {} };
+  private readonly live: Live = {
+    stream: null,
+    seed: null,
+    buckets: {},
+    uploads: {},
+    cardReqs: {},
+  };
   private queue: Promise<unknown> = Promise.resolve();
 
   constructor(
     private readonly store: RoomStore,
     private readonly conns: Connections,
     private readonly alarm: Alarm,
-    private readonly opts: { now?: () => number; rng?: (n: number) => Uint8Array; executor?: ExecutorPort } = {},
+    private readonly opts: {
+      now?: () => number;
+      rng?: (n: number) => Uint8Array;
+      executor?: ExecutorPort;
+    } = {},
   ) {}
 
   /** DO 的單執行緒保證在 await（WebCrypto、storage）之間不成立，所以每房自己排隊 */
@@ -47,7 +66,8 @@ export class RoomRunner {
       this.state = (await this.store.load()).state;
       // 休眠期間消失的連線（部署重啟等）補一次離線
       const alive = new Set(this.conns.list().map((c) => c.id));
-      for (const [id, c] of Object.entries(this.state?.conns ?? {})) if (!alive.has(id)) await this.apply({ kind: "disconnect", conn: { id, role: c.role } });
+      for (const [id, c] of Object.entries(this.state?.conns ?? {}))
+        if (!alive.has(id)) await this.apply({ kind: "disconnect", conn: { id, role: c.role } });
     }
     return this.apply(input);
   }
@@ -55,18 +75,28 @@ export class RoomRunner {
   private async apply(input: CoreInput): Promise<CoreOutput | null> {
     const prev = this.state ?? null;
     const conn = "conn" in input ? input.conn.id : null;
-    const internal = () => conn && this.conns.send(conn, JSON.stringify({ t: "err", p: { code: "E_INTERNAL" } }));
+    const internal = () =>
+      conn && this.conns.send(conn, JSON.stringify({ t: "err", p: { code: "E_INTERNAL" } }));
     let out: CoreOutput;
     try {
-      out = await reduce(prev, input, { now: this.opts.now?.() ?? Date.now(), rng: this.opts.rng ?? ((n) => crypto.getRandomValues(new Uint8Array(n))), live: this.live, store: this.store });
+      out = await reduce(prev, input, {
+        now: this.opts.now?.() ?? Date.now(),
+        rng: this.opts.rng ?? ((n) => crypto.getRandomValues(new Uint8Array(n))),
+        live: this.live,
+        store: this.store,
+      });
       if (out.deleteRoom) await this.store.deleteAll();
-      else if (out.state && (out.state !== prev || out.events.length > 0)) await this.store.commit(out.state, out.events);
+      else if (out.state && (out.state !== prev || out.events.length > 0))
+        await this.store.commit(out.state, out.events);
     } catch {
       internal(); // 落地失敗：不廣播、狀態不前進（記憶體仍是舊狀態，下一則輸入照舊狀態算）
       return null;
     }
     this.state = out.state;
-    const executor = this.opts.executor ?? { deliver: (f: Frame) => this.state?.execConn && this.conns.send(this.state.execConn, JSON.stringify(f)) };
+    const executor = this.opts.executor ?? {
+      deliver: (f: Frame) =>
+        this.state?.execConn && this.conns.send(this.state.execConn, JSON.stringify(f)),
+    };
     for (const { to, frame } of out.sends) {
       if (to === TO_EXECUTOR) executor.deliver(frame);
       else this.conns.send(to, JSON.stringify(frame));

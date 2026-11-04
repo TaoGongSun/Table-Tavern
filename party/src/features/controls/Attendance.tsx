@@ -29,54 +29,130 @@ export function Attendance({ view, act, focus }: { view: RoomView; act: Act; foc
     <div ref={ref} data-testid="attendance">
       <h3>{t("hostAttendance")}</h3>
       {offline.length > 0 && (
-        <DelegateButton view={view} act={act} memberIds={offline.map((m) => m.memberId)} on label={t("hostDelegateOffline", { n: offline.length })} testId="delegate-offline" />
+        <DelegateButton
+          view={view}
+          act={act}
+          memberIds={offline.map((m) => m.memberId)}
+          on
+          label={t("hostDelegateOffline", { n: offline.length })}
+          testId="delegate-offline"
+        />
       )}
       {seated.map((m) => (
         <div key={m.memberId} className="row attend" data-testid={`host-${m.memberId}`}>
-          <span className={m.connected ? "dot on" : "dot"} title={t(m.connected ? "online" : "offline")} />
+          <span
+            className={m.connected ? "dot on" : "dot"}
+            title={t(m.connected ? "online" : "offline")}
+          />
           <span className="grow">
             {m.nickname} · {cardName(view, m.cardId)}
             {m.memberId === me && t("hostYou")}
             {m.delegated && <span className="chip">{t("delegatedBadge")}</span>}
           </span>
           {canDelegate(view) && (
-            <DelegateButton view={view} act={act} memberIds={[m.memberId]} on={!m.delegated} label={t(m.delegated ? "delegateOff" : "delegateOnOther")} className="ghost" testId={`attend-delegate-${m.memberId}`} />
+            <DelegateButton
+              view={view}
+              act={act}
+              memberIds={[m.memberId]}
+              on={!m.delegated}
+              label={t(m.delegated ? "delegateOff" : "delegateOnOther")}
+              className="ghost"
+              testId={`attend-delegate-${m.memberId}`}
+            />
           )}
           {m.memberId !== me && (
-            <PartyMenu trigger="⋯" className="ghost" label={t("hostMemberOptions", { name: m.nickname })} items={[
-              { key: "transfer", label: t("hostTransfer"), onSelect: () => void run("host.transfer", { memberId: m.memberId }) },
-              { key: "remove", label: t("hostRemove"), onSelect: () => (setMode("absent"), setRemoving(m.memberId)) },
-              { key: "ban", label: t("hostBan"), danger: true, onSelect: () => void run("member.kick", { memberId: m.memberId, ban: true }) },
-            ]} />
+            <PartyMenu
+              trigger="⋯"
+              className="ghost"
+              label={t("hostMemberOptions", { name: m.nickname })}
+              items={[
+                {
+                  key: "transfer",
+                  label: t("hostTransfer"),
+                  onSelect: () => void run("host.transfer", { memberId: m.memberId }),
+                },
+                {
+                  key: "remove",
+                  label: t("hostRemove"),
+                  onSelect: () => (setMode("absent"), setRemoving(m.memberId)),
+                },
+                {
+                  key: "ban",
+                  label: t("hostBan"),
+                  danger: true,
+                  onSelect: () => void run("member.kick", { memberId: m.memberId, ban: true }),
+                },
+              ]}
+            />
           )}
         </div>
       ))}
       {unseated.length > 0 && <h3>{t("hostUnseated")}</h3>}
       {unseated.map((m) => (
         <div key={m.memberId} className="row" data-testid={`host-${m.memberId}`}>
-          <span className={m.connected ? "dot on" : "dot"} title={t(m.connected ? "online" : "offline")} />
+          <span
+            className={m.connected ? "dot on" : "dot"}
+            title={t(m.connected ? "online" : "offline")}
+          />
           <span className="grow">{m.nickname}</span>
           {seated.length > 0 && (
-            <select aria-label={t("hostReassign")} value="" onChange={(e) => run("member.reassign", { from: e.target.value, to: m.memberId })}>
+            <select
+              aria-label={t("hostReassign")}
+              value=""
+              onChange={(e) => run("member.reassign", { from: e.target.value, to: m.memberId })}
+            >
               <option value="">{t("hostReassign")}</option>
-              {seated.map((x) => <option key={x.memberId} value={x.memberId}>{`${cardName(view, x.cardId)}（${x.nickname}）`}</option>)}
+              {seated.map((x) => (
+                <option
+                  key={x.memberId}
+                  value={x.memberId}
+                >{`${cardName(view, x.cardId)}（${x.nickname}）`}</option>
+              ))}
             </select>
           )}
-          <PartyMenu trigger="⋯" className="ghost" label={t("hostMemberOptions", { name: m.nickname })} items={[
-            { key: "transfer", label: t("hostTransfer"), onSelect: () => void run("host.transfer", { memberId: m.memberId }) },
-            { key: "remove", label: t("hostKick"), onSelect: () => void run("member.kick", { memberId: m.memberId, ban: false }) },
-            { key: "ban", label: t("hostBan"), danger: true, onSelect: () => void run("member.kick", { memberId: m.memberId, ban: true }) },
-          ]} />
+          <PartyMenu
+            trigger="⋯"
+            className="ghost"
+            label={t("hostMemberOptions", { name: m.nickname })}
+            items={[
+              {
+                key: "transfer",
+                label: t("hostTransfer"),
+                onSelect: () => void run("host.transfer", { memberId: m.memberId }),
+              },
+              {
+                key: "remove",
+                label: t("hostKick"),
+                onSelect: () => void run("member.kick", { memberId: m.memberId, ban: false }),
+              },
+              {
+                key: "ban",
+                label: t("hostBan"),
+                danger: true,
+                onSelect: () => void run("member.kick", { memberId: m.memberId, ban: true }),
+              },
+            ]}
+          />
         </div>
       ))}
       {target && (
-        <Confirm title={t("hostRemoveTitle", { name: target.nickname })} testId="remove-confirm" onCancel={() => setRemoving(null)} actions={[{ label: t("hostRemoveOk"), onClick: () => void remove(), danger: true }]}>
+        <Confirm
+          title={t("hostRemoveTitle", { name: target.nickname })}
+          testId="remove-confirm"
+          onCancel={() => setRemoving(null)}
+          actions={[{ label: t("hostRemoveOk"), onClick: () => void remove(), danger: true }]}
+        >
           <p>{t("hostRemoveBody")}</p>
           <fieldset className="remove-mode">
             <legend>{t("hostRemoveRole")}</legend>
             {(["absent", "npc"] as const).map((k) => (
               <label key={k} className="check">
-                <input type="radio" name="remove-mode" checked={mode === k} onChange={() => setMode(k)} />
+                <input
+                  type="radio"
+                  name="remove-mode"
+                  checked={mode === k}
+                  onChange={() => setMode(k)}
+                />
                 {t(k === "absent" ? "hostRemoveAbsent" : "hostRemoveNpc")}
               </label>
             ))}

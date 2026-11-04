@@ -17,7 +17,8 @@ export function parseInvite(href: string): Invite | null {
 }
 
 /** 配對碼一次性：加入後從網址拿掉，免得重新整理再送一次、累積全房錯誤次數 */
-export const withoutPairCode = (href: string) => href.replace(/([#&])p=[^&]*&?/, "$1").replace(/[#&]$/, "");
+export const withoutPairCode = (href: string) =>
+  href.replace(/([#&])p=[^&]*&?/, "$1").replace(/[#&]$/, "");
 
 /**
  * App 內建瀏覽器（計畫 §9）：手機 QQ 用的人比微信多，QQ 優先〔作者裁決 2026-11-03〕。手機 QQ 內建網頁的 UA 帶「空格＋QQ/版本」
@@ -52,7 +53,10 @@ export function deviceId(storage: Storage | null): string {
   const stored = read(storage, DEVICE);
   if (stored && /^[A-Za-z0-9_-]{22}$/.test(stored)) return stored;
   const bytes = crypto.getRandomValues(new Uint8Array(16));
-  const id = btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const id = btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
   write(storage, DEVICE, id);
   return id;
 }

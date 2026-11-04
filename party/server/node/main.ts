@@ -26,7 +26,9 @@ import { RoomDb } from "./sqlite-store";
 const env = process.env;
 const port = Number(env.PORT) || 8787;
 const host = env.HOST || "127.0.0.1";
-const publicOrigin = env.PUBLIC_ORIGIN ? new URL(env.PUBLIC_ORIGIN).origin : `http://localhost:${port}`;
+const publicOrigin = env.PUBLIC_ORIGIN
+  ? new URL(env.PUBLIC_ORIGIN).origin
+  : `http://localhost:${port}`;
 const dbPath = env.DB_PATH || "./data/rooms.sqlite";
 mkdirSync(dirname(dbPath), { recursive: true });
 
@@ -41,8 +43,12 @@ const server = createPartyServer(rooms, {
 rooms.restore();
 server.listen(port, host, () => {
   console.log(`[party] listening on http://${host}:${port}, public origin ${publicOrigin}`);
-  if (!env.PUBLIC_ORIGIN) console.warn("[party] PUBLIC_ORIGIN 未設：邀請連結與成員來源比對都用 localhost，對外部署前請設定");
-  if (env.TRUST_PROXY !== "1") console.warn("[party] TRUST_PROXY 未設：放在反向代理後時所有人共用同一個建房限流額度");
+  if (!env.PUBLIC_ORIGIN)
+    console.warn(
+      "[party] PUBLIC_ORIGIN 未設：邀請連結與成員來源比對都用 localhost，對外部署前請設定",
+    );
+  if (env.TRUST_PROXY !== "1")
+    console.warn("[party] TRUST_PROXY 未設：放在反向代理後時所有人共用同一個建房限流額度");
 });
 
 let stopping = false;
