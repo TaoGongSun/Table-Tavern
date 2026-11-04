@@ -25,7 +25,7 @@ export interface ExecutorPort {
 
 export class RoomRunner {
   private state: RoomState | null | undefined; // undefined＝還沒從 storage 載入（DO 剛喚醒）
-  private readonly live: Live = { stream: null, seed: null, buckets: {} };
+  private readonly live: Live = { stream: null, seed: null, buckets: {}, uploads: {}, cardReqs: {} };
   private queue: Promise<unknown> = Promise.resolve();
 
   constructor(

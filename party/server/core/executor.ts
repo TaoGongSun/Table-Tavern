@@ -1,4 +1,5 @@
 // 執行端 → 伺服器訊息（協定 §6.2）：派工結果以 dispatchId／(dispatchId, part)／jobId 冪等收下。
+import { uploadResult } from "./cards";
 import { claim, type Handler } from "./member";
 import { announceExec, hold, MIN, openRound, unseat } from "./round";
 import { crockford, sameHash, sha256Hex } from "./secrets";
@@ -177,7 +178,8 @@ export const EXECUTOR: Record<string, (tx: Tx, p: any) => ReturnType<Handler>> =
     w.jobs = w.jobs.filter((x) => x.job.jobId !== p.jobId);
     w.doneJobs = [...w.doneJobs.slice(-19), p.jobId];
     if (j.job.kind === "scene_advance") sceneResult(tx, j.job, p);
-    else cardResult(tx, j, p);
+    else if (j.job.kind === "card_create") cardResult(tx, j, p);
+    else uploadResult(tx, j.job, p);
   },
   "pair.create": async (tx, p) => {
     need(tx.s.status !== "closed", "E_ROOM_CLOSED");
@@ -194,7 +196,7 @@ export const EXECUTOR: Record<string, (tx: Tx, p: any) => ReturnType<Handler>> =
     tx.emit("pair.unbound", { memberId: payer });
   },
   status: (tx, p) => {
-    Object.assign(tx.w.exec, { keepAwake: p.keepAwake, busy: p.busy, paused: p.paused === true });
+    Object.assign(tx.w.exec, { keepAwake: p.keepAwake, busy: p.busy, paused: p.paused === true, imageGen: p.imageGen === true });
     announceExec(tx);
   },
   quota: (tx, p) => {

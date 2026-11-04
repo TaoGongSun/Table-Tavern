@@ -1,7 +1,7 @@
 // Node 殼：真 http＋ws＋node:sqlite 暫存檔。驗：ev 送出當下已落地、關掉重開同一 DB 接著跑、鬧鐘排回與分段、
 // 成員心跳與掃描、錯誤訊框不拖垮程序、卸載與重連交錯不會出現兩個 runner、限流、來源、靜態檔。
 import { EventEmitter } from "node:events";
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -221,6 +221,41 @@ describe("Node 自架殼", () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(rooms.size).toBe(0);
     db.db.close();
+  });
+
+  it("玩家卡上傳、執行端取檔、存秘密段走真 HTTP 與 WS；上傳本體與秘密段不寫進 SQLite 檔", async () => {
+    const dir = tmp();
+    const s = await start(dir);
+    const room = await createRoom(s.base);
+    const exec = await Client.connect(s.base, room.roomCode, "executor", undefined, undefined);
+    exec.ws.send(hello({ role: "executor", roomCode: room.roomCode, executorToken: room.executorToken, inflight: null }));
+    await exec.until((f) => f.t === "welcome");
+    const member = await Client.connect(s.base, room.roomCode, "member");
+    member.ws.send(hello({ role: "member", deviceId: "d".repeat(22), joinSecret: room.joinSecret, nickname: "阿明" }));
+    await member.until((f) => f.t === "welcome");
+    const SECRET = "祕密標記NODE";
+    const url = `${s.base}/api/rooms/${room.roomCode}/cards`;
+    const auth = { authorization: `Bearer ${"d".repeat(22)}` };
+    expect((await fetch(`${url}?kind=card`, { method: "POST", headers: { ...auth, origin: "https://evil.test" }, body: "{}" })).status).toBe(403);
+    expect((await fetch(`${url}?kind=card`, { method: "POST", headers: auth, body: new Uint8Array(9 << 20) })).status).toBe(413); // 本體沒讀也要回得到
+    expect((await fetch(`${url}?kind=image`, { method: "POST", headers: auth, body: new Uint8Array(1 << 20) })).status).toBe(403);
+    const up = await fetch(`${url}?kind=card`, { method: "POST", headers: auth, body: `{"name":"${SECRET}"}` });
+    expect(up.status).toBe(202);
+    const job = await exec.until((f) => f.t === "job.card_import");
+    expect(job.p.uploadId).toBe(((await up.json()) as { uploadId: string }).uploadId);
+    const got = await fetch(`${url}/${job.p.uploadId}`, { headers: { authorization: `Bearer ${room.executorToken}` } });
+    expect(got.headers.get("content-type")).toBe("application/octet-stream");
+    expect(await got.text()).toBe(`{"name":"${SECRET}"}`);
+    expect((await fetch(`${url}/${job.p.uploadId}`, { headers: { authorization: `Bearer ${room.executorToken}` } })).status).toBe(404);
+    exec.ws.send(JSON.stringify({ t: "roster.update", p: { cards: [card] } }));
+    exec.ws.send(JSON.stringify({ t: "job.result", p: { jobId: job.p.jobId, ok: true, result: { cardId: "c1" } } }));
+    expect((await member.until((f) => f.p?.type === "card_upload")).p).toMatchObject({ ok: true, cardId: "c1" });
+    member.ws.send(JSON.stringify({ t: "card.save", id: "s1", p: { cardId: "c1", privateMd: SECRET } }));
+    const save = await exec.until((f) => f.t === "card.save");
+    exec.ws.send(JSON.stringify({ t: "card.save.result", p: { reqId: save.p.reqId, ok: true } }));
+    await member.until((f) => f.t === "ok" && f.p.id === "s1");
+    await s.stop();
+    for (const f of readdirSync(dir).filter((n) => n.startsWith("rooms.sqlite"))) expect(readFileSync(join(dir, f)).includes(Buffer.from(SECRET))).toBe(false);
   });
 
   it("單頁 fallback 的 index.html 是指向根外的連結時不送", async () => {

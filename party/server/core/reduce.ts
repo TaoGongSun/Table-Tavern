@@ -1,6 +1,7 @@
 // 核心入口（協定 §12.1）：(狀態, 輸入) → 新狀態＋事件＋要送的訊框。只用語言內建、TextEncoder 與 WebCrypto。
 // 與協定 §12.1 的差異：reduce 是 async（WebCrypto 的 SHA-256 只有非同步版，讀事件也要 await），
 // 所以單執行緒保證改由 RoomRunner 的每房序列化佇列提供；ctx 多帶 live（不落地的記憶體值）與 store 的讀取。
+import { CARD_EXECUTOR, CARD_MEMBER, cardFetch, cardsAlarm, failPending, memberByDevice, settleCards, uploadBody, uploadReserve } from "./cards";
 import { EXECUTOR } from "./executor";
 import { toWebSave } from "./export";
 import { closeRoom, evFrame, MEMBER, pairClaim, rate } from "./member";
@@ -18,7 +19,12 @@ export { validateFrame } from "./validate";
 const CLOSE: Partial<Record<ErrorCode, number>> = {
   E_BAD_FRAME: 4400, E_VERSION: 4426, E_AUTH_REQUIRED: 4401, E_AUTH_FAILED: 4401, E_ROOM_NOT_FOUND: 4404, E_BANNED: 4403,
 };
-const HTTP: Partial<Record<ErrorCode, number>> = { E_ROOM_NOT_FOUND: 404, E_AUTH_FAILED: 401, E_FORBIDDEN: 403, E_STATE_CONFLICT: 409 };
+const HTTP: Partial<Record<ErrorCode, number>> = {
+  E_ROOM_NOT_FOUND: 404, E_DISPATCH_UNKNOWN: 404, E_AUTH_FAILED: 401, E_FORBIDDEN: 403, E_BANNED: 403, E_SEAT_REQUIRED: 403, E_STATE_CONFLICT: 409,
+  E_ROOM_CLOSED: 410, E_LENGTH_REQUIRED: 411, E_TOO_LARGE: 413, E_UNSUPPORTED_FORMAT: 415, E_RATE_LIMITED: 429, E_EXECUTOR_OFFLINE: 503,
+};
+const MEMBER_ALL = { ...MEMBER, ...CARD_MEMBER };
+const EXECUTOR_ALL = { ...EXECUTOR, ...CARD_EXECUTOR };
 const READONLY = new Set(["ping", "history.page"]);
 const TOKEN = (n: number) => new RegExp(`^[A-Za-z0-9_-]{${n}}$`);
 const hashOf = (s: RoomState, secretText: string) => sha256Hex(`${s.code}:${secretText}`);
@@ -84,6 +90,7 @@ async function executorHello(tx: Tx, p: any) {
   const token = p.role === "executor" && String(p.roomCode).toUpperCase() === s.code && TOKEN(43).test(p.executorToken);
   need(token && s.execHash && sameHash(await hashOf(s, p.executorToken), s.execHash), "E_AUTH_FAILED");
   need(s.status !== "closed", "E_ROOM_CLOSED");
+  failPending(tx, "E_EXECUTOR_OFFLINE"); // 上一個執行端連線收到的讀卡、存卡、上傳不會再有結果
   const w = tx.w;
   if (w.execConn && w.execConn !== tx.conn) tx.shut(w.execConn, 4409, "E_EXECUTOR_REPLACED");
   w.conns[tx.conn].who = "exec";
@@ -114,13 +121,13 @@ async function onFrame(tx: Tx, role: "member" | "executor", f: Frame) {
   need(c?.who, "E_AUTH_REQUIRED");
   if (role === "executor") {
     if (tx.now - tx.s.exec.lastSeen >= 5000 || f.t === "hb") tx.w.exec.lastSeen = tx.now; // 任何訊框都算在線，寫入節流
-    if ((await EXECUTOR[f.t](tx, f.p)) !== "later") tx.ok();
+    if ((await EXECUTOR_ALL[f.t](tx, f.p)) !== "later") tx.ok();
     return;
   }
   rate(tx, `c:${tx.conn}`, 20, 1000);
   if (tx.s.status === "closed") need(READONLY.has(f.t) || f.t === "member.leave", "E_ROOM_CLOSED");
   const m = (READONLY.has(f.t) ? tx.s : tx.w).members.find((x) => x.id === c.who)!;
-  if ((await MEMBER[f.t](tx, f.p, m)) !== "later") tx.ok();
+  if ((await MEMBER_ALL[f.t](tx, f.p, m)) !== "later") tx.ok();
 }
 
 async function create(tx: Tx, input: Extract<CoreInput, { route: "create" }>) {
@@ -139,8 +146,7 @@ async function create(tx: Tx, input: Extract<CoreInput, { route: "create" }>) {
 async function exportRoom(tx: Tx, deviceId: string) {
   need(tx.exists, "E_ROOM_NOT_FOUND");
   const s = tx.s;
-  const dev = TOKEN(22).test(deviceId) ? await hashOf(s, deviceId) : "";
-  need(s.members.some((m) => m.id === s.hostId && sameHash(m.dev, dev)), "E_FORBIDDEN");
+  need((await memberByDevice(s, deviceId))?.id === s.hostId && s.hostId !== null, "E_FORBIDDEN");
   tx.http = { status: 200, body: toWebSave(s, await tx.ctx.store.eventsAfter(0, Number.MAX_SAFE_INTEGER), tx.now) };
 }
 
@@ -155,7 +161,8 @@ async function closeByExecutor(tx: Tx, token: string) {
 
 function output(tx: Tx): CoreOutput {
   const state = tx.exists && !tx.deleteRoom ? tx.s : null;
-  return { state, events: tx.events, sends: tx.sends, close: tx.close, alarmAt: nextAlarm(state), ...(tx.deleteRoom ? { deleteRoom: true } : {}), ...(tx.http ? { http: tx.http } : {}) };
+  const alarmAt = state && Math.min(nextAlarm(state)!, cardsAlarm(tx.ctx.live));
+  return { state, events: tx.events, sends: tx.sends, close: tx.close, alarmAt, ...(tx.deleteRoom ? { deleteRoom: true } : {}), ...(tx.http ? { http: tx.http } : {}) };
 }
 
 export async function reduce(state: RoomState | null, input: CoreInput, ctx: CoreCtx): Promise<CoreOutput> {
@@ -174,7 +181,14 @@ export async function reduce(state: RoomState | null, input: CoreInput, ctx: Cor
       else if (who && who !== "exec" && !Object.values(tx.s.conns).some((c) => c.who === who)) tx.toAll("vol", { type: "presence", memberId: who, connected: false });
     }
     if (input.kind === "alarm" && tx.exists) onAlarm(tx);
-    if (input.kind === "http") await (input.route === "create" ? create(tx, input) : input.route === "close" ? closeByExecutor(tx, input.executorToken) : exportRoom(tx, input.deviceId));
+    if (input.kind === "http") {
+      if (input.route === "create") await create(tx, input);
+      else if (input.route === "close") await closeByExecutor(tx, input.executorToken);
+      else if (input.route === "export") await exportRoom(tx, input.deviceId);
+      else if (input.route === "upload_reserve") await uploadReserve(tx, input);
+      else if (input.route === "upload_body") uploadBody(tx, input);
+      else await cardFetch(tx, input);
+    }
     if (input.kind === "frame") {
       const v = validateFrame(input.raw, input.conn.role);
       if (!v.ok) throw new Fail(v.code);
@@ -182,11 +196,12 @@ export async function reduce(state: RoomState | null, input: CoreInput, ctx: Cor
       await onFrame(tx, input.conn.role, v.frame);
     }
     if (tx.exists && !tx.deleteRoom) settle(tx);
+    settleCards(tx);
     return output(tx);
   } catch (e) {
     if (!(e instanceof Fail)) throw e;
     const f = new Tx(state, ctx, conn);
-    if (input.kind === "http") f.http = { status: HTTP[e.code] ?? 400, body: { code: e.code } };
+    if (input.kind === "http") f.http = { status: HTTP[e.code] ?? 400, body: { code: e.code, ...(e.retryAfterMs ? { retryAfterMs: e.retryAfterMs } : {}) } };
     else f.err(conn, e.code, { ...(tx.reqId ? { id: tx.reqId } : {}), ...(e.retryAfterMs ? { retryAfterMs: e.retryAfterMs } : {}), ...(e.detail ? { detail: e.detail } : {}) });
     // 還沒通過 hello 的連線遇到房間已關也直接斷（4410）；已在房裡的唯讀成員只回錯誤
     const code = CLOSE[e.code] ?? (e.code === "E_ROOM_CLOSED" && !state?.conns[conn]?.who ? 4410 : undefined);

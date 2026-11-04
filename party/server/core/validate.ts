@@ -34,6 +34,8 @@ const MEMBER_FRAMES: Record<string, string> = {
   "member.departure": "cardId:s mode:s", "member.reassign": "from:s to:s", "member.leave": "",
   "scene.advance": "round:i next?:o", "scene.advance_cancel": "", "room.close": "", "pair.claim": "code:s",
   "pair.leave": "", ctl: "ctlId:s cmd:o", "history.page": "beforeSeq:i limit:i", ping: "",
+  "card.mine": "", "card.save": "cardId:s name?:s avatar?:s publicMd?:s privateMd?:s removeImage?:b imageFromGallery?:s",
+  "image.gen": "cardId:s name:s description:s extraPrompt:s framing:s",
 };
 const EXECUTOR_FRAMES: Record<string, string> = {
   hello: "protocol:i role:s roomCode:s executorToken:s lastSeq:i inflight:o~ client:o", hb: "",
@@ -42,11 +44,15 @@ const EXECUTOR_FRAMES: Record<string, string> = {
   "gen.delta": "dispatchId:s part:i text:s", "gen.part.end": "dispatchId:s part:i text:s interrupted:b",
   "gen.done": "dispatchId:s aborted:b cardsArrived?:a", "gen.failed": "dispatchId:s atPart:i~ error:o",
   "job.ack": "jobId:s", "job.progress": "jobId:s", "job.result": "jobId:s ok:b result?:o error?:o",
-  "pair.create": "grantHost:b", "pair.revoke": "", status: "keepAwake:b~ busy:b paused?:b",
+  "pair.create": "grantHost:b", "pair.revoke": "", status: "keepAwake:b~ busy:b paused?:b imageGen?:b",
   quota: "route:s routeLabel:s window:s state:s usedRatio:n~ resetsAt:i~ creditsLeft:s~ observedAt:i",
   "ctl.result": "ctlId:s ok:b error?:o", "executor.leave": "",
+  "card.read.result": "reqId:s ok:b card?:o code?:s", "card.save.result": "reqId:s ok:b code?:s",
+  "image.gen.result": "reqId:s ok:b file?:s preview?:s code?:s",
 };
 const LIMIT = { member: 16 * 1024, executor: 1024 * 1024 };
+/** 成員訊框只有 `card.save` 放寬（兩段各 64,000 字）；不分片（room-player-cards §6-2） */
+const MEMBER_WIDE: Record<string, number> = { "card.save": 512 * 1024 };
 
 function wellFormed(v: unknown): boolean {
   if (typeof v === "string") return (v as string & { isWellFormed(): boolean }).isWellFormed();
@@ -57,7 +63,9 @@ function wellFormed(v: unknown): boolean {
 
 export function validateFrame(raw: string, from: "member" | "executor"): { ok: true; frame: Frame } | { ok: false; code: ErrorCode } {
   const bad = { ok: false as const, code: "E_BAD_FRAME" as const };
-  if (raw.length > LIMIT[from] || new TextEncoder().encode(raw).length > LIMIT[from]) return bad;
+  const max = from === "member" ? MEMBER_WIDE["card.save"] : LIMIT[from];
+  const size = raw.length > max ? Infinity : new TextEncoder().encode(raw).length;
+  if (size > max) return bad;
   let v: unknown;
   try {
     v = JSON.parse(raw);
@@ -67,6 +75,7 @@ export function validateFrame(raw: string, from: "member" | "executor"): { ok: t
   if (!isObj(v) || typeof v.t !== "string" || !wellFormed(v)) return bad;
   const table = from === "member" ? MEMBER_FRAMES : EXECUTOR_FRAMES;
   if (!Object.hasOwn(table, v.t)) return bad;
+  if (from === "member" && size > (MEMBER_WIDE[v.t] ?? LIMIT.member)) return bad;
   if (v.id !== undefined && (typeof v.id !== "string" || !/^[A-Za-z0-9_-]{1,36}$/.test(v.id))) return bad;
   const p = v.p ?? {};
   if (!shape(p, table[v.t])) return bad;
@@ -92,6 +101,17 @@ export function cleanText(v: unknown, min: number, max = 2000): string | null {
   const ok = chars(s) >= min && chars(s) <= max && s.split("\n").length <= 30 && !/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/.test(s);
   return ok ? s : null;
 }
+
+/** 卡片長文（公開段、秘密段、生圖描述）：NFC、`\r\n` 正規化、0–max 字元、控制字元只允許 `\n` 與 `\t`，不限行數 */
+export function cleanLong(v: unknown, max: number): string | null {
+  if (typeof v !== "string") return null;
+  const s = v.replace(/\r\n/g, "\n").normalize("NFC");
+  return chars(s) <= max && !/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/.test(s) ? s : null;
+}
+/** 圖示（emoji）：1–16 字元、沒有空白與控制字元 */
+export const cleanIcon = (v: unknown) => (typeof v === "string" && chars(v) >= 1 && chars(v) <= 16 && !/[\s\u0000-\u001f\u007f-\u009f]/.test(v) ? v : null);
+/** 圖庫檔名（桌面版 `<毫秒>.png`）：不含路徑與 `..`，執行端再對那張卡的圖庫驗一次 */
+export const GALLERY_FILE = /^(?!.*\.\.)[A-Za-z0-9_-][A-Za-z0-9_.-]{0,79}\.png$/;
 
 const str = (v: unknown, max: number, min = 0) => typeof v === "string" && v.length >= min && chars(v) <= max;
 export const ID64 = /^[A-Za-z0-9_-]{1,64}$/;

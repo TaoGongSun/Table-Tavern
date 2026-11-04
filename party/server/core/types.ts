@@ -119,7 +119,9 @@ export interface Dispatch {
 }
 export type Job =
   | { jobId: string; kind: "scene_advance"; scene: number; nextSettings: SceneSettings }
-  | { jobId: string; kind: "card_create"; memberId: string; name: string; blurb: string };
+  | { jobId: string; kind: "card_create"; memberId: string; name: string; blurb: string }
+  | { jobId: string; kind: "card_import"; memberId: string; uploadId: string; size: number }
+  | { jobId: string; kind: "card_image"; memberId: string; cardId: string; uploadId: string; size: number };
 export interface InflightReport {
   dispatch: { dispatchId: string; state: "running" | "done" | "failed"; lastEndedPart: number | null } | null;
   job: { jobId: string; state: "running" | "done" } | null;
@@ -131,6 +133,8 @@ export interface ExecutorView {
   keepAwake: boolean | null;
   /** 房主暫時關房（執行端下線前報的）；跟「GM 主機離線」分開顯示 */
   paused: boolean;
+  /** GM 主機允許玩家用 AI 生圖（桌面版房間資訊列的開關；舊版執行端沒報＝false） */
+  imageGen: boolean;
   modelLabel: string | null;
 }
 
@@ -140,7 +144,8 @@ export type ErrorCode =
   | "E_ROUND_STALE" | "E_ROUND_NOT_ACTING" | "E_STATE_CONFLICT" | "E_SEAT_TAKEN" | "E_SEAT_REQUIRED"
   | "E_EXECUTOR_OFFLINE" | "E_EXECUTOR_TIMEOUT" | "E_GEN_TIMEOUT" | "E_PAIR_CODE_INVALID" | "E_PAIR_LOCKED"
   | "E_MODEL_NOT_OFFERED" | "E_SETTING_INVALID" | "E_RATE_LIMITED" | "E_DISPATCH_UNKNOWN"
-  | "E_SESSION_REPLACED" | "E_EXECUTOR_REPLACED" | "E_INTERNAL";
+  | "E_SESSION_REPLACED" | "E_EXECUTOR_REPLACED" | "E_INTERNAL"
+  | "E_LENGTH_REQUIRED" | "E_TOO_LARGE" | "E_UNSUPPORTED_FORMAT" | "E_CARD_INVALID" | "E_GEN_QUOTA" | "E_GEN_UNSUPPORTED" | "E_GEN_REFUSED";
 
 // 欄位內容由核心各處理器再驗（validate.ts）；信封只保證 t 在白名單、p 是物件
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -184,7 +189,7 @@ export interface RoomState {
   closedAt: number | null;
   joinHash: string;
   execHash: string | null;
-  exec: { label: string; online: boolean; since: number; lastSeen: number; keepAwake: boolean | null; busy: boolean; paused?: boolean; caps: Capabilities | null; quota: QuotaReport | null };
+  exec: { label: string; online: boolean; since: number; lastSeen: number; keepAwake: boolean | null; busy: boolean; paused?: boolean; imageGen?: boolean; caps: Capabilities | null; quota: QuotaReport | null };
   execConn: string | null;
   seq: number;
   roundNo: number;
@@ -211,11 +216,33 @@ export interface RoomState {
   conns: Record<string, { role: ConnRole; who: string | null; at: number }>; // who＝memberId／"exec"；null＝還沒 hello
 }
 
-/** 不落地的記憶體值：串流緩衝、分片建房緩衝、頻率桶。DO 被逐出就遺失（協定 §4.3 已容許）。 */
+/** 上傳一件（room-player-cards §3.1）：reserved＝名額已占、本體還在讀；ready＝本體掛著等取；fetched＝已取走、等結果 */
+export interface Upload {
+  memberId: string;
+  kind: "card" | "image";
+  cardId: string | null;
+  length: number;
+  state: "reserved" | "ready" | "fetched";
+  at: number; // 到期＝at＋10 分鐘
+  bytes: Uint8Array | null;
+}
+/** 轉給執行端、等回覆的讀卡／存卡／生圖（只在記憶體：私設與生成圖不落地） */
+export interface CardReq {
+  kind: "mine" | "save" | "gen";
+  conn: string;
+  id?: string;
+  memberId: string;
+  cardId: string;
+  at: number;
+}
+
+/** 不落地的記憶體值：串流緩衝、分片建房緩衝、頻率桶、上傳與卡片請求。DO 被逐出就遺失（協定 §4.3 已容許）。 */
 export interface Live {
   stream: { round: number; part: number; speaker: Speaker; text: string; announced: boolean } | null;
   seed: { next: number; cards: PublicCard[] | null; history: StoryPart[] } | null;
   buckets: Record<string, { start: number; n: number }>;
+  uploads: Record<string, Upload>;
+  cardReqs: Record<string, CardReq>;
 }
 
 export interface CoreCtx {
@@ -230,7 +257,10 @@ export type CoreInput =
   | { kind: "alarm" }
   | { kind: "http"; route: "create"; body: unknown; code: string; origin: string; idleDays: number }
   | { kind: "http"; route: "export"; deviceId: string }
-  | { kind: "http"; route: "close"; executorToken: string };
+  | { kind: "http"; route: "close"; executorToken: string }
+  | { kind: "http"; route: "upload_reserve"; deviceId: string; uploadKind: "card" | "image"; length: number }
+  | { kind: "http"; route: "upload_body"; uploadId: string; bytes: Uint8Array | null } // null＝讀本體中途斷掉
+  | { kind: "http"; route: "card_fetch"; executorToken: string; uploadId: string };
 /** 寄給執行端的訊框用這個收件者，由殼的 ExecutorPort 轉送（v1 WebSocket、v2 程序內） */
 export const TO_EXECUTOR = "@executor";
 export interface CoreOutput {
@@ -240,5 +270,5 @@ export interface CoreOutput {
   close: Array<{ conn: string; code: number }>;
   alarmAt: number | null;
   deleteRoom?: true;
-  http?: { status: number; body: unknown };
+  http?: { status: number; body: unknown; bytes?: Uint8Array }; // bytes：取檔回原始位元組，不轉 JSON
 }

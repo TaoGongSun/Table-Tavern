@@ -1,6 +1,7 @@
 // Cloudflare Durable Object 殼（協定 §12.1）：一房一個 DO，SQLite storage＋WebSocket Hibernation＋單一 alarm。
 // 規則全在 core/；這裡只把平台介面接到 RoomRunner。
 import { RoomRunner, type Connections, type RoomStore } from "../core/runner";
+import { receiveUpload } from "../core/upload";
 import type { ConnInfo, ConnRole, RoomState, StoredEvent } from "../core/types";
 
 export interface Env {
@@ -11,6 +12,20 @@ export interface Env {
 type Attachment = ConnInfo & { at: number };
 const MEMBER_STALE_MS = 45_000;
 const json = (body: unknown, status: number) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+const bearer = (req: Request) => (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+async function* chunks(stream: ReadableStream<Uint8Array> | null) {
+  const reader = stream?.getReader();
+  if (!reader) return;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      yield value;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
 
 /** 與協定 §9.1 的差異：不拆 room／members／cards／drafts／codes／events 六張表，改三張——
  *  room 單列放整份狀態 JSON（含成員、草稿、配對碼，不含名冊）、cards 單列放名冊（含頭像，只在換名冊時重寫）、
@@ -83,6 +98,17 @@ export class RoomDO implements DurableObject {
       const body = await req.json().catch(() => null);
       const out = await this.runner.run({ kind: "http", route: "create", body, code: req.headers.get("x-room-code") ?? "", origin: req.headers.get("x-origin") ?? "", idleDays });
       return json(out?.http?.body ?? { code: "E_INTERNAL" }, out?.http?.status ?? 500);
+    }
+    const fetchId = url.pathname.match(/\/cards\/([0-9A-Z]{26})$/)?.[1];
+    if (fetchId) {
+      const out = await this.runner.run({ kind: "http", route: "card_fetch", executorToken: bearer(req), uploadId: fetchId });
+      if (out?.http?.bytes) return new Response(out.http.bytes, { status: 200, headers: { "content-type": "application/octet-stream" } });
+      return json(out?.http?.body ?? { code: "E_INTERNAL" }, out?.http?.status ?? 500);
+    }
+    if (url.pathname.endsWith("/cards")) {
+      const h = req.headers;
+      const reply = await receiveUpload(this.runner, { kind: url.searchParams.get("kind"), contentLength: h.get("Content-Length"), origin: h.get("Origin"), selfOrigin: url.origin, deviceId: bearer(req), body: chunks(req.body) });
+      return json(reply.body, reply.status);
     }
     if (url.pathname.endsWith("/export")) {
       const deviceId = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");

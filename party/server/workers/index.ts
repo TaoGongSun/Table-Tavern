@@ -5,7 +5,7 @@ import type { Env } from "./room-do";
 export { RoomDO } from "./room-do";
 
 const json = (body: unknown, status: number) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-const ROOM_PATH = /^\/api\/rooms\/([0-9A-Za-z]{8})(?:\/(ws|export))?$/;
+const ROOM_PATH = /^\/api\/rooms\/([0-9A-Za-z]{8})(?:\/(ws|export|cards)(?:\/([0-9A-Z]{26}))?)?$/;
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
@@ -28,6 +28,8 @@ export default {
     const m = url.pathname.match(ROOM_PATH);
     const code = m?.[1].toUpperCase() ?? "";
     if (!m || !CROCKFORD8.test(code)) return json({ code: "E_ROOM_NOT_FOUND" }, 404);
+    if (m[3] !== undefined && m[2] !== "cards") return json({ code: "E_ROOM_NOT_FOUND" }, 404);
+    if (m[2] === "cards" && req.method !== (m[3] === undefined ? "POST" : "GET")) return json({ code: "E_BAD_FRAME" }, 405); // 上傳／執行端取檔
     if (m[2] === "export" && req.method !== "GET") return json({ code: "E_BAD_FRAME" }, 405);
     if (m[2] === undefined && req.method !== "DELETE") return json({ code: "E_BAD_FRAME" }, 405); // 結束房間（執行端憑證）
     // 成員連線只收 party/ 自己的來源；執行端（桌面版）不看來源、只看憑證

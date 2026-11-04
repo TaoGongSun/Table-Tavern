@@ -7,6 +7,7 @@ import type { Duplex } from "node:stream";
 import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { WebSocketServer } from "ws";
 import { CROCKFORD8, crockford } from "../core/secrets";
+import { receiveUpload } from "../core/upload";
 import { guard, Rooms } from "./rooms";
 
 export interface ServerConfig {
@@ -16,7 +17,7 @@ export interface ServerConfig {
   staticDir: string;
 }
 
-const ROOM_PATH = /^\/api\/rooms\/([0-9A-Za-z]{8})(?:\/(ws|export))?$/;
+const ROOM_PATH = /^\/api\/rooms\/([0-9A-Za-z]{8})(?:\/(ws|export|cards)(?:\/([0-9A-Z]{26}))?)?$/;
 const CREATE_PER_HOUR = 10; // 協定 §6.1：同 IP 每小時 10 次（Workers 只能近似每分鐘 1 次）
 const HOUR = 3_600_000;
 const MIME: Record<string, string> = {
@@ -83,15 +84,30 @@ export function createPartyServer(rooms: Rooms, cfg: ServerConfig) {
       const code = m?.[1].toUpperCase() ?? "";
       if (!m || !CROCKFORD8.test(code)) return json(res, 404, { code: "E_ROOM_NOT_FOUND" });
       if (m[2] === "ws") return json(res, 426, { code: "E_BAD_FRAME" });
+      if (m[3] !== undefined && m[2] !== "cards") return json(res, 404, { code: "E_ROOM_NOT_FOUND" });
       const bearer = String(req.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
+      if (m[2] === "cards" && m[3] !== undefined) {
+        if (req.method !== "GET") return json(res, 405, { code: "E_BAD_FRAME" });
+        const out = await rooms.with(code, (r) => r.run({ kind: "http", route: "card_fetch", executorToken: bearer, uploadId: m[3] }));
+        if (!out?.http?.bytes) return json(res, out?.http?.status ?? 500, out?.http?.body ?? { code: "E_INTERNAL" });
+        return void res.writeHead(200, { "content-type": "application/octet-stream" }).end(out.http.bytes);
+      }
+      if (m[2] === "cards") {
+        if (req.method !== "POST") return json(res, 405, { code: "E_BAD_FRAME" });
+        const origin = req.headers.origin ?? null;
+        const reply = await rooms.with(code, (r) =>
+          receiveUpload(r.runner, { kind: url.searchParams.get("kind"), contentLength: req.headers["content-length"] ?? null, origin, selfOrigin: cfg.publicOrigin, deviceId: bearer, body: req }),
+        );
+        if (!req.complete) res.once("finish", () => req.destroy()); // 宣告超大或沒宣告長度的本體不讀，回完就斷
+        return json(res, reply.status, reply.body);
+      }
       if (m[2] === undefined) {
         if (req.method !== "DELETE") return json(res, 405, { code: "E_BAD_FRAME" });
         const out = await rooms.with(code, (r) => r.run({ kind: "http", route: "close", executorToken: bearer }));
         return json(res, out?.http?.status ?? 500, out?.http?.body ?? { code: "E_INTERNAL" });
       }
       if (req.method !== "GET") return json(res, 405, { code: "E_BAD_FRAME" });
-      const deviceId = String(req.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
-      const out = await rooms.with(code, (r) => r.run({ kind: "http", route: "export", deviceId }));
+      const out = await rooms.with(code, (r) => r.run({ kind: "http", route: "export", deviceId: bearer }));
       return json(res, out?.http?.status ?? 500, out?.http?.body ?? { code: "E_INTERNAL" });
     }
     if (req.method !== "GET" && req.method !== "HEAD") return json(res, 405, { code: "E_BAD_FRAME" });

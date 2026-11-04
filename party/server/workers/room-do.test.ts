@@ -115,6 +115,27 @@ describe("RoomDO", () => {
     expect(exportRes.status).toBe(403); // 沒配對 grantHost，還沒有房主
   });
 
+  it("上傳走 DO 的 fetch：先占名額再串流讀本體、派工後執行端帶憑證取檔一次", async () => {
+    const { ctx } = fakeCtx();
+    const room = make(ctx);
+    const res = await room.fetch(new Request("https://room/create", { method: "POST", headers: { "x-room-code": "ABCD2345", "x-origin": "https://t" }, body: JSON.stringify({ protocol: 1, label: "電腦", client: {} }) }));
+    const { executorToken, joinSecret } = (await res.json()) as Record<string, string>;
+    const exec = new FakeSocket();
+    await room.accept(exec as unknown as WebSocket, "executor");
+    await room.webSocketMessage(exec as unknown as WebSocket, hello({ role: "executor", roomCode: "ABCD2345", executorToken, inflight: null }));
+    const member = new FakeSocket();
+    await room.accept(member as unknown as WebSocket, "member");
+    await room.webSocketMessage(member as unknown as WebSocket, hello({ role: "member", deviceId: "d".repeat(22), joinSecret, nickname: "阿明" }));
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+    const headers = { Authorization: `Bearer ${"d".repeat(22)}`, "Content-Length": String(png.length), Origin: "https://room" };
+    const up = await room.fetch(new Request("https://room/api/rooms/ABCD2345/cards?kind=card", { method: "POST", headers, body: png }));
+    expect(up.status).toBe(202);
+    const job = exec.sent.find((f) => f.t === "job.card_import");
+    const get = () => room.fetch(new Request(`https://room/api/rooms/ABCD2345/cards/${job.p.uploadId}`, { headers: { Authorization: `Bearer ${executorToken}` } }));
+    expect(new Uint8Array(await (await get()).arrayBuffer())).toEqual(png);
+    expect((await get()).status).toBe(404);
+  });
+
   it("喚醒時 45 秒沒有自動回應的成員連線被關掉並廣播離線", async () => {
     const { ctx } = fakeCtx();
     const room = make(ctx);

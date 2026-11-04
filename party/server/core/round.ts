@@ -15,7 +15,7 @@ export const cardName = (s: RoomState, cardId: string) => s.cards.find((c) => c.
 export const isOnline = (s: RoomState, who: string) => Object.values(s.conns).some((c) => c.who === who);
 
 export const execView = (s: RoomState): ExecutorView => ({
-  label: s.exec.label, online: s.exec.online, since: s.exec.since, keepAwake: s.exec.keepAwake, paused: !s.exec.online && s.exec.paused === true,
+  label: s.exec.label, online: s.exec.online, since: s.exec.since, keepAwake: s.exec.keepAwake, paused: !s.exec.online && s.exec.paused === true, imageGen: s.exec.imageGen === true,
   modelLabel: (s.nextSettings ?? s.sceneSettings ?? s.exec.caps?.current)?.modelLabel ?? null,
 });
 /** 給某位成員看的執行端狀態：出額度者另帶路線與模型清單（遠端控制要選） */

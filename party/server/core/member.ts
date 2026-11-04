@@ -38,6 +38,7 @@ function myEntry(tx: Tx, m: Member, round: number): RosterEntry {
 export function claim(tx: Tx, m: Member, cardId: unknown) {
   const s = tx.s;
   open(s);
+  need(!m.banned, "E_FORBIDDEN"); // 匯入、自建卡的結果晚到時，人可能已被封鎖
   need(!m.cardId, "E_STATE_CONFLICT");
   const card = s.cards.find((c) => c.cardId === cardId);
   need(card && card.playable && !card.hidden && card.claimedBy === null, "E_SEAT_TAKEN");
