@@ -379,3 +379,14 @@ fn card_expressions_and_places_from_the_card() {
             && *slug != crate::vn_backgrounds::slug_of("workshop"))
     );
 }
+
+/// 已落檔的漏剝原文（sunsmell 重播包第 2 章首拍尾段）：讀取時點名行不成格；選項區塊後的也擋
+#[test]
+fn leaked_relay_lines_never_become_cells() {
+    let stored = "她的鼻尖輕輕動了兩下。\n\n\n\n\n\n下一位：老婆婆";
+    assert_eq!(gm(stored), vec![narration("她的鼻尖輕輕動了兩下。")]);
+    assert_eq!(
+        gm("門開了。\n[choices]\n- 進去\n- 離開\n Next: 狐狸 "),
+        vec![narration("門開了。"), choices(&["進去", "離開"])]
+    );
+}

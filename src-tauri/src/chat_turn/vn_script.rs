@@ -348,6 +348,10 @@ fn parse_cells(text: &str, source: &VnSource, roster: &VnRoster) -> Vec<VnCell> 
             flush(&mut narration, &mut cells);
             continue;
         }
+        // 點名行是控制欄，不是對白；舊桌與作品包落檔時沒剝乾淨的也在這裡擋掉
+        if transport::relay_name(line).is_some() {
+            continue;
+        }
         if let Some(marker) = marker(line) {
             flush(&mut narration, &mut cells);
             match marker {

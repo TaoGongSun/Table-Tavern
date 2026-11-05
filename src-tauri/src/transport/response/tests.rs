@@ -117,6 +117,20 @@ fn extract_next_speaker_strips_trailing_line_and_tolerates_variants() {
     assert_eq!(extract_next_speaker(plain), (None, plain.to_owned()));
 }
 
+/// 真實原文（sunsmell 重播包）：模型在 ```state 圍欄前後各寫一次點名行，兩行都要剝；名字取最後一行
+#[test]
+fn extract_next_speaker_strips_repeated_lines() {
+    let raw = "她的鼻尖輕輕動了兩下。\n\n下一位：老婆婆\n\n```state\n地點: 遊客中心\n```\n\n下一位：老婆婆";
+    let (name, display) = extract_next_speaker(&extract_state_block(raw).display);
+    assert_eq!(name.as_deref(), Some("老婆婆"));
+    assert_eq!(display, "她的鼻尖輕輕動了兩下。");
+    // 不同名字、半形冒號、前後空白、寫在 [choices] 之前：全剝，名字取最後一行
+    let (name, display) =
+        extract_next_speaker("門開了。\n  下一位 : 狐狸 \n[choices]\n- 進去\n- 離開\nNext：Fox");
+    assert_eq!(name.as_deref(), Some("Fox"));
+    assert_eq!(display, "門開了。\n[choices]\n- 進去\n- 離開");
+}
+
 /// 驗收：換幕順手取幕名——有標題行／無標題行／en 前綴，都不能報錯
 #[test]
 fn extract_scene_title_reads_zh_and_en_prefixes_and_falls_back_without_one() {

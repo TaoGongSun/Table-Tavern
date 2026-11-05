@@ -50,7 +50,6 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [vn-full-auto-dual-track](tasks/vn-full-auto-dual-track.md) — 全自動雙軌 — 下一步：暫不動工、保留立案〔模型判斷·未裁決〕；屬 vn-mode 後續
 
 ## 階段 H：VN 模式
-- [vn-relay-marker-leak](tasks/vn-relay-marker-leak.md) — VN 桌「下一位：X」接力行漏進對話框（小案估核心 ≤40 行） — 下一步：拿 sunsmell 包原文對解析器剝除規則補中文變體
 - [vn-cg-generation](tasks/vn-cg-generation.md) — VN 模式 CG 即時生成：外接吃到飽生圖訂閱（NAI 類）＋提示詞規範 — 下一步：前置 [vn-mode](handoffs/archive/vn-mode.md)（v1）已合 main（2026-11-04）、待作者實機試玩，本任務為其 v3 分期；最省驗證＝拿一把 NAI token 打一發看出圖品質與回傳格式
 - [vn-thought-spoiler](tasks/vn-thought-spoiler.md) — VN 角色線把私設秘密寫進內心獨白格，玩家提前看到 — 下一步：開工時查角色線規範與 thought 格的定位
 - [agy-image-permissions](tasks/agy-image-permissions.md) — agy 生圖帶跳過權限旗標，卡作者文字可誘導模型執行工具 — 下一步：先問 agy 有沒有限制工具的參數；碰程序控制，方案必送審

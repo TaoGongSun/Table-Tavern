@@ -69,6 +69,7 @@ pub use reply_cleanup::{
 };
 #[cfg(test)]
 pub use response::card_format_instruction;
+pub(crate) use response::relay_name;
 pub use response::{
     card_format_turn, extract_next_speaker, extract_scene_title, extract_state_block, gm_closing,
     gm_turn_format, narrate_instruction, narration_closing_with_updates, narration_update_note,

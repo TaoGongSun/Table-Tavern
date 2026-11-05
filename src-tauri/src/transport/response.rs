@@ -302,35 +302,35 @@ pub fn summary_closing(lang: &str) -> &'static str {
     }
 }
 
-/// 從旁白剝出尾端的「下一位：」點名行：回傳（點名原文, 剝除後的顯示文字）。
-/// 與 extract_state_block 同族：只認整行、行首標記，掃到多行取最後一行；沒有就原樣返回。
-pub fn extract_next_speaker(reply: &str) -> (Option<String>, String) {
-    let hit = reply.lines().rev().find_map(|line| {
-        let trimmed = line.trim();
-        let rest = ["下一位", "next"].iter().find_map(|marker| {
-            if trimmed.len() < marker.len() || !trimmed.is_char_boundary(marker.len()) {
-                return None;
-            }
-            let (head, tail) = trimmed.split_at(marker.len());
-            if head.to_ascii_lowercase() != *marker {
-                return None;
-            }
-            let tail = tail.trim_start();
-            tail.strip_prefix('：').or_else(|| tail.strip_prefix(':'))
-        })?;
-        let name = rest.trim();
-        if name.is_empty() {
+/// 一整行是不是「下一位：」點名行：是就回名字（行首標記、全形或半形冒號、名字非空）。
+pub(crate) fn relay_name(line: &str) -> Option<&str> {
+    let trimmed = line.trim();
+    let rest = ["下一位", "next"].iter().find_map(|marker| {
+        if trimmed.len() < marker.len() || !trimmed.is_char_boundary(marker.len()) {
             return None;
         }
-        Some((line.to_owned(), name.to_owned()))
-    });
-    match hit {
-        Some((line, name)) => {
-            let display = reply.replacen(&line, "", 1).trim_end().to_owned();
-            (Some(name), display)
+        let (head, tail) = trimmed.split_at(marker.len());
+        if head.to_ascii_lowercase() != *marker {
+            return None;
         }
-        None => (None, reply.to_owned()),
-    }
+        let tail = tail.trim_start();
+        tail.strip_prefix('：').or_else(|| tail.strip_prefix(':'))
+    })?;
+    Some(rest.trim()).filter(|name| !name.is_empty())
+}
+
+/// 從旁白剝出「下一位：」點名行：回傳（點名原文, 剝除後的顯示文字）。
+/// 與 extract_state_block 同族：只認整行、行首標記；名字取最後一行，模型重複寫的（圍欄前後各一）一併剝掉。
+pub fn extract_next_speaker(reply: &str) -> (Option<String>, String) {
+    let Some(name) = reply.lines().rev().find_map(relay_name) else {
+        return (None, reply.to_owned());
+    };
+    let display = reply
+        .lines()
+        .filter(|line| relay_name(line).is_none())
+        .collect::<Vec<_>>()
+        .join("\n");
+    (Some(name.to_owned()), display.trim_end().to_owned())
 }
 
 struct StateTag {
