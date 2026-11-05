@@ -122,6 +122,12 @@
   color: var(--amber);
   text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8);
 }
+.vn-title-art-progress {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--fs-meta);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8);
+}
 .vn-title-menu {
   display: flex;
   flex-direction: column;

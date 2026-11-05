@@ -1,8 +1,9 @@
 use super::{
-    character_messages, expand_messages, materialize, parse_character, parse_expand, parse_outline,
-    Expanded, ExpandedCharacter,
+    character_messages, expand_messages, materialize, outline_messages, parse_character,
+    parse_expand, parse_outline, Expanded, ExpandedCharacter, VnSetup,
 };
 use crate::data;
+use crate::data::vn::{Branching, Length, Mood, Preferences, SetupStage};
 use std::fs;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -151,7 +152,7 @@ fn materialize_writes_world_characters_opening_and_unique_name() {
         ],
         opening: "雨落在碼頭上。你要怎麼做？".to_owned(),
     };
-    let world_id = materialize(&root.0, "夜港", &expanded, data::TableKind::Vn).unwrap();
+    let world_id = materialize(&root.0, "夜港", &expanded, data::TableKind::Vn, None).unwrap();
     let state = data::read_state(&root.0, &world_id).unwrap();
     assert_eq!(state.name, "夜港 2");
     assert_eq!(state.table_kind, data::TableKind::Vn);
@@ -175,8 +176,8 @@ fn materialize_names_table_after_draft_title_even_if_model_renamed_it() {
     )
     .unwrap();
 
-    let first = materialize(&root.0, "  夜港  ", &expanded, data::TableKind::Chat).unwrap();
-    let second = materialize(&root.0, "夜港", &expanded, data::TableKind::Chat).unwrap();
+    let first = materialize(&root.0, "  夜港  ", &expanded, data::TableKind::Chat, None).unwrap();
+    let second = materialize(&root.0, "夜港", &expanded, data::TableKind::Chat, None).unwrap();
 
     assert_eq!(data::read_state(&root.0, &first).unwrap().name, "夜港 2");
     assert_eq!(data::read_state(&root.0, &second).unwrap().name, "夜港 3");
@@ -192,7 +193,7 @@ fn materialize_names_table_after_draft_title_even_if_model_renamed_it() {
 fn materialize_refuses_blank_title_without_writing() {
     let root = TestRoot::new();
     let expanded = parse_expand("## WORLD: X\n迷霧籠罩碼頭。").unwrap();
-    assert!(materialize(&root.0, " \t ", &expanded, data::TableKind::Chat).is_err());
+    assert!(materialize(&root.0, " \t ", &expanded, data::TableKind::Chat, None).is_err());
     assert!(data::list_worlds(&root.0).unwrap().is_empty());
 }
 
@@ -210,8 +211,128 @@ fn outline_still_requires_a_title() {
 
 #[test]
 fn expand_messages_prefill_the_draft_title() {
-    let messages = expand_messages("idea", &[], "夜港", "## WORLD: 夜港\n霧。", "zh-TW", false);
+    let messages = expand_messages("idea", &[], "夜港", "## WORLD: 夜港\n霧。", "zh-TW", None);
     assert!(messages[0]
         .content
         .contains("\n## WORLD: 夜港\n<full world setting"));
+}
+
+fn prefs(name: &str) -> Preferences {
+    Preferences {
+        genres: vec!["戀愛".to_owned(), "懸疑推理".to_owned()],
+        mood: Some(Mood::Warm),
+        length: Some(Length::Short),
+        branching: Some(Branching::None),
+        name: name.to_owned(),
+    }
+}
+
+/// VN 大綱：空白點子交給 AI 自選；偏好（長度區間、選擇、主角名）、主角段與「簡介不劇透」都進提示詞
+#[test]
+fn vn_outline_messages_carry_preferences_and_accept_blank_idea() {
+    let genres = vec!["戀愛".to_owned()];
+    let text = &outline_messages("", &genres, "zh-TW", Some(&prefs("阿哲")))[0].content;
+    assert!(text.contains("Genre hints: 戀愛"), "{text}");
+    assert!(text.contains("3-5 chapters"), "{text}");
+    assert!(text.contains("Choices: none. A linear story"), "{text}");
+    assert!(
+        text.contains("The player character is named 阿哲."),
+        "{text}"
+    );
+    assert!(
+        text.contains("## PLAYER:") && text.contains("back-cover copy"),
+        "{text}"
+    );
+    let blank = &outline_messages("", &[], "zh-TW", Some(&Preferences::default()))[0].content;
+    assert!(blank.contains("choose an appealing premise"), "{blank}");
+    assert!(blank.contains("addresses them as \"you\""), "{blank}");
+    let chat = &outline_messages("霧港", &[], "zh-TW", None)[0].content;
+    assert!(
+        !chat.contains("## PLAYER:") && !chat.contains("visual novel"),
+        "{chat}"
+    );
+}
+
+#[test]
+fn vn_expand_messages_carry_preferences() {
+    let text = &expand_messages(
+        "",
+        &[],
+        "夜港",
+        "## WORLD: 夜港\n霧。",
+        "zh-TW",
+        Some(&prefs("阿哲")),
+    )[0]
+    .content;
+    assert!(
+        text.contains("3-5 chapters") && text.contains("named 阿哲"),
+        "{text}"
+    );
+    assert!(
+        text.contains("PLAYER section is the player character"),
+        "{text}"
+    );
+}
+
+/// 主角段只認標題列；內文一句 Player: 不被吃掉
+#[test]
+fn outline_parses_player_heading_only() {
+    let outline =
+        parse_outline("## WORLD: 夜港\nPlayer: 不是段落\n## PLAYER: 阿哲\n新來的燈塔看守\n## CHARACTER: 莫斯\n隊長").unwrap();
+    assert!(outline.world.contains("Player: 不是段落"));
+    let player = outline.player.unwrap();
+    assert_eq!(
+        (player.name.as_str(), player.tagline.as_str()),
+        ("阿哲", "新來的燈塔看守")
+    );
+    assert_eq!(outline.characters.len(), 1);
+}
+
+/// 精靈建 VN 桌：偏好、劇透鎖與設定階段寫進 vn.json；有名字建只有名字的玩家卡，跟它同名的 NPC 不另建
+#[test]
+fn materialize_vn_writes_preferences_setup_and_player_card() {
+    let root = TestRoot::new();
+    let expanded = parse_expand(
+        "## WORLD: 夜港\n霧。\n## CHARACTER: 莫斯\nPUBLIC:\n隊長。\n## CHARACTER: 阿哲\nPUBLIC:\n主角。",
+    )
+    .unwrap();
+    let setup = |name: &str| VnSetup {
+        preferences: prefs(name),
+        spoiler_lock: false,
+    };
+    let named = materialize(
+        &root.0,
+        "夜港",
+        &expanded,
+        data::TableKind::Vn,
+        Some(setup("阿哲")),
+    )
+    .unwrap();
+    let player = data::read_player_card(&root.0, &named).unwrap().unwrap();
+    assert_eq!(player.name, "阿哲");
+    assert!(player.public_md.is_empty() && player.private_md.is_empty());
+    let cast = data::list_characters(&root.0, &named).unwrap();
+    assert_eq!(
+        cast.iter()
+            .map(|card| card.name.as_str())
+            .collect::<Vec<_>>(),
+        ["莫斯"]
+    );
+    let file = data::vn::read_vn(&root.0, &named).unwrap();
+    assert_eq!(file.preferences, Some(prefs("阿哲")));
+    assert_eq!(file.setup, Some(SetupStage::Story));
+    assert!(!file.spoiler_lock);
+    let listed = data::list_worlds(&root.0).unwrap();
+    assert_eq!(listed[0].setup, Some(SetupStage::Story));
+
+    let unnamed = materialize(
+        &root.0,
+        "夜港",
+        &expanded,
+        data::TableKind::Vn,
+        Some(setup(" ")),
+    )
+    .unwrap();
+    assert!(data::read_player_card(&root.0, &unnamed).unwrap().is_none());
+    assert_eq!(data::list_characters(&root.0, &unnamed).unwrap().len(), 2);
 }

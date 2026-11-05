@@ -4,6 +4,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { t } from "../../i18n";
+import { useArtProgress } from "./wizard/useArtProgress";
 import "./vn-story.css";
 
 export function TitleScreen({
@@ -42,12 +43,19 @@ export function TitleScreen({
       live = false;
     };
   }, [worldId]);
+  const art = useArtProgress(worldId);
   const image = cover ?? backdrop;
   return (
     <div className="vn-title-screen" role="dialog" aria-label={tableName}>
       {image && <img className="vn-title-art" src={image} alt="" />}
       <div className="vn-title-body">
         <h1 className="vn-title-name">{tableName}</h1>
+        {art && art.ready < art.total && (
+          <p className="vn-title-art-progress">
+            {t("vnArtPreparing", { n: art.ready, total: art.total })}
+            {!image && ` · ${t("vnArtBackdropPending")}`}
+          </p>
+        )}
         {progress !== "loading" && (
           <div className="vn-title-menu">
             {progress === "resume" && (

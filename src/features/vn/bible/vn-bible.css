@@ -47,6 +47,13 @@
 .vn-bible-max input {
   width: 6rem;
 }
+.vn-bible-branching-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+  color: var(--ink-2);
+}
 .vn-bible-item {
   display: flex;
   flex-direction: column;

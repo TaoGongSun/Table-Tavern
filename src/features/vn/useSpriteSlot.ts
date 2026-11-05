@@ -31,6 +31,8 @@ export function useSpriteSlot(worldId: string, characterId: string, fill = false
   const [previews, setPreviews] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<SlotBusy>(null);
   const [error, setError] = useState<string | null>(null);
+  // 這次掛載裝成定稿的那張候選：同一張不必再挑（「挑定這張」變灰）
+  const [pickedFile, setPickedFile] = useState<string | null>(null);
   const loaded = useRef<Record<string, string>>({});
   const ids = { worldId, characterId };
 
@@ -78,6 +80,7 @@ export function useSpriteSlot(worldId: string, characterId: string, fill = false
     selected,
     setSelected,
     previews,
+    pickedFile,
     busy,
     error,
     reload,
@@ -87,7 +90,9 @@ export function useSpriteSlot(worldId: string, characterId: string, fill = false
       }),
     pick: () =>
       run("pick", async () => {
-        if (selected) await invoke("vn_sprite_pick", { ...ids, file: selected });
+        if (!selected) return;
+        await invoke("vn_sprite_pick", { ...ids, file: selected });
+        setPickedFile(selected);
       }),
     upload: (file: File, expression: string | null = null, variant: string | null = null) =>
       run("upload", async () => {

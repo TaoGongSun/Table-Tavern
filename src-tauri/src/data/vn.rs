@@ -40,6 +40,71 @@ pub struct VnFile {
     /// 新周目（包 5 §2.10）：第幾周目與第 1 周目的桌名；第 1 周目沒有
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub playthrough: Option<Playthrough>,
+    /// 精靈 ① 的偏好（plans/vn-setup-wizard.md §2 ①）：聖經首次生成與「重寫劇本」共用
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preferences: Option<Preferences>,
+    /// 精靈還沒走完停在哪一步；按「開始遊戲」成功才清掉。大廳「設定未完成」與進桌路由都讀它
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub setup: Option<SetupStage>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SetupStage {
+    Story,
+    Art,
+}
+
+/// 精靈 ① 的偏好；全部選填。題材是介面語言的文字（直接進提示詞），其餘是固定代碼。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Preferences {
+    pub genres: Vec<String>,
+    pub mood: Option<Mood>,
+    pub length: Option<Length>,
+    pub branching: Option<Branching>,
+    /// 玩家名；空＝GM 以「你」稱呼、不建玩家卡
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Mood {
+    Light,
+    Warm,
+    Dark,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Length {
+    Short,
+    Medium,
+    Long,
+}
+
+impl Length {
+    /// 聖經 `chapter_max` 的建議區間
+    pub fn chapters(self) -> (u32, u32) {
+        match self {
+            Self::Short => (3, 5),
+            Self::Medium => (6, 10),
+            Self::Long => (12, 18),
+        }
+    }
+}
+
+impl Preferences {
+    /// 偏好壓進聖經：章數夾進長度區間、分支照玩家選的（模型寫什麼都以玩家為準）
+    pub fn apply(&self, bible: &mut Bible) {
+        if let Some(length) = self.length {
+            let (min, max) = length.chapters();
+            bible.chapter_max = bible.chapter_max.clamp(min, max);
+        }
+        if let Some(branching) = self.branching {
+            bible.branching = branching;
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -65,6 +130,8 @@ impl Default for VnFile {
             frozen: None,
             card: None,
             playthrough: None,
+            preferences: None,
+            setup: None,
         }
     }
 }
@@ -744,6 +811,24 @@ pub fn create_if_missing(tx: &CommitTx<'_>, spoiler_lock: Option<bool>) -> DataR
         return Ok(());
     }
     edit_vn(tx, |file| file.spoiler_lock = spoiler_lock.unwrap_or(true))
+}
+
+/// 精靈建桌時寫入：偏好、劇透鎖、設定階段從 ② 起（展開建桌與聖經之間，偏好不靠模型轉述）。
+pub fn start_setup(
+    tx: &CommitTx<'_>,
+    preferences: Preferences,
+    spoiler_lock: bool,
+) -> DataResult<()> {
+    edit_vn(tx, |file| {
+        file.preferences = Some(preferences);
+        file.spoiler_lock = spoiler_lock;
+        file.setup = Some(SetupStage::Story);
+    })
+}
+
+/// 大廳桌卡與進桌路由：VN 桌的設定停在哪一步；讀不到檔或檔壞都當沒有（不連累大廳）。
+pub fn setup_stage(root: &Path, world_id: &str) -> Option<SetupStage> {
+    read_vn(root, world_id).ok()?.setup
 }
 
 /// 鎖內讀改寫 vn.json（原子寫入）：先重讀最新檔，`edit` 只改這次負責的欄位。

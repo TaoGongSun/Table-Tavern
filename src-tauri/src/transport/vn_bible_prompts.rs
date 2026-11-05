@@ -2,7 +2,9 @@
 //! 以及注入 GM 線的常駐段與當章包。生成提示詞一份英文（欄位名英文、內容用內容語言）；注入段 zh／en 照
 //! `scaffold_en` 分流。
 use super::messages::{scaffold_en, ChatMessage};
-use crate::data::vn::{Bible, Branching, CardOrigin, CastRole, Chapter, FlagKind, Reveal, Secret};
+use crate::data::vn::{
+    Bible, Branching, CardOrigin, CastRole, Chapter, FlagKind, Preferences, Reveal, Secret,
+};
 use crate::data::CharacterCard;
 use crate::data::Condition;
 
@@ -11,6 +13,8 @@ pub struct BibleSource<'a> {
     pub world_md: &'a str,
     pub cast: Vec<CastEntry<'a>>,
     pub gm_entries: Vec<(&'a str, &'a str)>,
+    /// 精靈 ① 的偏好（vn.json `preferences`）；匯入建的桌沒有
+    pub preferences: Option<&'a Preferences>,
 }
 
 pub struct CastEntry<'a> {
@@ -59,6 +63,44 @@ fn material(source: &BibleSource<'_>) -> String {
         for (title, content) in &source.gm_entries {
             text.push_str(&format!("- {title}: {}\n", content.trim()));
         }
+    }
+    if let Some(preferences) = source.preferences {
+        text.push_str(&preference_rules(preferences));
+    }
+    text
+}
+
+/// 玩家在精靈 ① 選的偏好：模型照做，章數區間與分支蓋過 RULES 的預設建議。
+fn preference_rules(preferences: &Preferences) -> String {
+    let mut text = "\nPlayer preferences (follow them):\n".to_owned();
+    if !preferences.genres.is_empty() {
+        text.push_str(&format!("- Genres: {}\n", preferences.genres.join(", ")));
+    }
+    if let Some(length) = preferences.length {
+        let (min, max) = length.chapters();
+        text.push_str(&format!(
+            "- \"chapter_max\" must be between {min} and {max}.\n"
+        ));
+    }
+    if let Some(branching) = preferences.branching {
+        let code = match branching {
+            Branching::None => "none",
+            Branching::Light => "light",
+            Branching::Full => "full",
+        };
+        text.push_str(&format!(
+            "- \"branching\" must be \"{code}\". {}\n",
+            crate::genesis::branching_sentence(branching)
+        ));
+    }
+    for line in crate::genesis::preference_lines(&Preferences {
+        length: None,
+        branching: None,
+        ..preferences.clone()
+    })
+    .lines()
+    {
+        text.push_str(&format!("- {line}\n"));
     }
     text
 }

@@ -171,3 +171,22 @@ fn engine_keys_seed_rule_and_reserve_none() {
     );
     assert!(bible.rules().contains_key("ended"));
 }
+
+/// 偏好壓過模型：章數夾進長度區間、分支照玩家選的；沒選就照模型
+#[test]
+fn preferences_override_chapter_range_and_branching() {
+    let mut bible = Bible {
+        chapter_max: 12,
+        branching: Branching::Full,
+        ..Bible::default()
+    };
+    Preferences {
+        length: Some(Length::Short),
+        branching: Some(Branching::None),
+        ..Preferences::default()
+    }
+    .apply(&mut bible);
+    assert_eq!((bible.chapter_max, bible.branching), (5, Branching::None));
+    Preferences::default().apply(&mut bible);
+    assert_eq!((bible.chapter_max, bible.branching), (5, Branching::None));
+}

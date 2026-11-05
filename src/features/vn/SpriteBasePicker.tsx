@@ -1,4 +1,5 @@
-// 定稿挑選：目前候選大圖＋候選縮圖列；立繪來源、生成（再骰）、挑定、上傳定稿。精靈 ③ 與立繪分頁共用。
+// 定稿挑選：目前候選大圖＋候選縮圖列；立繪來源、生成（再骰）、挑定、上傳定稿。精靈 ③ 與立繪分頁共用
+// （精靈 ③ 的來源下拉整步只放頂部一個，`source={false}`）。
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import "./vn-sprites.css";
@@ -9,7 +10,7 @@ import { updateConfig } from "../settings/update-config";
 import type { SpriteSlot } from "./useSpriteSlot";
 
 /** 立繪來源（偏好 `vn_sprite_source`，後端沒設＝codex）：裝了的 Codex／Gemini CLI 加 API */
-function SpriteSourceSelect() {
+export function SpriteSourceSelect() {
   const [sources, setSources] = useState(["codex", "api"]);
   const [source, setSource] = useState("codex");
   useEffect(() => {
@@ -37,14 +38,25 @@ function SpriteSourceSelect() {
   );
 }
 
-export function SpriteBasePicker({ slot, name }: { slot: SpriteSlot; name: string }) {
+export function SpriteBasePicker({
+  slot,
+  name,
+  source = true,
+}: {
+  slot: SpriteSlot;
+  name: string;
+  source?: boolean;
+}) {
   const input = useRef<HTMLInputElement>(null);
   const candidates = slot.state?.candidates ?? [];
   const shown = slot.selected ? slot.previews[slot.selected] : slot.state?.sprite?.body;
   const disabled = slot.busy !== null;
+  // 挑定後同一張不必再挑：本次挑過的那張，或已有定稿且只有一張候選（就是裝上去的那張）
+  const alreadyPicked =
+    slot.selected === slot.pickedFile || (Boolean(slot.state?.sprite) && candidates.length === 1);
   return (
     <div className="vn-picker">
-      <SpriteSourceSelect />
+      {source && <SpriteSourceSelect />}
       <div className="vn-picker-actions">
         <button type="button" className="btn btn-sm" disabled={disabled} onClick={() => void slot.generate()}>
           {t(candidates.length ? "vnSpriteReroll" : "vnSpriteGenerate")}
@@ -52,7 +64,7 @@ export function SpriteBasePicker({ slot, name }: { slot: SpriteSlot; name: strin
         <button
           type="button"
           className="btn btn-sm btn-primary"
-          disabled={disabled || !slot.selected}
+          disabled={disabled || !slot.selected || alreadyPicked}
           onClick={() => void slot.pick()}
         >
           {t("vnSpritePick")}

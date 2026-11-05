@@ -26,6 +26,7 @@ struct Materials {
     cards: Vec<data::CharacterCard>,
     gm_entries: Vec<(String, String)>,
     player: Option<data::CharacterCard>,
+    preferences: Option<vn::Preferences>,
 }
 
 impl Materials {
@@ -41,6 +42,7 @@ impl Materials {
             cards: crate::chat_assembly::active_cards(root, world_id)?,
             gm_entries,
             player: data::read_player_card(root, world_id).map_err(text)?,
+            preferences: vn::read_vn(root, world_id).map_err(text)?.preferences,
         })
     }
 
@@ -61,6 +63,7 @@ impl Materials {
                 .iter()
                 .map(|(title, content)| (title.as_str(), content.as_str()))
                 .collect(),
+            preferences: self.preferences.as_ref(),
         }
     }
 
@@ -121,7 +124,10 @@ pub(crate) async fn generate(
     refuse_if_played(root, world_id)?;
     let materials = Materials::load(root, world_id)?;
     let messages = prompts::bible_messages(&materials.source(), lang);
-    let bible = call_parsed(caller, messages, prompts::parse_bible_reply).await?;
+    let mut bible = call_parsed(caller, messages, prompts::parse_bible_reply).await?;
+    if let Some(preferences) = &materials.preferences {
+        preferences.apply(&mut bible);
+    }
     install(root, world_id, &materials.cast(), None, |_| Ok(bible))
 }
 
@@ -373,7 +379,8 @@ pub(crate) fn injection(
 }
 
 /// 劇本分頁存檔：只收文字類欄位（主線、文風、章節文字、秘密文字與揭露時機、旗標說明、結局標題）與章數上限；
-/// 結構（章數、旗標、結局、id 與條件）以檔上的為準。鎖內重讀合併，改動下一幕生效（凍結）。
+/// 結構（章數、旗標、結局、id 與條件）以檔上的為準。鎖內重讀合併，改動下一幕生效（凍結）；
+/// 還沒遊玩的桌（精靈 ② 存的）清掉凍結副本，首幕就照新規格。
 pub(crate) fn save(root: &Path, world_id: &str, edited: Bible) -> Result<(), String> {
     let cast = Materials::load(root, world_id)?.cast();
     data::state_commit::with_commit(root, world_id, |tx| {
@@ -389,6 +396,9 @@ pub(crate) fn save(root: &Path, world_id: &str, edited: Bible) -> Result<(), Str
         bible.logline = edited.logline;
         bible.style = edited.style;
         bible.chapter_max = edited.chapter_max;
+        // 選擇程度（精靈 ② 劇本規格層可改）：改成線性時正規化照舊替非保底結局補章門檻
+        let branching = edited.branching;
+        bible.branching = branching;
         for (chapter, new) in bible.chapters.iter_mut().zip(edited.chapters) {
             *chapter = new;
         }
@@ -416,7 +426,19 @@ pub(crate) fn save(root: &Path, world_id: &str, edited: Bible) -> Result<(), Str
         if bible.branching == vn::Branching::None {
             vn::move_chapter_gate(&mut bible, old_max);
         }
-        vn::edit_vn(tx, |file| file.bible = Some(bible)).map_err(text)
+        let state = data::read_state(root, world_id).map_err(text)?;
+        let unplayed = !crate::refactor::played(root, world_id, &state).map_err(text)?;
+        vn::edit_vn(tx, |file| {
+            // 偏好跟著改，「重寫劇本」才不會把玩家剛選的程度蓋回去
+            if let Some(preferences) = file.preferences.as_mut() {
+                preferences.branching = Some(branching);
+            }
+            file.bible = Some(bible);
+            if unplayed {
+                file.frozen = None;
+            }
+        })
+        .map_err(text)
     })
 }
 

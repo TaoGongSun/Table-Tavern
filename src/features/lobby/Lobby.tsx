@@ -25,6 +25,8 @@ interface LobbyProps {
   onVnTable: () => void;
   /** 把 .ttvn 拖進大廳：匯入 VN 作品 */
   onImportWork: (path: string) => void;
+  /** 「你的牌桌」旁的匯入鈕：選一個 .ttvn 匯入 */
+  onPickWork: () => void;
   onEnterTable: (id: string) => void;
   onRenameTable: (id: string, raw: string) => void;
   onDeleteTable: (id: string) => void;
@@ -51,6 +53,7 @@ export function Lobby({
   onGenerateTable,
   onVnTable,
   onImportWork,
+  onPickWork,
   onEnterTable,
   onRenameTable,
   onDeleteTable,
@@ -140,6 +143,10 @@ export function Lobby({
         <div className="lobby-heading">
           <h2>{t("lobbyYourTables")}</h2>
           <span>{t("lobbyTableCount", { n: worlds.length })}</span>
+          <span className="toolbar-spacer" />
+          <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={onPickWork}>
+            {t("vnWorkImport")}
+          </button>
         </div>
         <section className="lobby-grid" aria-label={t("tableListAria")}>
           {worlds.map((world) => (

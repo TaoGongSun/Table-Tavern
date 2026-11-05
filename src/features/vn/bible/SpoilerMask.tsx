@@ -10,9 +10,14 @@ import "./vn-bible.css";
 export function SpoilerMask({
   worldId,
   onReroll,
+  title = "vnSpoilerLocked",
+  rerollLabel = "vnSpoilerReroll",
   children,
 }: {
   worldId: string;
+  /** 遮罩標題與重骰鈕文案（劇本分頁講清楚蓋住的是什麼） */
+  title?: "vnSpoilerLocked" | "vnBibleMaskTitle";
+  rerollLabel?: "vnSpoilerReroll" | "vnBibleMaskReroll";
   /** 「不看就重骰」；沒給（GM 世界書條目：匯入的內容沒得重骰）就只有解鎖 */
   onReroll?: () => Promise<void>;
   children: ReactNode;
@@ -61,8 +66,8 @@ export function SpoilerMask({
   }
   const played = bible.view?.played ?? false;
   return (
-    <div className="vn-spoiler-mask" role="group" aria-label={t("vnSpoilerLocked")}>
-      <strong>{t("vnSpoilerLocked")}</strong>
+    <div className="vn-spoiler-mask" role="group" aria-label={t(title)}>
+      <strong>{t(title)}</strong>
       <div className="vn-spoiler-actions">
         {onReroll && (
           <button
@@ -73,7 +78,7 @@ export function SpoilerMask({
               played ? setMessage(t("vnBiblePlayed")) : void act(onReroll, t("vnSpoilerRerolled"))
             }
           >
-            {busy ? t("vnSpoilerRerolling") : t("vnSpoilerReroll")}
+            {busy ? t("vnSpoilerRerolling") : t(rerollLabel)}
           </button>
         )}
         <button type="button" className="btn btn-sm" disabled={busy} onClick={() => void unlock()}>

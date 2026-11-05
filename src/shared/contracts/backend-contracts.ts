@@ -12,6 +12,19 @@ export interface WorldMeta {
   table_kind: TableKind;
   /** VN 作品包匯入的重播桌 */
   replay: boolean;
+  /** VN 精靈沒走完停在哪一步：大廳標「設定未完成」、點進去回精靈 */
+  setup?: VnSetupStage | null;
+}
+
+export type VnSetupStage = "story" | "art";
+
+/** VN 精靈 ① 的偏好（vn.json `preferences`）；題材是介面語言文字 */
+export interface VnPreferences {
+  genres: string[];
+  mood: "light" | "warm" | "dark" | null;
+  length: "short" | "medium" | "long" | null;
+  branching: Bible["branching"] | null;
+  name: string;
 }
 
 export interface AppConfig {

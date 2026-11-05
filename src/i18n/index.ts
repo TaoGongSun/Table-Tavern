@@ -62,6 +62,7 @@ import { isVnBibleMsgKey, vnBibleMessage, type VnBibleMsgKey } from "./features/
 import { isVnCardMsgKey, vnCardMessage, type VnCardMsgKey } from "./features/vn-card";
 import { isVnStoryMsgKey, vnStoryMessage, type VnStoryMsgKey } from "./features/vn-story";
 import { isVnWorkMsgKey, vnWorkMessage, type VnWorkMsgKey } from "./features/vn-work";
+import { isVnWizardMsgKey, vnWizardMessage, type VnWizardMsgKey } from "./features/vn-wizard";
 import { expandPlural } from "./plural";
 import { detectLang, LANGUAGE_OPTIONS, normalizeLang, type Lang } from "./languages";
 
@@ -84,7 +85,8 @@ export type MsgKey =
   | VnBibleMsgKey
   | VnCardMsgKey
   | VnStoryMsgKey
-  | VnWorkMsgKey;
+  | VnWorkMsgKey
+  | VnWizardMsgKey;
 
 const MESSAGES = {
   "zh-TW": zh,
@@ -149,7 +151,9 @@ export function t(key: MsgKey, params?: Record<string, string | number>): string
                                     ? vnStoryMessage(lang, key)
                                     : isVnWorkMsgKey(key)
                                       ? vnWorkMessage(lang, key)
-                                      : MESSAGES[lang][key as CoreMsgKey];
+                                      : isVnWizardMsgKey(key)
+                                        ? vnWizardMessage(lang, key)
+                                        : MESSAGES[lang][key as CoreMsgKey];
   return formatMessage(raw, lang, params);
 }
 

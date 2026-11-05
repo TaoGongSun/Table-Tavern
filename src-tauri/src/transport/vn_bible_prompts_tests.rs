@@ -42,3 +42,43 @@ fn resident_and_chapter_pack_render_in_both_scaffolds() {
     assert!(bible_chapter("zh-TW", &bible, 1).contains("節拍：拍點"));
     assert!(bible_chapter("zh-TW", &bible, 2).is_empty());
 }
+
+/// 精靈偏好進聖經提示詞（首次生成與重寫劇本共用 Materials）：題材、長度區間、分支句、主角名
+#[test]
+fn bible_messages_carry_preferences() {
+    use crate::data::vn::{Length, Preferences};
+    let preferences = Preferences {
+        genres: vec!["校園".to_owned()],
+        mood: None,
+        length: Some(Length::Long),
+        branching: Some(Branching::Full),
+        name: "阿哲".to_owned(),
+    };
+    let source = BibleSource {
+        world_md: "霧港",
+        cast: Vec::new(),
+        gm_entries: Vec::new(),
+        preferences: Some(&preferences),
+    };
+    let text = &bible_messages(&source, "zh-TW")[0].content;
+    assert!(text.contains("- Genres: 校園"), "{text}");
+    assert!(
+        text.contains("\"chapter_max\" must be between 12 and 18"),
+        "{text}"
+    );
+    assert!(
+        text.contains("\"branching\" must be \"full\". Choices: they change the ending"),
+        "{text}"
+    );
+    assert!(
+        text.contains("- The player character is named 阿哲."),
+        "{text}"
+    );
+    let plain = BibleSource {
+        preferences: None,
+        ..source
+    };
+    assert!(!bible_messages(&plain, "zh-TW")[0]
+        .content
+        .contains("Player preferences"));
+}

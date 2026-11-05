@@ -171,7 +171,7 @@ async fn secret_reroll_swaps_only_that_holder() {
     assert!(rules.contains_key("revealed.s_dragon") && !rules.contains_key("revealed.s_irene"));
 }
 
-/// 凍結以幕為鍵：同一幕改聖經，GM system 不變；換幕才重抄。聖經只進 GM 線，角色線沒有它的 token
+/// 凍結以幕為鍵：已遊玩的桌同一幕改聖經，GM system 不變；換幕才重抄。聖經只進 GM 線，角色線沒有它的 token
 #[tokio::test]
 async fn frozen_copy_changes_only_on_new_scene_and_stays_out_of_character_lane() {
     let (root, world_id, _) = vn_table("vn-bible-frozen");
@@ -196,6 +196,10 @@ async fn frozen_copy_changes_only_on_new_scene_and_stays_out_of_character_lane()
             .content
             .clone()
     };
+    // 已經在玩（有一則非開場的紀錄）：幕中存檔才是下一幕生效；未遊玩桌存檔立即生效見 save_accepts_branching…
+    let mut played = crate::genesis::opening_event("第一則旁白");
+    played.opening = false;
+    data::append_transcript(&root, &world_id, 0, &played).unwrap();
     let before = system(&root);
     assert!(
         before.contains("LOGLINE_TOKEN") && before.contains("BEATS_TOKEN"),
@@ -446,4 +450,56 @@ fn chapter_end_publish_failure_leaves_scene_and_chapter_then_retries_once() {
     let state = data::read_state(&root, &world_id).unwrap();
     assert_eq!(data::vn::chapter_in(&state.state.tree), 2);
     assert_eq!(data::read_transcript(&root, &world_id, 1).unwrap().len(), 1);
+}
+
+/// 劇本規格層改選擇程度：存檔收 branching，改成線性時非保底結局補上章門檻，精靈偏好跟著改，未遊玩桌首幕即生效
+#[tokio::test]
+async fn save_accepts_branching_and_gates_linear_endings() {
+    let (root, world_id, _) = vn_table("vn-bible-branching");
+    let reply = format!(
+        "## BIBLE\n```json\n{}\n```",
+        serde_json::json!({
+            "logline": "主線",
+            "branching": "full",
+            "chapter_max": 6,
+            "chapters": [{"title": "序"}],
+            "endings": [{"id": "good", "title": "好", "when": []}, {"id": "default", "when": []}]
+        })
+    );
+    generate(&root, &world_id, "zh-TW", None, &mut fake(&[&reply]))
+        .await
+        .unwrap();
+    data::state_commit::with_commit(&root, &world_id, |tx| {
+        vn::edit_vn(tx, |file| {
+            file.preferences = Some(vn::Preferences::default())
+        })
+    })
+    .unwrap();
+    // 精靈 ② 階段已經有人讀過一次（凍結了舊規格）：未遊玩的桌存檔後首幕要照新規格
+    let state = data::read_state(&root, &world_id).unwrap();
+    turn_inputs(&root, &world_id, &state);
+    assert!(vn::read_vn(&root, &world_id).unwrap().frozen.is_some());
+    let mut edited = vn::read_vn(&root, &world_id).unwrap().bible.unwrap();
+    edited.branching = vn::Branching::None;
+    save(&root, &world_id, edited).unwrap();
+    let inputs = turn_inputs(&root, &world_id, &state);
+    assert_eq!(inputs.frozen.unwrap().bible.branching, vn::Branching::None);
+    let file = vn::read_vn(&root, &world_id).unwrap();
+    let bible = file.bible.unwrap();
+    assert_eq!(bible.branching, vn::Branching::None);
+    let good = bible
+        .endings
+        .iter()
+        .find(|ending| ending.id == "good")
+        .unwrap();
+    assert!(
+        good.when
+            .iter()
+            .any(|condition| matches!(condition, data::Condition::Range { path, .. } if path == "chapter")),
+        "{good:?}"
+    );
+    assert_eq!(
+        file.preferences.unwrap().branching,
+        Some(vn::Branching::None)
+    );
 }

@@ -17,13 +17,18 @@ async function reload(worldId: string): Promise<BibleView> {
 export function useBible(worldId: string) {
   const [view, setView] = useState<BibleView | null>(() => views.get(worldId) ?? null);
   const [error, setError] = useState<unknown>(null);
+  // 這次掛載讀回過一次（快取可能是舊的）：要依現況決定動作的（精靈 ② 要不要生成）等它
+  const [fresh, setFresh] = useState(false);
   useEffect(() => {
+    setFresh(false);
     setView(views.get(worldId) ?? null);
     const listener = (changed: string) => {
       if (changed === worldId) setView(views.get(worldId) ?? null);
     };
     listeners.add(listener);
-    reload(worldId).catch(setError);
+    reload(worldId)
+      .then(() => setFresh(true))
+      .catch(setError);
     return () => {
       listeners.delete(listener);
     };
@@ -44,6 +49,7 @@ export function useBible(worldId: string) {
 
   return {
     view,
+    fresh,
     error,
     /** 鎖住（沒讀回前也當鎖住，不先露出內容） */
     locked: view?.spoiler_lock ?? true,

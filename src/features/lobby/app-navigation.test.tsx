@@ -713,6 +713,9 @@ describe("lobby and table navigation", () => {
         ...(state(args) as object),
         table_kind: fixture.worlds.find((w) => w.id === args.worldId)?.table_kind,
       });
+      // 精靈 ② 先讀回聖經（還沒有）才決定生成；③ 的立繪來源下拉會探 CLI
+      backend.handlers.vn_bible_read = () => ({ spoiler_lock: true, bible: null, flagValues: {}, revealed: [], played: false, names: {} });
+      backend.handlers.detect_clis = () => [];
     }
 
     it("new table and the plain AI table stay chat tables", async () => {
@@ -744,22 +747,26 @@ describe("lobby and table navigation", () => {
       await click(buttonText(t("vnEntryTitle")));
       await typeInto(document.querySelector<HTMLTextAreaElement>("textarea[data-autofocus]")!, "fog");
       await click(document.querySelector(".gen-generate-row button")!);
+      // ① 生成後進 ② 可改大綱，「建立」在 ②
+      expect(document.querySelector(".vn-stepbar [aria-current]")?.textContent).toContain(t("vnStepStory"));
       await click(
         [...document.querySelectorAll(".gen-table-dialog button")].find((b) =>
           b.textContent?.includes(t("genCreateBtn")),
         )!,
       );
       expect(calls("generate_table_expand")[0].args.tableKind).toBe("vn");
-      // 建好桌後精靈沒有被 GenerateTableDialog 的收尾關掉，接著進 ② 生成聖經（帶 ① 預設勾的劇透鎖）
-      expect(document.body.textContent).toContain(t("vnStepExpandTitle"));
+      // 建好桌後留在 ② 接著生成聖經（帶 ② 預設勾的劇透鎖）
+      expect(document.querySelector(".vn-build-progress")).not.toBeNull();
       expect(calls("vn_bible_generate")[0].args).toEqual({ worldId: "vn1", spoilerLock: true });
       expect(inLobby()).toBe(true);
       expect(document.querySelector(".table-badge")?.textContent).toBe(t("vnBadge"));
       await click(buttonText(t("vnNext")));
-      expect(document.body.textContent).toContain(t("vnStepSpritesTitle"));
-      await click(buttonText(t("vnNext")));
-      await click(buttonText(t("vnStart")));
+      expect(document.querySelector(".vn-stepbar [aria-current]")?.textContent).toContain(t("vnStepArt"));
+      await click(buttonText(t("vnStartGame")));
       expect(calls("open_world").map((call) => call.args.worldId)).toEqual(["vn1"]);
+      // 新遊戲先到標題畫面（等待室），按開始才進播放器
+      expect(document.querySelector(".vn-title-screen")).not.toBeNull();
+      await click(buttonText(t("vnTitleStart")));
       // 桌名在遊戲選單的標題；聊天視圖也在選單裡
       await click(buttonText(t("vnMenu")));
       expect(vnView()?.textContent).toContain("Harbor");
@@ -785,7 +792,8 @@ describe("lobby and table navigation", () => {
       backend.handlers.card_openings = () => [];
       await boot();
       await click(buttonText(t("vnEntryTitle")));
-      // ① 取消「讓劇情給我驚喜」：匯完回到 ② 生成時帶著這個選擇
+      // ① 角色卡分頁取消「讓劇情給我驚喜」：匯完回到 ② 生成時帶著這個選擇
+      await click(buttonText(t("vnTabCard")));
       await click(document.querySelector<HTMLInputElement>('.gen-table-dialog input[type="checkbox"]')!);
       const input = document.querySelector<HTMLInputElement>('.gen-table-dialog input[type="file"]')!;
       const file = new File([new Uint8Array([1, 2, 3])], "lia.png");
@@ -797,12 +805,13 @@ describe("lobby and table navigation", () => {
       expect(calls("create_world")[0].args).toEqual({ name: "Lia", tableKind: "vn" });
       expect(calls("import_character")).toHaveLength(1);
       await settle();
-      expect(document.body.textContent).toContain(t("vnStepExpandTitle"));
+      expect(document.querySelector(".vn-stepbar [aria-current]")?.textContent).toContain(t("vnStepStory"));
       expect(calls("vn_bible_generate")[0].args).toEqual({ worldId: "vn2", spoilerLock: false });
       await click(buttonText(t("vnNext")));
-      await click(buttonText(t("vnNext")));
-      await click(buttonText(t("vnStart")));
+      await click(buttonText(t("vnStartGame")));
       expect(calls("open_world").map((call) => call.args.worldId)).toEqual(["vn2"]);
+      expect(document.querySelector(".vn-title-screen")).not.toBeNull();
+      await click(buttonText(t("vnTitleStart")));
       await click(buttonText(t("vnMenu")));
       expect(vnView()?.textContent).toContain("Lia");
     });

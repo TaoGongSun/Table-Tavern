@@ -65,7 +65,7 @@ import {
 } from "./controllers/useWorkspaceNavigationController";
 import { AppDialogs } from "./views/AppDialogs";
 import { VnPlayer } from "./features/vn/VnPlayer";
-import { VnWizard, type VnWizardStart } from "./features/vn/VnWizard";
+import { VnWizard, type VnWizardStart } from "./features/vn/wizard/VnWizard";
 import { openVnCardTable as openVnCardTableFlow } from "./features/vn/card/vn-card";
 import { ImportWorkDialog } from "./features/vn/work/ImportWorkDialog";
 import { AUTO_WAITS, TEXT_SPEEDS, pickLevel } from "./features/vn/vn-cells";
@@ -478,7 +478,7 @@ function App() {
     focusSpeaker,
     openTableForImport,
     onVnTableImported: (worldId, fromCard) => {
-      setVnWizard({ worldId, spoilerLock: vnSpoilerLock.current, fromCard });
+      setVnWizard({ worldId, spoilerLock: vnSpoilerLock.current, step: fromCard ? "art" : "story" });
       vnSpoilerLock.current = true;
     },
     openVnCardTable,
@@ -706,7 +706,7 @@ function App() {
     });
   }
 
-  // 匯入 VN 作品（精靈 ① 選檔或拖進大廳）：只從大廳來，沒有編輯畫面要問；建好照從大廳進桌（先到標題畫面）。
+  // 匯入 VN 作品（大廳匯入鈕或拖進大廳）：只從大廳來，沒有編輯畫面要問；建好照從大廳進桌（先到標題畫面）。
   // 附設定的包先停在二選一對話框，選完才建桌（chooseWork）
   function runWork(job: () => Promise<string | null>) {
     return runTableOp(async () => {
@@ -810,10 +810,12 @@ function App() {
     });
   }
 
-  // VN 精靈按開始：匯入來的桌已經在裡面，只關精靈；從大廳建的才進桌
+  // VN 精靈按開始遊戲：先到標題畫面（新遊戲的等待室，立繪準備進度在那裡）。匯入來的桌已經在裡面，只關精靈換標題；
+  // 從大廳建的照大廳進桌
   function finishVnWizard(worldId: string) {
     setVnWizard(null);
-    if (worldId !== table) void enterGeneratedTable(worldId);
+    setVnTitle(true);
+    if (worldId !== table) void switchTable(worldId);
   }
 
   // 刪桌：整桌的角色、紀錄、世界設定一起沒，故確認框把後果講白。
@@ -1128,7 +1130,17 @@ function App() {
             onGenerateTable={() => setGenTableOpen(true)}
             onVnTable={() => setVnWizard({ worldId: null })}
             onImportWork={(path) => void importWork(path)}
-            onEnterTable={(id) => void switchTable(id)}
+            onPickWork={() =>
+              void pickVnWork().then((path) => {
+                if (path) void importWork(path);
+              })
+            }
+            onEnterTable={(id) => {
+              // VN 精靈沒走完的桌：回精靈停下的那一步，不進標題畫面
+              const setup = worlds.find((w) => w.id === id)?.setup;
+              if (setup) setVnWizard({ worldId: id, step: setup });
+              else void switchTable(id);
+            }}
             onRenameTable={(id, raw) => void renameTable(id, raw)}
             onDeleteTable={(id) => void deleteTable(id)}
           />
@@ -1241,16 +1253,12 @@ function App() {
                     start={vnWizard}
                     transport={transport}
                     onCreated={() => refreshWorlds().catch((reason) => setError(String(reason)))}
+                    onStage={() => void refreshWorlds().catch(() => {})}
                     onImportCard={(file, spoilerLock) => {
                       vnSpoilerLock.current = spoilerLock;
                       setVnWizard(null);
                       void imports.importFileToVnTable(file, spoilerLock);
                     }}
-                    onImportWork={() =>
-                      void pickVnWork().then((path) => {
-                        if (path) void importWork(path);
-                      })
-                    }
                     onFinish={finishVnWizard}
                     onClose={() => setVnWizard(null)}
                   />

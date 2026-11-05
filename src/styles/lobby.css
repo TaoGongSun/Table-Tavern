@@ -282,3 +282,15 @@ button.table-cover {
   color: var(--ink-2);
   white-space: nowrap;
 }
+
+/* VN 精靈沒走完：封面左上角色帶，點進去回精靈 */
+.table-cover-ribbon {
+  position: absolute;
+  top: 10px;
+  left: 0;
+  padding: 2px 10px;
+  border-radius: 0 var(--radius-s) var(--radius-s) 0;
+  background: var(--amber);
+  color: var(--surface-0);
+  font: 600 var(--fs-meta) / 1.5 var(--font-ui);
+}

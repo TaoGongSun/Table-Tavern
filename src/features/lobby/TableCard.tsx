@@ -1,4 +1,4 @@
-// 大廳的桌卡：封面整塊一顆進桌按鈕，下方一列桌名、徽章與 ⋯。封面不疊任何東西。
+// 大廳的桌卡：封面整塊一顆進桌按鈕，下方一列桌名、徽章與 ⋯。封面只疊 VN「設定未完成」色帶（標題列留給桌名）。
 // 就地改名只落在桌名那一格；送出／取消用 ref 保證一次只結算一次（Esc 先標記取消再卸載輸入框，
 // 卸載引發的 blur 就不會又把它送出去）。
 import { useEffect, useRef, useState } from "react";
@@ -78,6 +78,7 @@ export function TableCard({ world, busy, onEnter, onRename, onDelete, room, room
             )}
           </span>
         )}
+        {world.setup && <span className="table-cover-ribbon">{t("vnSetupIncomplete")}</span>}
       </button>
       <div className="table-card-foot" ref={footRef}>
         {draft !== null ? (

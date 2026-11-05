@@ -1,0 +1,193 @@
+/* VN 開桌精靈（plans/vn-setup-wizard.md §2）：步驟條、① 分頁與偏好、② 進度列與劇本規格、③ 版面 */
+.vn-stepbar {
+  display: flex;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.vn-stepbar li {
+  flex: 1;
+  padding: 0.3rem 0.6rem;
+  border-bottom: 3px solid var(--line);
+  color: var(--ink-3);
+  font-size: var(--fs-ui);
+}
+.vn-stepbar li[aria-current="step"] {
+  border-color: var(--accent);
+  color: var(--ink-1);
+  font-weight: 600;
+}
+.vn-stepbar li[data-disabled] {
+  opacity: 0.45;
+}
+
+.vn-tabs {
+  display: flex;
+  gap: 0.2rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid var(--line);
+}
+.vn-tab {
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  color: var(--ink-3);
+}
+.vn-tab-active {
+  border-color: var(--accent);
+  color: var(--ink-1);
+}
+.vn-card-drop {
+  display: grid;
+  justify-items: start;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  border: 2px dashed var(--line-strong);
+  border-radius: var(--radius-m);
+}
+.vn-idea-label {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-weight: 600;
+}
+.vn-more-toggle {
+  margin-top: 0.6rem;
+}
+.vn-more-prefs {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 0.4rem;
+}
+.vn-pref-choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+.vn-pref-choice legend {
+  float: left;
+  min-width: 4.5em;
+  color: var(--ink-2);
+}
+.vn-pref-name {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.vn-player-row {
+  display: grid;
+  grid-template-columns: minmax(8em, 1fr) 3fr;
+  gap: 0.4rem;
+}
+.vn-player-row h3 {
+  grid-column: 1 / -1;
+}
+.vn-spoiler-toggle {
+  margin-right: 0.6rem;
+}
+
+.vn-build-progress {
+  display: flex;
+  gap: 1.2rem;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-3);
+}
+.vn-build-progress li[data-state="running"] {
+  color: var(--accent);
+  font-weight: 600;
+}
+.vn-build-progress li[data-state="running"]::after {
+  content: " …";
+}
+.vn-build-progress li[data-state="done"] {
+  color: var(--ok);
+}
+.vn-build-progress li[data-state="done"]::after {
+  content: " ✓";
+}
+.vn-story-spec h3 {
+  margin: 0.4rem 0;
+}
+.vn-cast-intro ul {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  list-style: none;
+}
+.vn-cast-intro p {
+  margin: 0.1rem 0 0;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+}
+
+.vn-art-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+.vn-art-head p {
+  margin: 0;
+}
+.vn-art-body {
+  display: grid;
+  grid-template-columns: 3fr 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+.vn-art-backdrop h3 {
+  margin: 0 0 0.4rem;
+}
+/* 展開「更多偏好」出現捲軸時題材列不重排 */
+.vn-wizard .dialog-body {
+  scrollbar-gutter: stable;
+}
+/* 開桌中：預覽不能再改 */
+.vn-wizard-building .gen-outline-preview {
+  opacity: 0.5;
+}
+.vn-stepbar button {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  text-align: left;
+  line-height: inherit;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+/* ③ 候選圖限高：三位角色在首屏都看得到 */
+.vn-art-step .vn-picker-image {
+  max-height: 160px;
+}
+.vn-art-step .vn-sprite-step {
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+.vn-art-step .vn-picker-empty {
+  width: 133px;
+}
+.vn-start-placeholder {
+  display: grid;
+  place-items: center;
+  padding: 0.75rem;
+  border: 1px dashed var(--line-strong);
+  text-align: center;
+}
+.vn-start-placeholder .vn-start-progress {
+  margin: 0;
+}

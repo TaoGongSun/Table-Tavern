@@ -1,7 +1,7 @@
-// 世界編輯器的「劇本」分頁（plans/vn-mode-pkg4.md §2.6）；精靈 ② 生成完也用它顯示。
-// 章數上限不算劇透，露在遮罩外；其餘整頁在劇透區內，已揭露的秘密例外照列。改動下一幕生效。
+// 世界編輯器的「劇本」分頁（plans/vn-mode-pkg4.md §2.6）；精靈 ② 的劇本規格層也用它。
+// 章數上限、選擇程度與結局數不算劇透，露在遮罩外；其餘整頁在劇透區內，已揭露的秘密例外照列。改動下一幕生效。
 import { confirm } from "@tauri-apps/plugin-dialog";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MutableRefObject } from "react";
 import { t } from "../../../i18n";
 import type { Bible } from "../../../shared/contracts/backend-contracts";
 import { backendText } from "../../../shared/ui/backend-text";
@@ -13,13 +13,25 @@ import { bibleErrorKey, useBible } from "./useBible";
 const flagValue = (value: string) =>
   value === "true" ? t("vnFlagOn") : value === "false" ? t("vnFlagOff") : value;
 
+const CHOICES = [
+  ["none", "vnChoiceNone"],
+  ["light", "vnChoiceLight"],
+  ["full", "vnChoiceFull"],
+] as const;
+
 export function BibleTab({
   worldId,
   onDirtyChange,
+  setup = false,
+  flushRef,
 }: {
   worldId: string;
   /** 劇本草稿有沒有未存改動（世界編輯器的離開確認用） */
   onDirtyChange?: (dirty: boolean) => void;
+  /** 精靈 ② 的劇本規格層：沒有儲存鈕（精靈換步、開始、關閉時經 flushRef 自動存） */
+  setup?: boolean;
+  /** 精靈換步、開始、關閉前呼叫：有未存改動就存，回存成功沒（失敗時草稿留著、訊息顯示在這裡） */
+  flushRef?: MutableRefObject<(() => Promise<boolean>) | null>;
 }) {
   const bible = useBible(worldId);
   const view = bible.view;
@@ -61,6 +73,19 @@ export function BibleTab({
   }
 
   const save = (next: Bible) => act(() => bible.save(next), t("saved"));
+  if (flushRef) {
+    flushRef.current = async () => {
+      if (!dirty || !draft) return true;
+      try {
+        await bible.save(draft);
+        return true;
+      } catch (reason) {
+        const key = bibleErrorKey(reason);
+        setMessage(key ? t(key) : backendText(reason));
+        return false;
+      }
+    };
+  }
 
   if (!view) return <p>{t("vnBibleLoading")}</p>;
   if (!view.bible || !draft) {
@@ -77,17 +102,19 @@ export function BibleTab({
   const titleOf = (id: string) => view.bible?.secrets.find((secret) => secret.id === id)?.title ?? id;
   return (
     <section className="vn-bible-tab">
-      <div className="vn-bible-actions">
-        <button
-          type="button"
-          className="btn btn-primary"
-          disabled={!dirty || busy}
-          onClick={() => void save(draft)}
-        >
-          {t("vnBibleSave")}
-        </button>
-        <span className="vn-bible-note">{t("vnBibleNextScene")}</span>
-      </div>
+      {!setup && (
+        <div className="vn-bible-actions">
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={!dirty || busy}
+            onClick={() => void save(draft)}
+          >
+            {t("vnBibleSave")}
+          </button>
+          <span className="vn-bible-note">{t("vnBibleNextScene")}</span>
+        </div>
+      )}
       {message && <p className="vn-spoiler-message">{message}</p>}
       <label className="vn-bible-max">
         {t("vnChapterMax")}
@@ -104,6 +131,26 @@ export function BibleTab({
         />
       </label>
       {draft.chapter_lock && <p className="vn-bible-note">{t("vnChapterLocked")}</p>}
+      <label className="vn-bible-branching">
+        {t("vnChoices")}
+        <span className="vn-bible-branching-row">
+          <select
+            value={draft.branching}
+            onChange={(event) => setDraft({ ...draft, branching: event.currentTarget.value as Bible["branching"] })}
+          >
+            {CHOICES.map(([id, key]) => (
+              <option key={id} value={id}>
+                {t(key)}
+              </option>
+            ))}
+          </select>
+          {/* 結局是照存檔時的程度寫的：改了程度就提示要重寫劇本，不拿舊結局數誤導 */}
+          {draft.branching !== view.bible.branching
+            ? t("vnBranchingRewriteHint")
+            : draft.branching !== "none" &&
+              t("vnEndingCount", { n: Math.max(1, draft.endings.filter((ending) => ending.id !== "default").length) })}
+        </span>
+      </label>
       {!bible.locked && draft.chapter_reason && <p className="vn-bible-note">{draft.chapter_reason}</p>}
       {view.revealed.length > 0 && (
         <div className="vn-bible-list">
@@ -118,7 +165,12 @@ export function BibleTab({
           </ul>
         </div>
       )}
-      <SpoilerMask worldId={worldId} onReroll={restore ? undefined : regenerate}>
+      <SpoilerMask
+        worldId={worldId}
+        onReroll={restore ? undefined : regenerate}
+        title="vnBibleMaskTitle"
+        rerollLabel="vnBibleMaskReroll"
+      >
         <div className="vn-bible-list">
           <h3>{t("vnFlagValues")}</h3>
           <ul>

@@ -58,16 +58,6 @@ export function BibleFields({
     <div className="vn-bible-fields">
       {text(t("vnBibleLogline"), draft.logline, (logline) => set({ logline }))}
       {text(t("vnBibleStyle"), draft.style, (style) => set({ style }))}
-      <p>
-        {t("vnBibleBranching")}：
-        {t(
-          draft.branching === "none"
-            ? "vnBranchingNone"
-            : draft.branching === "light"
-              ? "vnBranchingLight"
-              : "vnBranchingFull",
-        )}
-      </p>
 
       <h3>{t("vnBibleChapters")}</h3>
       {draft.chapters.map((chapter, index) => (
