@@ -1,4 +1,6 @@
-/* VN 播放器主題（第 1 套）：底色＋地點字卡（背景圖在包 3），立繪底部對齊、下緣裁切。 */
+/* VN 播放器主題（第 1 套）：背景鋪滿整個播放器，對話框、選項、快捷列疊在下緣；立繪底部對齊、下緣被對話框蓋住。
+   疊層：舞台 0 → 下緣 2 → 錯誤 3 → 章末字卡／完結 4 → 標題 5 → 面板、紀錄 6。
+   字級與框寬隨播放器高度（cqh）縮放：.vn-player 是 size container，cqh 只在後代上算得到。 */
 .vn-player {
   --vn-ground: linear-gradient(180deg, #2a3142 0%, #1b1f2a 70%, #12151c 100%);
   --vn-box: rgba(16, 19, 26, 0.88);
@@ -6,9 +8,10 @@
   --vn-ink: #eef1f7;
   --vn-thought: #a9c4e8;
   --vn-dim: brightness(0.45) saturate(0.7);
+  --vn-fs: clamp(1rem, 2.4cqh, 1.8rem);
+  --vn-box-w: min(92%, 110cqh);
   position: relative;
-  display: flex;
-  flex-direction: column;
+  container-type: size;
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -17,30 +20,9 @@
   color: var(--vn-ink);
 }
 
-.vn-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.4rem 0.6rem;
-  z-index: 3;
-}
-.vn-toolbar h1 {
-  flex: 0 1 auto;
-  min-width: 6em;
-  margin: 0;
-  font-size: var(--fs-title);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.vn-toolbar [aria-pressed="true"] {
-  color: var(--amber);
-}
-
 .vn-stage {
-  position: relative;
-  flex: 1;
-  min-height: 0;
+  position: absolute;
+  inset: 0;
   overflow: hidden;
 }
 /* 立繪與字卡一層：震動以它為準（背景不跟著重掛，免得每次震動重播淡入） */
@@ -81,7 +63,7 @@
 /* 立繪：底部對齊、下緣被對話框蓋住；槽位 0 左、1 右、2 中 */
 .vn-sprite {
   position: absolute;
-  bottom: -12%;
+  bottom: 0;
   /* --vn-scale：VN 卡身高比例（名單最高者＝1） */
   height: calc(92% * var(--vn-scale, 1));
   width: 34%;
@@ -135,13 +117,34 @@
 .vn-faded { opacity: 0; }
 
 .vn-bottom {
-  position: relative;
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: 2;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0 1rem 1rem;
+  gap: 0.3rem;
+  padding: 0 1rem 0.4rem;
+}
+.vn-ui-hidden {
+  visibility: hidden;
+}
+.vn-error {
+  position: absolute;
+  top: 0.6rem;
+  left: 50%;
+  z-index: 3;
+  max-width: min(40rem, 90%);
+  transform: translateX(-50%);
+  padding: 0.4rem 0.9rem;
+  border-radius: var(--radius-s);
+  background: var(--vn-box);
+  text-align: center;
+}
+.vn-error p {
+  margin: 0;
 }
 .vn-choices,
 .vn-continue {
@@ -160,6 +163,7 @@
 .vn-choice {
   width: 100%;
   min-height: 2.4rem;
+  font-size: calc(var(--vn-fs) * 0.85);
   background: var(--vn-box);
   border-color: var(--vn-box-line);
   color: var(--vn-ink);
@@ -182,7 +186,7 @@
 
 .vn-dialogue {
   position: relative;
-  width: min(56rem, 100%);
+  width: var(--vn-box-w);
   min-height: 8.5rem;
   /* 長段落（GM 一格寫很長）在框內捲動，不撐出畫面 */
   max-height: 38vh;
@@ -193,7 +197,7 @@
   color: var(--vn-ink);
   font: inherit;
   font-family: var(--font-story);
-  font-size: calc(var(--fs-story) * 1.1);
+  font-size: var(--vn-fs);
   text-align: left;
   cursor: pointer;
   /* 按鈕內容預設垂直置中；VN 慣例文字靠上 */
@@ -211,7 +215,7 @@
   background: var(--accent);
   color: var(--accent-ink);
   font-family: var(--font-ui);
-  font-size: var(--fs-btn);
+  font-size: calc(var(--vn-fs) * 0.8);
   font-weight: 600;
 }
 .vn-text {
@@ -232,14 +236,52 @@
   animation: vn-bob 1s ease-in-out infinite;
 }
 
+/* 快捷列：對話框正下方靠右，半透明小字，按下（自動、快進開著）亮琥珀 */
+.vn-quick {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.2rem;
+  width: var(--vn-box-w);
+}
+.vn-quick button {
+  padding: 0.15rem 0.5rem;
+  border: 0;
+  background: none;
+  color: var(--vn-ink);
+  opacity: 0.6;
+  font: inherit;
+  font-family: var(--font-ui);
+  font-size: clamp(0.75rem, 1.6cqh, 1rem);
+  cursor: pointer;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+.vn-quick button:hover:not(:disabled),
+.vn-quick button:focus-visible {
+  opacity: 1;
+}
+.vn-quick button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.vn-quick [aria-pressed="true"] {
+  color: var(--amber);
+  opacity: 1;
+}
+.vn-quick .vn-quick-stop {
+  margin-right: auto;
+  color: var(--danger);
+  opacity: 1;
+}
+
 .vn-backlog {
   position: absolute;
   inset: 0;
-  z-index: 4;
+  z-index: 6;
   overflow-y: auto;
   padding: 3rem 15% 2rem;
   background: rgba(10, 12, 17, 0.94);
   font-family: var(--font-story);
+  font-size: var(--vn-fs);
 }
 .vn-backlog-close {
   position: fixed;

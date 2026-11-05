@@ -1,19 +1,16 @@
-// log：游標以前的正式格（名牌＋文字、thought 斜體、`[bg]` 一行地點、玩家選的選項）。
-import { useEffect } from "react";
+// log：游標以前的正式格（名牌＋文字、thought 斜體、`[bg]` 一行地點、玩家選的選項）。打開停在最新一句；Esc 由播放器的鍵盤處理關。
+import { useLayoutEffect, useRef } from "react";
 import { t } from "../../i18n";
 import { IconClose } from "../../shared/ui/icons";
 import type { FlatCell } from "./vn-cells";
 
 export function Backlog({ cells, onClose }: { cells: FlatCell[]; onClose: () => void }) {
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
+  }, []);
   return (
-    <div className="vn-backlog" role="dialog" aria-label={t("vnLog")}>
+    <div ref={ref} className="vn-backlog" role="dialog" aria-label={t("vnLog")}>
       <button
         type="button"
         className="btn btn-ghost btn-icon vn-backlog-close"

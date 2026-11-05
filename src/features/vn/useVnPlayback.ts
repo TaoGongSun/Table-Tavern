@@ -90,7 +90,7 @@ export function useVnPlayback({
       }
       const resumed = has(resumeKey);
       if (resumed) return { key: resumed, shown: 0 };
-      const key = entryKey(cells, playable);
+      const key = entryKey(playable);
       return key ? { key, shown: 0 } : null;
     }
     const last = lastFormal(playable);

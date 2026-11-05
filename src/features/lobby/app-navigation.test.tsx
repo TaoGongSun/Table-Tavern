@@ -760,6 +760,8 @@ describe("lobby and table navigation", () => {
       await click(buttonText(t("vnNext")));
       await click(buttonText(t("vnStart")));
       expect(calls("open_world").map((call) => call.args.worldId)).toEqual(["vn1"]);
+      // 桌名在遊戲選單的標題；聊天視圖也在選單裡
+      await click(buttonText(t("vnMenu")));
       expect(vnView()?.textContent).toContain("Harbor");
       await click(buttonText(t("vnShowChat")));
       expect(vnView()).toBeNull();
@@ -801,6 +803,7 @@ describe("lobby and table navigation", () => {
       await click(buttonText(t("vnNext")));
       await click(buttonText(t("vnStart")));
       expect(calls("open_world").map((call) => call.args.worldId)).toEqual(["vn2"]);
+      await click(buttonText(t("vnMenu")));
       expect(vnView()?.textContent).toContain("Lia");
     });
   });

@@ -1,10 +1,10 @@
-/* 章末字卡與完結畫面（vn-mode 包 5）：蓋在舞台與對話框上的暗幕，字置中；工具列（z-index 3）留在上面，
-   完結後仍能切聊天視圖收回結局、看紀錄。 */
+/* 章末字卡與完結畫面（vn-mode 包 5）：蓋在舞台、對話框與快捷列上的暗幕，字置中；完結後 Esc／右鍵仍開得了遊戲選單
+   （切聊天視圖收回結局）。疊層見 vn-player.css。 */
 .vn-chapter-card,
 .vn-ending-screen {
   position: absolute;
   inset: 0;
-  z-index: 2;
+  z-index: 4;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -55,11 +55,11 @@
   }
 }
 
-/* 結局一覽、章節選擇：開著時完結畫面先收起；同層在工具列之下，工具列照樣按得到 */
+/* 遊戲選單、存檔、設定、結局一覽、章節選擇：疊在標題與完結畫面上（完結畫面開著面板時先收起） */
 .vn-story-panel {
   position: absolute;
   inset: 0;
-  z-index: 2;
+  z-index: 6;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -86,11 +86,11 @@
   opacity: 0.5;
 }
 
-/* 標題畫面（包 6）：蓋住工具列；封面或目前背景鋪滿、選單置中 */
+/* 標題畫面（包 6）：封面或目前背景鋪滿、選單置中；面板開在它上面，關了回標題 */
 .vn-title-screen {
   position: absolute;
   inset: 0;
-  z-index: 4;
+  z-index: 5;
   display: flex;
   align-items: center;
   justify-content: center;

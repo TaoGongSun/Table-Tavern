@@ -1,4 +1,4 @@
-// 對話框：名牌、打字機文字、點擊推進提示；本身是按鈕，Enter／Space 走原生。
+// 對話框：名牌、打字機文字、點擊推進提示；本身是按鈕，Space／Enter 由播放器的鍵盤處理（不走原生 click，免得推兩次）。
 import { useEffect, useRef } from "react";
 import type { FlatCell } from "./vn-cells";
 import { sliceChars } from "./vn-cells";

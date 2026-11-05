@@ -1,11 +1,12 @@
 // 存檔與讀檔（vn-mode 包 6 §2.7）：存檔＝在目前這格放一個命名書籤；讀檔＝回到那格（目前幕直接跳、別條分支切過去、
-// 已換章的幕分岔一份）。標題畫面與工具列共用。
+// 已換章的幕分岔一份）。標題畫面與快捷列共用。
 import { useState } from "react";
 import { t } from "../../i18n";
 import type { VnSave } from "../../shared/contracts/backend-contracts";
 import { Panel } from "./StoryPanels";
 
 export function SavesPanel({
+  label,
   saves,
   defaultName,
   canSave,
@@ -16,6 +17,8 @@ export function SavesPanel({
   onDelete,
   onClose,
 }: {
+  /** 標題畫面只讀檔時叫「讀檔」 */
+  label: string;
   saves: VnSave[];
   defaultName: string;
   /** 標題畫面只讀檔 */
@@ -29,7 +32,7 @@ export function SavesPanel({
 }) {
   const [name, setName] = useState(defaultName);
   return (
-    <Panel label={t("vnSaves")} onClose={onClose}>
+    <Panel label={label} onClose={onClose}>
       {canSave && (
         <form
           className="vn-save-form"

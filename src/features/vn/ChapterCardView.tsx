@@ -1,5 +1,6 @@
 // 章末字卡（vn-mode 包 5 §2.3）：「第 N 章 完」→ 換幕中 → 「第 N+1 章」；失敗顯示原因與重試。
 import { t } from "../../i18n";
+import { IconStop } from "../../shared/ui/icons";
 import { backendText } from "../../shared/ui/backend-text";
 import type { ChapterCard } from "./useChapterEnd";
 import "./vn-story.css";
@@ -9,6 +10,7 @@ export function ChapterCardView({
   nextChapter,
   onRetry,
   onClose,
+  onStop,
   replay = false,
 }: {
   card: ChapterCard;
@@ -16,6 +18,8 @@ export function ChapterCardView({
   nextChapter: number | undefined;
   onRetry: () => void;
   onClose: () => void;
+  /** 下一章首拍生成中：字卡蓋著快捷列，停止鈕放在字卡上 */
+  onStop?: () => void;
   /** 重播桌只是換幕、沒有在整理，不顯示「整理中」 */
   replay?: boolean;
 }) {
@@ -41,6 +45,12 @@ export function ChapterCardView({
         <p className="vn-chapter-note" role="alert">
           {backendText(card.error)}
         </p>
+      )}
+      {opening && onStop && (
+        <button type="button" className="btn" onClick={onStop}>
+          <IconStop />
+          {t("stopResponse")}
+        </button>
       )}
       {stuck && (
         <div className="vn-chapter-actions">

@@ -99,14 +99,9 @@ export const liveChoice = (cells: FlatCell[]) =>
     .reverse()
     .find((cell) => cell.kind !== "pending" && cell.cell.type === "choices" && cell.choice?.answered === null);
 
-/** 進桌位置：最後一則非玩家、非摘要正式事件的第一個可停格；還沒有正式事件（空桌第一回合）就從第一格播 */
-export function entryKey(cells: FlatCell[], playable: FlatCell[]): string | null {
-  const last = [...cells]
-    .reverse()
-    .find((cell) => cell.kind !== "player" && cell.kind !== "pending" && !cell.recap);
-  const first = last && playable.find((cell) => cell.eventKey === last.eventKey);
-  return (first ?? lastFormal(playable) ?? playable[0])?.key ?? null;
-}
+/** 沒有閱讀位置與指定位置時的進桌位置：幕首第一個可停格（沒讀過就從頭播）；還沒有正式格（空桌第一回合）就是第一個暫定格 */
+export const entryKey = (playable: FlatCell[]): string | null =>
+  (playable.find((cell) => cell.kind !== "pending") ?? playable[0])?.key ?? null;
 
 /**
  * 進新幕的指定位置（包 6、包 8 §2.6）：last＝最後一個正式格；cell＝那一格；start＝幕首第一格；

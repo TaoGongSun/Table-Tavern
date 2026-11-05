@@ -186,6 +186,14 @@ const advance = async () => {
   await act(async () => host.querySelector<HTMLButtonElement>(".vn-dialogue")!.click());
   await settle();
 };
+/** 合成按鍵：預設從 body 冒泡到 window；回傳事件看有沒有被 preventDefault */
+const press = async (key: string, init: KeyboardEventInit = {}, target: EventTarget = document.body, type = "keydown") => {
+  const event = new KeyboardEvent(type, { key, bubbles: true, cancelable: true, ...init });
+  await act(async () => void target.dispatchEvent(event));
+  await settle();
+  return event;
+};
+const menuItems = () => [...host.querySelectorAll(".vn-game-menu button")].map((b) => b.textContent);
 
 beforeEach(() => {
   backend.cells = [];
@@ -245,11 +253,13 @@ describe("VnPlayer", () => {
     expect(hints()).toEqual([]);
   });
 
-  it("plays from the last event and a choice goes to submitText exactly once", async () => {
+  it("enters an unread scene at its first cell and a choice goes to submitText exactly once", async () => {
     backend.cells = [gm("g0", [n("old")]), gm("g1", [n("hello"), choices("Go left", "Go right")])];
     let finish = () => {};
     chat.submitText = vi.fn(() => new Promise<void>((resolve) => (finish = resolve)));
     await render({ events: [event("g0"), event("g1")] });
+    expect(text()).toBe("old");
+    await advance();
     expect(text()).toBe("hello");
     await advance();
     expect(choiceButtons().map((b) => b.textContent)).toEqual(["Go left", "Go right"]);
@@ -388,6 +398,7 @@ describe("VnPlayer", () => {
 
   it("entering or skipping onto a chapter cell waits for the next-chapter button", async () => {
     backend.cells = [gm("g0", [n("a")]), gm("g1", [{ type: "chapter" }])];
+    backend.progress = { version: 1, read: [], positions: { "0": "g1#0" }, saves: [] };
     await render({ events: [event("g0"), event("g1")] });
     expect(onAdvanceScene).not.toHaveBeenCalled();
     const next = [...host.querySelectorAll<HTMLButtonElement>(".vn-continue")];
@@ -490,8 +501,12 @@ describe("VnPlayer", () => {
     expect(host.querySelector(".vn-ending-screen")?.textContent).toContain(
       t("vnEndingsReached", { x: 1, y: 1 }),
     );
-    expect(button(t("vnNextChapter"))!.disabled).toBe(true);
     expect(button(t("vnContinue"))).toBeUndefined();
+    // 完結畫面上 Esc 仍開得了遊戲選單（切聊天視圖收回結局），下一章停用
+    await press("Escape");
+    expect(button(t("vnNextChapter"))!.disabled).toBe(true);
+    await press("Escape");
+    expect(host.querySelector(".vn-game-menu")).toBeNull();
 
     // 結局一覽：未達成顯示 ???
     await act(async () => button(t("vnEndingsList"))!.click());
@@ -539,6 +554,9 @@ describe("VnPlayer", () => {
       { event_id: "c1", kind: "dialogue", cells: [n("who?")] },
     ];
     await render({ events: [event("g1"), event("c1")] });
+    expect(text()).toBe("q");
+    expect(choiceButtons()).toEqual([]);
+    await advance();
     expect(text()).toBe("who?");
     expect(choiceButtons().map((b) => b.textContent)).toEqual(["A", "B"]);
     expect(button(t("vnReroll"))).toBeUndefined();
@@ -553,6 +571,7 @@ describe("VnPlayer", () => {
     async function openPast() {
       backend.cells = past();
       backend.branches = [{ option: "B", tip: 3, ended: true }];
+      backend.progress = { version: 1, read: [], positions: { "0": "g2#0" }, saves: [] };
       await render({ events: [event("g1"), event("p1"), event("g2")] });
       await act(async () => button(t("vnBack"))!.click());
       await settle();
@@ -725,7 +744,8 @@ describe("VnPlayer", () => {
       await settle();
       expect(onTitle).toHaveBeenLastCalledWith(false);
       expect(onReplayChapter).not.toHaveBeenCalled();
-      await act(async () => host.querySelector<HTMLButtonElement>(`[aria-label="${t("vnBackToTitle")}"]`)!.click());
+      await act(async () => button(t("vnMenu"))!.click());
+      await act(async () => button(t("vnBackToTitle"))!.click());
       expect(onTitle).toHaveBeenLastCalledWith(true);
     });
 
@@ -793,11 +813,17 @@ describe("VnPlayer", () => {
       await render({ events: [event("g1")] });
       expect(button(t("vnNextChapter"))).toBeUndefined();
       expect(button(t("vnShowChat"))).toBeUndefined();
-      const more = () => host.querySelector<HTMLButtonElement>(`[aria-label="${t("moreActions")}"]`)!.click();
-      await act(async () => more());
-      const items = [...document.querySelectorAll("[role=menuitem]")].map((item) => item.textContent);
-      expect(items).toEqual([t("vnEndingsList"), t("vnWorkChapterSelect")]);
-      await act(async () => more());
+      await act(async () => button(t("vnMenu"))!.click());
+      expect(menuItems()).toEqual([
+        t("vnBackToTitle"),
+        t("vnSaves"),
+        t("vnTitleSettings"),
+        t("vnEndingsList"),
+        t("vnWorkChapterSelect"),
+        t("vnHideUi"),
+        t("backToLobby"),
+      ]);
+      await act(async () => button(t("vnChapterClose"))!.click());
       await advance();
       expect(host.querySelector(".vn-ending-title")?.textContent).toBe("Dawn");
       expect(button(t("vnNewPlaythrough"))).toBeUndefined();
@@ -906,6 +932,158 @@ describe("VnPlayer", () => {
       backend.progress = { version: 1, read: [], positions: { "0": "o1#1" }, saves: [] };
       await render({ events: [event("o1")] });
       expect(text()).toBe("opening");
+    });
+  });
+  describe("Ren'Py-style input", () => {
+    const three = () => [gm("g1", [n("a"), n("b"), n("c")])];
+    const pressed = (label: string) => button(label)!.getAttribute("aria-pressed");
+    const stage = () => host.querySelector<HTMLElement>(".vn-stage")!;
+    const click = async (el: Element, type = "click") => {
+      const event = new MouseEvent(type, { bubbles: true, cancelable: true });
+      await act(async () => void el.dispatchEvent(event));
+      await settle();
+      return event;
+    };
+
+    it("maps advance, back, auto, hide and the menu keys", async () => {
+      backend.cells = three();
+      await render({ events: [event("g1")] });
+      await press(" ");
+      expect(text()).toBe("b");
+      await press("ArrowLeft");
+      expect(text()).toBe("a");
+      await press("Enter");
+      await press("ArrowRight");
+      expect(text()).toBe("c");
+      await press("Backspace");
+      expect(text()).toBe("b");
+      await press("a");
+      expect(pressed(t("vnAuto"))).toBe("true");
+      await press("a");
+      await press("h");
+      expect(host.querySelector(".vn-ui-hidden")).not.toBeNull();
+      await press(" ");
+      expect(host.querySelector(".vn-ui-hidden")).toBeNull();
+      expect(text()).toBe("b");
+      await press("Escape");
+      expect(host.querySelector(".vn-game-menu")).not.toBeNull();
+      await press(" ");
+      expect(text()).toBe("b");
+      await press("Escape");
+      expect(host.querySelector(".vn-game-menu")).toBeNull();
+      // app 層的 modal 對話窗開著：按鍵不進播放器
+      const modal = document.body.appendChild(document.createElement("dialog"));
+      modal.setAttribute("open", "");
+      await press(" ");
+      await press("Escape");
+      modal.remove();
+      expect(text()).toBe("b");
+      expect(host.querySelector(".vn-game-menu")).toBeNull();
+    });
+
+    it("the focused dialogue box consumes Enter and Space so the native click cannot advance again; other buttons keep theirs", async () => {
+      backend.cells = three();
+      await render({ events: [event("g1")] });
+      const dialogue = host.querySelector(".vn-dialogue")!;
+      expect((await press("Enter", {}, dialogue)).defaultPrevented).toBe(true);
+      expect(text()).toBe("b");
+      expect((await press(" ", {}, button(t("vnAuto"))!)).defaultPrevented).toBe(false);
+      expect(text()).toBe("b");
+    });
+
+    it("holding Ctrl skips and letting go or leaving the window restores the previous state", async () => {
+      backend.cells = three();
+      backend.progress = { version: 1, read: [n("a"), n("b"), n("c")].map(cellHash), positions: {}, saves: [] };
+      await render({ events: [event("g1")] });
+      await press("Control");
+      await press("Control", { repeat: true });
+      expect(pressed(t("vnSkip"))).toBe("true");
+      await press("Control", {}, document.body, "keyup");
+      expect(pressed(t("vnSkip"))).toBe("false");
+      await press("Control");
+      await act(async () => void window.dispatchEvent(new Event("blur")));
+      await settle();
+      expect(pressed(t("vnSkip"))).toBe("false");
+    });
+
+    it("Esc closes a panel even from a focused field; other keys do nothing while it is open", async () => {
+      backend.cells = three();
+      await render({ events: [event("g1")] });
+      await act(async () => button(t("vnTitleSettings"))!.click());
+      await press(" ");
+      expect(text()).toBe("a");
+      await press("Escape", {}, host.querySelector(".vn-setting select")!);
+      expect(host.querySelector(".vn-story-panel")).toBeNull();
+      await act(async () => button(t("vnLog"))!.click());
+      await press("Escape");
+      expect(host.querySelector(".vn-backlog")).toBeNull();
+      expect(host.querySelector(".vn-game-menu")).toBeNull();
+    });
+
+    it("clicking or wheeling the stage advances, a right click opens the menu, an open choice ignores the stage", async () => {
+      backend.cells = [gm("g1", [n("a"), n("b"), choices("A", "B")])];
+      await render({ events: [event("g1")] });
+      await click(stage());
+      expect(text()).toBe("b");
+      await act(async () => void stage().dispatchEvent(new WheelEvent("wheel", { deltaY: -1, bubbles: true })));
+      expect(text()).toBe("a");
+      await new Promise((resolve) => setTimeout(resolve, 260));
+      await act(async () => void stage().dispatchEvent(new WheelEvent("wheel", { deltaY: 1, bubbles: true })));
+      await settle();
+      expect(text()).toBe("b");
+      await advance();
+      expect(choiceButtons()).toHaveLength(2);
+      await click(stage());
+      expect(choiceButtons()).toHaveLength(2);
+      expect((await click(stage(), "contextmenu")).defaultPrevented).toBe(true);
+      expect(host.querySelector(".vn-game-menu")).not.toBeNull();
+    });
+
+    it("clicking anywhere on a chapter cell reached by skip starts the chapter end", async () => {
+      backend.cells = [gm("g0", [n("a")]), gm("g1", [{ type: "chapter" }])];
+      backend.progress = { version: 1, read: [], positions: { "0": "g1#0" }, saves: [] };
+      await render({ events: [event("g0"), event("g1")] });
+      expect(onAdvanceScene).not.toHaveBeenCalled();
+      await click(stage());
+      expect(onAdvanceScene).toHaveBeenCalledWith(true);
+    });
+
+    it("the title leads with start until there is progress, offers load with saves, and keeps showing under its panels", async () => {
+      backend.cells = three();
+      titleOpen = true;
+      const menu = () => [...host.querySelectorAll(".vn-title-menu button")].map((b) => b.textContent);
+      await render({ events: [event("g1")] });
+      expect(menu()).toEqual([t("vnTitleStart"), t("vnEndingsList"), t("vnTitleSettings"), t("backToLobby")]);
+      expect(host.querySelector(".vn-title-menu .btn-primary")?.textContent).toBe(t("vnTitleStart"));
+      await act(async () => host.querySelectorAll<HTMLButtonElement>(".vn-title-menu button")[2].click());
+      expect(host.querySelector(".vn-title-screen")).not.toBeNull();
+      expect(host.querySelector(".vn-story-panel")).not.toBeNull();
+      act(() => root.unmount());
+      root = createRoot(host);
+      backend.progress = { version: 1, read: [], positions: {}, saves: [{ id: "s1", name: "x", scene: 0, event_id: "g1", cell: 0, chapter: 1, ts: "t", preview: "" }] };
+      await render({ events: [event("g1")] });
+      expect(menu()).toContain(t("vnTitleLoad"));
+      expect(menu()).not.toContain(t("vnTitleContinue"));
+      act(() => root.unmount());
+      root = createRoot(host);
+      backend.progress = { version: 1, read: [], positions: { "0": "g1#1" }, saves: [] };
+      await render({ events: [event("g1")] });
+      expect(menu().slice(0, 3)).toEqual([t("vnTitleContinue"), t("vnTitleStart"), t("vnTitleLoad")]);
+      expect(host.querySelector(".vn-title-menu .btn-primary")?.textContent).toBe(t("vnTitleContinue"));
+    });
+
+    it("the log opens at its newest line", async () => {
+      backend.cells = three();
+      const height = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollHeight");
+      Object.defineProperty(HTMLElement.prototype, "scrollHeight", { configurable: true, get: () => 900 });
+      try {
+        await render({ events: [event("g1")] });
+        await act(async () => button(t("vnLog"))!.click());
+        expect(host.querySelector<HTMLElement>(".vn-backlog")!.scrollTop).toBe(900);
+      } finally {
+        if (height) Object.defineProperty(HTMLElement.prototype, "scrollHeight", height);
+        else delete (HTMLElement.prototype as { scrollHeight?: number }).scrollHeight;
+      }
     });
   });
 });

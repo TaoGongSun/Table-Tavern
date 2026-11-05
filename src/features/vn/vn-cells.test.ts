@@ -77,25 +77,25 @@ describe("flatten / playable / entry", () => {
     expect(liveChoice(later)?.key).toBe("g1#1");
   });
 
-  it("enters at the first playable cell of the last non-player event", () => {
+  it("enters at the scene's first playable cell, not the newest event", () => {
     const playable = cells.filter((cell) => isPlayable(cell, "@2"));
-    expect(entryKey(cells, playable)).toBe("@2#1");
-    expect(entryKey([], [])).toBeNull();
+    expect(entryKey(playable)).toBe("g1#0");
+    expect(entryKey([])).toBeNull();
     // 還沒有正式事件（空桌第一回合）：從第一個暫定格開始，不是最新那格
     const pending = pendingCells(1, [n("a"), n("b")]);
-    expect(entryKey(pending, pending)).toBe("pending:1#0");
+    expect(entryKey(pending)).toBe("pending:1#0");
   });
 
   it("never plays or enters at the scene recap; it stays in the log only", () => {
     const recap = flatten([{ ...ev("s0", "narration", [n("前情")]), recap: true }]);
     expect(recap.filter((cell) => isPlayable(cell, "s0"))).toEqual([]);
-    expect(entryKey(recap, [])).toBeNull();
+    expect(entryKey([])).toBeNull();
     const withBeat = flatten([
       { ...ev("s0", "narration", [n("前情")]), recap: true },
       ev("g1", "narration", [n("a")]),
     ]);
     const playable = withBeat.filter((cell) => isPlayable(cell, "g1"));
-    expect(entryKey(withBeat, playable)).toBe("g1#0");
+    expect(entryKey(playable)).toBe("g1#0");
   });
 });
 
