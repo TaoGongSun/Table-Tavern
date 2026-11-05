@@ -1,7 +1,7 @@
 //! VN 背景庫（plans/vn-mode-pkg3.md、vn-setup-wizard.md §3）的 Tauri 邊界：排入這幕缺的基底、串流中提早排、
-//! 讀圖（專屬圖或基底）、狀態、重生成、生專屬時段圖。
-use crate::generated_image::png_data_url;
-use crate::vn_backgrounds::{self, Backdrop, Library, Places};
+//! 讀圖（專屬圖或基底）、狀態、重生成、生專屬時段圖；美術一覽的地點清單與上傳替換。
+use crate::generated_image::{self, png_data_url, GeneratedImage};
+use crate::vn_backgrounds::{self, gallery, Backdrop, Library, Places};
 use crate::vn_sprites::queue::{self, BackgroundStatus, BgMode, BgSlot};
 use crate::{chat_turn, data, data_root};
 use serde::Serialize;
@@ -61,12 +61,7 @@ fn checked(
     slug: &str,
     period: &str,
 ) -> Result<Vec<String>, String> {
-    // 時段要在這個 slug 對應地點的有效清單內（卡地點用卡上的時段鍵）
-    let periods = Places::load(root, world_id).periods(slug);
-    match vn_backgrounds::valid_slug(slug) && periods.iter().any(|known| known == period) {
-        true => Ok(periods),
-        false => Err("VN_BACKGROUND_KEY".to_owned()),
-    }
+    gallery::checked(&Places::load(root, world_id), slug, period)
 }
 
 /// 一張背景：該時段專屬圖 → 同地點基底；地點還沒有任何圖回 None
@@ -93,15 +88,51 @@ pub(crate) fn vn_backgrounds_status(world_id: String) -> Vec<BackgroundStatus> {
     queue::background_snapshot(&world_id)
 }
 
-/// 重生成一張背景（玩家按工具列：舞台目前顯示的那張，基底或專屬圖）：庫裡已有也覆寫
+/// 美術一覽：整桌地點、各自的時段清單、基底與有專屬圖的時段（含佇列中、失敗的地點；狀態另走 `vn_backgrounds_status`）
+#[tauri::command]
+pub(crate) fn vn_backgrounds_list(
+    app: tauri::AppHandle,
+    world_id: String,
+) -> Result<Vec<gallery::Place>, String> {
+    let root = data_root(&app)?;
+    let pending = queue::background_jobs(&world_id);
+    Ok(Library::of(&root, &world_id)?.places(&Places::load(&root, &world_id), &pending))
+}
+
+/// 上傳替換一張背景：解碼重編 PNG（不去背、不管比例），持寫入許可重驗後原子寫入，發 done 讓舞台重讀；
+/// 地點還缺基底就接著排基底（時段清單第一項）
+#[tauri::command]
+pub(crate) async fn vn_background_upload(
+    app: tauri::AppHandle,
+    world_id: String,
+    slug: String,
+    period: String,
+    data: Vec<u8>,
+) -> Result<(), String> {
+    let root = data_root(&app)?;
+    data::vn::refuse_if_replay(&root, &world_id)?;
+    checked(&root, &world_id, &slug, &period)?;
+    let png = generated_image::normalize(GeneratedImage::Bytes(data)).await?;
+    let backdrop = {
+        let _permit = data::world_write_permit_async(&world_id).await?;
+        let places = Places::load(&root, &world_id);
+        let pending = queue::background_jobs(&world_id);
+        gallery::commit_upload(&root, &world_id, &places, &pending, &slug, &period, &png)?
+    };
+    let slot = BgSlot::new(&world_id, backdrop.clone(), BgMode::Dedicated);
+    queue::announce_background(&app, &slot, "done");
+    vn_backgrounds::fill(&app, &world_id, &[backdrop])
+}
+
+/// 重生成一張背景（美術一覽：那一格實際的圖，基底或專屬圖；失敗的重試）：庫裡已有也覆寫
 #[tauri::command]
 pub(crate) fn vn_background_regenerate(
     app: tauri::AppHandle,
     world_id: String,
-    location: String,
+    slug: String,
     period: String,
 ) -> Result<(), String> {
-    enqueue(&app, &world_id, &location, &period, BgMode::Regenerate)
+    enqueue(&app, &world_id, &slug, &period, BgMode::Regenerate)
 }
 
 /// 生這個地點這個時段的專屬圖（以同地點既有的圖當參考改光線，蓋過遮罩；美術一覽用）
@@ -109,26 +140,53 @@ pub(crate) fn vn_background_regenerate(
 pub(crate) fn vn_background_generate_period(
     app: tauri::AppHandle,
     world_id: String,
-    location: String,
+    slug: String,
     period: String,
 ) -> Result<(), String> {
-    enqueue(&app, &world_id, &location, &period, BgMode::Dedicated)
+    enqueue(&app, &world_id, &slug, &period, BgMode::Dedicated)
+}
+
+/// 取消排隊中的一張背景（在跑的那張不動）
+#[tauri::command]
+pub(crate) fn vn_background_cancel(
+    app: tauri::AppHandle,
+    world_id: String,
+    slug: String,
+    period: String,
+) -> Result<(), String> {
+    let root = data_root(&app)?;
+    data::vn::refuse_if_replay(&root, &world_id)?;
+    checked(&root, &world_id, &slug, &period)?;
+    queue::cancel_background(&world_id, &slug, &period);
+    let backdrop = Backdrop {
+        location: String::new(),
+        slug,
+        period,
+    };
+    queue::announce_background(
+        &app,
+        &BgSlot::new(&world_id, backdrop, BgMode::Dedicated),
+        "cancelled",
+    );
+    Ok(())
 }
 
 fn enqueue(
     app: &tauri::AppHandle,
     world_id: &str,
-    location: &str,
+    slug: &str,
     period: &str,
     mode: BgMode,
 ) -> Result<(), String> {
     let root = data_root(app)?;
     data::vn::refuse_if_replay(&root, world_id)?;
-    let backdrop = Backdrop::new(location, None, Some(period), &Places::load(&root, world_id));
-    // 時段不在該地點的有效清單內會被換成清單第一項：當成壞鍵拒收
-    if location.trim().is_empty() || backdrop.period != period {
-        return Err("VN_BACKGROUND_KEY".to_owned());
-    }
+    let pending = queue::background_jobs(world_id);
+    let backdrop = Library::of(&root, world_id)?.target(
+        &Places::load(&root, world_id),
+        &pending,
+        slug,
+        period,
+    )?;
     queue::regenerate_background(app, BgSlot::new(world_id, backdrop, mode));
     Ok(())
 }

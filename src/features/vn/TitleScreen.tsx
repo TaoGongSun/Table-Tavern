@@ -1,5 +1,5 @@
 // 標題畫面（vn-mode 包 6 §2.8）：從大廳進 VN 桌時先到這裡。沒讀過＝開始當主鈕（有存檔加讀檔）；讀過＝繼續、開始、讀檔；
-// 都有結局一覽／設定／回大廳，面板疊在標題上；
+// 都有結局一覽／美術一覽／設定／回大廳，面板疊在標題上；
 // 換幕、分岔、讀檔等重進本桌不出。背景用封面（VN 卡匯入的桌才有），沒有就用目前的背景圖。
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
@@ -18,6 +18,7 @@ export function TitleScreen({
   onContinue,
   onLoad,
   onEndings,
+  onGallery,
   onSettings,
   onLobby,
 }: {
@@ -31,6 +32,7 @@ export function TitleScreen({
   onContinue: () => void;
   onLoad: () => void;
   onEndings: () => void;
+  onGallery: () => void;
   onSettings: () => void;
   onLobby: () => void;
 }) {
@@ -87,6 +89,9 @@ export function TitleScreen({
             )}
             <button type="button" className="btn" onClick={onEndings}>
               {t("vnEndingsList")}
+            </button>
+            <button type="button" className="btn" onClick={onGallery}>
+              {t("vnGallery")}
             </button>
             <button type="button" className="btn" onClick={onSettings}>
               {t("vnTitleSettings")}

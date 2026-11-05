@@ -31,9 +31,19 @@ export function reachedText(endings: VnEndings): string | null {
   return t("vnEndingsReached", { x, y: counted.length });
 }
 
-export function Panel({ label, children, onClose }: { label: string; children: React.ReactNode; onClose: () => void }) {
+export function Panel({
+  label,
+  children,
+  onClose,
+  className,
+}: {
+  label: string;
+  children: React.ReactNode;
+  onClose: () => void;
+  className?: string;
+}) {
   return (
-    <div className="vn-story-panel" role="dialog" aria-label={label}>
+    <div className={`vn-story-panel${className ? ` ${className}` : ""}`} role="dialog" aria-label={label}>
       <p className="vn-chapter-heading">{label}</p>
       {children}
       <div className="vn-chapter-actions">

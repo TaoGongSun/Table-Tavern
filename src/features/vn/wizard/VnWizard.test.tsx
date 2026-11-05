@@ -194,8 +194,12 @@ it("knows which candidate is installed: the same one is not picked again, an upl
   state.candidates = ["b.png", "a.png"];
   state.installed = "a.png";
   await mount({ worldId: "W", step: "art" });
-  // 後端自動定稿裝了舊的那張：預設選它，「挑定這張」變灰
-  expect(document.querySelector<HTMLButtonElement>(".vn-picker-actions .btn-primary")!.disabled).toBe(true);
+  // 後端自動定稿裝了舊的那張：預設選它，主鈕變灰並改成「已是定稿」
+  const picked = [...document.querySelectorAll<HTMLButtonElement>(".vn-picker-actions button")].find(
+    (item) => item.textContent === t("vnSpriteAlreadyBase"),
+  );
+  expect(picked?.disabled).toBe(true);
+  expect(picked?.classList.contains("btn-primary")).toBe(false);
   await act(async () => button(t("vnStartGame")).click());
   await settle();
   expect(called("vn_sprite_pick")).toHaveLength(0);

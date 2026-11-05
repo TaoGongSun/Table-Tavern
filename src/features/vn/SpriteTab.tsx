@@ -1,5 +1,5 @@
 // 角色編輯頁的立繪分頁（只有 VN 桌）：定稿＋臉框（拖拉移動、拉角縮放）、五格表情（疊在定稿上預覽）、
-// 每格狀態與重骰／上傳替換；依定稿重生全部表情、換定稿、刪除立繪；變體列（SpriteVariants）。
+// 每格狀態與重骰／上傳替換；依定稿重生全部表情、換定稿、變體列（SpriteVariants），刪除立繪放最下方。
 import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { useEffect, useRef, useState } from "react";
@@ -11,7 +11,18 @@ import { SpriteVariants } from "./SpriteVariants";
 import { onSpriteStatus } from "./useSprites";
 import { useSpriteSlot } from "./useSpriteSlot";
 
-export function SpriteTab({ worldId, characterId, name }: { worldId: string; characterId: string; name: string }) {
+/** expressionsFirst＝表情列置頂（美術一覽：玩家是看到缺的表情才點進來）；角色編輯頁維持定稿在上 */
+export function SpriteTab({
+  worldId,
+  characterId,
+  name,
+  expressionsFirst = false,
+}: {
+  worldId: string;
+  characterId: string;
+  name: string;
+  expressionsFirst?: boolean;
+}) {
   const slot = useSpriteSlot(worldId, characterId, true);
   const [statuses, setStatuses] = useState<Record<string, SpriteSlotStatus>>({});
   const reload = useRef(slot.reload);
@@ -49,15 +60,46 @@ export function SpriteTab({ worldId, characterId, name }: { worldId: string; cha
       </div>
     );
   }
+  const expressionRow = (
+    <ExpressionRow
+      sprite={sprite}
+      statuses={statuses}
+      disabled={slot.busy !== null}
+      onReroll={(expression) => void regenerate(null, [expression])}
+      onUpload={(file, expression) => void slot.upload(file, expression)}
+    />
+  );
   return (
     <div className="vn-sprite-tab">
       <div className="vn-sprite-tab-actions">
         <button type="button" className="btn btn-sm" disabled={slot.busy !== null} onClick={() => void regenerate(null, faceKeys(sprite))}>
           {t("vnSpriteRegenerateAll")}
         </button>
+      </div>
+      {expressionsFirst && expressionRow}
+      {sprite.meta.face_fallback && <p className="field-warn">{t("vnSpriteFaceFallback")}</p>}
+      <div className="vn-sprite-tab-top">
+        <FaceBoxEditor
+          sprite={sprite}
+          onApply={(face) => slot.run("work", () => invoke("vn_sprite_set_face", { ...ids, variant: null, face }))}
+        />
+        <div className="vn-sprite-tab-base">
+          <h3>{t("vnSpriteChangeBase")}</h3>
+          <p className="field-note">{t("vnSpriteChangeBaseNote")}</p>
+          <SpriteBasePicker slot={slot} name={name} />
+        </div>
+      </div>
+      {!expressionsFirst && expressionRow}
+      <SpriteVariants
+        sprite={sprite}
+        slot={slot}
+        statuses={statuses}
+        onReroll={(variant, expressions) => void regenerate(variant, expressions)}
+      />
+      <div className="vn-sprite-tab-actions">
         <button
           type="button"
-          className="btn btn-sm"
+          className="btn btn-ghost btn-sm"
           disabled={slot.busy !== null}
           onClick={async () => {
             if (await confirm(t("vnSpriteDeleteConfirm"), { kind: "warning" }))
@@ -67,30 +109,6 @@ export function SpriteTab({ worldId, characterId, name }: { worldId: string; cha
           {t("vnSpriteDelete")}
         </button>
       </div>
-      {sprite.meta.face_fallback && <p className="field-warn">{t("vnSpriteFaceFallback")}</p>}
-      <div className="vn-sprite-tab-top">
-        <FaceBoxEditor
-          sprite={sprite}
-          onApply={(face) => slot.run("work", () => invoke("vn_sprite_set_face", { ...ids, variant: null, face }))}
-        />
-        <div className="vn-sprite-tab-base">
-          <h3>{t("vnSpriteChangeBase")}</h3>
-          <SpriteBasePicker slot={slot} name={name} />
-        </div>
-      </div>
-      <ExpressionRow
-        sprite={sprite}
-        statuses={statuses}
-        disabled={slot.busy !== null}
-        onReroll={(expression) => void regenerate(null, [expression])}
-        onUpload={(file, expression) => void slot.upload(file, expression)}
-      />
-      <SpriteVariants
-        sprite={sprite}
-        slot={slot}
-        statuses={statuses}
-        onReroll={(variant, expressions) => void regenerate(variant, expressions)}
-      />
     </div>
   );
 }

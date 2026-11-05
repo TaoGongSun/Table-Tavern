@@ -425,11 +425,22 @@ export interface BackgroundView {
   period: string;
 }
 
+/** `vn_backgrounds_list`（美術一覽）：location＝送回生成命令的地點文字（null＝認不出名字，只能看）；
+ * base＝基底時段（還沒有圖＝null）；dedicated＝有自己圖檔的時段（含基底） */
+export interface BackgroundPlace {
+  slug: string;
+  location: string | null;
+  periods: string[];
+  base: string | null;
+  dedicated: string[];
+}
+
 export interface BackgroundStatus {
   worldId: string;
   slug: string;
   period: string;
-  state: "queued" | "running" | "done" | "failed";
+  /** cancelled＝玩家在美術一覽取消排隊 */
+  state: "queued" | "running" | "done" | "failed" | "cancelled";
   reason: string | null;
 }
 

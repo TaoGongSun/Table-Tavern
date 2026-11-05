@@ -2,7 +2,6 @@
 // 獨立成補充字典，不塞回十份主字典。i18n/index.ts 的 t() 把它併進同一個 MsgKey 空間。
 const COPY = {
   "zh-TW": {
-    vnBackgroundRegenerate: "重生成背景",
     vnBackgroundPreparing: "首幕背景生成中……可以先開始，背景好了會自動淡入。",
     vnBackgroundFailed: "首幕背景生成失敗。進桌後可在選單按「重生成背景」再試。",
     vnMenu: "選單",
@@ -97,7 +96,6 @@ const COPY = {
     vnSpriteMattingDownload: "去背模型下載失敗或檔案不符，請稍後再試。",
   },
   "zh-CN": {
-    vnBackgroundRegenerate: "重新生成背景",
     vnBackgroundPreparing: "首幕背景生成中……可以先开始，背景好了会自动淡入。",
     vnBackgroundFailed: "首幕背景生成失败。进桌后可在菜单点“重新生成背景”再试。",
     vnMenu: "菜单",
@@ -192,7 +190,6 @@ const COPY = {
     vnSpriteMattingDownload: "去背模型下载失败或文件不符，请稍后再试。",
   },
   en: {
-    vnBackgroundRegenerate: "Regenerate background",
     vnBackgroundPreparing: "Generating the first scene's background… You can start now; it fades in when ready.",
     vnBackgroundFailed: "The first scene's background failed to generate. Use “Regenerate background” in the menu to retry.",
     vnMenu: "Menu",
@@ -287,7 +284,6 @@ const COPY = {
     vnSpriteMattingDownload: "The background-removal model failed to download or did not match. Please try again later.",
   },
   ja: {
-    vnBackgroundRegenerate: "背景を再生成",
     vnBackgroundPreparing: "最初の場面の背景を生成中…先に始めても大丈夫です。完成すると自動でフェードインします。",
     vnBackgroundFailed: "最初の場面の背景を生成できませんでした。メニューの「背景を再生成」で再試行できます。",
     vnMenu: "メニュー",
@@ -382,7 +378,6 @@ const COPY = {
     vnSpriteMattingDownload: "背景除去モデルのダウンロードに失敗したか、ファイルが一致しません。後でもう一度お試しください。",
   },
   ko: {
-    vnBackgroundRegenerate: "배경 다시 생성",
     vnBackgroundPreparing: "첫 장면 배경을 생성하는 중… 먼저 시작해도 됩니다. 완성되면 자동으로 페이드인됩니다.",
     vnBackgroundFailed: "첫 장면 배경 생성에 실패했습니다. 메뉴의 '배경 다시 생성'으로 다시 시도할 수 있습니다.",
     vnMenu: "메뉴",
@@ -477,7 +472,6 @@ const COPY = {
     vnSpriteMattingDownload: "배경 제거 모델 다운로드에 실패했거나 파일이 일치하지 않습니다. 잠시 후 다시 시도하세요.",
   },
   es: {
-    vnBackgroundRegenerate: "Regenerar fondo",
     vnBackgroundPreparing: "Generando el fondo de la primera escena… Puedes empezar ya; aparecerá cuando esté listo.",
     vnBackgroundFailed: "No se pudo generar el fondo de la primera escena. Usa «Regenerar fondo» en el menú para reintentar.",
     vnMenu: "Menú",
@@ -572,7 +566,6 @@ const COPY = {
     vnSpriteMattingDownload: "No se pudo descargar el modelo de recorte o no coincide. Inténtalo más tarde.",
   },
   "pt-BR": {
-    vnBackgroundRegenerate: "Gerar fundo de novo",
     vnBackgroundPreparing: "Gerando o fundo da primeira cena… Você já pode começar; ele aparece quando ficar pronto.",
     vnBackgroundFailed: "Não foi possível gerar o fundo da primeira cena. Use “Gerar fundo de novo” no menu para tentar outra vez.",
     vnMenu: "Menu",
@@ -667,7 +660,6 @@ const COPY = {
     vnSpriteMattingDownload: "Falha ao baixar o modelo de recorte ou o arquivo não confere. Tente mais tarde.",
   },
   de: {
-    vnBackgroundRegenerate: "Hintergrund neu erzeugen",
     vnBackgroundPreparing: "Hintergrund der ersten Szene wird erzeugt … Du kannst schon starten; er blendet sich ein, sobald er fertig ist.",
     vnBackgroundFailed: "Der Hintergrund der ersten Szene konnte nicht erzeugt werden. Mit „Hintergrund neu erzeugen“ im Menü erneut versuchen.",
     vnMenu: "Menü",
@@ -762,7 +754,6 @@ const COPY = {
     vnSpriteMattingDownload: "Das Freistellungsmodell konnte nicht geladen werden oder stimmt nicht. Bitte später erneut versuchen.",
   },
   fr: {
-    vnBackgroundRegenerate: "Régénérer le fond",
     vnBackgroundPreparing: "Génération du fond de la première scène… Vous pouvez commencer ; il apparaîtra une fois prêt.",
     vnBackgroundFailed: "Le fond de la première scène n'a pas pu être généré. Utilisez « Régénérer le fond » dans le menu pour réessayer.",
     vnMenu: "Menu",
@@ -857,7 +848,6 @@ const COPY = {
     vnSpriteMattingDownload: "Le modèle de détourage n’a pas pu être téléchargé ou ne correspond pas. Réessayez plus tard.",
   },
   ru: {
-    vnBackgroundRegenerate: "Перегенерировать фон",
     vnBackgroundPreparing: "Создаётся фон первой сцены… Можно начинать: он появится, когда будет готов.",
     vnBackgroundFailed: "Не удалось создать фон первой сцены. Повторите через «Перегенерировать фон» в меню.",
     vnMenu: "Меню",

@@ -41,6 +41,8 @@ fn slug_folds_spelling_and_keeps_model_text_out_of_paths() {
     assert!(!valid_slug("../x") && !valid_slug(&"g".repeat(16)));
     let library = Library {
         dir: PathBuf::from("lib"),
+        root: PathBuf::from("root"),
+        world: "w".to_owned(),
     };
     assert_eq!(
         library.path(&slug, "dusk"),
@@ -143,7 +145,7 @@ fn library_keeps_one_base_per_place() {
     let base = dusk.base(&places);
     assert_eq!(base.period, "day");
     assert!(library.wants(&slot(&base, BgMode::Base), &all));
-    library.write(&base, true, b"day").unwrap();
+    library.write(&base, Some("day"), b"day").unwrap();
     assert!(!library.wants(&slot(&dusk.base(&places), BgMode::Base), &all));
     assert!(library.wants(&slot(&base, BgMode::Regenerate), &all));
     // 沒有專屬圖的時段讀到基底（period＝day，前端疊遮罩）；有專屬圖就用專屬圖
@@ -155,7 +157,7 @@ fn library_keeps_one_base_per_place() {
     library
         .write(
             &Backdrop::new(" 港口", Some("夜"), None, &places),
-            false,
+            None,
             b"night",
         )
         .unwrap();
@@ -182,7 +184,7 @@ fn legacy_library_falls_back_to_existing_period() {
     let library = Library::of(&root, &world).unwrap();
     let all = periods_of(None);
     let night = Backdrop::new("港口", Some("夜"), None, &Places::default());
-    library.write(&night, false, b"night").unwrap();
+    library.write(&night, None, b"night").unwrap();
     assert_eq!(
         library.base_period(&night.slug, &all).as_deref(),
         Some("night")
@@ -307,7 +309,9 @@ fn reference_searches_the_place_periods() {
     let library = Library::of(&root, &world).unwrap();
     let places = card_places();
     let moonlight = Backdrop::new("cave", Some("moonlight"), None, &places);
-    library.write(&moonlight, true, b"moon").unwrap();
+    library
+        .write(&moonlight, Some("moonlight"), b"moon")
+        .unwrap();
     let periods = places.periods(&moonlight.slug);
     assert_eq!(
         library
@@ -356,4 +360,135 @@ fn background_prompt_uses_card_art() {
     assert!(
         plain.contains("Clean anime") && plain.contains("sunset") && !plain.contains("card author")
     );
+}
+
+/// 上傳的鍵：slug 要合格、時段要在該地點的清單內（卡自訂時段照卡，自由地點固定四時段）
+#[test]
+fn upload_keys_follow_the_place_periods() {
+    use gallery::checked;
+    let places = card_places();
+    let cave = places.locate("cave").slug;
+    assert!(checked(&places, &cave, "crisis").is_ok());
+    assert!(checked(&places, &cave, "night").is_err());
+    assert!(checked(&places, &slug_of("港口"), "night").is_ok());
+    assert!(checked(&places, &slug_of("港口"), "crisis").is_err());
+    assert!(checked(&places, "../../etc/passwd", "day").is_err());
+    assert!(checked(&places, &"g".repeat(16), "day").is_err());
+}
+
+/// 壞圖在寫入前就被 normalize 的轉檔擋下（不是圖、PNG 檔頭後面壞掉）
+#[test]
+fn upload_rejects_broken_images() {
+    use crate::generated_image::to_png;
+    assert!(to_png(b"not an image".to_vec()).is_err());
+    let mut broken = b"\x89PNG\r\n\x1a\n".to_vec();
+    broken.extend_from_slice(&[0; 32]);
+    assert!(to_png(broken).is_err());
+}
+
+/// 一覽清單與上傳：卡地點沒圖也列在前；上傳到沒圖的地點成基底、到有基底的地點成專屬圖；
+/// 清單回的地點文字送回生成命令會對到同一個 slug；認不出名字的 slug 拒收；重播桌拒寫
+#[test]
+fn gallery_lists_places_and_uploads_replace_images() {
+    use gallery::commit_upload;
+    let root = std::env::temp_dir().join(format!("tt-vn-bg-gallery-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let world = data::create_world(&root, "一覽").unwrap();
+    let library = Library::of(&root, &world).unwrap();
+    let places = card_places();
+    let harbor = Backdrop::new("港口", Some("白天"), None, &places);
+    library.write(&harbor, Some("day"), b"day").unwrap();
+    let cave = places.locate("cave").slug;
+
+    commit_upload(&root, &world, &places, &[], &harbor.slug, "night", b"night").unwrap();
+    commit_upload(&root, &world, &places, &[], &cave, "crisis", b"crisis").unwrap();
+    // 沒圖的卡地點上傳非第一項時段：只當專屬圖，基底仍是清單第一項（moonlight），自動補照排
+    let cave_periods = places.periods(&cave);
+    assert_eq!(library.base_period(&cave, &cave_periods), None);
+    let cave_base = Backdrop::new("cave", Some("crisis"), None, &places).base(&places);
+    assert_eq!(cave_base.period, "moonlight");
+    assert!(library.wants(&slot(&cave_base, BgMode::Base), &cave_periods));
+    assert_eq!(
+        library.read(&harbor.slug, "night").as_deref(),
+        Some(&b"night"[..])
+    );
+    let listed = library.places(&places, &[]);
+    assert_eq!(listed.len(), 4);
+    assert_eq!(listed[0].slug, cave);
+    assert_eq!(listed[0].base, None);
+    assert_eq!(listed[0].dedicated, ["crisis"]);
+    assert_eq!(listed[1].dedicated, Vec::<String>::new());
+    let free = listed
+        .iter()
+        .find(|place| place.slug == harbor.slug)
+        .unwrap();
+    assert_eq!(
+        (free.base.as_deref(), free.dedicated.clone()),
+        (Some("day"), vec!["day".to_owned(), "night".to_owned()])
+    );
+    for place in &listed {
+        let location = place.location.as_deref().unwrap();
+        let period = place.periods.last().unwrap();
+        assert_eq!(
+            Backdrop::new(location, None, Some(period), &places).slug,
+            place.slug
+        );
+    }
+
+    let unnamed = "0123456789abcdef";
+    assert!(commit_upload(&root, &world, &places, &[], unnamed, "day", b"x").is_err());
+    let mut state = data::read_state(&root, &world).unwrap();
+    state.replay = true;
+    data::write_state(&root, &world, &state).unwrap();
+    assert!(commit_upload(&root, &world, &places, &[], &harbor.slug, "dusk", b"x").is_err());
+    assert!(!library.has(&harbor.slug, "dusk"));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// 一覽的生成目標以 slug 為身分：自由地點與卡地點同名時各對各的；只在佇列裡的地點（第一次生成失敗）也找得到名字
+#[test]
+fn gallery_targets_follow_slug_not_name() {
+    let root = std::env::temp_dir().join(format!("tt-vn-bg-target-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let world = data::create_world(&root, "同名").unwrap();
+    let library = Library::of(&root, &world).unwrap();
+    let places = card_places();
+    // 卡地點叫「碼頭」，自由地點的舊圖也叫「碼頭」（卡匯入前就生過）
+    let free = Backdrop {
+        location: "碼頭".to_owned(),
+        slug: slug_of("碼頭"),
+        period: "day".to_owned(),
+    };
+    library.write(&free, Some("day"), b"free").unwrap();
+    let card = places.locate("碼頭").slug;
+    assert_ne!(card, free.slug);
+    let target = library.target(&places, &[], &free.slug, "night").unwrap();
+    assert_eq!(
+        (target.slug.as_str(), target.location.as_str()),
+        (free.slug.as_str(), "碼頭")
+    );
+    assert_eq!(
+        library.target(&places, &[], &card, "night").unwrap().slug,
+        card
+    );
+    // 只在佇列裡的自由地點：清單列得出、目標找得到名字
+    let queued = Backdrop::new("燈塔頂", None, None, &places);
+    let listed = library.places(&places, std::slice::from_ref(&queued));
+    let place = listed
+        .iter()
+        .find(|place| place.slug == queued.slug)
+        .unwrap();
+    assert_eq!(
+        (place.location.as_deref(), place.base.clone()),
+        (Some("燈塔頂"), None)
+    );
+    assert!(library.target(&places, &[], &queued.slug, "day").is_err());
+    assert_eq!(
+        library
+            .target(&places, &[queued.clone()], &queued.slug, "day")
+            .unwrap()
+            .location,
+        "燈塔頂"
+    );
+    let _ = std::fs::remove_dir_all(&root);
 }

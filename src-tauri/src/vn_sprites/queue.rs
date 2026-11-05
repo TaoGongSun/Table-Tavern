@@ -139,7 +139,7 @@ pub(crate) struct BackgroundStatus {
     pub world_id: String,
     pub slug: String,
     pub period: String,
-    /// queued／running／done／failed
+    /// queued／running／done／failed／cancelled
     pub state: &'static str,
     pub reason: Option<String>,
 }
@@ -236,6 +236,37 @@ pub(crate) fn regenerate_background(app: &tauri::AppHandle, slot: BgSlot) {
     }
     emit(app, &job, "queued", None);
     start_worker(app);
+}
+
+impl Queue {
+    /// 取消同鍵（桌、slug、時段）排隊中的背景並清掉失敗記錄；在跑的那張不動
+    fn cancel_background(&mut self, world: &str, slug: &str, period: &str) {
+        let same =
+            |job: &Job| matches!(job, Job::Background(slot) if slot.id() == (world, slug, period));
+        self.waiting.retain(|job| !same(job));
+        self.failed.retain(|job, _| !same(job));
+    }
+}
+
+/// 玩家上傳替換一張背景後：排隊中的同鍵重生成不再跑（免得蓋回上傳的圖）
+pub(crate) fn cancel_background(world: &str, slug: &str, period: &str) {
+    queue().cancel_background(world, slug, period);
+}
+
+/// 背景不經佇列換了圖（上傳替換＝done，舞台與一覽重讀）或玩家取消排隊（cancelled）
+pub(crate) fn announce_background(app: &tauri::AppHandle, slot: &BgSlot, state: &'static str) {
+    emit(app, &Job::Background(slot.clone()), state, None);
+}
+
+/// 這桌在跑、排隊、失敗的背景工作帶的地點（自由地點第一次生成時，只有這裡知道名字）
+pub(crate) fn background_jobs(world: &str) -> Vec<Backdrop> {
+    let queue = queue();
+    jobs_of(&queue, world)
+        .filter_map(|(job, ..)| match job {
+            Job::Background(slot) => Some(slot.backdrop.clone()),
+            Job::Face(_) => None,
+        })
+        .collect()
 }
 
 /// 推導並排入這桌缺的臉層（冪等：已在佇列、生成中、失敗過的不重排）
@@ -426,6 +457,24 @@ mod tests {
                 face("sad")
             ]
         );
+    }
+
+    /// 上傳替換：同鍵排隊中的重生成與失敗記錄清掉，別的鍵與臉層不動
+    #[test]
+    fn upload_cancels_queued_background_of_the_same_key() {
+        let mut queue = Queue::default();
+        queue.push(bg("港口", true));
+        queue.push(bg("教室", true));
+        queue.push(face("happy"));
+        queue.failed.insert(bg("港口", false), "x".to_owned());
+        let Job::Background(harbor) = bg("港口", false) else {
+            unreachable!()
+        };
+        let (slug, period) = (harbor.backdrop.slug.clone(), harbor.backdrop.period.clone());
+        queue.cancel_background("w", &slug, &period);
+        assert!(queue.is_new(&bg("港口", true)));
+        assert_eq!(queue.waiting.len(), 2);
+        assert!(!queue.is_new(&bg("教室", false)));
     }
 
     #[test]

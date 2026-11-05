@@ -1,6 +1,6 @@
 use super::{
-    character_messages, expand_messages, materialize, outline_messages, parse_character,
-    parse_expand, parse_outline, Expanded, ExpandedCharacter, VnSetup,
+    character_messages, draft_title, expand_messages, materialize, outline_messages,
+    parse_character, parse_expand, parse_outline, Expanded, ExpandedCharacter, VnSetup,
 };
 use crate::data;
 use crate::data::vn::{Branching, Length, Mood, Preferences, SetupStage};
@@ -335,4 +335,18 @@ fn materialize_vn_writes_preferences_setup_and_player_card() {
     .unwrap();
     assert!(data::read_player_card(&root.0, &unnamed).unwrap().is_none());
     assert_eq!(data::list_characters(&root.0, &unnamed).unwrap().len(), 2);
+}
+
+/// 桌名剝掉整段包住的書名號與引號（模型不一定加）；不是整段包住的不動
+#[test]
+fn draft_title_strips_wrapping_quotes() {
+    assert_eq!(draft_title("《潮灣停電夜》"), Some("潮灣停電夜"));
+    assert_eq!(draft_title(" 「『風眼之夜』」 "), Some("風眼之夜"));
+    assert_eq!(
+        draft_title("\u{201C}Night Port\u{201D}"),
+        Some("Night Port")
+    );
+    assert_eq!(draft_title("風眼之夜"), Some("風眼之夜"));
+    assert_eq!(draft_title("「甲」與「乙」"), Some("「甲」與「乙」"));
+    assert_eq!(draft_title("《》"), None);
 }

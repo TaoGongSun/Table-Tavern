@@ -16,6 +16,8 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
+pub(crate) mod gallery;
+
 /// 固定四時段（自由地點與沒宣告時段的卡地點）：第一項是預設，也是找光線參考圖的優先序
 const PERIODS: [&str; 4] = ["day", "morning", "dusk", "night"];
 const SLUG_LEN: usize = 16;
@@ -172,6 +174,11 @@ impl Places {
         self.0.iter().find(|place| card_slug(&place.key) == slug)
     }
 
+    /// 卡宣告地點的 slug，照卡上順序
+    pub(crate) fn slugs(&self) -> Vec<String> {
+        self.0.iter().map(|place| card_slug(&place.key)).collect()
+    }
+
     /// 這個背景 slug 的有效時段清單
     pub(crate) fn periods(&self, slug: &str) -> Vec<String> {
         periods_of(self.by_slug(slug))
@@ -268,12 +275,17 @@ pub(crate) struct Shown {
 /// 一桌的背景庫
 pub(crate) struct Library {
     dir: PathBuf,
+    /// 短提交鎖的鍵（`backgrounds.json` 讀改寫用）
+    root: PathBuf,
+    world: String,
 }
 
 impl Library {
     pub(crate) fn of(root: &std::path::Path, world: &str) -> Result<Self, String> {
         Ok(Library {
             dir: data::vn_background_dir(root, world).map_err(|error| error.to_string())?,
+            root: root.to_owned(),
+            world: world.to_owned(),
         })
     }
 
@@ -294,16 +306,16 @@ impl Library {
         std::fs::read(self.path(slug, period)).ok()
     }
 
-    /// 這個地點的基底時段：記下的基底 → 清單第一項 → 清單裡第一張有圖的（舊桌與作品包匯入的桌沒有記錄）
+    /// 這個地點的基底時段：有記錄就只認記下的那張（還沒生好＝None，等自動補）；
+    /// 沒記錄（舊桌與作品包匯入的桌）＝清單第一項 → 清單裡第一張有圖的
     pub(crate) fn base_period(&self, slug: &str, periods: &[String]) -> Option<String> {
-        let recorded = match self.entries().remove(slug) {
-            Some(Entry::Place { base, .. }) => Some(base),
-            _ => None,
-        };
-        recorded
-            .into_iter()
-            .chain(periods.iter().cloned())
-            .find(|period| periods.contains(period) && self.has(slug, period))
+        match self.entries().remove(slug) {
+            Some(Entry::Place { base, .. }) => Some(base).filter(|base| self.has(slug, base)),
+            _ => periods
+                .iter()
+                .find(|period| self.has(slug, period))
+                .cloned(),
+        }
     }
 
     /// 舞台要的時段：有專屬圖用專屬圖，否則基底（前端依 `period` 不同疊遮罩）
@@ -343,23 +355,38 @@ impl Library {
             .unwrap_or_default()
     }
 
-    /// 寫圖並記下 slug → 原地點文字（已記過的不改）；基底另記時段。呼叫端持桌寫入許可
-    fn write(&self, backdrop: &Backdrop, base: bool, png: &[u8]) -> Result<(), String> {
+    /// 地點還沒有基底時，寫入要記下的基底時段：時段清單第一項（基底一律中性白天光，別的時段的圖只當專屬圖）
+    fn intended_base(&self, slug: &str, periods: &[String]) -> Option<String> {
+        match self.base_period(slug, periods) {
+            Some(_) => None,
+            None => periods.first().cloned(),
+        }
+    }
+
+    /// 寫圖並記下 slug → 原地點文字（已記過的不改）；`base`＝要記的基底時段（舊格式只有地名的升級成帶基底）。
+    /// 呼叫端持桌寫入許可，但那是共用的讀鎖（多個寫入者可同時持有）：索引的「讀→合併→寫回」另包在
+    /// 這桌的短提交鎖裡，背景工作與上傳同時寫才不會讀到同一份舊索引、後寫的蓋掉先寫的那筆
+    fn write(&self, backdrop: &Backdrop, base: Option<&str>, png: &[u8]) -> Result<(), String> {
         data::commit_world_write_atomic(&self.path(&backdrop.slug, &backdrop.period), png)
             .map_err(|error| error.to_string())?;
+        data::state_commit::with_commit(&self.root, &self.world, |_| self.record(backdrop, base))
+    }
+
+    /// 索引合併一筆（只在短提交鎖內呼叫）
+    fn record(&self, backdrop: &Backdrop, base: Option<&str>) -> Result<(), String> {
         let mut entries = self.entries();
         let name = match entries.get(&backdrop.slug) {
             Some(Entry::Place { .. }) => return Ok(()),
-            Some(Entry::Name(_)) if !base => return Ok(()),
+            Some(Entry::Name(_)) if base.is_none() => return Ok(()),
             Some(Entry::Name(name)) => name.clone(),
             None => backdrop.location.clone(),
         };
         let entry = match base {
-            true => Entry::Place {
+            Some(base) => Entry::Place {
                 name,
-                base: backdrop.period.clone(),
+                base: base.to_owned(),
             },
-            false => Entry::Name(name),
+            None => Entry::Name(name),
         };
         entries.insert(backdrop.slug.clone(), entry);
         let json = serde_json::to_vec_pretty(&entries).map_err(|error| error.to_string())?;
@@ -567,7 +594,11 @@ pub(crate) async fn job(app: &tauri::AppHandle, slot: &BgSlot) -> Result<bool, S
     if gone || !library.wants(slot, &periods) {
         return Ok(false);
     }
-    library.write(backdrop, slot.mode == BgMode::Base, &png)?;
+    let base = match slot.mode {
+        BgMode::Base => Some(backdrop.period.clone()),
+        _ => library.intended_base(&backdrop.slug, &periods),
+    };
+    library.write(backdrop, base.as_deref(), &png)?;
     Ok(true)
 }
 

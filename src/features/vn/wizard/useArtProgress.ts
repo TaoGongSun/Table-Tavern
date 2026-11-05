@@ -1,6 +1,7 @@
 // 立繪準備進度（標題畫面小字「立繪準備中 2/3」）：登場角色裡有定稿的幾位、自動定稿失敗的幾位；
 // 聽立繪狀態事件（定稿換、表情補完、自動定稿失敗）重算。美術進度只由資產與佇列推導，跟設定階段旗標無關
-// （plans/vn-setup-wizard.md §2 ③）。
+// （plans/vn-setup-wizard.md §2 ③）。自動定稿只在記憶體：重開 app 後標題畫面第一次讀到「還缺、也沒在排」就再排一次
+// （冪等，玩家手動挑定的照舊優先）。
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
 import type { SpriteSlotStatus, SpriteView } from "../../../shared/contracts/backend-contracts";
@@ -18,6 +19,7 @@ export function useArtProgress(worldId: string) {
   const [progress, setProgress] = useState<ArtProgressState | null>(null);
   useEffect(() => {
     let live = true;
+    let resumed = false;
     const read = () =>
       Promise.all([
         invoke<CharacterMeta[]>("list_characters", { worldId }),
@@ -26,12 +28,17 @@ export function useArtProgress(worldId: string) {
       ])
         .then(([cast, sprites, statuses]) => {
           const shown = cast.filter((card) => !card.archived && !card.stage);
-          const failed = new Set(
-            (statuses ?? []).filter((s) => s.expression === "base" && s.state === "failed").map((s) => s.characterId),
-          );
+          const bases = (statuses ?? []).filter((s) => s.expression === "base");
+          const failed = new Set(bases.filter((s) => s.state === "failed").map((s) => s.characterId));
+          const ready = shown.filter((card) => sprites?.[card.id]).length;
+          const pending = bases.some((s) => s.state === "queued" || s.state === "running");
+          if (live && !resumed) {
+            resumed = true;
+            if (ready < shown.length && !pending) invoke("vn_sprites_prepare", { worldId, adopt: [] }).catch(() => {});
+          }
           if (live)
             setProgress({
-              ready: shown.filter((card) => sprites?.[card.id]).length,
+              ready,
               total: shown.length,
               failed: shown.filter((card) => !sprites?.[card.id] && failed.has(card.id)).length,
             });

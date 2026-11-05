@@ -843,6 +843,7 @@ describe("VnPlayer", () => {
         t("vnSaves"),
         t("vnTitleSettings"),
         t("vnEndingsList"),
+        t("vnGallery"),
         t("vnWorkChapterSelect"),
         t("vnHideUi"),
         t("backToLobby"),
@@ -1101,7 +1102,7 @@ describe("VnPlayer", () => {
       titleOpen = true;
       const menu = () => [...host.querySelectorAll(".vn-title-menu button")].map((b) => b.textContent);
       await render({ events: [event("g1")] });
-      expect(menu()).toEqual([t("vnTitleStart"), t("vnEndingsList"), t("vnTitleSettings"), t("backToLobby")]);
+      expect(menu()).toEqual([t("vnTitleStart"), t("vnEndingsList"), t("vnGallery"), t("vnTitleSettings"), t("backToLobby")]);
       expect(host.querySelector(".vn-title-menu .btn-primary")?.textContent).toBe(t("vnTitleStart"));
       await act(async () => host.querySelectorAll<HTMLButtonElement>(".vn-title-menu button")[2].click());
       expect(host.querySelector(".vn-title-screen")).not.toBeNull();

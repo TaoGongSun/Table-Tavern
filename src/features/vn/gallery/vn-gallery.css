@@ -1,0 +1,226 @@
+/* 美術一覽（plans/vn-setup-wizard.md §4）：暗幕面板頂端對齊、內容限寬可捲、底色不透出標題畫面；立繪列、背景格、燈箱 */
+.vn-story-panel.vn-gallery {
+  justify-content: flex-start;
+  padding-top: 2rem;
+  background: rgb(8, 10, 14);
+}
+.vn-gallery-tabs {
+  display: flex;
+  gap: 0.4rem;
+}
+.vn-gallery-tabs [aria-selected="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.vn-gallery-body {
+  width: min(64rem, 100%);
+}
+.vn-gallery-cast {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.vn-gallery-row {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background: rgba(255, 255, 255, 0.04);
+}
+.vn-gallery-thumb,
+.vn-gallery-open {
+  padding: 0;
+  border: 0;
+  cursor: zoom-in;
+}
+.vn-gallery-thumb:disabled {
+  cursor: default;
+}
+.vn-gallery-thumb {
+  display: block;
+  flex: none;
+  width: 3.5rem;
+  height: 4.5rem;
+  overflow: hidden;
+  border-radius: var(--radius-s);
+  background: rgba(255, 255, 255, 0.06);
+}
+.vn-gallery-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+.vn-gallery-name {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.vn-gallery-dots {
+  display: flex;
+  gap: 0.3rem;
+}
+.vn-gallery-dot {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+}
+.vn-gallery-dot-done {
+  border-color: var(--ok);
+  background: var(--ok);
+}
+.vn-gallery-dot-queued {
+  border-color: var(--amber);
+}
+.vn-gallery-dot-running {
+  border-color: var(--amber);
+  background: var(--amber);
+  animation: vn-pending 1.6s ease-in-out infinite alternate;
+}
+.vn-gallery-dot-failed {
+  border-color: var(--danger);
+  background: var(--danger);
+}
+.vn-gallery-sheet {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+.vn-gallery-sheet h3 {
+  margin: 0;
+}
+.vn-gallery-places {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+}
+.vn-gallery-place h3 {
+  margin: 0 0 0.4rem;
+  font-family: var(--font-story);
+}
+.vn-gallery-periods {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.6rem;
+}
+.vn-gallery-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0;
+}
+.vn-gallery-frame {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: var(--radius-s);
+  background: rgba(255, 255, 255, 0.06);
+}
+.vn-gallery-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.vn-gallery-tint {
+  position: absolute;
+  inset: 0;
+  mix-blend-mode: multiply;
+}
+.vn-gallery-empty,
+.vn-gallery-busy {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+}
+.vn-gallery-busy {
+  flex-direction: column;
+  gap: 0.4rem;
+  background: rgba(8, 10, 14, 0.6);
+}
+.vn-gallery-open {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: none;
+}
+.vn-gallery-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.8rem;
+  padding: 1.5rem;
+  background: rgba(0, 0, 0, 0.92);
+  cursor: zoom-out;
+}
+.vn-gallery-viewer-stage {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  height: 80vh;
+  container-type: size;
+  cursor: default;
+}
+.vn-gallery-viewer-backdrop {
+  position: relative;
+  max-width: 100%;
+  max-height: 100%;
+  aspect-ratio: 16 / 9;
+  height: min(100cqh, calc(100cqw * 9 / 16));
+}
+.vn-gallery-viewer-backdrop img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.vn-gallery-viewer-sprite {
+  animation: none;
+}
+.vn-gallery-viewer-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  cursor: default;
+}
+.vn-gallery-viewer-bar [aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.vn-gallery-cell figcaption {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+.vn-gallery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.vn-gallery-cell .field-warn {
+  margin: 0;
+  font-size: 0.8rem;
+}
+.vn-gallery-fail {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  word-break: break-all;
+}

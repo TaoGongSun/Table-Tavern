@@ -251,9 +251,31 @@ pub fn parse_expand(raw: &str) -> Option<Expanded> {
 
 /// 玩家草稿的標題：trim 後非空才算數。開桌前（呼叫模型、寫檔之前）先過這關。
 pub fn draft_title(title: &str) -> Option<&str> {
-    let title = title.trim();
+    let mut title = title.trim();
+    // 模型常把書名包進書名號或引號（《潮灣停電夜》）：整段被一對包住才剝，剝到沒有外層包裝為止
+    while let Some(inner) = TITLE_QUOTES.iter().find_map(|(open, close)| {
+        title
+            .strip_prefix(open)
+            .and_then(|rest| rest.strip_suffix(close))
+            // 「甲」與「乙」不是整段被包住：內層還有同種符號就不剝
+            .filter(|inner| !inner.contains(open) && !inner.contains(close))
+    }) {
+        title = inner.trim();
+    }
     (!title.is_empty()).then_some(title)
 }
+
+/// 桌名首尾會剝掉的成對符號
+const TITLE_QUOTES: [(&str, &str); 8] = [
+    ("《", "》"),
+    ("〈", "〉"),
+    ("「", "」"),
+    ("『", "』"),
+    ("\u{201C}", "\u{201D}"),
+    ("\u{2018}", "\u{2019}"),
+    ("\"", "\""),
+    ("'", "'"),
+];
 
 /// `title` 是玩家草稿的標題，桌名與重名補號都以它為準。`vn`＝精靈建的 VN 桌：偏好與劇透鎖寫進 vn.json、
 /// 設定階段從 ② 起；有名字就建一張只有名字的玩家卡（GM 用名字稱呼，走一般玩家分工）。

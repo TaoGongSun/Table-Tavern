@@ -1,5 +1,5 @@
 // 舞台背景：按需讀背景庫的圖（該時段專屬圖，沒有就同地點基底），聽背景佇列的狀態事件；
-// 一個地點的圖生好或重生成完，重讀這個地點所有用過的時段（基底被多個時段共用）。
+// 一個地點的圖生好、重生成完或上傳替換，重讀這個地點所有用過的時段（基底被多個時段共用）。舞台與美術一覽共用一份。
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -81,16 +81,6 @@ export function useBackgrounds(worldId: string) {
     [status],
   );
 
-  /** 重生成舞台目前顯示的那張（基底或專屬圖） */
-  const regenerate = useCallback(
-    (backdrop: Backdrop) =>
-      invoke("vn_background_regenerate", {
-        worldId,
-        location: backdrop.location,
-        period: images[backdropKey(backdrop)]?.period ?? backdrop.period,
-      }),
-    [worldId, images],
-  );
-
-  return { images, statusOf, load, regenerate };
+  /** status＝各鍵（slug－時段）的佇列狀態，美術一覽逐格看 */
+  return { images, status, statusOf, load };
 }

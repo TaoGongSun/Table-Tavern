@@ -62,11 +62,11 @@ export function SpriteBasePicker({
         </button>
         <button
           type="button"
-          className="btn btn-sm btn-primary"
+          className={alreadyPicked ? "btn btn-sm" : "btn btn-sm btn-primary"}
           disabled={disabled || !slot.selected || alreadyPicked}
           onClick={() => void slot.pick()}
         >
-          {t("vnSpritePick")}
+          {t(alreadyPicked ? "vnSpriteAlreadyBase" : "vnSpritePick")}
         </button>
         <button type="button" className="btn btn-sm" disabled={disabled} onClick={() => input.current?.click()}>
           {t("vnSpriteUploadBase")}

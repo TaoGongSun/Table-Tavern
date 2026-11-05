@@ -18,6 +18,7 @@ import { EndingScreen } from "./EndingScreen";
 import { ChapterPanel, EndingsPanel } from "./StoryPanels";
 import { SavesPanel } from "./SavesPanel";
 import { TitleScreen } from "./TitleScreen";
+import { ArtGallery } from "./gallery/ArtGallery";
 import { GameMenu, gameMenuItems } from "./GameMenu";
 import { SettingsPanel } from "./SettingsPanel";
 import { QuickBar } from "./QuickBar";
@@ -133,7 +134,7 @@ export function VnPlayer({
   sceneLabels: Record<string, SceneLabel>;
 }) {
   const [logOpen, setLogOpen] = useState(false);
-  const [panel, setPanel] = useState<"menu" | "endings" | "chapters" | "saves" | "settings" | null>(null);
+  const [panel, setPanel] = useState<"menu" | "endings" | "gallery" | "chapters" | "saves" | "settings" | null>(null);
   // 隱藏介面（H）：對話框、選項、快捷列整塊收起，任一點擊或按鍵恢復；auto／skip 照跑
   const [hidden, setHidden] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -214,7 +215,6 @@ export function VnPlayer({
   useEffect(() => {
     if (backdrop) load(backdrop);
   }, [backdrop, load]);
-  const backdropState = backdrop ? backgrounds.statusOf(backdrop)?.state : undefined;
   const [saveError, setSaveError] = useState<string | null>(null);
   const [rerollMessage, setRerollMessage] = useState<string | null>(null);
 
@@ -493,10 +493,6 @@ export function VnPlayer({
     replay,
     busy,
     nextDisabled: actionsDisabled || ending !== null,
-    regenerate: backdrop ? {
-      disabled: backdropState === "queued" || backdropState === "running",
-      run: () => void backgrounds.regenerate(backdrop).catch((reason) => onError(backendText(reason))),
-    } : undefined,
     open: openPanel,
     close: () => setPanel(null),
     onTitle: () => onTitle(true),
@@ -632,6 +628,7 @@ export function VnPlayer({
           onContinue={() => onTitle(false)}
           onLoad={() => setPanel("saves")}
           onEndings={() => setPanel("endings")}
+          onGallery={() => setPanel("gallery")}
           onSettings={() => setPanel("settings")}
           onLobby={onGoLobby}
         />
@@ -663,6 +660,9 @@ export function VnPlayer({
       )}
       {panel === "menu" && <GameMenu title={tableName} items={menuItems} onClose={() => setPanel(null)} />}
       {panel === "endings" && <EndingsPanel worldId={worldId} onClose={() => setPanel(null)} />}
+      {panel === "gallery" && (
+        <ArtGallery worldId={worldId} images={images} backgrounds={backgrounds} replay={replay} onClose={() => setPanel(null)} />
+      )}
       {panel === "chapters" && (
         <ChapterPanel
           label={replay ? t("vnWorkChapterPick") : undefined}

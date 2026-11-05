@@ -6,7 +6,7 @@ import type { BackdropImage } from "./useBackgrounds";
 
 /** 時段色調：multiply 疊色（白＝不變），opacity 控制強度 */
 const TINTS: Record<string, { color: string; opacity: number }> = {
-  morning: { color: "#ccd7f0", opacity: 0.6 },
+  morning: { color: "#ccd7f0", opacity: 0.75 },
   dusk: { color: "#ff9a5c", opacity: 0.75 },
   night: { color: "#22305f", opacity: 0.88 },
 };
