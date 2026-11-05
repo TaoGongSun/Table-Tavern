@@ -1,6 +1,6 @@
 # vn-setup-wizard — VN 開桌精靈：沒想法也能開桌、美術不等人、美術一覽
 
-Status: 已合 main（2026-11-06，三包三筆）；等作者實機試玩（[實測佇列](../reference/verification-queue.md)第 30 項）。設計與審查紀錄見 [plans/vn-setup-wizard.md](../plans/vn-setup-wizard.md)。
+Status: 已合 main（2026-11-06，三包三筆：dc02a163、302bbfb6、f6f26f72；分支已刪）；等作者實機試玩（[實測佇列](../reference/verification-queue.md)第 30 項）。設計與審查紀錄見 [plans/vn-setup-wizard.md](../plans/vn-setup-wizard.md)。
 
 ## Summary
 作者 2026-11-05 需求：只有一點概念的玩家也能靠題材勾選與選填讓 AI 產大綱與角色、改完再生成；立繪只生預設一張、願意可先挑、不願意直接開始背景補；劇情先生成再播；立繪與背景一覽可重生成。
