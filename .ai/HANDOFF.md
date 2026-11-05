@@ -5,11 +5,11 @@
 分類規則：仍需程式施工／規格落地才放「進行中」；施工已完成、只剩可執行環境／使用者實機／外部條件驗收則移到「等實機驗收」，並同步列入[實測佇列](reference/verification-queue.md)。
 
 ## 進行中
-- [vn-ui-polish](handoffs/vn-ui-polish.md) — VN 模式 UI／UX 以玩家直覺調整：主線當設計裁判、Opus 子代理實作與截圖；審視輪進行中
 - [multiplayer-friends-test](handoffs/multiplayer-friends-test.md) — 給朋友測試的多人連線版：房間預設正式伺服器、簡中下載頁以多人連線為主軸（已上線，等朋友實機測試）
 - [card-mvu-shim](handoffs/card-mvu-shim.md) — 卡片介面沙盒墊 MVU 讀寫變數：全部已合併 main，剩實測佇列梯 1 項目（含 iframe 內按鈕實際互動）
 
 ## 等實機驗收（順序見[實測佇列](reference/verification-queue.md)）
+- [vn-ui-polish](handoffs/vn-ui-polish.md) — VN 播放器以玩家直覺調整（點畫面／鍵盤推進、背景鋪滿、快捷列在對話框下、遊戲選單、標題與立繪修正）：已合 main、Sol 驗收 PASS；等作者試玩（實測佇列第 30 項）
 - [multiplayer-room](handoffs/multiplayer-room.md) — 多人跑團房間 v1（桌面版當 GM 執行端、玩家用手機加入、房主可在電腦上直接玩）：包 0–7 全部通過驗收、2026-11-03 已進 main；剩作者真手機（iOS／Android／QQ／微信）、Windows 防休眠、牆內、真 Workers 與 Caddy 部署等實機項目（實測佇列梯 3）
 - [desktop-csp](handoffs/desktop-csp.md) — 桌面版 CSP：已進 main、macOS 測試通道過；剩 Windows 安全驗收（實測佇列梯 1 第 4i）
 - [desktop-tour](handoffs/desktop-tour.md) — 網頁版的桌面版導覽頁：2026-10-23 已上線（main 7f686cb）、WebKit e2e 與站上實開都過，無剩餘事項

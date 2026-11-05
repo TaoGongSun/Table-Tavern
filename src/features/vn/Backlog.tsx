@@ -1,4 +1,4 @@
-// log：游標以前的正式格（名牌＋文字、thought 斜體、`[bg]` 一行地點、玩家選的選項）。打開停在最新一句；Esc 由播放器的鍵盤處理關。
+// log：游標以前的正式格（名牌＋文字、thought 淡藍加（）、`[bg]` 一行地點、玩家選的選項）。打開停在最新一句；Esc 由播放器的鍵盤處理關。
 import { useLayoutEffect, useRef } from "react";
 import { t } from "../../i18n";
 import { IconClose } from "../../shared/ui/icons";
@@ -30,7 +30,7 @@ export function Backlog({ cells, onClose }: { cells: FlatCell[]; onClose: () => 
           return (
             <li key={key}>
               <b>{cell.speaker_name}</b>
-              <span className={cell.thought ? "vn-thought" : undefined}>{cell.text}</span>
+              <span className={cell.thought ? "vn-thought" : undefined}>{cell.thought ? `（${cell.text}）` : cell.text}</span>
             </li>
           );
         })}

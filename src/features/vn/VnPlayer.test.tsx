@@ -279,6 +279,9 @@ describe("VnPlayer", () => {
     await advance();
     expect(host.querySelector(".vn-choices:not(.vn-choices-past)")).toBeNull();
     expect(host.querySelector(".vn-choice-current")?.textContent).toContain("A");
+    // 「繼續」在對話框右下角取代 ▼
+    expect(button(t("vnContinue"))!.closest(".vn-dialogue")).not.toBeNull();
+    expect(host.querySelector(".vn-ctc")).toBeNull();
     await act(async () => button(t("vnContinue"))!.click());
     expect(chat.gmAdvance).toHaveBeenCalledTimes(1);
   });
@@ -396,16 +399,37 @@ describe("VnPlayer", () => {
     expect(host.querySelector(".vn-chapter-card")).toBeNull();
   });
 
-  it("entering or skipping onto a chapter cell waits for the next-chapter button", async () => {
+  it("entering or skipping onto a chapter cell waits for a click, with only the usual hint", async () => {
     backend.cells = [gm("g0", [n("a")]), gm("g1", [{ type: "chapter" }])];
     backend.progress = { version: 1, read: [], positions: { "0": "g1#0" }, saves: [] };
     await render({ events: [event("g0"), event("g1")] });
     expect(onAdvanceScene).not.toHaveBeenCalled();
-    const next = [...host.querySelectorAll<HTMLButtonElement>(".vn-continue")];
-    expect(next.map((b) => b.textContent)).toEqual([t("vnNextChapter")]);
-    await act(async () => next[0].click());
-    await settle();
+    expect(button(t("vnNextChapter"))).toBeUndefined();
+    expect(host.querySelector(".vn-dialogue .vn-ctc")).not.toBeNull();
+    await advance();
     expect(onAdvanceScene).toHaveBeenCalledWith(true);
+  });
+
+  it("the chapter card holds typing behind it and never flashes the final beat before the new act loads", async () => {
+    window.matchMedia = (() => ({ matches: false })) as unknown as typeof window.matchMedia;
+    backend.cells = [{ ...gm("g1", [n("we"), { type: "chapter" }]), chapter: 2 }];
+    let entered = (_: VnAdvance) => {};
+    onAdvanceScene = vi.fn(() => new Promise<VnAdvance>((resolve) => (entered = resolve)));
+    chat.gmAdvance = vi.fn(() => new Promise<void>(() => {}));
+    await render({ events: [event("g1")] });
+    await advance();
+    await advance();
+    expect(onAdvanceScene).toHaveBeenCalledWith(true);
+    await act(async () => entered({ stage: "entered" }));
+    await settle();
+    // 還在舊幕：cells 的章號等於結束的章，不能判成尾聲
+    expect(host.textContent).not.toContain(t("vnFinalBeat"));
+    sceneNo = 1;
+    backend.cells = [{ ...gm("s1", [n("a long first line of the new act")]), chapter: 3 }];
+    await render({ events: [event("s1")] });
+    expect(host.querySelector(".vn-chapter-heading")?.textContent).toBe(t("vnChapterStart", { n: 3 }));
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 200)));
+    expect(text()).toBe("");
   });
 
   it("a failed advance retries the advance; a failed re-entry retries only the re-entry", async () => {
@@ -874,7 +898,16 @@ describe("VnPlayer", () => {
       backend.cells = [gm("g1", [n("q"), choices("A", "B")]), player("p1", "A"), gm("g2", [n("after")])];
       await render({ events: [event("g1"), event("p1"), event("g2")] });
       expect(host.querySelector(".vn-choices-past")).not.toBeNull();
-      expect(host.querySelector(".vn-choice-current")).toBeNull();
+      // 重播桌也標目前路線
+      expect(host.querySelector(".vn-choice-current")?.textContent).toContain("A");
+    });
+
+    it("the last act's chapter cell is passed over: one click from the line reaches the ending", async () => {
+      backend.cells = [gm("g1", [n("farewell"), { type: "chapter" }, { type: "ending", id: "true_end" }])];
+      backend.endings = { endings: [{ id: "true_end", title: "Dawn", reached: true }], current: "true_end" };
+      await render({ events: [event("g1")] });
+      await advance();
+      expect(host.querySelector(".vn-ending-title")?.textContent).toBe("Dawn");
     });
 
     it("an answered choice that ends the scene shows the unfinished note inside the same panel", async () => {
@@ -989,6 +1022,21 @@ describe("VnPlayer", () => {
       expect(text()).toBe("b");
       expect((await press(" ", {}, button(t("vnAuto"))!)).defaultPrevented).toBe(false);
       expect(text()).toBe("b");
+    });
+
+    it("a focused continue button cannot be pressed natively behind the open menu", async () => {
+      backend.cells = [gm("g1", [n("hello")])];
+      await render({ events: [event("g1")] });
+      const cont = button(t("vnContinue"))!;
+      cont.focus();
+      await press("Escape");
+      expect(host.querySelector(".vn-game-menu")).not.toBeNull();
+      expect(host.querySelector(".vn-bottom")!.hasAttribute("inert")).toBe(true);
+      expect(document.activeElement).not.toBe(cont);
+      // 原生啟動落在當下的焦點上：焦點已不在「繼續」，Enter 不會按到它
+      const enter = await press("Enter", {}, document.activeElement ?? document.body);
+      if (!enter.defaultPrevented && document.activeElement === cont) cont.click();
+      expect(chat.gmAdvance).not.toHaveBeenCalled();
     });
 
     it("holding Ctrl skips and letting go or leaving the window restores the previous state", async () => {

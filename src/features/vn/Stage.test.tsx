@@ -4,7 +4,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vitest";
 import type { SpriteView } from "../../shared/contracts/backend-contracts";
-import { Stage } from "./Stage";
+import { MIN_SCALE, Stage, placeOf } from "./Stage";
 import { spriteLayers } from "./SpriteFigure";
 import type { Stage as StageState } from "./vn-cells";
 
@@ -36,9 +36,9 @@ const sprite: SpriteView = {
   scale: 0.5,
 };
 
-function render(expressions: Record<string, string>) {
+function render(expressions: Record<string, string>, slots: (string | null)[] = ["a", "b", "c"]) {
   const stage: StageState = {
-    slots: ["a", "b", "c"],
+    slots,
     names: { a: "A", b: "B", c: "C" },
     expressions,
     variants: {},
@@ -73,8 +73,19 @@ describe("Stage fallback chain", () => {
     expect(host.querySelector(".vn-slot-0 img")!.getAttribute("src")).toBe("data:body");
     const tender = { ...sprite, faces: { tender: "data:tender" } };
     expect(spriteLayers(tender, undefined, "tender").face).toBe("data:tender");
-    expect(host.querySelector<HTMLElement>(".vn-slot-0")!.style.getPropertyValue("--vn-scale")).toBe("0.5");
+    // 名單最高者＝1，下限 0.7：0.5 的角色照 0.7 畫
+    expect(host.querySelector<HTMLElement>(".vn-slot-0")!.style.getPropertyValue("--vn-scale")).toBe(String(MIN_SCALE));
     expect(host.querySelector<HTMLElement>(".vn-slot-1")!.style.getPropertyValue("--vn-scale")).toBe("");
+  });
+
+  it("someone alone on stage stands in the centre slot; two or more keep their slots", () => {
+    expect(placeOf(["a", null, null], 0)).toBe(2);
+    expect(placeOf([null, "b", null], 1)).toBe(2);
+    expect(placeOf(["a", "b", null], 0)).toBe(0);
+    expect(placeOf(["a", "b", null], 1)).toBe(1);
+    const host = render({}, ["a", null, null]);
+    expect(host.querySelector(".vn-slot-2 .vn-layers")).not.toBeNull();
+    expect(host.querySelector(".vn-slot-0")).toBeNull();
   });
 
   it("shows only the body when that expression has no face layer yet", () => {

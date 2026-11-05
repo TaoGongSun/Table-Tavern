@@ -41,6 +41,7 @@ export function useVnPlayback({
   paused,
   charMs,
   autoFactor,
+  skipChapter = false,
 }: {
   cells: FlatCell[];
   lastEventKey: string | null;
@@ -61,10 +62,12 @@ export function useVnPlayback({
   /** 打字機每字毫秒（0＝瞬間全出）與 auto 等待倍率：標題設定的檔位，改了立即生效 */
   charMs: number;
   autoFactor: number;
+  /** 章末格不停（重播桌沒有下一幕時） */
+  skipChapter?: boolean;
 }) {
   const playable = useMemo(
-    () => cells.filter((cell) => isPlayable(cell, lastEventKey)),
-    [cells, lastEventKey],
+    () => cells.filter((cell) => isPlayable(cell, lastEventKey) && !(skipChapter && cell.cell.type === "chapter")),
+    [cells, lastEventKey, skipChapter],
   );
   const [cursor, setCursor] = useState<Cursor | null>(null);
   const [auto, setAuto] = useState(false);

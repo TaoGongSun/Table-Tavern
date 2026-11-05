@@ -7,9 +7,12 @@
   --vn-box-line: rgba(230, 196, 110, 0.45);
   --vn-ink: #eef1f7;
   --vn-thought: #a9c4e8;
-  --vn-dim: brightness(0.45) saturate(0.7);
+  --vn-dim: brightness(0.7) saturate(0.85);
   --vn-fs: clamp(1rem, 2.4cqh, 1.8rem);
   --vn-box-w: min(92%, 110cqh);
+  /* 快捷列一行的字級與對話框底邊以下的高度（快捷列＋間距＋下緣留白，多留一點）：立繪下緣藏在這段之下 */
+  --vn-quick-fs: clamp(0.75rem, 1.6cqh, 1rem);
+  --vn-foot: calc(var(--vn-quick-fs) * 1.5 + 1.4rem);
   position: relative;
   container-type: size;
   flex: 1;
@@ -49,21 +52,27 @@
 .vn-backdrop-black {
   background: #000;
 }
+/* 地點字卡：換地點出現 4 秒後淡出（Stage 計時）；字級與邊距跟播放器高度走 */
 .vn-location {
   position: absolute;
-  top: 0.6rem;
-  left: 0.8rem;
-  padding: 0.2rem 0.7rem;
+  top: 2.4cqh;
+  left: 2.4cqh;
+  padding: 0.35em 1em;
   border-left: 3px solid var(--amber);
   background: var(--vn-box);
-  font-size: var(--fs-ui);
+  font-size: clamp(0.82rem, 2cqh, 1.4rem);
   animation: vn-fade 0.8s;
+  transition: opacity 0.8s;
+}
+.vn-location-out {
+  opacity: 0;
 }
 
 /* 立繪：底部對齊、下緣被對話框蓋住；槽位 0 左、1 右、2 中 */
 .vn-sprite {
   position: absolute;
-  bottom: 0;
+  /* 下緣落在對話框底邊以下（永遠藏在框後），不露出裁切邊 */
+  bottom: calc(-1 * var(--vn-foot));
   /* --vn-scale：VN 卡身高比例（名單最高者＝1） */
   height: calc(92% * var(--vn-scale, 1));
   width: 34%;
@@ -105,15 +114,24 @@
   aspect-ratio: 1 / 2.4;
   border-radius: 45% 45% 8% 8%;
   background: #0b0d12;
+  opacity: 0.35;
 }
 .vn-slot-0 { left: 4%; }
 .vn-slot-1 { left: 62%; }
 .vn-slot-2 { left: 33%; }
 .vn-dim { filter: var(--vn-dim); }
 .vn-idle { filter: brightness(0.8); }
-.vn-speaking { transform: scale(1.03) translateY(-1%); z-index: 1; }
-/* 特寫不套身高比例：小個子特寫也要放大 */
-.vn-closeup { left: 20%; width: 60%; height: 92%; transform: scale(1.25); z-index: 2; }
+.vn-speaking { transform: scale(1.02); z-index: 1; }
+/* 特寫：槽位撐滿舞台、不套身高比例（小個子特寫也要放大）；以臉框中心為錨放大 1.7 倍，臉移到水平中央、舞台上 1/3。
+   用獨立的 translate／scale 屬性，跟呼吸動畫的 transform 疊加不互蓋；沒有臉框（卡圖、剪影）假設臉在上方 18% */
+.vn-closeup { left: 0; bottom: 0; width: 100%; height: 100%; z-index: 2; }
+.vn-closeup > img,
+.vn-closeup .vn-layers,
+.vn-closeup .vn-silhouette {
+  transform-origin: calc(var(--fx, 0.5) * 100%) calc(var(--fy, 0.18) * 100%);
+  translate: calc((0.5 - var(--fx, 0.5)) * 100%) calc((1 - var(--fy, 0.18)) * 100% - 66.67cqh);
+  scale: 1.7;
+}
 .vn-faded { opacity: 0; }
 
 .vn-bottom {
@@ -146,8 +164,7 @@
 .vn-error p {
   margin: 0;
 }
-.vn-choices,
-.vn-continue {
+.vn-choices {
   position: absolute;
   bottom: calc(100% + 0.5rem);
   left: 50%;
@@ -158,12 +175,16 @@
   flex-direction: column;
   align-items: center;
   gap: 0.4rem;
-  width: min(32rem, 90%);
+  width: min(36rem, 90%);
 }
+/* 選項字與對話同級、置中 */
 .vn-choice {
   width: 100%;
   min-height: 2.4rem;
-  font-size: calc(var(--vn-fs) * 0.85);
+  justify-content: center;
+  text-align: center;
+  font-family: var(--font-story);
+  font-size: var(--vn-fs);
   background: var(--vn-box);
   border-color: var(--vn-box-line);
   color: var(--vn-ink);
@@ -184,8 +205,11 @@
   opacity: 0.7;
 }
 
+/* 對話框是 role="button" 的 div（裡面放「繼續」鈕）：box-sizing 補回按鈕的預設 */
 .vn-dialogue {
   position: relative;
+  box-sizing: border-box;
+  user-select: none;
   width: var(--vn-box-w);
   min-height: 8.5rem;
   /* 長段落（GM 一格寫很長）在框內捲動，不撐出畫面 */
@@ -223,9 +247,35 @@
   overflow-y: auto;
   white-space: pre-wrap;
 }
+/* 獨白：淺藍＋前後（）（中文斜體是硬斜，不用） */
 .vn-thought {
   color: var(--vn-thought);
-  font-style: italic;
+}
+/* 遊戲選單：進階動作另成一段 */
+.vn-menu-section {
+  margin-top: 0.8rem;
+}
+
+/* 幕末「繼續」：▼ 的位置換成小鈕（會花額度，點畫面不觸發） */
+.vn-continue {
+  position: absolute;
+  right: 0.8rem;
+  bottom: 0.55rem;
+  padding: 0.15em 0.8em;
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-s);
+  background: rgba(230, 196, 110, 0.15);
+  color: var(--amber);
+  font-family: var(--font-ui);
+  font-size: calc(var(--vn-fs) * 0.8);
+  cursor: pointer;
+}
+.vn-continue::after {
+  content: " ▶";
+}
+.vn-continue:hover:not(:disabled) {
+  background: rgba(230, 196, 110, 0.3);
+  color: var(--amber);
 }
 .vn-ctc {
   position: absolute;
@@ -251,7 +301,8 @@
   opacity: 0.6;
   font: inherit;
   font-family: var(--font-ui);
-  font-size: clamp(0.75rem, 1.6cqh, 1rem);
+  font-size: var(--vn-quick-fs);
+  line-height: 1.5;
   cursor: pointer;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
 }
@@ -324,9 +375,11 @@
 }
 
 /* 重播桌（包 8）：作者沒走過的選項灰掉；「此路作者未完成」 */
-.vn-choice-unwalked {
-  opacity: 0.45;
+/* 框照常不透明（亮背景上也讀得到），只壓文字 */
+.vn-choice-unwalked:disabled {
+  opacity: 1;
   border-style: dashed;
+  color: rgba(238, 241, 247, 0.5);
   cursor: not-allowed;
 }
 .vn-unfinished {

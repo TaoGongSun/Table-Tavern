@@ -41,7 +41,16 @@ export function SpriteFigure({
 }) {
   const { body, width, height, face, box } = spriteLayers(sprite, variant, expression);
   return (
-    <div className={className} style={{ ["--w" as string]: width, ["--h" as string]: height }}>
+    <div
+      className={className}
+      style={{
+        ["--w" as string]: width,
+        ["--h" as string]: height,
+        // 臉框中心（比例）：特寫以它為錨放大
+        ["--fx" as string]: (box.x + box.w / 2) / width,
+        ["--fy" as string]: (box.y + box.h / 2) / height,
+      }}
+    >
       <img src={body} alt={alt} />
       {face && <img className="vn-face" src={face} alt="" style={percentBox(box, width, height)} />}
     </div>

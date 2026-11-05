@@ -15,8 +15,9 @@ export interface VnKeyActions {
   onAdvance: () => void;
   onBack: () => void;
   onAuto: () => void;
-  /** 按住 Ctrl：true＝開始快進、false＝放開（還原按下前的快進開關） */
-  onSkipHold: (held: boolean) => void;
+  /** 按住 Ctrl 快進：按下時記住原本的開關，放開（或視窗失焦）還原 */
+  skip: boolean;
+  setSkip: (on: boolean) => void;
 }
 
 const ADVANCE = new Set([" ", "Enter", "ArrowRight", "ArrowDown", "PageDown"]);
@@ -29,11 +30,11 @@ export function useVnKeys(actions: VnKeyActions) {
   const ref = useRef(actions);
   ref.current = actions;
   useEffect(() => {
-    let holding = false;
+    let before: boolean | null = null;
     const release = () => {
-      if (!holding) return;
-      holding = false;
-      ref.current.onSkipHold(false);
+      if (before === null) return;
+      ref.current.setSkip(before);
+      before = null;
     };
     const down = (event: KeyboardEvent) => {
       const a = ref.current;
@@ -55,16 +56,16 @@ export function useVnKeys(actions: VnKeyActions) {
         return;
       }
       if (event.key === "Control") {
-        if (!holding) {
-          holding = true;
-          a.onSkipHold(true);
+        if (before === null) {
+          before = a.skip;
+          a.setSkip(true);
         }
         return;
       }
       if (event.repeat || event.metaKey || event.ctrlKey || event.altKey) return;
       const target = event.target instanceof Element ? event.target : null;
-      // 其他按鈕的 Space／Enter 照原生啟動；對話框本身吃掉，免得原生 click 再推一次
-      if ((event.key === " " || event.key === "Enter") && target?.closest("button") && !target.closest(".vn-dialogue")) return;
+      // 按鈕（含對話框裡的「繼續」）的 Space／Enter 照原生啟動；對話框本身不是原生按鈕，由這裡推進
+      if ((event.key === " " || event.key === "Enter") && target?.closest("button")) return;
       if (ADVANCE.has(event.key)) a.onAdvance();
       else if (BACK.has(event.key)) a.onBack();
       else if (event.key === "a" || event.key === "A") a.onAuto();

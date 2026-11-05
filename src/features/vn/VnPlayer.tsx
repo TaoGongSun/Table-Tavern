@@ -15,10 +15,11 @@ import { ExportWorkDialog } from "./work/ExportWorkDialog";
 import { Backlog } from "./Backlog";
 import { ChapterCardView } from "./ChapterCardView";
 import { EndingScreen } from "./EndingScreen";
-import { ChapterPanel, EndingsPanel, Panel } from "./StoryPanels";
+import { ChapterPanel, EndingsPanel } from "./StoryPanels";
 import { SavesPanel } from "./SavesPanel";
 import { TitleScreen } from "./TitleScreen";
-import { GameMenu, type GameMenuItem } from "./GameMenu";
+import { GameMenu, gameMenuItems } from "./GameMenu";
+import { SettingsPanel } from "./SettingsPanel";
 import { QuickBar } from "./QuickBar";
 import { useVnKeys, type VnLayer } from "./useVnKeys";
 import { useVnProgress } from "./useVnProgress";
@@ -33,7 +34,7 @@ import { useVnCells } from "./useVnCells";
 import { useSprites } from "./useSprites";
 import { backdropKey, useBackgrounds } from "./useBackgrounds";
 import { useVnPlayback } from "./useVnPlayback";
-import { replayNav } from "./replay/replay-nav";
+import { nextScene, replayNav } from "./replay/replay-nav";
 import { UnfinishedPath } from "./replay/UnfinishedPath";
 import {
   AUTO_WAITS,
@@ -54,17 +55,6 @@ const REROLL_MESSAGES: Record<string, MsgKey> = {
   unavailable: "vnRerollUnavailable",
 };
 
-const TEXT_SPEED_LABELS: Record<TextSpeed, MsgKey> = {
-  slow: "vnTextSpeedSlow",
-  normal: "vnLevelNormal",
-  fast: "vnTextSpeedFast",
-  instant: "vnTextSpeedInstant",
-};
-const AUTO_WAIT_LABELS: Record<AutoWait, MsgKey> = {
-  short: "vnAutoWaitShort",
-  normal: "vnLevelNormal",
-  long: "vnAutoWaitLong",
-};
 
 /** 實測量時間用（方案 §7）：測試通道讀 performance.getEntriesByType("mark") */
 function mark(name: string, detail?: unknown) {
@@ -147,8 +137,38 @@ export function VnPlayer({
   // 隱藏介面（H）：對話框、選項、快捷列整塊收起，任一點擊或按鍵恢復；auto／skip 照跑
   const [hidden, setHidden] = useState(false);
   const [exporting, setExporting] = useState(false);
-  // 標題畫面、面板、log 蓋著播放器時：游標不動、不登記已讀與位置、不觸發章末（收起後接著跑）
-  const paused = title || panel !== null || logOpen;
+  const lock = useRef(false);
+  const [locked, setLocked] = useState(false);
+  async function runLocked(work: () => Promise<void>) {
+    if (lock.current) return;
+    lock.current = true;
+    setLocked(true);
+    try {
+      await work();
+    } finally {
+      lock.current = false;
+      setLocked(false);
+    }
+  }
+
+  // 章結束流程：游標推進（點擊或 auto，不含 skip 與進桌定位）到章末格就自動開始；字卡蓋住整個播放器。
+  // 重播桌換到換幕子幕、字卡停一下就收（沒有首拍可等）；沒有子幕不開流程，改出「此路作者未完成」。
+  // 在播放 hook 之前取得（字卡要讓播放暫停），用到的播放與重播導覽走 ref
+  const playRef = useRef<{ expectNext: () => void }>({ expectNext: () => {} });
+  const navRef = useRef<ReturnType<typeof replayNav> | null>(null);
+  const chapter = useChapterEnd({
+    advance: (chapterEnd) => (replay && navRef.current ? navRef.current.advance() : onAdvanceScene(chapterEnd)),
+    reenter: onReenter,
+    openBeat: async () => {
+      if (replay) return new Promise((resolve) => setTimeout(resolve, 1200));
+      playRef.current.expectNext();
+      await chat.gmAdvance();
+    },
+    runLocked,
+  });
+  // 標題畫面、面板、log、章末字卡蓋著播放器時：游標不動、不打字、不登記已讀與位置、不觸發章末（收起後接著跑）；
+  // 字卡的首拍與收卡不受影響
+  const paused = title || panel !== null || logOpen || chapter.card !== null;
   const realignRef = useRef<ReturnType<typeof useVnPlayback>["realign"]>(() => {});
   const vn = useVnCells({
     worldId,
@@ -176,8 +196,11 @@ export function VnPlayer({
     paused,
     charMs: TEXT_SPEEDS[textSpeed],
     autoFactor: AUTO_WAITS[autoWait],
+    // 重播桌最後一幕的章末格沒有下一幕可換：不停（直接到結局或「此路作者未完成」，不用空點一下）
+    skipChapter: replay && nextScene(sceneLabels, scene) === null,
   });
   realignRef.current = play.realign;
+  playRef.current = play;
   const stage = useMemo(() => stageAt(vn.cells, play.flatIndex), [vn.cells, play.flatIndex]);
   const sprites = useSprites(worldId);
   const backgrounds = useBackgrounds(worldId);
@@ -194,20 +217,6 @@ export function VnPlayer({
   const backdropState = backdropId ? backgrounds.status[backdropId]?.state : undefined;
   const [saveError, setSaveError] = useState<string | null>(null);
   const [rerollMessage, setRerollMessage] = useState<string | null>(null);
-
-  const lock = useRef(false);
-  const [locked, setLocked] = useState(false);
-  async function runLocked(work: () => Promise<void>) {
-    if (lock.current) return;
-    lock.current = true;
-    setLocked(true);
-    try {
-      await work();
-    } finally {
-      lock.current = false;
-      setLocked(false);
-    }
-  }
 
   const turnStart = useRef(false);
   const startTurn = (send: () => Promise<void>) =>
@@ -269,18 +278,7 @@ export function VnPlayer({
     scene,
   });
   const nav = replayNav({ worldId, scene, labels: sceneLabels, goto: branch.goto, jump: play.jump, setEntry, onBranch });
-  // 章結束流程：游標推進（點擊或 auto，不含 skip 與進桌定位）到章末格就自動開始；字卡蓋住整個播放器。
-  // 重播桌換到換幕子幕、字卡停一下就收（沒有首拍可等）；沒有子幕不開流程，改出「此路作者未完成」
-  const chapter = useChapterEnd({
-    advance: replay ? nav.advance : onAdvanceScene,
-    reenter: onReenter,
-    openBeat: async () => {
-      if (replay) return new Promise((resolve) => setTimeout(resolve, 1200));
-      play.expectNext();
-      await chat.gmAdvance();
-    },
-    runLocked,
-  });
+  navRef.current = nav;
   const chapterNow = play.current?.chapter ?? vn.cells[vn.cells.length - 1]?.chapter ?? 1;
   const endChapter = (chapterEnd: boolean) => {
     if (!replay || nav.next !== null) void chapter.start(chapterEnd, chapterNow, scene);
@@ -334,6 +332,10 @@ export function VnPlayer({
       }
     });
   const exportWork = () => setExporting(true);
+  const openPanel = (next: NonNullable<typeof panel>) => {
+    if (next === "saves") setSaveError(null);
+    setPanel(next);
+  };
   // 新幕的游標定位好就收回指定位置，之後換幕照一般進桌位置
   const positioned = play.current !== undefined;
   useEffect(() => {
@@ -439,11 +441,17 @@ export function VnPlayer({
         : ending
           ? "menuOnly"
           : null;
+  // 蓋層開著時下緣整塊 inert：聚焦中的「繼續」等按鈕不能在選單後面被原生 Enter／Space 按到（會花額度）；
+  // 不支援 inert 的環境補一層：焦點在下緣就先拿掉
+  const bottomRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const focused = document.activeElement;
+    if (layer !== null && focused instanceof HTMLElement && bottomRef.current?.contains(focused)) focused.blur();
+  }, [layer]);
   const closeLayer = () => {
     if (logOpen) setLogOpen(false);
     else setPanel(null);
   };
-  const skipBeforeHold = useRef<boolean | null>(null);
   useVnKeys({
     layer,
     hidden,
@@ -454,15 +462,8 @@ export function VnPlayer({
     onAdvance: proceedOutside,
     onBack: play.back,
     onAuto: () => play.setAuto(!play.auto),
-    onSkipHold: (held) => {
-      if (held) {
-        skipBeforeHold.current = skip;
-        setSkip(true);
-      } else if (skipBeforeHold.current !== null) {
-        setSkip(skipBeforeHold.current);
-        skipBeforeHold.current = null;
-      }
-    },
+    skip,
+    setSkip,
   });
   // 滾輪：上＝上一格、下＝推進（Ren'Py 慣例，250ms 節流）；蓋層與還能捲的對話文字自己吃滾輪
   const wheelAt = useRef(0);
@@ -478,7 +479,7 @@ export function VnPlayer({
   const onClick = (event: React.MouseEvent) => {
     if (hidden) return setHidden(false);
     if (layer !== null) return;
-    if ((event.target as Element).closest("button, a, input, select, textarea, label, .vn-quick, .vn-choices, .vn-error")) return;
+    if ((event.target as Element).closest("button, a, input, select, textarea, label, .vn-dialogue, .vn-quick, .vn-choices, .vn-error")) return;
     proceedOutside();
   };
   // 右鍵＝Esc（開選單或收起隱藏）；面板、紀錄、匯出開著與輸入欄位留原生選單（存檔名稱要能貼上）
@@ -488,43 +489,24 @@ export function VnPlayer({
     if (hidden) setHidden(false);
     else setPanel("menu");
   };
-  const menuItems: GameMenuItem[] = [
-    { key: "title", label: t("vnBackToTitle"), disabled: busy, onSelect: () => (setPanel(null), onTitle(true)) },
-    { key: "saves", label: t("vnSaves"), disabled: busy, onSelect: () => (setSaveError(null), setPanel("saves")) },
-    { key: "settings", label: t("vnTitleSettings"), onSelect: () => setPanel("settings") },
-    { key: "endings", label: t("vnEndingsList"), onSelect: () => setPanel("endings") },
-    { key: "replay", label: t(replay ? "vnWorkChapterSelect" : "vnReplayChapter"), onSelect: () => setPanel("chapters") },
-    ...(replay
-      ? []
-      : [
-          {
-            key: "next",
-            label: t("vnNextChapter"),
-            disabled: actionsDisabled || ending !== null,
-            onSelect: () => (setPanel(null), void askNextChapter()),
-          },
-          { key: "chat", label: t("vnShowChat"), onSelect: onShowChat },
-          ...(backdrop
-            ? [
-                {
-                  key: "background",
-                  label: t("vnBackgroundRegenerate"),
-                  disabled: busy || backdropState === "queued" || backdropState === "running",
-                  onSelect: () => void backgrounds.regenerate(backdrop).catch((reason) => onError(backendText(reason))),
-                },
-              ]
-            : []),
-          {
-            key: "export-card",
-            label: t("vnCardExport"),
-            disabled: busy,
-            onSelect: () => void exportVnCard(worldId, tableName).catch((reason) => onError(backendText(reason))),
-          },
-          { key: "export-work", label: t("vnWorkExport"), disabled: busy, onSelect: () => (setPanel(null), exportWork()) },
-        ]),
-    { key: "hide", label: t("vnHideUi"), onSelect: () => (setPanel(null), setHidden(true)) },
-    { key: "lobby", label: t("backToLobby"), onSelect: onGoLobby },
-  ];
+  const menuItems = gameMenuItems({
+    replay,
+    busy,
+    nextDisabled: actionsDisabled || ending !== null,
+    regenerate: backdrop ? {
+      disabled: backdropState === "queued" || backdropState === "running",
+      run: () => void backgrounds.regenerate(backdrop).catch((reason) => onError(backendText(reason))),
+    } : undefined,
+    open: openPanel,
+    close: () => setPanel(null),
+    onTitle: () => onTitle(true),
+    onNextChapter: () => void askNextChapter(),
+    onShowChat,
+    onExportCard: () => void exportVnCard(worldId, tableName).catch((reason) => onError(backendText(reason))),
+    onExportWork: exportWork,
+    onHide: () => setHidden(true),
+    onLobby: onGoLobby,
+  });
   const hasProgress = Object.keys(progress.positions).length > 0;
   return (
     <main className="vn-player" onWheel={onWheel} onClick={onClick} onContextMenu={onContextMenu}>
@@ -534,13 +516,14 @@ export function VnPlayer({
         images={images}
         backdrop={backdropId ? backgrounds.images[backdropId] : undefined}
         cellKey={play.current?.key ?? ""}
+        hold={paused}
       />
       {error && (
         <div className="vn-error">
           <ErrorNote text={error} transport={transport} onAdvanceScene={() => endChapter(false)} />
         </div>
       )}
-      <div className={`vn-bottom${hidden ? " vn-ui-hidden" : ""}`}>
+      <div ref={bottomRef} className={`vn-bottom${hidden ? " vn-ui-hidden" : ""}`} inert={layer !== null}>
         {hints && hints.length > 0 && <FlagHints hints={hints} />}
         {choices && replay && play.live?.eventKey && (
           <PastChoicePanel
@@ -585,32 +568,19 @@ export function VnPlayer({
           </p>
         )}
         {unfinished && !past && <div className="vn-choices">{unfinishedPath}</div>}
-        {play.end === "chapter" && !chapter.card && !unfinished && (
-          <button
-            type="button"
-            className="btn btn-primary vn-continue"
-            disabled={actionsDisabled}
-            onClick={() => endChapter(true)}
-          >
-            {t("vnNextChapter")}
-          </button>
-        )}
-        {play.end === "continue" && !unfinished && (
-          <button
-            type="button"
-            className="btn btn-primary vn-continue"
-            disabled={actionsDisabled}
-            onClick={() => void (replay ? nav.forward() : startTurn(chat.gmAdvance))}
-          >
-            {t("vnContinue")}
-          </button>
-        )}
         <DialogueBox
           cell={shownCell}
           shown={onTerminal ? Infinity : play.shown}
           waiting={play.end === "waiting"}
-          ready={!play.typing && !play.tailing && play.end === null}
+          // 停在章末格也照一般格給 ▼：點畫面任何地方就進章末流程
+          ready={!play.typing && !play.tailing && (play.end === null || (play.end === "chapter" && !chapter.card && !unfinished))}
           onAdvance={proceed}
+          // 「繼續」會花玩家額度（重播桌只是換到下一幕）：放在 ▼ 的位置做成小鈕，點畫面不會觸發
+          onContinue={
+            play.end === "continue" && !unfinished
+              ? { disabled: actionsDisabled, run: () => void (replay ? nav.forward() : startTurn(chat.gmAdvance)) }
+              : undefined
+          }
         />
         <QuickBar
           canStop={!replay && chat.canStop}
@@ -623,10 +593,7 @@ export function VnPlayer({
           onSkip={() => setSkip(!skip)}
           onLog={() => setLogOpen(true)}
           busy={busy}
-          onSaves={() => {
-            setSaveError(null);
-            setPanel("saves");
-          }}
+          onSaves={() => openPanel("saves")}
           onSettings={() => setPanel("settings")}
           onMenu={() => setPanel("menu")}
         />
@@ -634,7 +601,8 @@ export function VnPlayer({
       {chapter.card && (
         <ChapterCardView
           card={chapter.card}
-          nextChapter={vn.cells[0]?.chapter}
+          // 新幕的格載入前 cells 還是舊幕的，章號會等於結束的章而誤判成「尾聲」
+          nextChapter={scene !== chapter.card.fromScene && vn.formalScene === scene ? vn.cells[0]?.chapter : undefined}
           onRetry={() => void chapter.retry()}
           onClose={chapter.close}
           onStop={!replay && chat.canStop ? chat.stopResponse : undefined}
@@ -683,32 +651,15 @@ export function VnPlayer({
         />
       )}
       {panel === "settings" && (
-        <Panel label={t("vnTitleSettings")} onClose={() => setPanel(null)}>
-          <label className="vn-setting">
-            <input type="checkbox" checked={flagHints} onChange={(event) => onFlagHints(event.target.checked)} />
-            {t("vnFlagHintsToggle")}
-          </label>
-          <label className="vn-setting">
-            {t("vnTextSpeed")}
-            <select value={textSpeed} onChange={(event) => onTextSpeed(event.target.value as TextSpeed)}>
-              {(Object.keys(TEXT_SPEEDS) as TextSpeed[]).map((level) => (
-                <option key={level} value={level}>
-                  {t(TEXT_SPEED_LABELS[level])}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="vn-setting">
-            {t("vnAutoWait")}
-            <select value={autoWait} onChange={(event) => onAutoWait(event.target.value as AutoWait)}>
-              {(Object.keys(AUTO_WAITS) as AutoWait[]).map((level) => (
-                <option key={level} value={level}>
-                  {t(AUTO_WAIT_LABELS[level])}
-                </option>
-              ))}
-            </select>
-          </label>
-        </Panel>
+        <SettingsPanel
+          flagHints={flagHints}
+          onFlagHints={onFlagHints}
+          textSpeed={textSpeed}
+          onTextSpeed={onTextSpeed}
+          autoWait={autoWait}
+          onAutoWait={onAutoWait}
+          onClose={() => setPanel(null)}
+        />
       )}
       {panel === "menu" && <GameMenu title={tableName} items={menuItems} onClose={() => setPanel(null)} />}
       {panel === "endings" && <EndingsPanel worldId={worldId} onClose={() => setPanel(null)} />}

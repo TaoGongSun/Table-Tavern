@@ -61,7 +61,7 @@
 | 27 | [cli-version-gate](../handoffs/archive/cli-version-gate.md) grok 超過回合上限 | grok 送出 `max_turns_reached` 之後還會不會送 `end`：會送才落在既有收尾規則（`max_turn_requests`＝不完整）；不送就會被「缺收尾＝失敗」判成回合失敗。實跑一輪會撞 `--max-turns 1` 的情境（例如生圖以外讓模型想叫工具），看原始輸出 |
 | 28 | [cli-version-gate](../handoffs/archive/cli-version-gate.md) 更新鈕真更新與還原（mac） | 2026-10-29 測試通道過（測試 HOME＋官方安裝檔，作者四支執行檔與 ChatGPT.app 內 codex 的 shasum 前後一致）：官方腳本先裝 claude 2.1.300、codex 0.163.0、grok 1.0.60 → app `update_cli` 已測版三家皆 updated（2.1.311／0.164.0／1.0.70，log 無「process group did not stop」）→ 新檔弄壞＋標記、重開 app 啟動復原三家 2 秒內回原版，全走本機留存原版（claude 連結指回 versions/2.1.300、codex `current` 指回 releases/0.163.0-*、grok 連結指回官方腳本裝的 `grok-macos-aarch64`，並刪掉 `grok-1.0.70-*`），log 記下各自走的路徑。agy：1.1.6 副本經 app 更新到最新版 1.4.9；1.4.9 弄壞＋標記與備份、重開 app 以備份複製回 1.4.9。官方腳本還原那條 10-28 已測過（claude `bash -s 2.1.300`）。四家皆通過 |
 | 29 | [cli-version-gate](../handoffs/archive/cli-version-gate.md) 更新鈕（Windows） | Windows 實機：執行中的 exe 不能覆寫時更新失敗要保住舊版、Job Object 逾時殺整組、codex `current` junction 切換、grok install.ps1 `.old` 改名、一鍵安裝帶已測版（install.ps1 `$Target`／`CODEX_RELEASE`／`GROK_VERSION`）；登入視窗帶關閉自動更新變數 |
-| 30 | [vn-mode](../handoffs/archive/vn-mode.md) VN 模式作者實機試玩 | 2026-11-04 已合 main（測試通道冒煙：VN 精靈到開演一輪過）；從沒實測過的是把 `.ttvn` 拖進大廳匯入、匯入選「當可續寫的桌」後讓 AI 接寫幾拍。試玩重點與現成測試包見交接檔「下一步」，各包已知限制見各方案檔 |
+| 30 | [vn-mode](../handoffs/archive/vn-mode.md) VN 模式作者實機試玩（含 [vn-ui-polish](../handoffs/vn-ui-polish.md) 的播放器改版） | 2026-11-04 已合 main（測試通道冒煙：VN 精靈到開演一輪過）、2026-11-05 播放器 UI／UX 改版合 main（點畫面／Space 推進、Esc／右鍵選單、快捷列在對話框下、標題「開始」從幕首）；從沒實測過的是把 `.ttvn` 拖進大廳匯入、匯入選「當可續寫的桌」後讓 AI 接寫幾拍。試玩重點與現成測試包見交接檔「下一步」，各包已知限制見各方案檔 |
 
 ## 梯 3：等外部條件，不排時程
 
