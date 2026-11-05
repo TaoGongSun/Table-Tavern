@@ -51,14 +51,13 @@ export function SpriteBasePicker({
   const candidates = slot.state?.candidates ?? [];
   const shown = slot.selected ? slot.previews[slot.selected] : slot.state?.sprite?.body;
   const disabled = slot.busy !== null;
-  // 挑定後同一張不必再挑：本次挑過的那張，或已有定稿且只有一張候選（就是裝上去的那張）
-  const alreadyPicked =
-    slot.selected === slot.pickedFile || (Boolean(slot.state?.sprite) && candidates.length === 1);
+  // 選的就是裝上去那張不必再挑（定稿記著是哪張候選；上傳的或舊桌不記＝可以重新挑定）
+  const alreadyPicked = Boolean(slot.state?.sprite) && slot.selected === slot.installed;
   return (
     <div className="vn-picker">
       {source && <SpriteSourceSelect />}
       <div className="vn-picker-actions">
-        <button type="button" className="btn btn-sm" disabled={disabled} onClick={() => void slot.generate()}>
+        <button type="button" className="btn btn-sm" disabled={disabled || slot.auto !== null} onClick={() => void slot.generate()}>
           {t(candidates.length ? "vnSpriteReroll" : "vnSpriteGenerate")}
         </button>
         <button
@@ -88,11 +87,24 @@ export function SpriteBasePicker({
         {shown ? (
           <img className="vn-picker-image" src={shown} alt={name} />
         ) : (
-          <div className="vn-picker-empty">{t("vnSpriteNone")}</div>
+          <div className="vn-picker-empty">
+            {slot.busy || slot.auto ? (
+              <span className="vn-pending">
+                {slot.busy
+                  ? t(`vnSpriteBusy_${slot.busy}`)
+                  : t(slot.auto === "queued" ? "vnSpriteQueued" : "vnSpriteBusy_generate")}
+              </span>
+            ) : (
+              t("vnSpriteNone")
+            )}
+          </div>
         )}
-        {slot.busy && <span className="vn-picker-busy">{t(`vnSpriteBusy_${slot.busy}`)}</span>}
+        {shown && (slot.busy || slot.auto === "running") && (
+          <span className="vn-picker-busy">{t(`vnSpriteBusy_${slot.busy ?? "generate"}`)}</span>
+        )}
       </div>
-      {candidates.length > 1 && (
+      {/* 只有一張候選但沒選它（例如上傳了定稿）也列出來，點了才改用它 */}
+      {(candidates.length > 1 || (candidates.length === 1 && slot.selected !== candidates[0])) && (
         <div className="vn-picker-strip">
           {candidates.map((file) => (
             <button

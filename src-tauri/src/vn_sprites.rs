@@ -3,6 +3,7 @@
 //! 生成期間不持桌寫入許可，寫回前重驗（store::Snapshot、世代號）。
 mod compose;
 pub(crate) mod matting;
+pub(crate) mod prepare;
 pub(crate) mod queue;
 pub(crate) mod store;
 
@@ -158,13 +159,18 @@ pub(crate) async fn generate_candidate(
         kind,
         transparent(source),
     );
+    let _generating = prepare::generating(world, character);
     let png = generate_png(app, &config, world, &prompt, reference.as_deref(), "2:3").await?;
     let png = matting::ensure_alpha(app, png).await?;
-    let _permit = data::world_write_permit_async(world).await?;
-    if !character_exists(&root, world, character) {
-        return Err("VN_SPRITE_CHARACTER_GONE".to_owned());
-    }
-    SpriteDir::of(&root, world, character)?.add_candidate(&png)
+    let file = {
+        let _permit = data::world_write_permit_async(world).await?;
+        if !character_exists(&root, world, character) {
+            return Err("VN_SPRITE_CHARACTER_GONE".to_owned());
+        }
+        SpriteDir::of(&root, world, character)?.add_candidate(&png)?
+    };
+    prepare::adopt_if_marked(app, world, character, &file);
+    Ok(file)
 }
 
 /// 視覺模型回的臉框：只認圖內、面積合理的；上緣再往上加框高 25%（挑眉才不會被切）
@@ -251,14 +257,45 @@ fn variant_epoch_key(character: &str, key: &str) -> String {
     format!("{character}/{key}")
 }
 
-/// 換定稿（挑定候選或上傳）：定臉框後寫入，舊臉層全部作廢；開工後有更新的換定稿或刪除就丟掉
+/// 自動定稿搶位：世代仍是開工時記下的才加一佔住（玩家手動挑定、上傳、刪除都會讓世代變），回新世代
+pub(crate) fn claim_base(world: &str, character: &str, started: u64) -> Option<u64> {
+    let mut epochs = base_epochs();
+    let epoch = epochs
+        .entry((world.to_owned(), character.to_owned()))
+        .or_default();
+    (*epoch == started).then(|| {
+        *epoch += 1;
+        *epoch
+    })
+}
+
+pub(crate) fn base_epoch(world: &str, character: &str) -> u64 {
+    epoch_of(world, character)
+}
+
+/// 換定稿（挑定候選或上傳；`candidate`＝候選檔名）：定臉框後寫入，舊臉層全部作廢；開工後有更新的換定稿或刪除就丟掉
 pub(crate) async fn install_base(
     app: &tauri::AppHandle,
     world: &str,
     character: &str,
     png: Vec<u8>,
+    candidate: Option<&str>,
 ) -> Result<(), String> {
     let epoch = supersede_base(world, character);
+    install_at(app, world, character, png, candidate, epoch)
+        .await
+        .map(|_| ())
+}
+
+/// 以世代 `epoch` 裝定稿：提交前世代沒變才寫。Ok(false)＝被更新的換定稿或刪除取代
+pub(crate) async fn install_at(
+    app: &tauri::AppHandle,
+    world: &str,
+    character: &str,
+    png: Vec<u8>,
+    candidate: Option<&str>,
+    epoch: u64,
+) -> Result<bool, String> {
     let root = data_root(app)?;
     let config = read_config(app)?;
     let png = matting::ensure_alpha(app, png).await?;
@@ -266,15 +303,16 @@ pub(crate) async fn install_base(
     let (face, fallback) = locate_face(app, &config, world, &png, size).await;
     let _permit = data::world_write_permit_async(world).await?;
     if !base_is_current(world, character, epoch) {
-        return Ok(());
+        return Ok(false);
     }
     if !character_exists(&root, world, character) {
         return Err("VN_SPRITE_CHARACTER_GONE".to_owned());
     }
     let faces = faces_of(&root, world, character);
-    SpriteDir::of(&root, world, character)?.install_base(&png, face, fallback, &faces)?;
+    SpriteDir::of(&root, world, character)?
+        .install_base(&png, face, fallback, &faces, candidate)?;
     queue::forget(world, character);
-    Ok(())
+    Ok(true)
 }
 
 /// 一格臉層：裁頭 → 生圖 → 對齊檢查（不過自動重骰一次）→ 羽化 → 重驗後寫回。

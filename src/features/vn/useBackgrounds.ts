@@ -1,34 +1,42 @@
-// 舞台背景：按需讀背景庫的圖（data URL），聽背景佇列的狀態事件，生好或重生成完就重讀那張。
+// 舞台背景：按需讀背景庫的圖（該時段專屬圖，沒有就同地點基底），聽背景佇列的狀態事件；
+// 一個地點的圖生好或重生成完，重讀這個地點所有用過的時段（基底被多個時段共用）。
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Backdrop, BackgroundStatus } from "../../shared/contracts/backend-contracts";
+import type { Backdrop, BackgroundStatus, BackgroundView } from "../../shared/contracts/backend-contracts";
 
 export const BACKGROUND_STATUS_EVENT = "vn-background-status";
 
 export const backdropKey = (backdrop: Pick<Backdrop, "slug" | "period">) =>
   `${backdrop.slug}-${backdrop.period}`;
 
-/** 一張背景：src＝null 是庫裡還沒有；rev 每讀到新圖加一（淡入以它為 key） */
+/** 一張背景：src＝null 是庫裡還沒有；period＝圖實際的時段（與要的不同＝基底）；rev 每讀到新圖加一（淡入以它為 key） */
 export interface BackdropImage {
   src: string | null;
+  period: string | null;
   rev: number;
 }
 
 export function useBackgrounds(worldId: string) {
   const [images, setImages] = useState<Record<string, BackdropImage>>({});
   const [status, setStatus] = useState<Record<string, BackgroundStatus>>({});
-  const requested = useRef(new Set<string>());
+  /** 讀過的鍵：slug → 時段 */
+  const requested = useRef(new Map<string, Set<string>>());
   const rev = useRef(0);
 
   const read = useCallback(
     (slug: string, period: string) => {
-      invoke<string | null>("vn_background_read", { worldId, slug, period })
-        .then((src) =>
-          setImages((current) => ({
-            ...current,
-            [backdropKey({ slug, period })]: { src, rev: src ? ++rev.current : 0 },
-          })),
+      invoke<BackgroundView | null>("vn_background_read", { worldId, slug, period })
+        .then((view) =>
+          setImages((current) => {
+            const key = backdropKey({ slug, period });
+            // 同一張圖（同地點基底換時段）不換 rev，舞台不重新淡入
+            const same = view && current[key]?.src === view.src;
+            return {
+              ...current,
+              [key]: { src: view?.src ?? null, period: view?.period ?? null, rev: same ? current[key].rev : view ? ++rev.current : 0 },
+            };
+          }),
         )
         .catch(() => {});
     },
@@ -37,7 +45,7 @@ export function useBackgrounds(worldId: string) {
 
   useEffect(() => {
     let alive = true;
-    requested.current = new Set();
+    requested.current = new Map();
     setImages({});
     setStatus({});
     invoke<BackgroundStatus[]>("vn_backgrounds_status", { worldId })
@@ -46,7 +54,8 @@ export function useBackgrounds(worldId: string) {
     const off = listen<BackgroundStatus>(BACKGROUND_STATUS_EVENT, ({ payload }) => {
       if (!alive || payload.worldId !== worldId) return;
       setStatus((current) => ({ ...current, [backdropKey(payload)]: payload }));
-      if (payload.state === "done") read(payload.slug, payload.period);
+      if (payload.state !== "done") return;
+      for (const period of requested.current.get(payload.slug) ?? []) read(payload.slug, period);
     });
     return () => {
       alive = false;
@@ -57,23 +66,31 @@ export function useBackgrounds(worldId: string) {
   /** 第一次用到這個鍵才讀 */
   const load = useCallback(
     (backdrop: Backdrop) => {
-      const key = backdropKey(backdrop);
-      if (requested.current.has(key)) return;
-      requested.current.add(key);
+      const periods = requested.current.get(backdrop.slug) ?? new Set<string>();
+      if (periods.has(backdrop.period)) return;
+      requested.current.set(backdrop.slug, periods.add(backdrop.period));
       read(backdrop.slug, backdrop.period);
     },
     [read],
   );
 
+  /** 這個鍵的佇列狀態；自己沒排過就看同地點的（基底按地點排） */
+  const statusOf = useCallback(
+    (backdrop: Pick<Backdrop, "slug" | "period">) =>
+      status[backdropKey(backdrop)] ?? Object.values(status).find((item) => item.slug === backdrop.slug),
+    [status],
+  );
+
+  /** 重生成舞台目前顯示的那張（基底或專屬圖） */
   const regenerate = useCallback(
     (backdrop: Backdrop) =>
       invoke("vn_background_regenerate", {
         worldId,
         location: backdrop.location,
-        period: backdrop.period,
+        period: images[backdropKey(backdrop)]?.period ?? backdrop.period,
       }),
-    [worldId],
+    [worldId, images],
   );
 
-  return { images, status, load, regenerate };
+  return { images, statusOf, load, regenerate };
 }

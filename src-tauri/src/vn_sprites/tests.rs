@@ -78,6 +78,7 @@ fn stale_face_job_failure_is_not_recorded() {
         },
         false,
         &super::face_list(&Default::default()),
+        None,
     )
     .unwrap();
     let (started, _) = dir.snapshot(None, "sad").unwrap();
@@ -206,7 +207,7 @@ fn declared_variants_are_reserved_and_listed() {
         w: 40,
         h: 40,
     };
-    dir.install_base(&png, face, false, &faces).unwrap();
+    dir.install_base(&png, face, false, &faces, None).unwrap();
     let (key, ..) = super::start_variant(
         &dir,
         &world,

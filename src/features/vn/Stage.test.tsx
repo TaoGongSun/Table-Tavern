@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import type { SpriteView } from "../../shared/contracts/backend-contracts";
 import { MIN_SCALE, Stage, placeOf } from "./Stage";
 import { spriteLayers } from "./SpriteFigure";
+import { spriteNight, tintOf } from "./StageBackdrop";
 import type { Stage as StageState } from "./vn-cells";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -100,5 +101,56 @@ describe("Stage fallback chain", () => {
     expect(spriteLayers(sprite, "v2", "happy").face).toBeUndefined();
     expect(spriteLayers(sprite, "Gone", "happy")).toMatchObject({ body: "data:body", face: "data:happy" });
     expect(spriteLayers(sprite, "nope", "happy").body).toBe("data:body");
+  });
+});
+
+describe("time-of-day tint", () => {
+  const image = (period: string) => ({ src: "data:harbor", period, rev: 1 });
+  it("tints the shared base for other periods but not its own or unknown card periods", () => {
+    expect(tintOf("day", image("day"))).toBeNull();
+    expect(tintOf("night", image("day"))?.opacity).toBeGreaterThan(0);
+    expect(tintOf("dusk", image("day"))).not.toEqual(tintOf("morning", image("day")));
+    // 專屬圖（實際時段＝要的）不疊；卡自訂時段沒有對應色
+    expect(tintOf("night", image("night"))).toBeNull();
+    expect(tintOf("crisis", image("day"))).toBeNull();
+  });
+});
+
+describe("sprite arrival", () => {
+  const stage = (backdrop: StageState["backdrop"] = null): StageState => ({
+    slots: ["a", null, null],
+    names: { a: "A" },
+    expressions: { a: "neutral" },
+    variants: {},
+    speaker: "a",
+    directive: null,
+    location: null,
+    time: null,
+    backdrop,
+  });
+  it("swaps card art for the new sprite only on the next cell, fading the old one out", () => {
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    const draw = (sprites: Record<string, SpriteView>, cellKey: string) =>
+      act(() => root.render(<Stage stage={stage()} sprites={sprites} images={{ a: "data:card" }} cellKey={cellKey} />));
+    draw({}, "k1");
+    draw({ a: sprite }, "k1");
+    // 打字中途不換
+    expect(host.querySelector(".vn-layers")).toBeNull();
+    draw({ a: sprite }, "k2");
+    expect(host.querySelector(".vn-layers.vn-swap-in")).not.toBeNull();
+    expect(host.querySelector("img.vn-swap-out")?.getAttribute("src")).toBe("data:card");
+  });
+
+  it("night darkens sprites at half the backdrop tint; other periods leave them alone", () => {
+    expect(spriteNight("night")!.opacity).toBeLessThan(0.5);
+    expect(spriteNight("dusk")).toBeNull();
+    const host = document.createElement("div");
+    act(() =>
+      createRoot(host).render(
+        <Stage stage={stage({ location: "港口", slug: "s", period: "night" })} sprites={{ a: sprite }} images={{}} cellKey="k" />,
+      ),
+    );
+    expect(host.querySelector(".vn-layers .vn-sprite-tint")).not.toBeNull();
   });
 });

@@ -79,6 +79,9 @@ pub(crate) struct SpriteMeta {
     /// 每格修訂號：`base`、`face/<表情>`、`face-<變體>/<表情>`、`body/<變體>`
     #[serde(default)]
     pub revs: BTreeMap<String, u64>,
+    /// 定稿是哪張候選裝的（上傳或舊桌＝None）：精靈 ③ 據此判斷目前顯示的候選是不是已裝那張
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub candidate: Option<String>,
 }
 
 fn base_key() -> String {
@@ -325,6 +328,7 @@ impl SpriteDir {
         face: FaceBox,
         face_fallback: bool,
         faces: &[String],
+        candidate: Option<&str>,
     ) -> Result<(), String> {
         let mut meta = self.read().map(|loaded| loaded.meta).unwrap_or(SpriteMeta {
             version: 1,
@@ -333,10 +337,12 @@ impl SpriteDir {
             variants: Vec::new(),
             default: base_key(),
             revs: BTreeMap::new(),
+            candidate: None,
         });
         self.detach_shared_variants(&mut meta, faces)?;
         meta.face = face;
         meta.face_fallback = face_fallback;
+        meta.candidate = candidate.map(str::to_owned);
         meta.bump("base");
         meta.bump_faces(None, faces);
         data::commit_world_write(&self.body_path(), png).map_err(|error| error.to_string())?;

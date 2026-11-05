@@ -1,9 +1,14 @@
-// 一位角色的立繪狀態與動作（精靈 ③ 與立繪分頁共用）：定稿候選的生成、挑選、上傳。
+// 一位角色的立繪狀態與動作（精靈 ③ 與立繪分頁共用）：定稿候選的生成、挑選、上傳；
+// 聽後端自動定稿的事件（plans/vn-setup-wizard.md §2 ③）重讀並顯示「生成中」。
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { t, type MsgKey } from "../../i18n";
-import type { SpriteState } from "../../shared/contracts/backend-contracts";
+import type { SpriteSlotStatus, SpriteState } from "../../shared/contracts/backend-contracts";
 import { backendText } from "../../shared/ui/backend-text";
+import { onSpriteStatus } from "./useSprites";
+
+/** 自動定稿事件的 expression 欄（後端 `prepare::BASE_EXPRESSION`） */
+const BASE_EVENT = "base";
 
 const SPRITE_ERRORS: Record<string, MsgKey> = {
   MISALIGNED: "vnSpriteMisaligned",
@@ -31,8 +36,8 @@ export function useSpriteSlot(worldId: string, characterId: string, fill = false
   const [previews, setPreviews] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<SlotBusy>(null);
   const [error, setError] = useState<string | null>(null);
-  // 這次掛載裝成定稿的那張候選：同一張不必再挑（「挑定這張」變灰）
-  const [pickedFile, setPickedFile] = useState<string | null>(null);
+  /** 後端自動定稿：排隊中或生成中（失敗進 error） */
+  const [auto, setAuto] = useState<"queued" | "running" | null>(null);
   const loaded = useRef<Record<string, string>>({});
   const ids = { worldId, characterId };
 
@@ -48,14 +53,36 @@ export function useSpriteSlot(worldId: string, characterId: string, fill = false
     loaded.current = kept;
     setPreviews(kept);
     setState(next);
+    // 沿用目前選的；沒選或已淘汰：有定稿就選裝上去那張（上傳的不在候選裡＝不選，顯示定稿），沒定稿選最新候選
+    const installed = next.sprite ? (next.sprite.meta.candidate ?? null) : undefined;
     setSelected((current) =>
-      current && next.candidates.includes(current) ? current : (next.candidates[0] ?? null),
+      current && next.candidates.includes(current)
+        ? current
+        : installed === undefined
+          ? (next.candidates[0] ?? null)
+          : installed && next.candidates.includes(installed)
+            ? installed
+            : null,
     );
   }, [worldId, characterId]);
 
   useEffect(() => {
     reload().catch((reason) => setError(spriteError(reason)));
-  }, [reload]);
+    // 掛上前就開始的自動定稿：事件已錯過，補讀一次
+    const apply = (status: SpriteSlotStatus) => {
+      if (status.characterId !== characterId || status.expression !== BASE_EVENT) return;
+      setAuto(status.state === "queued" || status.state === "running" ? status.state : null);
+      if (status.state === "failed") setError(spriteError(status.reason));
+    };
+    invoke<SpriteSlotStatus[]>("vn_sprites_status", { worldId })
+      .then((all) => (all ?? []).forEach(apply))
+      .catch(() => {});
+    return onSpriteStatus(worldId, (status) => {
+      apply(status);
+      if (status.characterId === characterId && status.expression === BASE_EVENT && status.state === "done")
+        reload().catch((reason) => setError(spriteError(reason)));
+    });
+  }, [reload, worldId, characterId]);
 
   async function run(kind: Exclude<SlotBusy, null>, work: () => Promise<void>) {
     if (busy) return;
@@ -80,8 +107,10 @@ export function useSpriteSlot(worldId: string, characterId: string, fill = false
     selected,
     setSelected,
     previews,
-    pickedFile,
+    /** 目前定稿是哪張候選裝的（上傳的、舊桌＝null） */
+    installed: state?.sprite?.meta.candidate ?? null,
     busy,
+    auto,
     error,
     reload,
     generate: () =>
@@ -92,11 +121,12 @@ export function useSpriteSlot(worldId: string, characterId: string, fill = false
       run("pick", async () => {
         if (!selected) return;
         await invoke("vn_sprite_pick", { ...ids, file: selected });
-        setPickedFile(selected);
       }),
     upload: (file: File, expression: string | null = null, variant: string | null = null) =>
       run("upload", async () => {
         await invoke("vn_sprite_upload", { ...ids, variant, expression, data: await fileBytes(file) });
+        // 換定稿：改顯示上傳的那張（不再指著先前選的候選）
+        if (expression === null) setSelected(null);
       }),
   };
 }

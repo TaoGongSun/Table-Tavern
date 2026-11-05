@@ -22,21 +22,28 @@ struct Slot {
     expression: String,
 }
 
-/// 背景工作：身分＝（桌、slug、時段）；地點文字與「重生成」旗標不算身分
+/// 背景工作的種類：基底（地點還沒有圖才生）、重生成（覆寫那張）、專屬時段圖（以同地點的圖當參考改光線）
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum BgMode {
+    Base,
+    Regenerate,
+    Dedicated,
+}
+
+/// 背景工作：身分＝（桌、slug、時段）；地點文字與種類不算身分。基底鍵的時段固定是清單第一項，所以基底按地點去重
 #[derive(Clone, Debug)]
 pub(crate) struct BgSlot {
     pub world: String,
     pub backdrop: Backdrop,
-    /// 重生成：庫裡已有也覆寫
-    pub force: bool,
+    pub mode: BgMode,
 }
 
 impl BgSlot {
-    pub(crate) fn new(world: &str, backdrop: Backdrop, force: bool) -> Self {
+    pub(crate) fn new(world: &str, backdrop: Backdrop, mode: BgMode) -> Self {
         BgSlot {
             world: world.to_owned(),
             backdrop,
-            force,
+            mode,
         }
     }
 
@@ -218,7 +225,7 @@ pub(crate) fn enqueue_backgrounds(app: &tauri::AppHandle, slots: Vec<BgSlot>) {
     start_worker(app);
 }
 
-/// 重生成一張背景：清掉失敗記錄，帶覆寫旗標排入（同鍵已在排就換成覆寫版）
+/// 重生成一張背景或生專屬時段圖：清掉失敗記錄後排入（同鍵已在排就換成這一版）
 pub(crate) fn regenerate_background(app: &tauri::AppHandle, slot: BgSlot) {
     let job = Job::Background(slot);
     {
@@ -391,10 +398,14 @@ mod tests {
     }
 
     fn bg(location: &str, force: bool) -> Job {
+        let mode = match force {
+            true => BgMode::Regenerate,
+            false => BgMode::Base,
+        };
         Job::Background(BgSlot::new(
             "w",
             Backdrop::new(location, None, None, &Default::default()),
-            force,
+            mode,
         ))
     }
 

@@ -1,11 +1,16 @@
 //! VN 背景庫（plans/vn-mode-pkg3.md §2）：`[bg: 地點 | 時段]` → 鍵（地點雜湊 slug＋時段鍵）→
 //! `worlds/<id>/vn/backgrounds/<slug>-<時段>.png`。路徑只由雜湊與驗過的鍵組成，模型文字不進路徑；
-//! `backgrounds.json` 記 slug → 地點顯示名。生圖走立繪同一個一次一張的佇列（`vn_sprites::queue`）。
+//! `backgrounds.json` 記 slug → 地點顯示名與基底時段。生圖走立繪同一個一次一張的佇列（`vn_sprites::queue`）。
 //! VN 卡宣告的地點（plans/vn-mode-pkg9b.md §2.5）先比對：slug 取 `card:<鍵>` 的雜湊、時段用該地點自己的清單。
+//! 每地點自動只生一張基底（時段清單第一項的光線），換時段由舞台疊色調遮罩；專屬時段圖由玩家手動生成
+//! （plans/vn-setup-wizard.md §3）。
 use crate::data::vn::CardOrigin;
 use crate::data::vn_art::{valid_art_key, CardLocation};
 use crate::transport::vn_background_prompts::{self as prompts, BackgroundReference};
-use crate::vn_sprites::{self, queue::BgSlot};
+use crate::vn_sprites::{
+    self,
+    queue::{BgMode, BgSlot},
+};
 use crate::{data, data_root};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -235,6 +240,29 @@ impl Backdrop {
             slug: located.slug,
         }
     }
+
+    /// 同地點的基底鍵：時段清單第一項
+    pub(crate) fn base(&self, places: &Places) -> Self {
+        Backdrop {
+            period: places.periods(&self.slug).swap_remove(0),
+            ..self.clone()
+        }
+    }
+}
+
+/// `backgrounds.json` 一筆：舊桌只有地名，新桌另記基底時段
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
+enum Entry {
+    Name(String),
+    Place { name: String, base: String },
+}
+
+/// 舞台讀到的一張背景：`period`＝這張圖實際的時段（不等於要的時段＝基底，前端疊遮罩）
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub(crate) struct Shown {
+    pub period: String,
+    pub png: Vec<u8>,
 }
 
 /// 一桌的背景庫
@@ -262,16 +290,41 @@ impl Library {
         self.path(slug, period).is_file()
     }
 
-    /// 這張該不該生／寫：庫裡沒有，或是重生成
-    fn wants(&self, backdrop: &Backdrop, force: bool) -> bool {
-        force || !self.has(&backdrop.slug, &backdrop.period)
-    }
-
     pub(crate) fn read(&self, slug: &str, period: &str) -> Option<Vec<u8>> {
         std::fs::read(self.path(slug, period)).ok()
     }
 
-    /// 同地點有效時段清單內別的時段（改光線的參考圖），照清單順序（固定四時段白天優先）
+    /// 這個地點的基底時段：記下的基底 → 清單第一項 → 清單裡第一張有圖的（舊桌與作品包匯入的桌沒有記錄）
+    pub(crate) fn base_period(&self, slug: &str, periods: &[String]) -> Option<String> {
+        let recorded = match self.entries().remove(slug) {
+            Some(Entry::Place { base, .. }) => Some(base),
+            _ => None,
+        };
+        recorded
+            .into_iter()
+            .chain(periods.iter().cloned())
+            .find(|period| periods.contains(period) && self.has(slug, period))
+    }
+
+    /// 舞台要的時段：有專屬圖用專屬圖，否則基底（前端依 `period` 不同疊遮罩）
+    pub(crate) fn shown(&self, slug: &str, period: &str, periods: &[String]) -> Option<Shown> {
+        let period = match self.has(slug, period) {
+            true => period.to_owned(),
+            false => self.base_period(slug, periods)?,
+        };
+        let png = self.read(slug, &period)?;
+        Some(Shown { period, png })
+    }
+
+    /// 這張該不該生／寫：基底＝地點還沒有任何圖；重生成與專屬圖一律寫
+    fn wants(&self, slot: &BgSlot, periods: &[String]) -> bool {
+        match slot.mode {
+            BgMode::Base => self.base_period(&slot.backdrop.slug, periods).is_none(),
+            BgMode::Regenerate | BgMode::Dedicated => true,
+        }
+    }
+
+    /// 同地點有效時段清單內別的時段（專屬圖改光線的參考圖），照清單順序（基底優先）
     fn reference(&self, slug: &str, period: &str, periods: &[String]) -> Option<Vec<u8>> {
         periods
             .iter()
@@ -283,19 +336,33 @@ impl Library {
         self.dir.join("backgrounds.json")
     }
 
-    /// 寫圖並記下 slug → 原地點文字（已記過的不改）。呼叫端持桌寫入許可
-    fn write(&self, backdrop: &Backdrop, png: &[u8]) -> Result<(), String> {
-        data::commit_world_write_atomic(&self.path(&backdrop.slug, &backdrop.period), png)
-            .map_err(|error| error.to_string())?;
-        let mut names: BTreeMap<String, String> = std::fs::read(self.names_path())
+    fn entries(&self) -> BTreeMap<String, Entry> {
+        std::fs::read(self.names_path())
             .ok()
             .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-            .unwrap_or_default();
-        if names.contains_key(&backdrop.slug) {
-            return Ok(());
-        }
-        names.insert(backdrop.slug.clone(), backdrop.location.clone());
-        let json = serde_json::to_vec_pretty(&names).map_err(|error| error.to_string())?;
+            .unwrap_or_default()
+    }
+
+    /// 寫圖並記下 slug → 原地點文字（已記過的不改）；基底另記時段。呼叫端持桌寫入許可
+    fn write(&self, backdrop: &Backdrop, base: bool, png: &[u8]) -> Result<(), String> {
+        data::commit_world_write_atomic(&self.path(&backdrop.slug, &backdrop.period), png)
+            .map_err(|error| error.to_string())?;
+        let mut entries = self.entries();
+        let name = match entries.get(&backdrop.slug) {
+            Some(Entry::Place { .. }) => return Ok(()),
+            Some(Entry::Name(_)) if !base => return Ok(()),
+            Some(Entry::Name(name)) => name.clone(),
+            None => backdrop.location.clone(),
+        };
+        let entry = match base {
+            true => Entry::Place {
+                name,
+                base: backdrop.period.clone(),
+            },
+            false => Entry::Name(name),
+        };
+        entries.insert(backdrop.slug.clone(), entry);
+        let json = serde_json::to_vec_pretty(&entries).map_err(|error| error.to_string())?;
         data::commit_world_write_atomic(&self.names_path(), &json)
             .map_err(|error| error.to_string())
     }
@@ -360,7 +427,7 @@ impl Backdrop {
     }
 }
 
-/// 排入庫裡還沒有的背景（冪等：佇列去重）
+/// 排入這些背景的地點裡還沒有任何圖的基底（冪等：佇列去重；換時段不排，由舞台疊遮罩）
 pub(crate) fn fill(app: &tauri::AppHandle, world: &str, used: &[Backdrop]) -> Result<(), String> {
     let root = data_root(app)?;
     // 重播桌進桌也會打：靜默不排（plans/vn-mode-pkg8.md §2.6.1）
@@ -368,36 +435,95 @@ pub(crate) fn fill(app: &tauri::AppHandle, world: &str, used: &[Backdrop]) -> Re
         return Ok(());
     }
     let library = Library::of(&root, world)?;
-    let missing: Vec<BgSlot> = used
-        .iter()
-        .filter(|backdrop| !library.has(&backdrop.slug, &backdrop.period))
-        .map(|backdrop| BgSlot::new(world, backdrop.clone(), false))
-        .collect();
+    let places = Places::load(&root, world);
+    let mut missing: Vec<BgSlot> = Vec::new();
+    for backdrop in used {
+        let slot = BgSlot::new(world, backdrop.base(&places), BgMode::Base);
+        let periods = places.periods(&backdrop.slug);
+        if library.wants(&slot, &periods) && !missing.contains(&slot) {
+            missing.push(slot);
+        }
+    }
     vn_sprites::queue::enqueue_backgrounds(app, missing);
     Ok(())
 }
 
-/// 一張背景：庫裡同地點有別的時段就當參考圖改光線，沒有而卡開了封面參考就以封面取畫風（API 來源不帶參考圖，從零生）；
-/// 卡地點用卡上的描述與尺度，卡畫風與背景規則接在提示詞後。失敗自動重試一次。
-/// 寫前重驗桌仍在、鍵仍空（重生成除外）。Ok(false)＝桌已不在或別人先寫好，結果丟掉
+/// 串流中已寫完的 `[bg]` 行（plans/vn-setup-wizard.md §3 改動 a）：接在正式格後面一起補時段，回串流段用到的背景。
+/// 只看換行結尾的行，最後一行還在長就不算；沒寫時段的沿用正式格與本段前文
+pub(crate) fn streamed(
+    formal: &mut [crate::chat_turn::VnEventCells],
+    text: &str,
+    source: &crate::chat_turn::VnSource,
+    roster: &crate::chat_turn::VnRoster,
+) -> Vec<Backdrop> {
+    let complete = &text[..text.rfind('\n').unwrap_or(0)];
+    let mut stream = crate::chat_turn::parse_text(complete, source, roster).cells;
+    if !stream
+        .iter()
+        .any(|cell| matches!(cell, crate::chat_turn::VnCell::Bg { .. }))
+    {
+        return Vec::new();
+    }
+    // 正式格已補好的時段（含幕首快照沿用的）原樣保留：重解析時當成明寫
+    for cell in formal.iter_mut().flat_map(|event| event.cells.iter_mut()) {
+        if let crate::chat_turn::VnCell::Bg {
+            time,
+            period: Some(period),
+            ..
+        } = cell
+        {
+            *time = Some(period.clone());
+        }
+    }
+    resolve_scene(
+        formal
+            .iter_mut()
+            .map(|event| &mut event.cells)
+            .chain(std::iter::once(&mut stream)),
+        None,
+        &roster.places,
+    );
+    stream
+        .into_iter()
+        .filter_map(|cell| match cell {
+            crate::chat_turn::VnCell::Bg {
+                location,
+                slug,
+                period,
+                ..
+            } => Some(Backdrop {
+                location,
+                slug,
+                period: period?,
+            }),
+            _ => None,
+        })
+        .fold(Vec::new(), |mut used, backdrop| {
+            if !used.contains(&backdrop) {
+                used.push(backdrop);
+            }
+            used
+        })
+}
+
+/// 一張背景。基底與重生成從零生（卡開了封面參考就以封面取畫風；API 來源不帶參考圖）；
+/// 專屬時段圖以同地點既有的圖當參考改光線。卡地點用卡上的描述與尺度，卡畫風與背景規則接在提示詞後。失敗自動重試一次。
+/// 寫前重驗桌仍在、基底仍缺（重生成與專屬圖除外）。Ok(false)＝桌已不在或別人先寫好，結果丟掉
 pub(crate) async fn job(app: &tauri::AppHandle, slot: &BgSlot) -> Result<bool, String> {
     let root = data_root(app)?;
     let library = Library::of(&root, &slot.world)?;
     let backdrop = &slot.backdrop;
-    if !library.wants(backdrop, slot.force) {
+    let card = data::vn::read_card(&root, &slot.world);
+    let places = Places::of(card.as_ref());
+    let periods = places.periods(&backdrop.slug);
+    if !library.wants(slot, &periods) {
         return Ok(true);
     }
     let config = vn_sprites::read_config(app)?;
-    let card = data::vn::read_card(&root, &slot.world);
-    let places = Places::of(card.as_ref());
     let source = vn_sprites::sprite_source(&config);
-    let same_place = match source {
-        "api" => None,
-        _ => library.reference(
-            &backdrop.slug,
-            &backdrop.period,
-            &places.periods(&backdrop.slug),
-        ),
+    let same_place = match (source, slot.mode) {
+        ("api", _) | (_, BgMode::Base | BgMode::Regenerate) => None,
+        (_, BgMode::Dedicated) => library.reference(&backdrop.slug, &backdrop.period, &periods),
     };
     let (kind, reference) = match same_place {
         Some(png) => (BackgroundReference::SameLocation, Some(png)),
@@ -438,10 +564,10 @@ pub(crate) async fn job(app: &tauri::AppHandle, slot: &BgSlot) -> Result<bool, S
     };
     let _permit = data::world_write_permit_async(&slot.world).await?;
     let gone = data::read_state(&root, &slot.world).is_err();
-    if gone || !library.wants(backdrop, slot.force) {
+    if gone || !library.wants(slot, &periods) {
         return Ok(false);
     }
-    library.write(backdrop, &png)?;
+    library.write(backdrop, slot.mode == BgMode::Base, &png)?;
     Ok(true)
 }
 

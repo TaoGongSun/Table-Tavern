@@ -53,7 +53,7 @@ fn install_base_writes_meta_and_reports_missing_faces() {
     let fx = Fixture::new();
     let dir = fx.dir();
     assert!(dir.read().is_none() && dir.missing_faces(&faces()).is_empty());
-    dir.install_base(&png(100, 150), FACE, false, &faces())
+    dir.install_base(&png(100, 150), FACE, false, &faces(), None)
         .unwrap();
     let Loaded { meta, size, .. } = dir.read().unwrap();
     assert_eq!(size, (100, 150));
@@ -66,7 +66,7 @@ fn install_base_writes_meta_and_reports_missing_faces() {
     dir.write_face(None, "happy", &png(40, 40)).unwrap();
     assert_eq!(base_missing(&dir), ["sad", "angry", "surprised"]);
     // 換定稿：舊臉層全部作廢
-    dir.install_base(&png(100, 150), FACE, false, &faces())
+    dir.install_base(&png(100, 150), FACE, false, &faces(), None)
         .unwrap();
     assert_eq!(dir.missing_faces(&faces()).len(), 4);
 }
@@ -76,7 +76,7 @@ fn install_base_writes_meta_and_reports_missing_faces() {
 fn stale_face_job_is_discarded() {
     let fx = Fixture::new();
     let dir = fx.dir();
-    dir.install_base(&png(100, 150), FACE, false, &faces())
+    dir.install_base(&png(100, 150), FACE, false, &faces(), None)
         .unwrap();
     let (fresh, _) = dir.snapshot(None, "sad").unwrap();
     assert!(dir
@@ -98,7 +98,7 @@ fn stale_face_job_is_discarded() {
         .unwrap());
 
     let (before_upload, _) = dir.snapshot(None, "surprised").unwrap();
-    dir.install_base(&png(100, 150), FACE, false, &faces())
+    dir.install_base(&png(100, 150), FACE, false, &faces(), None)
         .unwrap();
     assert!(!dir
         .write_face_if_current(None, "surprised", &before_upload, &png(40, 40))
@@ -110,7 +110,7 @@ fn stale_face_job_is_discarded() {
 fn set_face_rejects_out_of_range() {
     let fx = Fixture::new();
     let dir = fx.dir();
-    dir.install_base(&png(100, 150), FACE, true, &faces())
+    dir.install_base(&png(100, 150), FACE, true, &faces(), None)
         .unwrap();
     assert!(dir
         .set_face(None, FaceBox { x: 80, ..FACE }, &faces())
@@ -125,7 +125,7 @@ fn set_face_rejects_out_of_range() {
 fn loaded_meta_is_validated() {
     let fx = Fixture::new();
     let dir = fx.dir();
-    dir.install_base(&png(100, 150), FACE, false, &faces())
+    dir.install_base(&png(100, 150), FACE, false, &faces(), None)
         .unwrap();
     let raw = serde_json::json!({
         "version": 1,
@@ -182,7 +182,7 @@ fn base_missing(dir: &SpriteDir) -> Vec<String> {
 fn variants_track_their_own_face_sets() {
     let fx = Fixture::new();
     let dir = fx.dir();
-    dir.install_base(&png(100, 150), FACE, false, &faces())
+    dir.install_base(&png(100, 150), FACE, false, &faces(), None)
         .unwrap();
     dir.install_variant("v1", "Armor", &png(100, 150), None, &faces())
         .unwrap();
@@ -232,7 +232,7 @@ fn variants_track_their_own_face_sets() {
 fn traversal_keys_never_leave_the_sprite_folder() {
     let fx = Fixture::new();
     let dir = fx.dir();
-    dir.install_base(&png(100, 150), FACE, false, &faces())
+    dir.install_base(&png(100, 150), FACE, false, &faces(), None)
         .unwrap();
     let outside = fx.root.join("outside.png");
     std::fs::write(&outside, b"keep").unwrap();
@@ -255,7 +255,7 @@ fn traversal_keys_never_leave_the_sprite_folder() {
 fn base_change_detaches_shared_variants() {
     let fx = Fixture::new();
     let dir = fx.dir();
-    dir.install_base(&png(100, 150), FACE, false, &faces())
+    dir.install_base(&png(100, 150), FACE, false, &faces(), None)
         .unwrap();
     dir.install_variant("v1", "Armor", &png(100, 150), None, &faces())
         .unwrap();
@@ -266,7 +266,7 @@ fn base_change_detaches_shared_variants() {
         w: 30,
         h: 30,
     };
-    dir.install_base(&png(80, 200), moved, false, &faces())
+    dir.install_base(&png(80, 200), moved, false, &faces(), None)
         .unwrap();
     let meta = dir.read().unwrap().meta;
     assert_eq!(
@@ -290,7 +290,7 @@ fn extra_expressions_follow_fixed_ones_and_reserved_keys_are_skipped() {
     let fx = Fixture::new();
     let dir = fx.dir();
     let faces = face_keys(&["tender".to_owned()]);
-    dir.install_base(&png(100, 150), FACE, false, &faces)
+    dir.install_base(&png(100, 150), FACE, false, &faces, None)
         .unwrap();
     dir.install_variant("v2", "泳裝", &png(100, 150), Some(FACE), &faces)
         .unwrap();

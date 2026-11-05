@@ -68,6 +68,9 @@ const COPY = {
     vnCloseDropOutline: "大綱還沒開桌，關掉會丟掉。確定關閉？",
     vnBranchingRewriteHint: "結局照原本的程度寫；按「重寫劇本」才會照新設定重寫結局",
     vnArtBackdropPending: "背景生成中",
+    vnArtFailed: "{n} 張立繪失敗",
+    vnArtRetry: "重試",
+    vnSpriteQueued: "排隊中",
   },
   "zh-CN": {
     vnStepIdea: "点子",
@@ -136,6 +139,9 @@ const COPY = {
     vnCloseDropOutline: "大纲还没开桌，关掉会丢掉。确定关闭？",
     vnBranchingRewriteHint: "结局照原本的程度写；按「重写剧本」才会照新设定重写结局",
     vnArtBackdropPending: "背景生成中",
+    vnArtFailed: "{n} 张立绘失败",
+    vnArtRetry: "重试",
+    vnSpriteQueued: "排队中",
   },
   en: {
     vnStepIdea: "Idea",
@@ -204,6 +210,9 @@ const COPY = {
     vnCloseDropOutline: "The outline hasn't been turned into a table yet and will be lost. Close anyway?",
     vnBranchingRewriteHint: "Endings follow the old setting until you rewrite the script",
     vnArtBackdropPending: "background preparing",
+    vnArtFailed: "{n} sprite(s) failed",
+    vnArtRetry: "Retry",
+    vnSpriteQueued: "Queued",
   },
   ja: {
     vnStepIdea: "アイデア",
@@ -272,6 +281,9 @@ const COPY = {
     vnCloseDropOutline: "アウトラインはまだ卓になっていないので、閉じると失われます。閉じますか？",
     vnBranchingRewriteHint: "エンディングは元の設定のまま。シナリオを書き直すと新設定で作り直します",
     vnArtBackdropPending: "背景準備中",
+    vnArtFailed: "立ち絵 {n} 枚が失敗",
+    vnArtRetry: "再試行",
+    vnSpriteQueued: "順番待ち",
   },
   ko: {
     vnStepIdea: "아이디어",
@@ -340,6 +352,9 @@ const COPY = {
     vnCloseDropOutline: "개요가 아직 테이블이 되지 않아 닫으면 사라집니다. 닫을까요?",
     vnBranchingRewriteHint: "엔딩은 기존 설정대로입니다. 시나리오를 다시 쓰면 새 설정으로 바뀝니다",
     vnArtBackdropPending: "배경 준비 중",
+    vnArtFailed: "스탠딩 {n}장 실패",
+    vnArtRetry: "다시 시도",
+    vnSpriteQueued: "대기 중",
   },
   es: {
     vnStepIdea: "Idea",
@@ -408,6 +423,9 @@ const COPY = {
     vnCloseDropOutline: "El esquema aún no es una mesa y se perderá. ¿Cerrar de todos modos?",
     vnBranchingRewriteHint: "Los finales siguen el ajuste anterior hasta reescribir el guion",
     vnArtBackdropPending: "fondo en preparación",
+    vnArtFailed: "{n} sprite(s) fallaron",
+    vnArtRetry: "Repetir",
+    vnSpriteQueued: "En cola",
   },
   "pt-BR": {
     vnStepIdea: "Ideia",
@@ -476,6 +494,9 @@ const COPY = {
     vnCloseDropOutline: "O esboço ainda não virou mesa e será perdido. Fechar mesmo assim?",
     vnBranchingRewriteHint: "Os finais seguem o ajuste antigo até reescrever o roteiro",
     vnArtBackdropPending: "fundo em preparo",
+    vnArtFailed: "{n} sprite(s) falharam",
+    vnArtRetry: "Repetir",
+    vnSpriteQueued: "Na fila",
   },
   de: {
     vnStepIdea: "Idee",
@@ -544,6 +565,9 @@ const COPY = {
     vnCloseDropOutline: "Der Entwurf ist noch kein Tisch und geht verloren. Trotzdem schließen?",
     vnBranchingRewriteHint: "Die Enden folgen der alten Einstellung, bis du das Drehbuch neu schreibst",
     vnArtBackdropPending: "Hintergrund in Arbeit",
+    vnArtFailed: "{n} Sprite(s) fehlgeschlagen",
+    vnArtRetry: "Nochmal",
+    vnSpriteQueued: "In Warteschlange",
   },
   fr: {
     vnStepIdea: "Idée",
@@ -612,6 +636,9 @@ const COPY = {
     vnCloseDropOutline: "Le plan n’est pas encore une table et sera perdu. Fermer quand même ?",
     vnBranchingRewriteHint: "Les fins suivent l’ancien réglage tant que le scénario n’est pas réécrit",
     vnArtBackdropPending: "décor en préparation",
+    vnArtFailed: "{n} sprite(s) en échec",
+    vnArtRetry: "Réessayer",
+    vnSpriteQueued: "En attente",
   },
   ru: {
     vnStepIdea: "Идея",
@@ -680,6 +707,9 @@ const COPY = {
     vnCloseDropOutline: "План ещё не стал столом и пропадёт. Всё равно закрыть?",
     vnBranchingRewriteHint: "Концовки останутся прежними, пока не перепишете сценарий",
     vnArtBackdropPending: "фон готовится",
+    vnArtFailed: "Не удалось: спрайтов {n}",
+    vnArtRetry: "Повторить",
+    vnSpriteQueued: "В очереди",
   },
 } as const;
 

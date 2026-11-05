@@ -10,6 +10,8 @@ const state = vi.hoisted(() => ({
   calls: [] as [string, Record<string, unknown>][],
   bible: null as unknown,
   candidates: [] as string[],
+  /** 已裝定稿是哪張候選（undefined＝沒定稿） */
+  installed: undefined as string | null | undefined,
   pickFails: false,
 }));
 vi.mock("@tauri-apps/api/core", () => ({
@@ -35,7 +37,10 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "detect_clis":
         return [];
       case "vn_sprite_read":
-        return { sprite: null, candidates: state.candidates };
+        return {
+          sprite: state.installed === undefined ? null : { body: "data:image/png;base64,", meta: { candidate: state.installed ?? undefined } },
+          candidates: state.candidates,
+        };
       case "vn_sprite_candidate":
         return "data:image/png;base64,";
       case "vn_sprite_generate":
@@ -62,6 +67,7 @@ beforeEach(() => {
   state.calls.length = 0;
   state.bible = null;
   state.candidates = [];
+  state.installed = undefined;
   state.pickFails = false;
   host = document.createElement("div");
   document.body.appendChild(host);
@@ -123,9 +129,10 @@ it("walks idea → story → art with a blank idea, keeping the draft across ste
   const [, expandArgs] = called("generate_table_expand")[0];
   expect(expandArgs).toMatchObject({ tableKind: "vn", spoilerLock: true, preferences: { length: "short" } });
   expect(onCreated).toHaveBeenCalledWith("W");
-  // 建立後：聖經寫一次、候選排一次（③ 隱藏掛載），① 變灰
+  // 建立後：聖經寫一次、後端自動定稿排一次（③ 隱藏掛載；前端不自己生候選），① 變灰
   expect(called("vn_bible_generate")).toHaveLength(1);
-  expect(called("vn_sprite_generate")).toHaveLength(1);
+  expect(called("vn_sprites_prepare")).toHaveLength(1);
+  expect(called("vn_sprite_generate")).toHaveLength(0);
   expect(document.querySelector(".vn-stepbar li[data-disabled]")?.textContent).toContain(t("vnStepIdea"));
   expect(called("vn_backgrounds_fill")).toHaveLength(0);
 });
@@ -139,7 +146,7 @@ it("resumes at art: queues the backdrop, installs the shown candidate and clears
   // 階段寫入後大廳清單重讀（桌卡標記與重進路由用最新階段）
   expect(onStage).toHaveBeenCalled();
   expect(called("vn_backgrounds_fill")).toHaveLength(1);
-  // 已有候選：不重排
+  // 前端不自己生候選
   expect(called("vn_sprite_generate")).toHaveLength(0);
   expect(called("vn_bible_generate")).toHaveLength(0);
   expect(called("vn_sprites_fill")).toHaveLength(0);
@@ -161,6 +168,8 @@ it("resumes at art: queues the backdrop, installs the shown candidate and clears
   await act(async () => button(t("vnStartGame")).click());
   await settle();
   expect(called("vn_sprite_pick")[0][1]).toMatchObject({ characterId: "c1", file: "a.png" });
+  const prepares = called("vn_sprites_prepare");
+  expect(prepares[prepares.length - 1][1]).toMatchObject({ worldId: "W", adopt: [] });
   const setups = called("vn_setup_set");
   expect(setups[setups.length - 1][1]).toMatchObject({ stage: null });
   expect(called("vn_sprites_fill")).toHaveLength(1);
@@ -178,4 +187,29 @@ it("stays on art and shows the failure when installing the shown candidate fails
   expect(onFinish).not.toHaveBeenCalled();
   expect(called("vn_setup_set").some(([, args]) => args.stage === null)).toBe(false);
   expect(document.querySelector('.vn-sprite-row [role="alert"]')?.textContent).toContain("disk full");
+});
+
+it("knows which candidate is installed: the same one is not picked again, an upload is not replaced", async () => {
+  state.bible = { chapter_max: 5, branching: "full", endings: [], chapters: [], secrets: [], flags: [] };
+  state.candidates = ["b.png", "a.png"];
+  state.installed = "a.png";
+  await mount({ worldId: "W", step: "art" });
+  // 後端自動定稿裝了舊的那張：預設選它，「挑定這張」變灰
+  expect(document.querySelector<HTMLButtonElement>(".vn-picker-actions .btn-primary")!.disabled).toBe(true);
+  await act(async () => button(t("vnStartGame")).click());
+  await settle();
+  expect(called("vn_sprite_pick")).toHaveLength(0);
+
+  // 上傳的定稿（不記候選）：不選任何候選，按開始不蓋掉上傳
+  act(() => root.unmount());
+  root = createRoot(host);
+  state.calls.length = 0;
+  state.installed = null;
+  state.candidates = ["a.png"];
+  await mount({ worldId: "W", step: "art" });
+  // 唯一的候選沒被選：仍列出縮圖可點回
+  expect(document.querySelectorAll(".vn-picker-thumb")).toHaveLength(1);
+  await act(async () => button(t("vnStartGame")).click());
+  await settle();
+  expect(called("vn_sprite_pick")).toHaveLength(0);
 });

@@ -199,7 +199,7 @@ pub(crate) async fn vn_sprite_pick(
 ) -> Result<(), String> {
     let dir = SpriteDir::of(&data_root(&app)?, &world_id, &character_id)?;
     let png = dir.candidate_bytes(&file)?;
-    vn_sprites::install_base(&app, &world_id, &character_id, png).await
+    vn_sprites::install_base(&app, &world_id, &character_id, png, Some(&file)).await
 }
 
 /// 上傳替換：expression 為 None＝換定稿（不透明圖會先去背），否則換該組（variant＝獨立表情組）的表情臉層
@@ -215,7 +215,7 @@ pub(crate) async fn vn_sprite_upload(
     checked_key(variant.as_deref())?;
     let png = generated_image::normalize(GeneratedImage::Bytes(data)).await?;
     match expression {
-        None => vn_sprites::install_base(&app, &world_id, &character_id, png).await,
+        None => vn_sprites::install_base(&app, &world_id, &character_id, png, None).await,
         Some(expression) if faces_of(&app, &world_id, &character_id)?.contains(&expression) => {
             let _permit = data::world_write_permit_async(&world_id).await?;
             vn_sprites::upload_face(
@@ -294,9 +294,22 @@ pub(crate) fn vn_sprites_fill(app: tauri::AppHandle, world_id: String) -> Result
     Ok(())
 }
 
+/// 自動定稿（plans/vn-setup-wizard.md §2 ③）：沒定稿的角色在背景生候選並裝成定稿（冪等）。
+/// `adopt`＝按開始時正在再骰的角色：再骰完用新圖
+#[tauri::command]
+pub(crate) fn vn_sprites_prepare(
+    app: tauri::AppHandle,
+    world_id: String,
+    adopt: Vec<String>,
+) -> Result<(), String> {
+    vn_sprites::prepare::start(&app, &world_id, &adopt)
+}
+
 #[tauri::command]
 pub(crate) fn vn_sprites_status(world_id: String) -> Vec<SlotStatus> {
-    queue::snapshot(&world_id)
+    let mut list = queue::snapshot(&world_id);
+    list.extend(vn_sprites::prepare::snapshot(&world_id));
+    list
 }
 
 /// 新增或重骰變體（key 有值＝重骰那個；label 就是服裝／姿態描述）

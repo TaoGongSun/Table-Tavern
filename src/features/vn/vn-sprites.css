@@ -213,3 +213,17 @@
 .vn-source .field-note {
   margin: 0;
 }
+/* 等待中的文字（③ 自動生成、標題畫面進度）：緩慢呼吸，讓人知道在跑 */
+.vn-pending {
+  animation: vn-pending 1.6s ease-in-out infinite alternate;
+}
+@keyframes vn-pending {
+  to {
+    opacity: 0.45;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vn-pending {
+    animation: none;
+  }
+}

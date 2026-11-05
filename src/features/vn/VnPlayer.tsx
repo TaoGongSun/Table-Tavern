@@ -204,7 +204,7 @@ export function VnPlayer({
   const stage = useMemo(() => stageAt(vn.cells, play.flatIndex), [vn.cells, play.flatIndex]);
   const sprites = useSprites(worldId);
   const backgrounds = useBackgrounds(worldId);
-  // 正式格有新事件落檔就排入這幕缺的背景（串流暫定格不排：中斷的回合不替玩家花額度）
+  // 正式格有新事件落檔就排入這幕缺的背景（串流中寫完的 `[bg]` 行由 useVnCells 提早排）
   useEffect(() => {
     invoke("vn_backgrounds_fill", { worldId, scene }).catch(() => {});
   }, [worldId, scene, vn.lastEventKey]);
@@ -214,7 +214,7 @@ export function VnPlayer({
   useEffect(() => {
     if (backdrop) load(backdrop);
   }, [backdrop, load]);
-  const backdropState = backdropId ? backgrounds.status[backdropId]?.state : undefined;
+  const backdropState = backdrop ? backgrounds.statusOf(backdrop)?.state : undefined;
   const [saveError, setSaveError] = useState<string | null>(null);
   const [rerollMessage, setRerollMessage] = useState<string | null>(null);
 

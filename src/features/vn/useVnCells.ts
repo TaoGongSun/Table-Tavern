@@ -12,6 +12,8 @@ import type {
 import { eventKeyOf, flatten, pendingCells, type FlatCell } from "./vn-cells";
 
 const THROTTLE_MS = 150;
+/** 換行結尾的 `[bg: …]` 行（寫完的背景標記；最後一行還在長的不算） */
+const BG_LINE = /^[ \t]*\[[ \t]*bg[ \t]*[:：][^\n]*\][ \t]*\n/gim;
 
 export interface Snapshot {
   generation: number;
@@ -120,7 +122,7 @@ export function useVnCells({
     }
   }, [generating, refresh]);
 
-  const text = useRef({ streamText, generating, parsed: 0, seq: 0 });
+  const text = useRef({ streamText, generating, parsed: 0, seq: 0, bgLines: 0, bgGeneration: -1 });
   text.current = { ...text.current, streamText, generating };
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -132,6 +134,13 @@ export function useVnCells({
     const seq = ++text.current.seq;
     text.current.parsed = raw.length;
     const source = who.id === "" ? { kind: "gm" } : { kind: "character", self_id: who.id };
+    // 串流中寫完一行新的 `[bg]` 就提早排背景（出圖 30–40 秒，等落檔常趕不上）；只在串流進行中送，中斷的回合不再多排
+    const bgLines = raw.match(BG_LINE)?.length ?? 0;
+    if (text.current.bgGeneration !== generation) text.current = { ...text.current, bgGeneration: generation, bgLines: 0 };
+    if (bgLines > text.current.bgLines) {
+      text.current.bgLines = bgLines;
+      invoke("vn_backgrounds_prefetch", { worldId, scene, source, text: raw }).catch(() => {});
+    }
     try {
       const result = await invoke<VnText | null>("parse_vn_text", { worldId, source, text: raw });
       const stale = seq !== text.current.seq || generation !== streamGen.current;
@@ -141,7 +150,7 @@ export function useVnCells({
     } catch (reason) {
       callbacks.current.onError(String(reason));
     }
-  }, [worldId]);
+  }, [worldId, scene]);
 
   useEffect(() => {
     if (!generating || !streamText) {

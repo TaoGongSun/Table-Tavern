@@ -1,5 +1,6 @@
 use super::*;
 use crate::chat_turn::VnCell;
+use crate::vn_sprites::queue::{BgMode, BgSlot};
 
 fn bg(location: &str, time: Option<&str>) -> VnCell {
     VnCell::Bg {
@@ -125,33 +126,107 @@ fn scene_start_comes_from_the_first_snapshot() {
     assert_eq!(events[0].len(), 1);
 }
 
-/// 已存在不覆寫（除非重生成）；地點名稱只記第一次
+fn slot(backdrop: &Backdrop, mode: BgMode) -> BgSlot {
+    BgSlot::new("w", backdrop.clone(), mode)
+}
+
+/// 基底：地點有任何圖就不再生（換時段不排）；重生成與專屬圖照寫。地點名稱只記第一次、基底時段記第一張基底
 #[test]
-fn library_writes_once_unless_forced() {
+fn library_keeps_one_base_per_place() {
     let root = std::env::temp_dir().join(format!("tt-vn-bg-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     let world = data::create_world(&root, "背景").unwrap();
     let library = Library::of(&root, &world).unwrap();
-    let harbor = Backdrop::new("港口", Some("黃昏"), None, &Places::default());
-    assert!(library.wants(&harbor, false));
-    library.write(&harbor, b"one").unwrap();
-    assert!(!library.wants(&harbor, false));
-    assert!(library.wants(&harbor, true));
+    let places = Places::default();
+    let all = periods_of(None);
+    let dusk = Backdrop::new("港口", Some("黃昏"), None, &places);
+    let base = dusk.base(&places);
+    assert_eq!(base.period, "day");
+    assert!(library.wants(&slot(&base, BgMode::Base), &all));
+    library.write(&base, true, b"day").unwrap();
+    assert!(!library.wants(&slot(&dusk.base(&places), BgMode::Base), &all));
+    assert!(library.wants(&slot(&base, BgMode::Regenerate), &all));
+    // 沒有專屬圖的時段讀到基底（period＝day，前端疊遮罩）；有專屬圖就用專屬圖
+    let shown = library.shown(&base.slug, "dusk", &all).unwrap();
+    assert_eq!(
+        (shown.period.as_str(), shown.png.as_slice()),
+        ("day", &b"day"[..])
+    );
     library
         .write(
-            &Backdrop::new(" 港口", Some("夜"), None, &Places::default()),
-            b"two",
+            &Backdrop::new(" 港口", Some("夜"), None, &places),
+            false,
+            b"night",
         )
         .unwrap();
     assert_eq!(
-        library
-            .reference(&harbor.slug, "night", &periods_of(None))
-            .as_deref(),
-        Some(&b"one"[..])
+        library.shown(&base.slug, "night", &all).unwrap().png,
+        b"night"
+    );
+    assert_eq!(
+        library.reference(&base.slug, "dusk", &all).as_deref(),
+        Some(&b"day"[..])
     );
     let names = std::fs::read_to_string(library.names_path()).unwrap();
     assert!(names.contains("\"港口\"") && !names.contains("\" 港口\""));
+    assert!(names.contains("\"base\": \"day\""));
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// 舊桌只有時段圖、backgrounds.json 只記地名：清單裡第一張有圖的當基底，舊格式照讀
+#[test]
+fn legacy_library_falls_back_to_existing_period() {
+    let root = std::env::temp_dir().join(format!("tt-vn-bg-old-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let world = data::create_world(&root, "舊背景").unwrap();
+    let library = Library::of(&root, &world).unwrap();
+    let all = periods_of(None);
+    let night = Backdrop::new("港口", Some("夜"), None, &Places::default());
+    library.write(&night, false, b"night").unwrap();
+    assert_eq!(
+        library.base_period(&night.slug, &all).as_deref(),
+        Some("night")
+    );
+    assert!(!library.wants(&slot(&night.base(&Places::default()), BgMode::Base), &all));
+    assert_eq!(
+        library.shown(&night.slug, "day", &all).unwrap().period,
+        "night"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// 串流 `[bg]`：只算換行結尾的行，沒寫時段沿用正式格，同鍵去重
+#[test]
+fn streamed_backdrops_inherit_formal_period() {
+    let mut formal = vec![crate::chat_turn::VnEventCells {
+        event_id: None,
+        kind: data::TranscriptKind::Narration,
+        cells: vec![bg("港口", Some("黃昏")), text("a")],
+        hints: Vec::new(),
+        chapter: None,
+        recap: false,
+        choice: None,
+        index: 0,
+    }];
+    let roster = crate::chat_turn::VnRoster::default();
+    let text = "走了很久。\n[bg: 碼頭]\n說話。\n[bg: 碼頭]\n[bg: 教室 | 夜]";
+    let used = streamed(&mut formal, text, &crate::chat_turn::VnSource::Gm, &roster);
+    assert_eq!(
+        used,
+        vec![Backdrop::new(
+            "碼頭",
+            Some("黃昏"),
+            None,
+            &Places::default()
+        )]
+    );
+    assert!(streamed(
+        &mut formal,
+        "還在寫 [bg",
+        &crate::chat_turn::VnSource::Gm,
+        &roster
+    )
+    .is_empty());
 }
 
 fn card_places() -> Places {
@@ -232,7 +307,7 @@ fn reference_searches_the_place_periods() {
     let library = Library::of(&root, &world).unwrap();
     let places = card_places();
     let moonlight = Backdrop::new("cave", Some("moonlight"), None, &places);
-    library.write(&moonlight, b"moon").unwrap();
+    library.write(&moonlight, true, b"moon").unwrap();
     let periods = places.periods(&moonlight.slug);
     assert_eq!(
         library

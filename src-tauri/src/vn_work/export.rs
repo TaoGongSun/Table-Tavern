@@ -520,9 +520,11 @@ fn sprite(
     let Ok(raw) = std::fs::read(dir.join("sprite.json")) else {
         return Ok(());
     };
-    let Ok(meta) = serde_json::from_slice::<crate::vn_sprites::store::SpriteMeta>(&raw) else {
+    let Ok(mut meta) = serde_json::from_slice::<crate::vn_sprites::store::SpriteMeta>(&raw) else {
         return Ok(());
     };
+    // 候選不進作品包，記哪張候選裝的也不帶
+    meta.candidate = None;
     let id = character.to_owned();
     if !out.image(
         Asset::SpriteBody {

@@ -32,12 +32,15 @@ export function SpriteFigure({
   variant,
   alt,
   className = "vn-layers",
+  tint = null,
 }: {
   sprite: SpriteView;
   expression: string;
   variant?: string;
   alt: string;
   className?: string;
+  /** 夜晚的色調：以身體圖當遮罩疊色，只染到人物、不染透明處 */
+  tint?: { color: string; opacity: number } | null;
 }) {
   const { body, width, height, face, box } = spriteLayers(sprite, variant, expression);
   return (
@@ -53,6 +56,17 @@ export function SpriteFigure({
     >
       <img src={body} alt={alt} />
       {face && <img className="vn-face" src={face} alt="" style={percentBox(box, width, height)} />}
+      {tint && (
+        <div
+          className="vn-sprite-tint"
+          style={{
+            backgroundColor: tint.color,
+            opacity: tint.opacity,
+            maskImage: `url("${body}")`,
+            WebkitMaskImage: `url("${body}")`,
+          }}
+        />
+      )}
     </div>
   );
 }

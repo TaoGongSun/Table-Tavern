@@ -375,6 +375,8 @@ export interface SpriteMeta {
   variants: { key: string; label: string; face: FaceBox | null }[];
   default: string;
   revs: Record<string, number>;
+  /** 定稿是哪張候選裝的；上傳或舊桌沒有 */
+  candidate?: string;
 }
 
 /** `vn_sprites_read_all`／`vn_sprite_read`：定稿與已生好的臉層（data URL） */
@@ -414,6 +416,12 @@ export interface SpriteSlotStatus {
 export interface Backdrop {
   location: string;
   slug: string;
+  period: string;
+}
+
+/** `vn_background_read`：period＝這張圖實際的時段（與要的時段不同＝同地點基底，舞台疊色調遮罩） */
+export interface BackgroundView {
+  src: string;
   period: string;
 }
 

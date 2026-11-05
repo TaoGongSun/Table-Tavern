@@ -12,19 +12,21 @@ Status: 進行中（分支 `vn-setup-wizard`；設計見 [plans/vn-setup-wizard.
 維持串流照播；本案先做、合 main 後再試玩（實測佇列第 30 項順延）；同地點換時段用色調遮罩、專屬時段圖在一覽手動生成。
 
 ## 目前進度
-- 包 A 精靈實作完成，待主線驗收：三步精靈在 `src/features/vn/wizard/`（VnWizard 殼、IdeaStep、StoryBuild＋StorySpec、ArtStep、vn-preferences、useArtProgress），大綱預覽與草稿 hook 抽成 `features/lobby/OutlinePreview.tsx`、`useTableGenesis.ts`，聊天桌 `GenerateTableDialog` 只剩組裝。
-- 後端：vn.json 加 `preferences`、`setup`（`story`／`art`，按開始遊戲成功清掉）；`generate_table_outline`／`generate_table_expand` 帶 `preferences`（有值＝VN，空白點子放行；聊天桌照舊拒空）；展開建桌時寫偏好、劇透鎖、`setup=story`，名字有填建只有名字的玩家卡並設 `player_card_id`；聖經提示詞讀 vn.json 偏好（首次與重寫劇本共用），生成後章數夾進長度區間、分支照玩家選的；`list_worlds` 帶 `setup`；新命令 `vn_setup_set(worldId, stage, spoilerLock)`。
-- 大廳：「你的牌桌」旁加「匯入 VN 作品」鈕（選 .ttvn）；`setup` 有值的桌標「設定未完成」，點進去回精靈對應步驟；按「開始遊戲」先到標題畫面（新遊戲的等待室），露「立繪準備中 n/N」。② 劇本規格層的選擇程度可改（`vn_bible_save` 收 `branching`，改成線性時正規化補章門檻，vn.json 偏好跟著改）。
-- 下一步：主線驗收（含通道截圖）→ 送審 → 包 B。
+- 包 A 精靈完成並通過驗收（Sol 兩輪＋常識審）：三步精靈在 `src/features/vn/wizard/`，後端 vn.json `preferences`／`setup`、偏好注入、`vn_setup_set`，大廳「設定未完成」與匯入 VN 作品鈕。
+- 包 B 資產時序實作完成，待主線驗收：串流中寫完的 `[bg]` 行提早排背景、後端自動定稿、同地點換時段改基底＋色調遮罩（細節見下節）。通道實測截圖在 scratchpad `vn-b2/`。
+- 下一步：主線驗收包 B → 送審 → 包 C 美術一覽。
 
-## 包 B 要接的介面
-- 設定階段旗標：`vn.json` `setup`（`story`／`art`／缺）＝設定沒走完；精靈換步驟呼叫 `vn_setup_set`，按「開始遊戲」成功傳 `stage: null` 清掉。美術進度不看它。
-- 候選排程（包 A 暫用前端）：`wizard/ArtStep.tsx` 在建桌完成、③ 隱藏掛載時對「沒定稿也沒候選」的角色依序呼叫 `vn_sprite_generate`（一次一張），③ 只接續不重排。精靈關掉（含按開始）後這個迴圈不再處理結果：B 要把它換成後端自動定稿工作（候選 → 安裝定稿 → 發 `vn-sprite-status` 的 `queued`／`done` → 補臉層），前端改成只讀狀態。
-- 定稿規則（包 A 已做的部分）：按開始時 `ArtStep` 的 `finishRef` 對沒定稿、有目前顯示候選的角色呼叫 `vn_sprite_pick`；失敗就留在 ③、該列顯示原因，再按開始＝重試。B 要補：再骰中按開始＝再骰完用新圖、還沒出圖的離開精靈後續生；自動工作開工與提交都檢查既有定稿與手動操作世代，手動挑定或上傳優先。
-- ② 劇本規格層：精靈換步、開始、關閉前自動存未存改動（`BibleTab` 的 `flushRef`）；`vn_bible_save` 在未遊玩桌會清掉凍結副本，首幕照新規格。設定階段寫入後 App 重讀大廳清單。
-- 進度顯示：標題畫面 `wizard/useArtProgress.ts` 以 `list_characters`＋`vn_sprites_read_all` 計數，聽 `vn-sprite-status` 的 `queued`／`done` 重算；B 的自動定稿發同一事件即可讓小字跟著動。
+## 包 B 已接／包 C 要接
+- 暫定背景：`vn_backgrounds_prefetch(worldId, scene, source, text)`——`useVnCells` 串流中每多一行換行結尾的 `[bg]` 就送一次整段串流文字；後端只看換行結尾的行，接在正式格後補時段（`vn_backgrounds::streamed`），走同一個 `fill` 去重。
+- 自動定稿：`vn_sprites::prepare`（命令 `vn_sprites_prepare(worldId, adopt)`，冪等、同桌一次一條）。③ 掛載時排一次；按開始時 `ArtStep` 先把「選了別張」的裝上，再骰中的角色放進 `adopt`（候選一生好就裝）。開工記定稿世代、裝前 `claim_base` 搶位、提交前再驗，玩家手動挑定／上傳／刪除就放棄。事件 `vn-sprite-status` 的 `expression: "base"`（queued／running／done／failed）；`vn_sprites_status` 併入排著、生成中與失敗的定稿（③ 重開、標題畫面靠它補讀）。跑的期間再被呼叫＝跑完再掃一輪，標題畫面「重試」就是再呼叫一次。設定已走完才接著補臉層。`sprite.json` 記 `candidate`（裝的是哪張候選；上傳＝無），③ 據此判斷「挑定這張」與按開始要不要裝，作品包匯出時拿掉。
+- 舞台：立繪換新（卡圖／剪影→定稿、換定稿）延到換格才套用並交叉淡入 0.6s，臉層後到淡入 0.3s；夜晚對立繪疊半強度夜色（以身體圖為遮罩的 multiply 層）。
+- 背景庫：每地點自動只生一張基底（時段清單第一項＝固定四時段的 day、卡自訂時段的第一個），`backgrounds.json` 每筆 `{name, base}`（舊桌只有地名照讀）。`BgSlot.mode`＝`Base`／`Regenerate`／`Dedicated`。
+- 包 C 讀取：`vn_background_read(slug, period)` 回 `{src, period}`，period＝圖實際時段（≠要的＝基底，舞台疊遮罩）；`Library::base_period` 依「記下的基底 → 清單第一項 → 第一張有圖的」決定基底；`Library::shown` 是讀取順序。遮罩色在 `StageBackdrop.tsx` 的 `TINTS`／`tintOf`，一覽的遮罩預覽可直接重用。
+- 包 C 生成專屬圖：`vn_background_generate_period(worldId, location, period)`（以同地點既有圖當參考改光線、覆寫該時段）；重生成 `vn_background_regenerate` 由前端帶「目前顯示那張」的實際時段。完成事件 `vn-background-status` done 後，`useBackgrounds` 會重讀同 slug 所有用過的時段。背景清單命令、上傳替換仍待包 C。
 
-## 已知限制（包 A）
-- 撰寫劇本途中關掉精靈又立刻點回來：聖經還沒寫回，會再呼叫一次生成（後寫的蓋掉先寫的，額度花兩次）；同理候選生成中關掉再開，那位角色可能多生一張候選。機率低，輕防，包 B 改成後端工作後自然消失。
-- ③「挑定這張」在已有定稿且只有一張候選時變灰（視為就是裝上去那張）；上傳定稿後若只有一張 AI 候選，要先再骰才能改用候選。
-- 立繪進度（③ 主鈕與標題畫面）只算已安裝定稿；精靈內候選要到按開始時才裝，所以剛建好就開始會顯示 0/N，等包 B 的後端自動定稿補上。
+## 已知限制
+- 撰寫劇本途中關掉精靈又立刻點回來：聖經還沒寫回，會再呼叫一次生成（額度花兩次）。機率低，輕防。
+- 自動定稿只在記憶體：重開 app 時在途的那位角色不續生，進精靈 ③ 會再排（已開演的桌要到立繪分頁手動生）。
+- 按開始的瞬間候選剛好寫完、前端還沒收到回覆時，那張不會被採用（維持先前的定稿）。機率低。
+- 舊桌與作品包匯入的桌：只有某時段圖的地點以那張當基底（例如只有夜景），其他時段疊遮罩在夜景上；新生成的地點不會。
+- 暫定 `[bg]` 只比落檔早「該行之後到回覆結束」這段時間（實測 haiku 約 3 秒）；模型把 `[bg]` 寫在開頭時省得多，寫在結尾時幾乎沒差。

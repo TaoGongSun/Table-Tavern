@@ -52,6 +52,16 @@
 .vn-backdrop-black {
   background: #000;
 }
+/* 時段色調遮罩：疊在基底圖上（StageBackdrop 給色與強度），換時段漸變 */
+.vn-tint {
+  position: absolute;
+  inset: 0;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+  transition:
+    opacity 1.2s,
+    background-color 1.2s;
+}
 /* 地點字卡：換地點出現 4 秒後淡出（Stage 計時）；字級與邊距跟播放器高度走 */
 .vn-location {
   position: absolute;
@@ -99,6 +109,29 @@
 .vn-layers .vn-face {
   right: auto;
   bottom: auto;
+  /* 臉層後到（背景補表情）淡入 */
+  animation: vn-fade 0.3s;
+}
+/* 換立繪（卡圖→定稿、換定稿）：舊的疊在原位淡出、新的淡入（Stage 的 Swap，0.6s） */
+.vn-sprite > .vn-swap-in {
+  animation:
+    vn-fade 0.6s,
+    vn-breathe 4s ease-in-out infinite;
+}
+.vn-sprite > .vn-swap-out {
+  position: absolute;
+  bottom: 0;
+  pointer-events: none;
+  animation: vn-fade-out 0.6s forwards;
+}
+/* 夜晚立繪壓半強度夜色：以身體圖為遮罩的色層（SpriteFigure）。WebKit 對有遮罩的層不套 mix-blend-mode，
+   所以用一般疊色（半透明深藍）取代 multiply，效果同樣是壓暗偏藍 */
+.vn-sprite-tint {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  mask-size: 100% 100%;
+  -webkit-mask-size: 100% 100%;
 }
 .vn-sprite > img,
 .vn-layers,
@@ -362,6 +395,7 @@
 @keyframes vn-breathe { 50% { transform: scale(1.015); } }
 @keyframes vn-bob { 50% { transform: translateY(3px); } }
 @keyframes vn-fade { from { opacity: 0; } }
+@keyframes vn-fade-out { to { opacity: 0; } }
 @keyframes vn-shake {
   20%, 60% { transform: translateX(-6px); }
   40%, 80% { transform: translateX(6px); }
