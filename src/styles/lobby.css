@@ -283,14 +283,53 @@ button.table-cover {
   white-space: nowrap;
 }
 
-/* VN 精靈沒走完：封面左上角色帶，點進去回精靈 */
+/* VN 封面左上同一條色帶：設定未完成＝琥珀；撰寫中＝深石板淺字加描邊與呼吸點；撰寫失敗＝警示色（字色沿用上面） */
 .table-cover-ribbon {
   position: absolute;
   top: 10px;
   left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
   padding: 2px 10px;
   border-radius: 0 var(--radius-s) var(--radius-s) 0;
   background: var(--amber);
   color: var(--surface-0);
   font: 600 var(--fs-meta) / 1.5 var(--font-ui);
+}
+
+.table-cover-ribbon[data-state="drafting"] {
+  background: var(--neutral-plate);
+  color: var(--neutral-plate-ink);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+
+.table-cover-ribbon[data-state="drafting"]::before {
+  content: "";
+  width: 0.5em;
+  height: 0.5em;
+  border-radius: 50%;
+  background: currentColor;
+  animation: table-ribbon-breathe 2.4s ease-in-out infinite;
+}
+
+.table-cover-ribbon[data-state="failed"] {
+  background: var(--danger);
+}
+
+@keyframes table-ribbon-breathe {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .table-cover-ribbon[data-state="drafting"]::before {
+    animation: none;
+    opacity: 1;
+  }
 }

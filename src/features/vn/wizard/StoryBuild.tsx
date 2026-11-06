@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import { t } from "../../../i18n";
 import { backendText } from "../../../shared/ui/backend-text";
-import { bibleErrorKey, useBible } from "../bible/useBible";
+import { acknowledgeBibleFailure, bibleDraft, bibleErrorKey, useBible } from "../bible/useBible";
 import { StorySpec } from "./StorySpec";
 
 export type BuildState = "running" | "done" | "failed";
@@ -44,24 +44,46 @@ export function StoryBuild({
   const [state, setState] = useState<BuildState>("running");
   const [message, setMessage] = useState("");
   const decided = useRef(false);
+  // 關掉精靈後這次生成還在跑：失敗要留在名單上給大廳，不能在已卸載的畫面裡清掉
+  const live = useRef(true);
+  useEffect(() => {
+    live.current = true;
+    return () => {
+      live.current = false;
+    };
+  }, []);
   useEffect(() => onState(state), [state, onState]);
+
+  function showFailure(reason: unknown) {
+    const key = bibleErrorKey(reason);
+    setMessage(key ? t(key) : backendText(reason));
+    setState("failed");
+    acknowledgeBibleFailure(worldId);
+  }
 
   async function run() {
     setState("running");
     try {
       await generate(spoilerLock);
-      setState("done");
+      if (live.current) setState("done");
     } catch (reason) {
-      const key = bibleErrorKey(reason);
-      setMessage(key ? t(key) : backendText(reason));
-      setState("failed");
+      if (live.current) showFailure(reason);
     }
   }
   useEffect(() => {
     if (decided.current || !fresh || view === null) return;
     decided.current = true;
-    if (view.bible) setState("done");
-    else void run();
+    const draft = bibleDraft(worldId);
+    // 先處理這桌還在跑或還沒被看過的失敗；舊聖經留著也不算完成
+    if (draft?.state === "failed") {
+      showFailure(draft.error);
+      return;
+    }
+    if (draft?.state === "running" || !view.bible) {
+      void run();
+      return;
+    }
+    setState("done");
   }, [fresh, view]);
 
   if (!fresh && error !== null) {
@@ -73,7 +95,7 @@ export function StoryBuild({
       {state === "failed" && (
         <div className="vn-bible-failed">
           {message && <p>{message}</p>}
-          <p>{t("vnBibleFailedStart")}</p>
+          <p>{t(view?.bible ? "vnBibleFailedKeep" : "vnBibleFailedStart")}</p>
           <button type="button" className="btn" onClick={() => void run()}>
             {t("vnBibleRetry")}
           </button>

@@ -52,7 +52,6 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 ## 階段 H：VN 模式
 - [vn-cg-generation](tasks/vn-cg-generation.md) — VN 模式 CG 即時生成：外接吃到飽生圖訂閱（NAI 類）＋提示詞規範 — 下一步：前置 [vn-mode](handoffs/archive/vn-mode.md)（v1）已合 main（2026-11-04）、待作者實機試玩，本任務為其 v3 分期；最省驗證＝拿一把 NAI token 打一發看出圖品質與回傳格式
 - [vn-thought-spoiler](tasks/vn-thought-spoiler.md) — VN 角色線把私設秘密寫進內心獨白格，玩家提前看到 — 下一步：開工時查角色線規範與 thought 格的定位
-- [vn-lobby-drafting-badge](tasks/vn-lobby-drafting-badge.md) — 大廳桌卡標出劇本撰寫中的 VN 桌 — 下一步：確認判定來源；小案估
 
 ## 中國安卓（2026-11-02 立案）
 - [cn-apk-shell](tasks/cn-apk-shell.md) — 網頁版包成 Android APK（Capacitor；階段 2，大案估 350 行，方案與驗收都送審） — 下一步：開工先寫方案；階段 3 發佈（自有網域、側載說明）另行立案

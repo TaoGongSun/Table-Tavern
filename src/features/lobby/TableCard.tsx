@@ -1,4 +1,6 @@
-// 大廳的桌卡：封面整塊一顆進桌按鈕，下方一列桌名、徽章與 ⋯。封面只疊 VN「設定未完成」色帶（標題列留給桌名）。
+// 大廳的桌卡：封面整塊一顆進桌按鈕，下方一列桌名、徽章與 ⋯。封面左上同一條色帶：
+// 劇本撰寫中 ＞ 設定未完成時的同次執行內撰寫失敗 ＞ 設定未完成（標題列留給桌名）。
+// 設定走完的桌重生成失敗不標：原聖經不動、照樣能玩，進桌也不經精靈，標了清不掉。
 // 就地改名只落在桌名那一格；送出／取消用 ref 保證一次只結算一次（Esc 先標記取消再卸載輸入框，
 // 卸載引發的 blur 就不會又把它送出去）。
 import { useEffect, useRef, useState } from "react";
@@ -8,6 +10,7 @@ import type { WorldMeta } from "../../shared/contracts/backend-contracts";
 import { IconDelete, IconEdit, IconUsers } from "../../shared/ui/icons";
 import { MoreMenu } from "../../shared/ui/MoreMenu";
 import gmBook from "../../assets/gm-book.png";
+import { useBibleDraft } from "../vn/bible/useBible";
 import { coverLayout } from "./table-cover";
 import { useTableCover } from "./useTableCover";
 
@@ -39,6 +42,9 @@ export function TableCard({ world, busy, onEnter, onRename, onDelete, room, room
     refocus.current = false;
     footRef.current?.querySelector<HTMLElement>('[aria-haspopup="menu"]')?.focus();
   }, [draft]);
+  const bible = useBibleDraft(world.id);
+  const ribbon =
+    bible?.state === "running" ? "drafting" : !world.setup ? null : bible?.state === "failed" ? "failed" : "setup";
   const badge = listBadge(world);
   const badgeLabel =
     badge === null ? "" : t(badge === "repair" ? "needsRepairBadge" : "readOnlyBadge");
@@ -78,7 +84,11 @@ export function TableCard({ world, busy, onEnter, onRename, onDelete, room, room
             )}
           </span>
         )}
-        {world.setup && <span className="table-cover-ribbon">{t("vnSetupIncomplete")}</span>}
+        {ribbon && (
+          <span className="table-cover-ribbon" data-state={ribbon}>
+            {t(ribbon === "drafting" ? "vnBibleDrafting" : ribbon === "failed" ? "vnBibleDraftFailed" : "vnSetupIncomplete")}
+          </span>
+        )}
       </button>
       <div className="table-card-foot" ref={footRef}>
         {draft !== null ? (

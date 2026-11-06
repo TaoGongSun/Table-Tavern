@@ -8,6 +8,8 @@ import type { WorldMeta } from "../../shared/contracts/backend-contracts";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => null) }));
 
+import { invoke } from "@tauri-apps/api/core";
+import { acknowledgeBibleFailure, generateBible } from "../vn/bible/useBible";
 import { TableCard } from "./TableCard";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -80,6 +82,7 @@ describe("TableCard", () => {
     const badges = () => [...host!.querySelectorAll(".table-badge")].map((b) => b.textContent);
     mount({ ...WORLD, table_kind: "vn" });
     expect(badges()).toEqual([t("vnBadge")]);
+    expect(host!.querySelector(".table-cover-ribbon")).toBeNull();
     act(() => root?.unmount());
     // 作品包匯入的重播桌只標「作品」，不和 VN 擠在一起
     mount({ ...WORLD, table_kind: "vn", replay: true });
@@ -156,6 +159,53 @@ describe("TableCard", () => {
     });
     expect(onRename).not.toHaveBeenCalled();
     expect(input()).toBeNull();
+  });
+
+  it("swaps the one ribbon: drafting, then failed, then setup", async () => {
+    let rejectGenerate: (error: unknown) => void = () => {};
+    vi.mocked(invoke).mockImplementation((command: string) => {
+      if (command === "vn_bible_generate") return new Promise((_ok, reject) => (rejectGenerate = reject));
+      return Promise.resolve(null);
+    });
+    try {
+      const vn: WorldMeta = { ...WORLD, id: "vn1", name: "托倫", table_kind: "vn", setup: "story" };
+      mount(vn);
+      const ribbon = () => host!.querySelector(".table-cover-ribbon")!;
+      expect(ribbon().textContent).toBe(t("vnSetupIncomplete"));
+      expect(ribbon().getAttribute("data-state")).toBe("setup");
+      let job: Promise<void> = Promise.resolve();
+      await act(async () => {
+        job = generateBible("vn1");
+      });
+      expect(ribbon().textContent).toBe(t("vnBibleDrafting"));
+      expect(ribbon().getAttribute("data-state")).toBe("drafting");
+      await act(async () => {
+        rejectGenerate(new Error("VN_BIBLE_FAILED"));
+        await job.catch(() => {});
+      });
+      expect(ribbon().textContent).toBe(t("vnBibleDraftFailed"));
+      expect(ribbon().getAttribute("data-state")).toBe("failed");
+      act(() => acknowledgeBibleFailure("vn1"));
+      expect(ribbon().getAttribute("data-state")).toBe("setup");
+    } finally {
+      vi.mocked(invoke).mockImplementation(async () => null);
+    }
+  });
+
+  it("does not flag a failed regenerate once setup is done", async () => {
+    vi.mocked(invoke).mockImplementation((command: string) =>
+      command === "vn_bible_generate" ? Promise.reject(new Error("VN_BIBLE_FAILED")) : Promise.resolve(null),
+    );
+    try {
+      mount({ ...WORLD, id: "vn2", table_kind: "vn", setup: null });
+      await act(async () => {
+        await generateBible("vn2").catch(() => {});
+      });
+      expect(host!.querySelector(".table-cover-ribbon")).toBeNull();
+      act(() => acknowledgeBibleFailure("vn2"));
+    } finally {
+      vi.mocked(invoke).mockImplementation(async () => null);
+    }
   });
 
   it("read-only and needs-repair tables cannot be renamed but can still be deleted", () => {
