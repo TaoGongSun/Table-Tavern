@@ -1,9 +1,12 @@
 // 多人房間玩法說明（`#guide/room`）：房主、朋友、常見問題三段，頂部錨點跳段，每小節配一張截圖。
-// 內容是 `guide/room.<語系>.md`，截圖是 `guide/shots/room-XX.<語系>.webp`；繁中、簡中用自己的，其餘語系用英文。
+// 內容是 `guide/room.<語系>.md`，截圖是 `guide/shots/room-XX.<語系>.webp`；繁中、簡中的文章用自己的，其餘語系用英文。
+// 截圖每個語系先找自己的，沒有再退英文圖。頁首「回到下載頁」連回 `#download/room`。
 // 截圖編號 12 起是手機畫面，排得窄一點；對應的圖不在就不畫那張（03 露本機網址，重拍前先不放）。
 import { useMemo, useState } from "react";
 import { getLang, t } from "../../i18n";
+import { downloadHash } from "./download-route";
 import { inline, parseGuide } from "./guide-markdown";
+import { pickGuideImage } from "./tour-images";
 import { useOverlayPage } from "./useOverlayPage";
 
 const GUIDES = import.meta.glob<string>("./guide/room.*.md", { eager: true, query: "?raw", import: "default" });
@@ -25,9 +28,14 @@ export function RoomGuide({ onClose, shots = SHOTS }: { onClose: () => void; sho
       <header className="tour-header">
         <div className="tour-inner tour-header-row">
           <span className="tour-brand">Table Tavern</span>
-          <button type="button" className="ghost" ref={closeButton} onClick={onClose}>
-            {t("downloadClose")}
-          </button>
+          <span className="tour-header-actions">
+            <a href={downloadHash("room")} data-testid="guide-back">
+              {t("guideBackDownload")}
+            </a>
+            <button type="button" className="ghost" ref={closeButton} onClick={onClose}>
+              {t("downloadClose")}
+            </button>
+          </span>
         </div>
       </header>
       <article className="tour-inner guide">
@@ -63,7 +71,7 @@ export function RoomGuide({ onClose, shots = SHOTS }: { onClose: () => void; sho
                 </ul>
               );
             case "shot": {
-              const src = failed.has(block.key) ? undefined : shots[`./guide/shots/${block.key}.${suffix}.webp`];
+              const src = failed.has(block.key) ? undefined : (pickGuideImage(shots, block.key, lang) ?? undefined);
               if (!src) return null;
               const phone = Number(block.key.replace(/\D/g, "")) >= PHONE_FROM;
               return (

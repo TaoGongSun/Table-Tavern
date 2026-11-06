@@ -25,12 +25,12 @@ describe("玩法說明", () => {
     expect(blocks[4]).toEqual({ kind: "list", items: [{ text: "第一條 **粗**", children: ["子項"] }, { text: "第二條", children: [] }] });
   });
 
-  it("三語內容都有房主、朋友、常見問題三段，截圖 01–19 各一次", () => {
+  it("三語內容都有房主、朋友、常見問題三段，每節留一張截圖", () => {
+    const shotsKept = ["02", "03", "04", "06", "08", "10", "11", "12", "13", "15", "17", "19"].map((n) => `room-${n}`);
     for (const lang of ["zh-CN", "zh-TW", "en"]) {
       const blocks = parseGuide(GUIDES[`./guide/room.${lang}.md`]);
       expect(blocks.filter((b) => b.kind === "section")).toHaveLength(3);
-      const shots = blocks.flatMap((b) => (b.kind === "shot" ? [b.key] : []));
-      expect(shots).toEqual(Array.from({ length: 19 }, (_, i) => `room-${String(i + 1).padStart(2, "0")}`));
+      expect(blocks.flatMap((b) => (b.kind === "shot" ? [b.key] : []))).toEqual(shotsKept);
     }
   });
 
@@ -41,5 +41,15 @@ describe("玩法說明", () => {
     expect(document.querySelector("h1")!.textContent).toContain("Playing with friends");
     expect(document.querySelectorAll(".guide-nav a")).toHaveLength(3);
     expect([...document.querySelectorAll(".guide-shot img")].map((img) => img.getAttribute("src"))).toEqual(["/a.webp"]);
+    expect(document.querySelector("[data-testid=guide-back]")?.getAttribute("href")).toBe("#download/room");
+  });
+
+  it("繁中缺圖時退英文圖，有自己的圖就不用英文圖", () => {
+    setLang("zh-TW");
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    act(() => root!.render(<RoomGuide onClose={() => {}} shots={{ "./guide/shots/room-02.en.webp": "/en.webp" }} />));
+    expect([...document.querySelectorAll(".guide-shot img")].map((img) => img.getAttribute("src"))).toEqual(["/en.webp"]);
+    act(() => root!.render(<RoomGuide onClose={() => {}} shots={{ "./guide/shots/room-02.zh-TW.webp": "/tw.webp", "./guide/shots/room-02.en.webp": "/en.webp" }} />));
+    expect([...document.querySelectorAll(".guide-shot img")].map((img) => img.getAttribute("src"))).toEqual(["/tw.webp"]);
   });
 });

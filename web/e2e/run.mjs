@@ -80,12 +80,12 @@ try {
   await page.getByText("桌面版還沒有正式版").waitFor();
   assert.deepEqual(
     await page.getByTestId("download-page").getByRole("link").evaluateAll((links) => links.map((link) => link.getAttribute("href"))),
-    [RELEASES_PAGE, RELEASES_PAGE],
+    [RELEASES_PAGE, "#download/new", "#download/oneLine", "#download/room", "#download/vn", RELEASES_PAGE],
   );
-  await page.getByText("桌面版多了什麼").waitFor();
+  await page.getByText("每種桌都有").waitFor();
   assert.equal(await page.getByRole("button", { name: "回到遊戲" }).count(), 1, "導覽頁只有一顆關閉鈕");
   await page.getByText("仍要執行", { exact: false }).waitFor();
-  await page.getByTestId("feature-compare").getByText("多角色同桌", { exact: false }).waitFor();
+  await page.getByTestId("tour-panel").getByText("多角色同桌", { exact: false }).waitFor();
   await page.getByRole("button", { name: "回到遊戲" }).click();
   assert.equal(await page.getByTestId("download-page").count(), 0);
   assert.ok(!page.url().includes("#"));
@@ -93,7 +93,7 @@ try {
   // 分享的網址 /#download 直接打開導覽頁；Esc 關掉、網址清乾淨
   await page.goto(new URL("/#download", base).href);
   await page.getByTestId("download-page").waitFor();
-  await page.getByText("桌面版多了什麼").waitFor();
+  await page.getByText("每種桌都有").waitFor();
   await page.keyboard.press("Escape");
   assert.equal(await page.getByTestId("download-page").count(), 0);
   assert.ok(!page.url().includes("#"));

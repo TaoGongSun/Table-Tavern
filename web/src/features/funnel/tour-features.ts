@@ -1,41 +1,94 @@
-// 導覽頁的特色卡：順序即頁面順序。shot＝有截圖（左右交錯的圖文），icon＝沒截圖的圖示卡（三欄一排）。
+// 下載頁以大廳四種開桌方式為主軸：四扇門的 id 對上網址 `#download/<id>`，桌名用大廳既有文案鍵。
+// 截圖鍵還沒有圖時頁面不畫（見 tour-images）；subscription／editor／roomHost／roomGuest 的舊圖不再引用。
 import type { MsgKey } from "../../i18n";
+import type { DownloadTable } from "./download-route";
 
-export interface TourFeature {
+export interface DoorShot {
   key: string;
-  title: MsgKey;
-  body: MsgKey;
-  form: "shot" | "icon";
+  source: "tour" | "guide";
+  /** 說明書的手機直式圖 */
+  phone?: boolean;
 }
 
-export const TOUR_FEATURES: TourFeature[] = [
-  { key: "subscription", title: "tour_subscription_title", body: "tour_subscription_body", form: "shot" },
-  { key: "oneLine", title: "tour_oneLine_title", body: "tour_oneLine_body", form: "shot" },
-  { key: "status", title: "tour_status_title", body: "tour_status_body", form: "shot" },
-  { key: "editor", title: "tour_editor_title", body: "tour_editor_body", form: "shot" },
-  { key: "scenes", title: "tour_scenes_title", body: "tour_scenes_body", form: "icon" },
-  { key: "local", title: "tour_local_title", body: "tour_local_body", form: "icon" },
+export interface DownloadDoor {
+  id: DownloadTable;
+  /** 大廳同一顆按鈕的名字 */
+  name: MsgKey;
+  fit: MsgKey;
+  /** 網頁版也有這種桌 */
+  onWeb: boolean;
+  lead: MsgKey;
+  points: readonly MsgKey[];
+  shots: readonly DoorShot[];
+  cardUi?: { title: MsgKey; body: MsgKey; shot: DoorShot };
+  /** 房間面板底部連到玩法說明 */
+  more?: MsgKey;
+}
+
+export const DOWNLOAD_DOORS: readonly DownloadDoor[] = [
+  {
+    id: "new",
+    name: "newTable",
+    fit: "door_new_fit",
+    onWeb: true,
+    lead: "panel_new_lead",
+    points: ["panel_new_1", "panel_new_2", "panel_new_3"],
+    shots: [
+      { key: "table", source: "tour" },
+      { key: "status", source: "tour" },
+    ],
+    cardUi: {
+      title: "panel_cardUi_title",
+      body: "panel_cardUi_body",
+      shot: { key: "cardUi", source: "tour" },
+    },
+  },
+  {
+    id: "oneLine",
+    name: "genTableBtn",
+    fit: "door_oneLine_fit",
+    onWeb: false,
+    lead: "panel_oneLine_lead",
+    points: ["panel_oneLine_1", "panel_oneLine_2", "panel_oneLine_3"],
+    shots: [
+      { key: "oneLine", source: "tour" },
+      { key: "oneLineOutline", source: "tour" },
+    ],
+  },
+  {
+    id: "room",
+    name: "roomOpen",
+    fit: "door_room_fit",
+    onWeb: false,
+    lead: "panel_room_lead",
+    points: ["panel_room_1", "panel_room_2", "panel_room_3"],
+    shots: [
+      { key: "room-04", source: "guide" },
+      { key: "room-15", source: "guide", phone: true },
+    ],
+    more: "panel_room_more",
+  },
+  {
+    id: "vn",
+    name: "vnEntryTitle",
+    fit: "door_vn_fit",
+    onWeb: false,
+    lead: "panel_vn_lead",
+    points: ["panel_vn_1", "panel_vn_2", "panel_vn_3"],
+    shots: [
+      { key: "vnPlay", source: "tour" },
+      { key: "vnWizard", source: "tour" },
+    ],
+  },
 ];
 
-/** 主截圖（範例桌遊玩畫面）的鍵 */
-export const TOUR_HERO = "table";
+/** 每種桌都有的圖示卡，順序即頁面順序。不再掛截圖。 */
+export const SHARED_FEATURES: readonly { key: string; title: MsgKey; body: MsgKey }[] = [
+  { key: "subscription", title: "tour_subscription_title", body: "tour_subscription_body" },
+  { key: "local", title: "tour_local_title", body: "tour_local_body" },
+  { key: "scenes", title: "tour_scenes_title", body: "tour_scenes_body" },
+  { key: "editor", title: "tour_editor_title", body: "tour_editor_body" },
+];
 
-/**
- * 簡中頁的多人連線段（排在特色卡前，各配一張簡中截圖）：作者只要求簡中頁改版（2026-11-03），文案固定簡中、不進十語字典。
- */
-export const ROOM_TOUR_ZH_CN = {
-  title: "怎么和朋友一起玩",
-  more: "看完整玩法说明",
-  features: [
-    {
-      key: "roomHost",
-      title: "房主：桌面版开房，当 GM",
-      body: "房主在桌面版首页点“开房间”，选角色卡（也可以不选）就开好一张新桌的房间，把邀请链接或二维码发到群里。AI 额度由房主出，电脑替大家跑 GM；房主直接在电脑上一起玩，不用另配手机。",
-    },
-    {
-      key: "roomGuest",
-      title: "朋友：手机点链接就加入",
-      body: "朋友不用装 App，手机浏览器点开邀请链接、选一个角色就能上桌。每人写下这一轮的行动，到齐后 GM 一起结算，剧情实时流到每个人的手机上。",
-    },
-  ],
-};
+/** 主視覺：大廳四格 */
+export const TOUR_HERO = "lobby";

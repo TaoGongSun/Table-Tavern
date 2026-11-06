@@ -8,13 +8,11 @@ One person is the **host** and opens a room on their computer; everyone else is 
 
 ### 1. Open a room
 
-- In the desktop app, click "Open a room" on the home screen. Connect an AI model first if you haven't ("Connect an AI model", top right).
+- In the desktop app, click "Open a room" on the home screen. Connect an AI model first if you haven't (the gear "Settings" button, top right).
 - You can pick a few character cards to open with, or choose "Open without cards". Either way you get a fresh table.
 - A solo table you're already playing can become a room too: open the table card's "⋯" menu in the lobby and choose "Open a room with this table". Friends can read what happened before.
 
 > While the room is open, keep this computer on and online and don't close the lid. The app keeps it from going to sleep.
-
-![](room-01)
 
 ![](room-02)
 
@@ -35,8 +33,6 @@ One person is the **host** and opens a room on their computer; everyone else is 
 
 ![](room-04)
 
-![](room-05)
-
 ### 4. Host-only buttons (the row under the story)
 
 - **GM Narration**: have the GM add a bit of scene description without using up a round.
@@ -45,8 +41,6 @@ One person is the **host** and opens a room on their computer; everyone else is 
 - **Take back last round / Regenerate last round**: at the very bottom of the story. If the GM's last part went sideways, "Regenerate" rewrites it (you can switch model while you're at it); "Take back" undoes the whole round so everyone writes again — each person's original action stays on their phone so they can resend or drop it.
 
 ![](room-06)
-
-![](room-07)
 
 ### 5. Someone steps away, drops out or shows up late
 
@@ -58,12 +52,10 @@ One person is the **host** and opens a room on their computer; everyone else is 
 
 ![](room-08)
 
-![](room-09)
-
 ### 6. Tune the GM to how you play
 
 - On the "Host" tab: **Action timer** — set a time limit per round so it resolves on its own; **Shuffle action order every round** — nobody always goes first.
-- **Change scene**: when a chapter is done and you want a new setting, click "Change scene" on the "Host" tab; you can switch model at the same time.
+- **Next scene**: when a chapter is done and you want a new setting, click "Next scene" on the "Host" tab; you can switch model at the same time.
 - **GM quota** tab: see how much AI you've used and choose the model for the next scene. If the AI provider blocks the GM (the round bar will say so), click "Retry" or "Switch model" right there.
 - Want a friend to cover the AI? In the "⋯" on the computer's top row, click "Hand over to phone" to get a pairing code, and have them enter it at the bottom of their "Players" tab. Their phone then becomes the host and the one covering the AI (the GM still runs on the computer), and their row shows "Using their quota".
 
@@ -96,14 +88,12 @@ One person is the **host** and opens a room on their computer; everyone else is 
 
 ### 2. Pick a character
 
-- You'll see "Pick a character": the cards the host put in. Tap "Pick this" on any that isn't "Taken" and it's yours.
+- You'll see "Pick a character": the cards the host put in. Tap "Pick" on any that isn't "Taken" and it's yours.
 - Want your own character? "Create a character" to write one on the spot, or "Import a character card" to upload a card file (.png / .json) from your computer.
 - Once seated you can "Edit my character" any time: name, description, picture. "Secret notes" are seen only by you and the GM.
 - Upload a picture or have the AI draw one (this uses the host's AI quota, and you'll be asked first). Everything the AI has drawn stays under "From gallery", so you can switch back whenever.
 
 ![](room-13)
-
-![](room-14)
 
 ### 3. Each round
 
@@ -113,8 +103,6 @@ One person is the **host** and opens a room on their computer; everyone else is 
 - Then wait for the others. Once everyone is in (or the host resolves the round), the GM's next part shows up right on your phone.
 
 ![](room-15)
-
-![](room-16)
 
 ### 4. Need to step away
 
@@ -126,13 +114,11 @@ One person is the **host** and opens a room on their computer; everyone else is 
 
 ![](room-17)
 
-![](room-18)
-
 ### 5. Not sure what the screen means?
 
 - "Waiting for: …" — someone hasn't sent their action yet.
 - "The host paused the room. Waiting for them to reopen it" — the host called it a night; your seat is kept, wait for their message.
-- "The provider blocked this GM turn" — the AI provider refused this part; the host is dealing with it (switching model or skipping). Nothing for you to do.
+- "The provider blocked this GM reply" — the AI provider refused this part; the host is dealing with it (switching model or skipping). Nothing for you to do.
 - The "Time · Place · Present" line at the top of the Story tab — the GM's notes on when, where and who's around.
 
 ![](room-19)
