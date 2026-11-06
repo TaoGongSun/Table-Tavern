@@ -1,10 +1,10 @@
 // 舞台：背景層、三個槽位的立繪（VN 卡給了身高就照比例縮、下限 0.7、下緣對齊；獨自一人站中間）、說話者亮其他壓暗、
-// 特寫（以臉為錨放大）與震動、地點字卡（換地點出現 4 秒後淡出）。
+// 特寫（以臉為錨放大）與震動、地點字卡（換地點出現 4 秒後淡出）、雨層（立繪之上，不跟著震動）。
 // 退路鏈：該變體該表情臉層 → 該變體 neutral → 預設變體＋共用臉層（SpriteFigure）→ 角色卡原圖 → 剪影＋名牌。
 import { cloneElement, useEffect, useRef, useState, type ReactElement } from "react";
 import type { SpriteView } from "../../shared/contracts/backend-contracts";
 import { SpriteFigure } from "./SpriteFigure";
-import { StageBackdrop, spriteNight } from "./StageBackdrop";
+import { RainLayer, StageBackdrop, spriteTint } from "./StageBackdrop";
 import type { BackdropImage } from "./useBackgrounds";
 import type { Stage as StageState } from "./vn-cells";
 
@@ -87,10 +87,12 @@ export function Stage({
 }) {
   const closeup = stage.directive === "closeup" ? stage.speaker : null;
   const settled = useSettled(sprites, cellKey, hold);
-  const night = spriteNight(stage.backdrop?.period);
+  const tint = spriteTint(stage.backdrop?.period, stage.weather);
   return (
     <div className="vn-stage">
-      {stage.backdrop && <StageBackdrop image={backdrop ?? null} period={stage.backdrop.period} />}
+      {stage.backdrop && (
+        <StageBackdrop image={backdrop ?? null} period={stage.backdrop.period} weather={stage.weather} />
+      )}
       <div
         key={stage.directive === "shake" ? cellKey : undefined}
         className={`vn-cast${stage.directive === "shake" ? " vn-shake" : ""}`}
@@ -123,7 +125,7 @@ export function Stage({
                       variant={stage.variants[id]}
                       alt={stage.names[id]}
                       className={`vn-layers${extra}`}
-                      tint={night}
+                      tint={tint}
                     />
                   ) : images[id] ? (
                     <img className={extra.trim() || undefined} src={images[id]} alt={stage.names[id]} />
@@ -136,6 +138,7 @@ export function Stage({
           );
         })}
       </div>
+      <RainLayer on={stage.weather === "rain"} period={stage.backdrop?.period} />
     </div>
   );
 }

@@ -8,7 +8,78 @@ fn bg(location: &str, time: Option<&str>) -> VnCell {
         time: time.map(str::to_owned),
         slug: slug_of(location),
         period: time.and_then(period_of).map(str::to_owned),
+        weather: None,
     }
+}
+
+fn sky(location: &str, weather: &str) -> VnCell {
+    match bg(location, None) {
+        VnCell::Bg {
+            location,
+            time,
+            slug,
+            period,
+            ..
+        } => VnCell::Bg {
+            location,
+            time,
+            slug,
+            period,
+            weather: Some(weather.to_owned()),
+        },
+        cell => cell,
+    }
+}
+
+fn weathers(events: &[Vec<VnCell>]) -> Vec<String> {
+    events
+        .iter()
+        .flatten()
+        .filter_map(|cell| match cell {
+            VnCell::Bg { weather, .. } => weather.clone(),
+            _ => None,
+        })
+        .collect()
+}
+
+/// 天氣同義詞：雪暫顯示陰天（snowstorm 不落到雨）；認不得回 None
+#[test]
+fn weather_words_map_to_fixed_keys() {
+    for (text, weather) in [
+        ("大雨", Some("rain")),
+        ("Thunderstorm", Some("rain")),
+        ("海霧", Some("fog")),
+        ("多雲", Some("overcast")),
+        ("暴風雪", Some("overcast")),
+        ("snowstorm", Some("overcast")),
+        ("晴", Some("clear")),
+        ("心情很差", None),
+    ] {
+        assert_eq!(weather_of(text), weather, "{text}");
+    }
+}
+
+/// 沒寫天氣：同地點（只換時段）沿用，換地點回晴；幕首補的格也是晴
+#[test]
+fn weather_carries_within_a_place_and_clears_on_a_new_place() {
+    let mut events = vec![
+        vec![sky("港口", "rain"), bg("港口", Some("夜晚"))],
+        vec![bg("酒館", None), bg("港口", None)],
+    ];
+    resolve_scene(events.iter_mut(), None, &Places::default());
+    assert_eq!(weathers(&events), ["rain", "rain", "clear", "clear"]);
+    let mut events = vec![vec![text("x")]];
+    resolve_scene(events.iter_mut(), Some(("港口", None)), &Places::default());
+    assert_eq!(weathers(&events), ["clear"]);
+    // 同地點雨停：明寫晴才回晴，之後沒寫照樣沿用晴
+    let mut events = vec![vec![
+        sky("港口", "rain"),
+        bg("港口", None),
+        sky("港口", "clear"),
+        bg("港口", Some("夜晚")),
+    ]];
+    resolve_scene(events.iter_mut(), None, &Places::default());
+    assert_eq!(weathers(&events), ["rain", "rain", "clear", "clear"]);
 }
 
 fn text(body: &str) -> VnCell {

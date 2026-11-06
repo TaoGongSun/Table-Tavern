@@ -82,20 +82,29 @@ fn parser_follows_each_lenient_rule() {
             ],
         ),
         (
-            "[bg] 含／不含時段，關鍵字不分大小寫",
-            "[bg: 港口 | 黃昏]\n[BG: 教室]",
+            "[bg] 含／不含時段與天氣，關鍵字不分大小寫，認不得的天氣當沒寫",
+            "[bg: 港口 | 黃昏 | 海霧]\n[BG: 教室]\n[bg: 碼頭 | 夜晚 | 心情很差]",
             vec![
                 VnCell::Bg {
                     location: "港口".to_owned(),
                     time: Some("黃昏".to_owned()),
                     slug: crate::vn_backgrounds::slug_of("港口"),
                     period: Some("dusk".to_owned()),
+                    weather: Some("fog".to_owned()),
                 },
                 VnCell::Bg {
                     location: "教室".to_owned(),
                     time: None,
                     slug: crate::vn_backgrounds::slug_of("教室"),
                     period: None,
+                    weather: None,
+                },
+                VnCell::Bg {
+                    location: "碼頭".to_owned(),
+                    time: Some("夜晚".to_owned()),
+                    slug: crate::vn_backgrounds::slug_of("碼頭"),
+                    period: Some("night".to_owned()),
+                    weather: None,
                 },
             ],
         ),

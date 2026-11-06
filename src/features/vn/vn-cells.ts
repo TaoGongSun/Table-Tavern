@@ -176,6 +176,8 @@ export interface Stage {
   time: string | null;
   /** 目前的背景鍵 */
   backdrop: Backdrop | null;
+  /** 目前天氣 clear／overcast／fog／rain */
+  weather: string;
 }
 
 /** 進場順序：首位左、次位右、第三位中 */
@@ -193,6 +195,7 @@ export function stageAt(cells: FlatCell[], index: number): Stage {
     location: null,
     time: null,
     backdrop: null,
+    weather: "clear",
   };
   let recent: string[] = [];
   for (const { cell } of cells.slice(0, index + 1)) {
@@ -205,6 +208,8 @@ export function stageAt(cells: FlatCell[], index: number): Stage {
       stage.time = cell.time;
       // 正式格的時段後端已補好沿用值；串流暫定格只有明寫的，沒寫就沿用目前的
       const period = cell.period ?? stage.backdrop?.period ?? "day";
+      // 天氣同理：暫定格沒寫＝同地點沿用、換地點回晴
+      stage.weather = cell.weather ?? (stage.backdrop?.slug === cell.slug ? stage.weather : "clear");
       stage.backdrop = { location: cell.location, slug: cell.slug, period };
       continue;
     }

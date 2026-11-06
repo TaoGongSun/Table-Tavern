@@ -112,6 +112,32 @@ fn fold(text: &str) -> String {
         .to_lowercase()
 }
 
+/// 天氣同義詞 → 固定鍵（plans/vn-weather-mask.md §2），依序比對。雪類沒有雪層，暫顯示陰天（先比，免得「snowstorm」落到雨）
+const WEATHER_WORDS: [(&str, &[&str]); 5] = [
+    ("overcast", &["雪", "snow", "blizzard"]),
+    (
+        "rain",
+        &["雨", "rain", "drizzle", "storm", "thunder", "shower"],
+    ),
+    ("fog", &["霧", "雾", "fog", "mist", "haze"]),
+    (
+        "overcast",
+        &[
+            "陰", "阴", "多雲", "多云", "overcast", "cloud", "gray", "grey",
+        ],
+    ),
+    ("clear", &["晴", "clear", "sunny"]),
+];
+
+/// `[bg]` 第三欄的天氣文字 → 固定鍵；認不得回 None（當沒寫）。模型文字只拿來比對，不進路徑
+pub(crate) fn weather_of(text: &str) -> Option<&'static str> {
+    let lower = fold(text);
+    WEATHER_WORDS
+        .iter()
+        .find(|(_, words)| words.iter().any(|word| lower.contains(word)))
+        .map(|(weather, _)| *weather)
+}
+
 /// 地點 → slug：正規化後 SHA-256 取前 16 個 hex
 pub(crate) fn slug_of(location: &str) -> String {
     let digest = Sha256::digest(fold(location).as_bytes());
@@ -396,7 +422,7 @@ impl Library {
 }
 
 /// 一幕的格補上背景：每個 Bg 格的時段照「沒寫或認不得＝沿用目前（要在目的地清單內），再沒有＝清單第一項」填好；
-/// 幕首第一格不是 Bg 而 `start`（幕首事件快照的 place／time）有地點，就在最前面補一格。
+/// 天氣沒寫時同地點沿用、換地點回晴（換場景清天氣層，plans/vn-weather-mask.md §2）。幕首第一格不是 Bg 而 `start`（幕首事件快照的 place／time）有地點，就在最前面補一格。
 /// 回這幕用到的背景（依出現順序、去重）
 pub(crate) fn resolve_scene<'a>(
     events: impl IntoIterator<Item = &'a mut Vec<crate::chat_turn::VnCell>>,
@@ -418,12 +444,14 @@ pub(crate) fn resolve_scene<'a>(
         }
     }
     let mut used: Vec<Backdrop> = Vec::new();
+    let mut sky: Option<(String, String)> = None;
     for cell in events.iter_mut().flat_map(|cells| cells.iter_mut()) {
         if let VnCell::Bg {
             location,
             time,
             slug,
             period,
+            weather,
         } = cell
         {
             let backdrop = Backdrop::new(location, time.as_deref(), current.as_deref(), places);
@@ -431,6 +459,16 @@ pub(crate) fn resolve_scene<'a>(
             *slug = backdrop.slug.clone();
             *period = Some(backdrop.period.clone());
             current = Some(backdrop.period.clone());
+            let inherited = sky
+                .take()
+                .filter(|(place, _)| *place == backdrop.slug)
+                .map(|(_, weather)| weather);
+            let resolved = weather
+                .take()
+                .or(inherited)
+                .unwrap_or_else(|| "clear".to_owned());
+            sky = Some((backdrop.slug.clone(), resolved.clone()));
+            *weather = Some(resolved);
             if !used.iter().any(|seen| seen.key() == backdrop.key()) {
                 used.push(backdrop);
             }
@@ -446,6 +484,7 @@ impl Backdrop {
             time: time.map(str::to_owned),
             slug: self.slug.clone(),
             period: Some(self.period.clone()),
+            weather: None,
         }
     }
 

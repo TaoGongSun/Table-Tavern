@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import type { SpriteView } from "../../shared/contracts/backend-contracts";
 import { MIN_SCALE, Stage, placeOf } from "./Stage";
 import { spriteLayers } from "./SpriteFigure";
-import { spriteNight, tintOf } from "./StageBackdrop";
+import { spriteTint, tintOf, weatherGrade } from "./StageBackdrop";
 import type { Stage as StageState } from "./vn-cells";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -48,6 +48,7 @@ function render(expressions: Record<string, string>, slots: (string | null)[] = 
     location: null,
     time: null,
     backdrop: null,
+    weather: "clear",
   };
   const host = document.createElement("div");
   act(() =>
@@ -117,7 +118,7 @@ describe("time-of-day tint", () => {
 });
 
 describe("sprite arrival", () => {
-  const stage = (backdrop: StageState["backdrop"] = null): StageState => ({
+  const stage = (backdrop: StageState["backdrop"] = null, weather = "clear"): StageState => ({
     slots: ["a", null, null],
     names: { a: "A" },
     expressions: { a: "neutral" },
@@ -127,6 +128,7 @@ describe("sprite arrival", () => {
     location: null,
     time: null,
     backdrop,
+    weather,
   });
   it("swaps card art for the new sprite only on the next cell, fading the old one out", () => {
     const host = document.createElement("div");
@@ -142,9 +144,12 @@ describe("sprite arrival", () => {
     expect(host.querySelector("img.vn-swap-out")?.getAttribute("src")).toBe("data:card");
   });
 
-  it("night darkens sprites at half the backdrop tint; other periods leave them alone", () => {
-    expect(spriteNight("night")!.opacity).toBeLessThan(0.5);
-    expect(spriteNight("dusk")).toBeNull();
+  it("night darkens sprites at half the backdrop tint; by day only rain greys them", () => {
+    expect(spriteTint("night", "rain")!.opacity).toBeLessThan(0.5);
+    expect(spriteTint("dusk", "clear")).toBeNull();
+    expect(spriteTint("day", "overcast")).toBeNull();
+    expect(spriteTint("day", "fog")).toBeNull();
+    expect(spriteTint("day", "rain")!.opacity).toBeLessThan(spriteTint("night", "clear")!.opacity);
     const host = document.createElement("div");
     act(() =>
       createRoot(host).render(
@@ -152,5 +157,53 @@ describe("sprite arrival", () => {
       ),
     );
     expect(host.querySelector(".vn-layers .vn-sprite-tint")).not.toBeNull();
+  });
+});
+
+describe("weather layers", () => {
+  const draw = (weather: string, period = "day") => {
+    const host = document.createElement("div");
+    const stage: StageState = {
+      slots: [null, null, null],
+      names: {},
+      expressions: {},
+      variants: {},
+      speaker: null,
+      directive: null,
+      location: "港口",
+      time: null,
+      backdrop: { location: "港口", slug: "s", period },
+      weather,
+    };
+    act(() => createRoot(host).render(<Stage stage={stage} sprites={{}} images={{}} cellKey="k" />));
+    return host;
+  };
+  const opacity = (host: HTMLElement, selector: string) => (host.querySelector(selector) as HTMLElement).style.opacity;
+
+  it("clear leaves the backdrop alone; each weather grades it, fog drifts and rain falls", () => {
+    const clear = draw("clear");
+    expect(opacity(clear, ".vn-weather-desat")).toBe("0");
+    expect(clear.querySelector(".vn-fog-on, .vn-rain-on")).toBeNull();
+    const overcast = draw("overcast");
+    expect(Number(opacity(overcast, ".vn-weather-desat"))).toBeGreaterThan(0);
+    expect(overcast.querySelector(".vn-fog-on, .vn-rain-on")).toBeNull();
+    expect(draw("fog").querySelector(".vn-fog-on")).not.toBeNull();
+    const rain = draw("rain", "night");
+    expect(rain.querySelector(".vn-rain.vn-rain-on.vn-rain-night")).not.toBeNull();
+    // 雨在立繪層之後（蓋在人物上），不在震動的 .vn-cast 裡
+    expect(rain.querySelector(".vn-cast .vn-rain")).toBeNull();
+  });
+});
+
+describe("weather with a time-of-day tint", () => {
+  const dusk = { color: "#ff9a5c", opacity: 0.75 };
+  it("halves desaturation and thins dawn/dusk tints so it never turns sepia; night stays", () => {
+    const plain = weatherGrade("rain", null, "day");
+    const evening = weatherGrade("rain", dusk, "dusk");
+    expect(evening.desat).toBe(plain.desat / 2);
+    expect(evening.tint!.opacity).toBeCloseTo(0.6);
+    expect(weatherGrade("fog", dusk, "dusk").tint!.opacity).toBeCloseTo(0.55);
+    expect(weatherGrade("rain", { color: "#22305f", opacity: 0.88 }, "night").tint!.opacity).toBe(0.88);
+    expect(weatherGrade("clear", dusk, "dusk")).toMatchObject({ desat: 0, tint: dusk });
   });
 });

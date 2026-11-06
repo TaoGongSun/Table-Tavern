@@ -52,7 +52,6 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 ## 階段 H：VN 模式
 - [vn-cg-generation](tasks/vn-cg-generation.md) — VN 模式 CG 即時生成：外接吃到飽生圖訂閱（NAI 類）＋提示詞規範 — 下一步：前置 [vn-mode](handoffs/archive/vn-mode.md)（v1）已合 main（2026-11-04）、待作者實機試玩，本任務為其 v3 分期；最省驗證＝拿一把 NAI token 打一發看出圖品質與回傳格式
 - [vn-thought-spoiler](tasks/vn-thought-spoiler.md) — VN 角色線把私設秘密寫進內心獨白格，玩家提前看到 — 下一步：開工時查角色線規範與 thought 格的定位
-- [vn-weather-mask](tasks/vn-weather-mask.md) — 背景沿用遮罩機制加霧／陰／雨，修劇情寫霧天圖卻是晴天 — 下一步：決定天氣來源與疊加順序；中案估
 - [vn-lobby-drafting-badge](tasks/vn-lobby-drafting-badge.md) — 大廳桌卡標出劇本撰寫中的 VN 桌 — 下一步：確認判定來源；小案估
 - [agy-image-permissions](tasks/agy-image-permissions.md) — agy 生圖帶跳過權限旗標，卡作者文字可誘導模型執行工具 — 下一步：先問 agy 有沒有限制工具的參數；碰程序控制，方案必送審
 

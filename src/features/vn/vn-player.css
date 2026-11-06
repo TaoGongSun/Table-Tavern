@@ -62,6 +62,83 @@
     opacity 1.2s,
     background-color 1.2s;
 }
+/* 天氣（plans/vn-weather-mask.md §3）：調色層、霧層在時段遮罩之下；動態層只動 transform，混合模式只放靜態層 */
+.vn-weather-desat,
+.vn-weather-dim,
+.vn-fog,
+.vn-rain {
+  position: absolute;
+  pointer-events: none;
+  transition: opacity 1.2s;
+}
+.vn-weather-desat,
+.vn-weather-dim,
+.vn-rain {
+  inset: 0;
+}
+.vn-weather-desat {
+  background: #808080;
+  mix-blend-mode: saturation;
+}
+.vn-weather-dim {
+  mix-blend-mode: multiply;
+  transition:
+    opacity 1.2s,
+    background-color 1.2s;
+}
+/* 霧：寬出一格（960px）向左平移一格循環；沒起霧時透明且停住 */
+.vn-fog {
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: calc(100% + 960px);
+  background-color: rgba(214, 219, 224, 0.3);
+  background-size: 960px 100%;
+  background-repeat: repeat-x;
+  opacity: 0;
+  animation: vn-fog-drift 90s linear infinite paused;
+}
+.vn-fog-on {
+  opacity: 0.9;
+  animation-play-state: running;
+}
+/* 雨：遠近兩片，斜 12 度，各以格高平移一格循環；看得出在下雨、不擋臉 */
+.vn-rain {
+  overflow: hidden;
+  opacity: 0;
+  --vn-rain: rgba(222, 230, 240, 0.45);
+}
+.vn-rain-on {
+  opacity: 1;
+}
+.vn-rain-night {
+  --vn-rain: rgba(110, 128, 156, 0.4);
+}
+.vn-rain-sheet {
+  position: absolute;
+  /* 上緣多留一格以上，平移到底也不露邊 */
+  inset: calc(-30% - 300px) -30% -30%;
+  background-color: var(--vn-rain);
+  /* 傾斜放獨立 rotate 屬性（不放動畫裡），動畫停住或時長歸零也照樣斜 */
+  rotate: 12deg;
+  animation: paused linear infinite;
+}
+.vn-rain-on .vn-rain-sheet {
+  animation-play-state: running;
+}
+.vn-rain-far {
+  opacity: 0.7;
+  mask-size: 160px 160px;
+  -webkit-mask-size: 160px 160px;
+  animation-name: vn-rain-far;
+  animation-duration: 0.8s;
+}
+.vn-rain-near {
+  mask-size: 260px 260px;
+  -webkit-mask-size: 260px 260px;
+  animation-name: vn-rain-near;
+  animation-duration: 0.55s;
+}
 /* 地點字卡：換地點出現 4 秒後淡出（Stage 計時）；字級與邊距跟播放器高度走 */
 .vn-location {
   position: absolute;
@@ -395,6 +472,9 @@
 @keyframes vn-breathe { 50% { transform: scale(1.015); } }
 @keyframes vn-bob { 50% { transform: translateY(3px); } }
 @keyframes vn-fade { from { opacity: 0; } }
+@keyframes vn-fog-drift { to { transform: translateX(-960px); } }
+@keyframes vn-rain-far { to { transform: translateY(160px); } }
+@keyframes vn-rain-near { to { transform: translateY(260px); } }
 @keyframes vn-fade-out { to { opacity: 0; } }
 @keyframes vn-shake {
   20%, 60% { transform: translateX(-6px); }
@@ -405,6 +485,10 @@
   .vn-player * {
     animation: none !important;
     transition: none !important;
+  }
+  /* 停住的雨絲像畫面壞掉：藏起來；霧停住照樣是霧，保留 */
+  .vn-rain {
+    display: none;
   }
 }
 

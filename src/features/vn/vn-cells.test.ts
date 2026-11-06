@@ -30,12 +30,18 @@ const d = (id: string | null, text: string, extra: Partial<VnCell> = {}): VnCell
     text,
     ...extra,
   }) as VnCell;
-const bg = (location: string, time: string | null = null, period: string | null = time): VnCell => ({
+const bg = (
+  location: string,
+  time: string | null = null,
+  period: string | null = time,
+  weather: string | null = null,
+): VnCell => ({
   type: "bg",
   location,
   time,
   slug: `slug-${location}`,
   period,
+  weather,
 });
 const choices = (...options: string[]): VnCell => ({ type: "choices", options });
 const ev = (id: string | null, kind: VnEventCells["kind"], cells: VnCell[]): VnEventCells => ({
@@ -147,6 +153,24 @@ describe("stageAt", () => {
     });
     expect(at([bg("Port", "黃昏", "dusk"), bg("Inn", "不久", null)]).backdrop?.period).toBe("dusk");
     expect(at([bg("Inn", null, null)]).backdrop?.period).toBe("day");
+  });
+
+  it("weather: a pending cell without one keeps it at the same place and clears at a new place", () => {
+    expect(at([n("x")]).weather).toBe("clear");
+    expect(at([bg("Port", "dusk", "dusk", "rain"), bg("Port", "night")]).weather).toBe("rain");
+    expect(at([bg("Port", "dusk", "dusk", "rain"), bg("Inn")]).weather).toBe("clear");
+    expect(at([bg("Port", "dusk", "dusk", "rain"), bg("Port", null, null, "fog")]).weather).toBe("fog");
+    expect(at([bg("Port", "dusk", "dusk", "rain"), bg("Port", null, null, "clear"), bg("Port", "night")]).weather).toBe("clear");
+  });
+
+  it("streamed cells fold to the same weather as the formal cells that replace them", () => {
+    // 串流暫定格只有明寫的天氣；正式格由後端補好（與 vn_backgrounds::resolve_scene 同規則）
+    const places = ["Port", "Port", "Inn", "Port", "Port", "Port"];
+    const written = ["rain", null, null, "fog", "clear", null];
+    const resolved = ["rain", "rain", "clear", "fog", "clear", "clear"];
+    const streamed = places.map((place, i) => bg(place, null, null, written[i]));
+    const formal = places.map((place, i) => bg(place, null, "day", resolved[i]));
+    for (let i = 0; i < places.length; i++) expect(at(streamed, i).weather).toBe(at(formal, i).weather);
   });
 
   it("each character keeps their last expression until they speak again", () => {

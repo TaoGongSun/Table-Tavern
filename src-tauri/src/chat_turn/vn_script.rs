@@ -47,6 +47,8 @@ pub(crate) enum VnCell {
         slug: String,
         /// 固定時段；解析時只認明寫的，整幕讀取時（`vn_backgrounds::resolve_scene`）補上沿用值
         period: Option<String>,
+        /// 天氣鍵 clear／overcast／fog／rain；解析時只認明寫的，整幕讀取時補上（同地點沿用、換地點回晴）
+        weather: Option<String>,
     },
     Choices {
         options: Vec<String>,
@@ -186,6 +188,7 @@ enum Marker {
     Bg {
         location: String,
         time: Option<String>,
+        weather: Option<String>,
     },
     Choices,
     Chapter,
@@ -219,13 +222,20 @@ fn marker(line: &str) -> Option<Marker> {
         ("chapter", None) => Some(Marker::Chapter),
         ("ending", Some(id)) if !id.is_empty() => Some(Marker::Ending(id.to_owned())),
         ("bg", Some(rest)) => {
-            let (location, time) = match rest.split_once(['|', '｜']) {
-                Some((location, time)) => (location.trim(), Some(time.trim())),
-                None => (rest, None),
+            // `[bg: 地點 | 時段 | 天氣]`，後兩欄可省
+            let mut fields = rest.splitn(3, ['|', '｜']).map(str::trim);
+            let location = fields.next().unwrap_or_default();
+            let mut field = || {
+                fields
+                    .next()
+                    .filter(|field| !field.is_empty())
+                    .map(str::to_owned)
             };
+            let (time, weather) = (field(), field());
             (!location.is_empty()).then(|| Marker::Bg {
                 location: location.to_owned(),
-                time: time.filter(|time| !time.is_empty()).map(str::to_owned),
+                time,
+                weather,
             })
         }
         _ => None,
@@ -355,11 +365,19 @@ fn parse_cells(text: &str, source: &VnSource, roster: &VnRoster) -> Vec<VnCell> 
         if let Some(marker) = marker(line) {
             flush(&mut narration, &mut cells);
             match marker {
-                Marker::Bg { location, time } => {
-                    // 卡地點換成卡上的名稱與 slug；時段只認明寫且在該地點清單內的（沿用由 resolve_scene 補）
+                Marker::Bg {
+                    location,
+                    time,
+                    weather,
+                } => {
+                    // 卡地點換成卡上的名稱與 slug；時段、天氣只認明寫且認得的（沿用由 resolve_scene 補）
                     let located = roster.places.locate(&location);
                     cells.push(VnCell::Bg {
                         period: time.as_deref().and_then(|time| located.period_for(time)),
+                        weather: weather
+                            .as_deref()
+                            .and_then(crate::vn_backgrounds::weather_of)
+                            .map(str::to_owned),
                         slug: located.slug,
                         location: located.name,
                         time,

@@ -37,7 +37,7 @@ pub fn vn_format_rules(lang: &str, extra: bool, places: bool) -> String {
              - Dialogue: `Name (expression): \"line\"`, one line per cell, short lines. Expressions: {expressions}; leaving out the parentheses means neutral. Write names exactly as on the Characters list. Supporting characters without cards use the same form and must keep the parentheses.\n\
              - Inner thoughts: `Name (expression) thought: text`, without quotation marks.\n\
              - Staging: after the expression you may add `, closeup` or `, shake`, e.g. `Name (surprised, shake): \"line\"`; at most two per turn.\n\
-             - Scene: `[bg: location | time]` on its own line, only when the location or time changes; {times}. A new location clears the stage.\n\
+             - Scene: `[bg: location | time | weather]` on its own line, only when the location, time or weather changes; {times}. Weather is optional and only for outdoor scenes: overcast, fog, rain, or clear when it clears up; left out, it stays the same at the same location and is clear at a new one. A new location clears the stage.\n\
              - Choices: only when the story reaches a point where the player must decide, end the story text with `[choices]` followed by 2–4 lines `- option`. No choices anywhere else.\n\
              - Chapter end: when this chapter's end condition is met, end the beat with `[chapter]` on its own line; do not give choices in the same beat.\n\
              - Ending: only when the story truly concludes and that ending's conditions hold, write `[ending: ending id]` on the last line, using the id exactly as in the Endings list; use `default` only when the director instruction asks for it.\n\
@@ -54,7 +54,7 @@ pub fn vn_format_rules(lang: &str, extra: bool, places: bool) -> String {
              - 對白：`名字 (表情): 「台詞」`，一行一格，台詞要短。表情只能用 {expressions}，不寫括號＝neutral。名字照「登場角色」名單原字逐字寫；沒有角色卡的配角同樣寫法，括號不可省。\n\
              - 內心獨白：`名字 (表情) thought: 台詞`，不加引號。\n\
              - 演出：表情後可加 `, closeup`（特寫）或 `, shake`（震動），例如 `名字 (surprised, shake): 「台詞」`；每回合最多兩個。\n\
-             - 換場景：`[bg: 地點 | 時段]` 單獨一行，只在地點或時段改變時寫；{times}；換地點＝舞台清空。\n\
+             - 換場景：`[bg: 地點 | 時段 | 天氣]` 單獨一行，只在地點、時段或天氣改變時寫；{times}；天氣可省、只寫室外：陰、霧、雨，轉晴時寫「晴」；不寫＝同地點沿用、換地點回晴；換地點＝舞台清空。\n\
              - 選項：只在劇情走到需要玩家抉擇的分岔點時，在正文最後寫 `[choices]`，下面每行 `- 選項` 共 2–4 個；其他時候不要出選項。\n\
              - 章末：本章結束條件達成時，在本拍最後另起一行寫 `[chapter]`；同一拍不要再出選項。\n\
              - 結局：只在故事真正收尾、且該結局條件成立時，最後一行寫 `[ending: 結局id]`，id 照「結局」表原字；`default` 只在導演指示要求時用。\n\

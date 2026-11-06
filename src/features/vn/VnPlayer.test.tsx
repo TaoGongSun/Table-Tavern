@@ -353,7 +353,7 @@ describe("VnPlayer", () => {
     await render();
     await act(async () => button(t("vnContinue"))!.click());
     backend.parse = () => ({
-      cells: [{ type: "bg", location: "Track", time: null, slug: "s", period: null }, n("first"), n("second"), n("third")],
+      cells: [{ type: "bg", location: "Track", time: null, slug: "s", period: null, weather: null }, n("first"), n("second"), n("third")],
       tail_tentative: false,
     });
     await render({ generating: { id: "", kind: "narration" }, streamText: "first\nsecond\nthird\n" });

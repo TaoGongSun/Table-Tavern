@@ -164,6 +164,8 @@ export type VnCell =
       slug: string;
       /** 固定時段 morning／day／dusk／night；正式格已補好沿用值，串流暫定格只有明寫的 */
       period: string | null;
+      /** 天氣 clear／overcast／fog／rain；正式格已補好（同地點沿用、換地點回晴），串流暫定格只有明寫的 */
+      weather: string | null;
     }
   | { type: "choices"; options: string[] }
   | { type: "chapter" }
