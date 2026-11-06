@@ -35,7 +35,7 @@
 - [ ] 網頁版下載頁兩顆鈕指向 `TableTavern_0.3.0_*` 檔。
 - [ ] 兩平台從 release 頁用瀏覽器下載裝一次，照 CHANGELOG 繞過步驟能裝能開（Mac 是「無法驗證」不是「已損毀」）；App 內「檢查更新」回「已是最新」。
 - [ ] 刪掉演練 tag。
-- [ ] 每次更新都要同步到 pCloud：從 release 下載兩個固定檔名安裝檔（`TableTavern-Windows-Setup.exe`、`TableTavern-macOS.dmg`）放到 `~/Downloads/TableTavern-v<版本>/` 交給作者上傳。〔作者裁決 2026-11-06〕
+- [ ] 每次更新都要同步到 pCloud：從 release 下載兩個帶版號的安裝檔（`TableTavern_<版本>_x64-setup.exe`、`TableTavern_<版本>_aarch64.dmg`）放到 `~/Downloads/TableTavern-v<版本>/` 交給作者上傳。〔作者裁決 2026-11-06〕
 
 ## 已知限制
 
