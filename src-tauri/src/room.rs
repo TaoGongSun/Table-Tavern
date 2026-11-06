@@ -899,14 +899,9 @@ impl Engine for AppEngine {
     fn capacity_hint(&self, world: &str) -> Option<bool> {
         // `read_config` 套了房間覆寫的路線／模型，算出來的就是這間房目前模型的容量
         let config = data::read_config(&self.config_root).ok()?;
-        let budget = crate::scene_budget::compute(
-            &self.config_root,
-            &self.data_root,
-            world,
-            &config,
-            true,
-        )
-        .ok()?;
+        let budget =
+            crate::scene_budget::compute(&self.config_root, &self.data_root, world, &config, true)
+                .ok()?;
         Some(budget.summary.map_or(false, |summary| summary.path.hint) || budget.chat_hint)
     }
 }
