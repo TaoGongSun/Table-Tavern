@@ -1,5 +1,6 @@
 // 行動格（協定 §3.3）：草稿節流上傳（不公開）、送出即公開、收回成草稿、交給 GM（協定的 skip）。GM 生成中可打字不可送；
 // 被拒（回合已往下走、GM 還在說）時草稿原樣保留。交給 AI 代管中照樣能打字存草稿，只是送不出（不在名單上）。
+// 房主當場開的倒數在輸入框上方出一條橫條（房間設定一開始就有的倒數不出）；送出、交給 GM 或停下就收。
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { t, type MsgKey } from "../../i18n";
@@ -46,6 +47,7 @@ export function ActionBox({
     returned: false,
     returnText: null as string | null,
     nudge: 0, // 已處理過的催促次數（view.nudged.n）
+    timer: -1, // 已震過的回合（房主當場開倒數，每回合一次）
   });
   const [text, setText] = useState(view.me.draft ?? "");
   const [tucked, setTucked] = useState(false); // 只在記憶體：進房一律展開
@@ -89,6 +91,15 @@ export function ActionBox({
   // 交給 GM 期間：輸入框唯讀（草稿留在框裡），收回後恢復可編輯
   const handed = shown?.status === "skipped";
   const nudged = openTurn && view.nudged?.round === r?.round;
+  // 房主自己開的倒數不必通知自己（回合列已有「停止倒數」與剩餘時間）
+  const timerOn =
+    openTurn && view.timerStarted === r?.round && view.room.hostId !== view.me.memberId;
+  const timerMinutes = (() => {
+    if (!timerOn || !r) return 0;
+    const ms =
+      r.deadline !== null ? Math.max(0, r.deadline - Date.now()) : (r.pausedRemainingMs ?? 0);
+    return Math.round(ms / 60_000);
+  })();
   const live = view.room.status === "playing" || view.room.status === "transition";
   // 生成中、不在名單上、已送出時不展開
   useEffect(() => {
@@ -128,6 +139,14 @@ export function ActionBox({
     setTimeout(() => area.current?.focus());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view.nudged?.n]);
+  // 房主當場開倒數：跟催促一樣，每回合只震一次、收起的輸入格展開一次（橫條在收起分支裡看不到）；瀏覽器不支援震動就只有橫條
+  useEffect(() => {
+    const roundNo = r?.round;
+    if (!timerOn || roundNo == null || fired.current.timer === roundNo) return;
+    fired.current.timer = roundNo;
+    navigator.vibrate?.(200);
+    setTucked(false);
+  }, [timerOn, r?.round]);
   useEffect(() => () => onTyping?.(false), [onTyping]);
   const run = async (tt: string, p: Record<string, unknown> = {}) => {
     await send(tt, { round: r?.round ?? 0, ...p });
@@ -221,6 +240,11 @@ export function ActionBox({
       ⏰ {t("actionNudged")}
     </div>
   );
+  const timerBar = timerOn && (
+    <div className="nudge-bar" role="status" data-testid="host-timer-note">
+      {t("actionHostTimer", { n: timerMinutes })}
+    </div>
+  );
   return (
     <div className="action-box" data-testid="action-box">
       {hint && <div className={acting && handed ? "action-status" : "action-hint"}>{hint}</div>}
@@ -292,6 +316,7 @@ export function ActionBox({
             </button>
           ) : (
             <>
+              {timerBar}
               {nudgeBar}
               <div className="action-row">
                 {input}
@@ -321,6 +346,7 @@ export function ActionBox({
         </>
       ) : (
         <>
+          {timerBar}
           {nudgeBar}
           {input}
           {errorLine}

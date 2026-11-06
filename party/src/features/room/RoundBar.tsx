@@ -6,6 +6,7 @@ import { DelegateButton } from "./DelegateButton";
 import { allDelegated, offlineSeated } from "./delegation";
 import { clock, HOLD_TEXT } from "./error-text";
 import { HeldActions } from "../controls/HeldActions";
+import { PartyMenu } from "../controls/PartyMenu";
 import type { RoomView } from "./room-state";
 import { useRun, type Act } from "./useRoom";
 
@@ -82,6 +83,8 @@ export function RoundBar({
   const r = view.round;
   useEffect(() => {
     if (r?.deadline == null) return;
+    // 回合列可能早就掛著：deadline 出現當下就取現在，不要沿用掛上時的 now（否則當場開的 2 分鐘會多算已掛著的時間）
+    setNow(Date.now());
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, [r?.deadline]);
@@ -178,6 +181,34 @@ export function RoundBar({
             {pending > 0 ? t("hostResolvePending", { n: pending }) : t("hostResolve")}
           </button>
         )}
+        {host &&
+          r?.phase === "acting" &&
+          r.roster.length > 0 &&
+          (r.deadline === null && r.pausedRemainingMs === null ? (
+            <PartyMenu
+              label={t("roundTimerMenu")}
+              trigger={t("roundTimerMenu")}
+              ariaLabelTrigger={false}
+              className="ghost"
+              items={[
+                [1, 60],
+                [2, 120],
+                [5, 300],
+              ].map(([n, sec]) => ({
+                key: String(sec),
+                label: t("roundTimerMinutes", { n }),
+                onSelect: () => run("round.timer", { round: r.round, action: "start", sec }),
+              }))}
+            />
+          ) : (
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => run("round.timer", { round: r.round, action: "stop" })}
+            >
+              {t("roundTimerStop")}
+            </button>
+          ))}
         {boss && r?.phase === "generating" && (
           <button type="button" onClick={() => run("gen.abort", { round: r.round })}>
             {t("roundAbort")}

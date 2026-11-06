@@ -417,3 +417,85 @@ describe("中途加入與離開（§3.4）", () => {
     expect(room.s.round!.roster.map((e) => e.memberId)).toEqual(["m1"]);
   });
 });
+
+describe("房主當場開關倒數（round.timer）", () => {
+  it("start 後到期自動結算，沒送出的算 timeout 觀望、草稿留著", async () => {
+    const room = await playing();
+    await room.send("a", "round.timer", { round: 2, action: "start", sec: 60 });
+    expect(room.s.round).toMatchObject({ deadline: room.clock + 60_000, pausedRemainingMs: null });
+    await room.send("b", "action.draft", { text: "草稿要送" });
+    room.clock += 40_000;
+    await room.send("x1", "hb");
+    await room.tick(20_000);
+    expect(room.events("round.resolved").at(-1)?.payload).toMatchObject({ by: "timeout" });
+    expect(room.events("round.resolved").at(-1)?.payload.batch).toMatchObject([
+      { kind: "watch", watchReason: "timeout" },
+      { kind: "watch", watchReason: "timeout" },
+    ]);
+    expect(room.s.drafts.m2).toBe("草稿要送");
+  });
+
+  it("執行端離線時 start 停在 pausedRemainingMs，上線後續跑並到期結算", async () => {
+    const room = await playing();
+    await room.disconnect("x1");
+    await room.send("a", "round.timer", { round: 2, action: "start", sec: 120 });
+    expect(room.s.round).toMatchObject({ deadline: null, pausedRemainingMs: 120_000 });
+    await room.exec("x2");
+    expect(room.s.round).toMatchObject({ deadline: room.clock + 120_000, pausedRemainingMs: null });
+    room.clock += 100_000;
+    await room.send("x2", "hb");
+    await room.tick(20_000);
+    expect(room.events("round.resolved").at(-1)?.payload.by).toBe("timeout");
+  });
+
+  it("stop 只停這回合，時間到了不結算", async () => {
+    const room = await playing();
+    await room.send("a", "round.timer", { round: 2, action: "start", sec: 60 });
+    await room.send("a", "round.timer", { round: 2, action: "stop" });
+    expect(room.s.round).toMatchObject({
+      phase: "acting",
+      deadline: null,
+      pausedRemainingMs: null,
+    });
+    const n = room.events("round.resolved").length;
+    room.clock += 50_000;
+    await room.send("x1", "hb");
+    await room.tick(20_000);
+    expect(room.s.round?.phase).toBe("acting");
+    expect(room.events("round.resolved")).toHaveLength(n);
+  });
+
+  it("非房主回 E_FORBIDDEN，倒數不動", async () => {
+    const room = await playing();
+    expect(
+      (await room.ask("b", "round.timer", { round: 2, action: "start", sec: 60 }))?.p.code,
+    ).toBe("E_FORBIDDEN");
+    expect(room.s.round).toMatchObject({ deadline: null, pausedRemainingMs: null });
+  });
+
+  it("秒數不是 60／120／300 回 E_SETTING_INVALID", async () => {
+    const room = await playing();
+    expect(
+      (await room.ask("a", "round.timer", { round: 2, action: "start", sec: 90 }))?.p.code,
+    ).toBe("E_SETTING_INVALID");
+    expect(
+      (await room.ask("a", "round.timer", { round: 2, action: "start", sec: 900 }))?.p.code,
+    ).toBe("E_SETTING_INVALID");
+    expect(room.s.round).toMatchObject({ deadline: null, pausedRemainingMs: null });
+  });
+
+  it("名單空（全員代管）回 E_STATE_CONFLICT", async () => {
+    const room = await playing();
+    await room.send("a", "seat.delegate", { memberId: "m1", on: true });
+    await room.send("a", "seat.delegate", { memberId: "m2", on: true });
+    expect(room.s.round!.roster).toEqual([]);
+    expect(
+      (await room.ask("a", "round.timer", { round: 2, action: "start", sec: 60 }))?.p.code,
+    ).toBe("E_STATE_CONFLICT");
+    expect(room.s.round).toMatchObject({
+      phase: "acting",
+      deadline: null,
+      pausedRemainingMs: null,
+    });
+  });
+});

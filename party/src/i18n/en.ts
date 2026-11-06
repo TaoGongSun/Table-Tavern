@@ -132,8 +132,13 @@ export const en: PartyMessages = {
   hostInviteNeedsExecutor:
     "The computer is offline; wait for it to come back before making a new link",
   hostExport: "Export log",
-  hostTimeout: "Action timer",
+  hostTimeout: "Default countdown per round",
   hostTimeoutOff: "No timer",
+  roundTimerMenu: "⏱ Timer ▾",
+  roundTimerStop: "Stop timer",
+  roundTimerMinutes: "{n, plural, one {# minute} other {# minutes}}",
+  actionHostTimer:
+    "{n, plural, one {The host started a timer: send within # minute} other {The host started a timer: send within # minutes}}",
   seconds: "{n, plural, one {# second} other {# seconds}}",
   hostShuffle: "Shuffle action order every round",
   hostAlertSound: "Sound when someone joins or sends",

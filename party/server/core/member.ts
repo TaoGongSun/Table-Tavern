@@ -312,6 +312,26 @@ export const MEMBER: Record<string, Handler> = {
     need(execReady(tx.s), "E_EXECUTOR_OFFLINE");
     resolve(tx, "host");
   },
+  // 當場倒數只動這一回合：先寫成暫停剩餘，交易尾端的 settle 在執行端在線、名單非空、沒有收回等待時換成 deadline。
+  // 下一回合仍照房間的 actionTimeoutSec。已在倒數中再 start 就是改秒數。
+  "round.timer": (tx, p, m) => {
+    host(tx, m);
+    const r = roundAt(tx, p.round);
+    if (p.action === "stop") {
+      Object.assign(tx.w.round!, { deadline: null, pausedRemainingMs: null });
+      tx.emit("round.deadline", { round: r.round, deadline: null, pausedRemainingMs: null });
+      return;
+    }
+    need(p.action === "start", "E_BAD_FRAME");
+    need(p.sec === 60 || p.sec === 120 || p.sec === 300, "E_SETTING_INVALID");
+    need(r.roster.length > 0, "E_STATE_CONFLICT");
+    Object.assign(tx.w.round!, { deadline: null, pausedRemainingMs: p.sec * 1000 });
+    tx.emit("round.deadline", {
+      round: r.round,
+      deadline: null,
+      pausedRemainingMs: p.sec * 1000,
+    });
+  },
   // 房主 GM 鈕（room-host-actions §3.1）：沒人入座也能按；這回合已送出的行動退回草稿，GM 跑完開新的 acting
   "host.gm": (tx, p, m) => {
     host(tx, m);

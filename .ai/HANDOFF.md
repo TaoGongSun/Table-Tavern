@@ -6,6 +6,7 @@
 
 ## 進行中
 - [room-status-strip](handoffs/room-status-strip.md) — 桌邊狀態列＋房主提醒（玩家回饋第 1 案；案 2、案 3 並行中）：等合併
+- [room-round-timer](handoffs/room-round-timer.md) — 回合倒數由房主當場開關（玩家回饋第 2 案，與案 1、3 並行）：等合併
 - [multiplayer-friends-test](handoffs/multiplayer-friends-test.md) — 給朋友測試的多人連線版：房間預設正式伺服器、簡中下載頁以多人連線為主軸（已上線，等朋友實機測試）
 - [card-mvu-shim](handoffs/card-mvu-shim.md) — 卡片介面沙盒墊 MVU 讀寫變數：全部已合併 main，剩實測佇列梯 1 項目（含 iframe 內按鈕實際互動）
 

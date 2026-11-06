@@ -22,6 +22,8 @@ export interface RoomView extends Omit<Snapshot, "quotaDetail"> {
   nudged: { round: number; n: number } | null;
   /** 這個 acting 回合開出來時，本人的行動是從房主 GM 回合前保留下來的（客戶端記憶體） */
   kept: number | null;
+  /** 房主在這個回合當場開的倒數（客戶端記憶體，快照不帶）。房間設定一開就有的倒數不算 */
+  timerStarted: number | null;
 }
 
 const key = (p: StoryPart) => `${p.round}:${p.part}`;
@@ -51,6 +53,7 @@ function fromSnapshot(s: Snapshot): RoomView {
     departed: [],
     nudged: null,
     kept: null,
+    timerStarted: null,
   };
 }
 
@@ -188,12 +191,18 @@ function onEvent(v: RoomView, e: any, at: number) {
         hold: null,
         ...(e.carry ? { carry: e.carry } : {}),
       };
-      Object.assign(v, { streaming: null, errorDetail: null });
+      Object.assign(v, { streaming: null, errorDetail: null, timerStarted: null });
       break;
     }
     case "round.deadline":
-      if (round && round.round === e.round)
+      if (round && round.round === e.round) {
+        const wasOff = round.deadline === null && round.pausedRemainingMs === null;
+        const nowOff = e.deadline === null && e.pausedRemainingMs === null;
+        // 只有「這回合原本沒倒數、這筆才出現」算房主當場開；兩欄清掉就是停下
+        if (nowOff) v.timerStarted = null;
+        else if (wasOff) v.timerStarted = e.round;
         Object.assign(round, { deadline: e.deadline, pausedRemainingMs: e.pausedRemainingMs });
+      }
       break;
     case "action.submitted": {
       const x = entry(e.memberId);

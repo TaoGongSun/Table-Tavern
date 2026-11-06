@@ -1463,3 +1463,76 @@ describe("桌邊狀態列與房主提醒", () => {
     expect(B.q('[data-testid="host-toasts"]')).toBeNull();
   });
 });
+
+describe("房主當場開關倒數", () => {
+  /** 測試時鐘與畫面時鐘對齊，摘要才會正好是「剩 2:00」 */
+  function pinClock(room: Room) {
+    room.clock = Date.now();
+    return vi.spyOn(Date, "now").mockReturnValue(room.clock);
+  }
+
+  async function startTwoMinutes(A: Phone) {
+    A.click("⏱ 倒數 ▾");
+    const item = () =>
+      [...A.el.querySelectorAll<HTMLButtonElement>(".menu .menu-item")].find(
+        (b) => b.textContent === "2 分鐘",
+      );
+    await until(() => item());
+    act(() => item()!.click());
+  }
+
+  it("房主開 2 分鐘：玩家看到橫條與「剩 2:00」", async () => {
+    const { room, A, B } = await table();
+    const spy = pinClock(room);
+    try {
+      await startTwoMinutes(A);
+      await until(
+        () =>
+          B.q('[data-testid="host-timer-note"]')?.textContent === "房主開了倒數：2 分鐘內送出" &&
+          B.text().includes("剩 2:00"),
+      );
+      expect(A.button("停止倒數")).toBeTruthy();
+      expect(A.q('[data-testid="host-timer-note"]')).toBeNull(); // 房主自己不看橫條
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("停止倒數：橫條消失，摘要回到「輪到大家行動」", async () => {
+    const { room, A, B } = await table();
+    const spy = pinClock(room);
+    try {
+      await startTwoMinutes(A);
+      await until(() => B.q('[data-testid="host-timer-note"]'));
+      A.click("停止倒數");
+      await until(
+        () => !B.q('[data-testid="host-timer-note"]') && B.text().includes("輪到大家行動"),
+      );
+      expect(A.button("⏱ 倒數 ▾")).toBeTruthy();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("玩家收起輸入格後房主開倒數：輸入格展開、看得到橫條", async () => {
+    const { room, A, B } = await table();
+    const spy = pinClock(room);
+    try {
+      act(() => B.q<HTMLButtonElement>('[data-testid="action-tuck"]')!.click());
+      await until(() => B.q('[data-testid="action-untuck"]'));
+      await startTwoMinutes(A);
+      await until(
+        () => B.q('[data-testid="host-timer-note"]') && !B.q('[data-testid="action-untuck"]'),
+      );
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("非房主沒有倒數鈕", async () => {
+    const { A, B } = await table();
+    expect(A.button("⏱ 倒數 ▾")).toBeTruthy();
+    expect(B.button("⏱ 倒數 ▾")).toBeNull();
+    expect(B.button("停止倒數")).toBeNull();
+  });
+});

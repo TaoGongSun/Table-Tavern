@@ -53,6 +53,7 @@ const MEMBER_FRAMES: Record<string, string> = {
   "action.skip": "round:i",
   "action.retract": "round:i",
   "round.resolve": "round:i",
+  "round.timer": "round:i action:s sec?:i",
   "round.continue": "round:i",
   "gen.abort": "round:i",
   "host.gm": "round:i mode:s cardId?:s",
