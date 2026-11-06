@@ -93,6 +93,7 @@
 - 白名單在 schema 層的直接證據拿不到：`init.tools` 不管哪個代理都列 60 個，log 也不記錄工具宣告。目前證據只有模型自述和行為。
 - 代理檔內容被竄改、退回預設工具時：`search_web` 能用（N1），能不能傳到第三方未證實；`open_browser_url` 沒測。
 - `--settings` 能不能蓋過 project、shared scope 的權限規則：未證實。
+- 以上實測都在 agy 1.4.12。本機已升到 1.5.1（2026-11-06），新增 `--sandbox`（只包 shell）與 `--mode`，誘導格沒有在 1.5.1 重跑。
 - Windows 上的 agy 未實測；各格只跑 1 次。
 
 ## 6. 待作者裁決
