@@ -935,3 +935,8 @@
   align-self: center;
   font-size: 14px;
 }
+
+/* 房間外殼：沒有自己的盒子（手機與桌面嵌入都一樣），只用來掛「往回捲收起」的 class */
+.app .room-screen {
+  display: contents;
+}

@@ -23,10 +23,13 @@ export function RoomBody({
   room,
   origin,
   desktop,
+  settings,
 }: {
   room: RoomSession;
   origin: string;
   desktop?: DesktopHooks;
+  /** 手機：名單頁底部的顯示設定（房號、語系、字級） */
+  settings?: ReactNode;
 }) {
   const [left, setLeft] = useState(false);
   // 房間關了仍留著畫面唯讀（房主還能匯出，§2）；其餘致命錯誤整頁顯示原因
@@ -67,6 +70,7 @@ export function RoomBody({
           payerExtra: desktop?.payerExtra,
           heldDetail: desktop?.heldDetail,
           seatEntry: desktop?.seatEntry,
+          settings,
         }}
       />
     </>

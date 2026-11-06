@@ -58,21 +58,26 @@ export interface Reopen {
   openAttendance: () => void;
 }
 
-/** `heldDetail`：桌面版本機遮罩過的錯誤原文；沒給就用房間的分類說明（只給出額度者，他才能處理） */
+/** `heldDetail`：桌面版本機遮罩過的錯誤原文；沒給就用房間的分類說明（只給出額度者，他才能處理）。
+ *  `compact`（手機）：平時只一行摘要（狀態＋回合號，含倒數），點了展開 GM 模型、還在等誰、倒數說明；
+ *  能按、要處理的東西（回合鈕、卡住處理與錯誤詳情、離線者的代管鈕、重開提醒）不收。 */
 export function RoundBar({
   view,
   act,
   reopen,
   heldDetail,
   resumed,
+  compact = false,
 }: {
   view: RoomView;
   act: Act;
   reopen?: Reopen;
   heldDetail?: ReactNode;
   resumed: (round: number) => void;
+  compact?: boolean;
 }) {
   const [now, setNow] = useState(Date.now());
+  const [more, setMore] = useState(false);
   const { run, error } = useRun(act);
   const r = view.round;
   useEffect(() => {
@@ -109,27 +114,53 @@ export function RoundBar({
       : view.executor.syncing
         ? t("roundHostSyncing")
         : null;
+  const roundNo = r && (
+    <span className="round-no">{t("roundNumber", { round: r.round, scene: view.room.scene })}</span>
+  );
+  const statusText = <span className="round-status">{status(view, now)}</span>;
+  const errDetail = detail && (
+    <details className="round-detail" data-testid="error-detail">
+      <summary>{t("gmErrDetail")}</summary>
+      <small>{detail}</small>
+    </details>
+  );
+  const gmModel = view.room.sceneSettings && (
+    <span className="round-gm">
+      {t("gmModel", { model: modelName(view.room.sceneSettings.modelLabel) })}
+    </span>
+  );
+  const shown = !compact || more;
+  // 沒有可展開的細節（大廳、生成中）：摘要不畫 ▾
+  const expandable =
+    !!gmModel || waiting.length > 0 || (r?.phase === "acting" && r.deadline !== null);
+  // 手機收起時「還在等」只在有房主能按的代管鈕時露出
+  const waitingShown =
+    waiting.length > 0 &&
+    (shown || waiting.some((e) => offline.some((m) => m.memberId === e.memberId)));
   return (
     <div className="round-bar" data-testid="round-bar">
-      <div className="round-line">
-        {r && (
-          <span className="round-no">
-            {t("roundNumber", { round: r.round, scene: view.room.scene })}
-          </span>
-        )}
-        <span className="round-status">{status(view, now)}</span>
-        {detail && (
-          <details className="round-detail" data-testid="error-detail">
-            <summary>{t("gmErrDetail")}</summary>
-            <small>{detail}</small>
-          </details>
-        )}
-        {view.room.sceneSettings && (
-          <span className="round-gm">
-            {t("gmModel", { model: modelName(view.room.sceneSettings.modelLabel) })}
-          </span>
-        )}
-      </div>
+      {compact ? (
+        <button
+          type="button"
+          className="round-summary"
+          aria-expanded={expandable ? more : undefined}
+          data-testid="round-summary"
+          onClick={() => setMore((m) => !m)}
+        >
+          {statusText}
+          {roundNo && <> · {roundNo}</>}
+        </button>
+      ) : (
+        <div className="round-line">
+          {roundNo}
+          {statusText}
+          {errDetail}
+          {gmModel}
+        </div>
+      )}
+      {/* 卡住時給出額度者的錯誤詳情是要他處理的：不收 */}
+      {compact && errDetail && <div className="round-line">{errDetail}</div>}
+      {compact && more && gmModel && <div className="round-line round-more">{gmModel}</div>}
       <div className="round-actions">
         {host && view.room.status === "lobby" && (
           <button
@@ -169,13 +200,13 @@ export function RoundBar({
           </button>
         )}
       </div>
-      {r?.phase === "acting" && r.deadline !== null && (
+      {shown && r?.phase === "acting" && r.deadline !== null && (
         <div className="round-waiting" data-testid="countdown-note">
           {t("roundCountdownNote")}
         </div>
       )}
       {/* 房主：還在等的人裡沒連線的，名字旁直接給代管鈕，不必切到房主頁 */}
-      {waiting.length > 0 && (
+      {waitingShown && (
         <div className="round-waiting" data-testid="round-waiting">
           {t("roundWaiting", { names: "" })}
           {waiting.map((e, i) => (

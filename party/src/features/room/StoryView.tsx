@@ -1,6 +1,6 @@
 // 故事串：GM 旁白、NPC 對話、玩家行動、系統標記；串流中那段即時長出，定稿整段取代。
 // 一律純文字（協定 §10：別人的行動與模型輸出都是不可信文字，不插 HTML）。
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { streamDisplayText } from "@desktop/features/play/stream-display";
 import type { Speaker } from "../../../server/core/types";
 import { t, type MsgKey } from "../../i18n";
@@ -45,18 +45,58 @@ function Part({
   );
 }
 
-/** `tail`：故事串最尾的動作（房主的收回／重生），跟著故事一起捲 */
+/** `tail`：故事串最尾的動作（房主的收回／重生），跟著故事一起捲。
+ *  `onReading`（手機）：離最底超過一屏回報 true、捲回最底回報 false；`jump` 每變一次就捲回最底；
+ *  `onScrollMove`：每次故事區捲動都回報（打過字後，沒焦點的捲動才解除「維持展開」）；
+ *  `folded`：上下列目前收起（展開時故事區變矮，貼著最底的要重新貼回去）。 */
 export function StoryView({
   view,
   loadOlder,
   tail,
+  onReading,
+  onScrollMove,
+  jump = 0,
+  folded = false,
 }: {
   view: RoomView;
   loadOlder: (beforeSeq: number) => Promise<number>;
   tail?: ReactNode;
+  onReading?: (reading: boolean) => void;
+  onScrollMove?: () => void;
+  jump?: number;
+  folded?: boolean;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
+  const reading = useRef(false);
+  const report = (next: boolean) => {
+    if (reading.current === next) return;
+    reading.current = next;
+    onReading?.(next);
+  };
+  useEffect(() => {
+    if (!jump || !box.current) return;
+    box.current.scrollTop = box.current.scrollHeight;
+    stick.current = true;
+    report(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jump]);
+  // 換分頁回來是新掛上的故事區：從最底開始，不沿用收起狀態
+  useEffect(() => () => onReading?.(false), [onReading]);
+  // 收起的上下列一展開故事區就變矮：在捲動事件量到「離底一段」之前先貼回最底
+  useLayoutEffect(() => {
+    if (!folded && stick.current && box.current) box.current.scrollTop = box.current.scrollHeight;
+  }, [folded]);
+  // 故事區變矮（鍵盤彈出、視窗縮放）時，原本貼著最底就繼續貼著，新段落照樣自動跟上
+  useEffect(() => {
+    const el = box.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      if (stick.current) el.scrollTop = el.scrollHeight;
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const [cursor, setCursor] = useState<number | null>(null); // null＝還沒翻過；0＝沒有更早的了
   const s = view.streaming;
   useEffect(() => {
@@ -70,11 +110,14 @@ export function StoryView({
       className="story"
       ref={box}
       data-testid="story"
-      onScroll={(e) =>
-        (stick.current =
-          e.currentTarget.scrollHeight - e.currentTarget.scrollTop - e.currentTarget.clientHeight <
-          80)
-      }
+      onScroll={(e) => {
+        onScrollMove?.();
+        const el = e.currentTarget;
+        const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
+        stick.current = gap < 80;
+        if (stick.current) report(false);
+        else if (gap > el.clientHeight) report(true);
+      }}
     >
       {cursor !== 0 &&
         view.room.scene > 0 && ( // 第一幕之前沒有更早的劇情

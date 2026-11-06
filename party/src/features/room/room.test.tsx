@@ -162,6 +162,20 @@ async function table(bEnv: Partial<RoomEnv> = {}) {
 }
 
 describe("手機客戶端對真伺服器核心", () => {
+  it("進房後品牌列讓給劇情：房號、語系、劇情字級在名單頁；字級存在這支手機、重開照舊", async () => {
+    const { hub, A, room } = await table();
+    expect(A.q(".topbar")).toBeNull();
+    const app = () => A.q(".app")!;
+    expect(app().style.getPropertyValue("--story-size")).toBe("17px");
+    A.tab("members");
+    expect(A.q('[data-testid="display-settings"]')!.textContent).toContain(`房號 ${room.code}`);
+    act(() => A.q<HTMLButtonElement>('[data-testid="story-size-xl"]')!.click());
+    expect(app().style.getPropertyValue("--story-size")).toBe("22px");
+    const again = phone(hub, `k=${room.joinSecret}`, { storage: A.env.storage });
+    await until(() => again.q('[data-testid="round-bar"]'));
+    expect(again.q(".app")!.style.getPropertyValue("--story-size")).toBe("22px");
+  });
+
   it("保留給電腦的玩家卡：手機選角清單不列", async () => {
     const room = await Room.create();
     await room.exec();
@@ -213,6 +227,8 @@ describe("手機客戶端對真伺服器核心", () => {
     await hub.exec("gen.part.begin", { dispatchId, part: 0, speaker: { kind: "gm" } });
     await hub.exec("gen.part.end", { dispatchId, part: 0, text: "開場。", interrupted: false });
     await hub.exec("gen.done", { dispatchId, aborted: false });
+    // 手機回合列平時一行：點摘要才展開還在等誰
+    act(() => A.q<HTMLButtonElement>('[data-testid="round-summary"]')!.click());
     await until(() => A.q('[data-testid="round-waiting"]'));
     expect(A.q('[data-testid="round-waiting"]')!.textContent).toBe("還在等：阿明");
     expect(A.button("結算這回合")!.textContent).toBe("結算這回合（1 人還沒送）");
@@ -819,6 +835,7 @@ describe("玩家卡（room-player-cards）", () => {
     const confirm = vi.fn(() => true);
     vi.stubGlobal("confirm", confirm);
     await hub.exec("status", { keepAwake: null, busy: false, imageGen: true });
+    A.tab("members"); // 手機：編輯我的角色在名單頁自己那一列
     A.click("編輯我的角色");
     await until(() => room.frames("x1", "card.read").length === 1);
     const card = {
@@ -960,6 +977,7 @@ describe("玩家卡（room-player-cards）", () => {
 
   it("從圖庫選：有圖才出現、按了才撈、標使用中、再載入接著最後一張、點縮圖取大預覽再裁切、取消不動草稿、套用才進草稿、存檔送檔名與裁切框", async () => {
     const { room, hub, A } = await table();
+    A.tab("members");
     A.click("編輯我的角色");
     await until(() => room.frames("x1", "card.read").length === 1);
     const card = {
@@ -1048,6 +1066,86 @@ describe("玩家卡（room-player-cards）", () => {
       imageFromGallery: "1700000000001.png",
       crop: { x: 0, y: 0, w: 1, h: 1 },
     });
+  });
+
+  it("輸入格可收起：草稿還在、點細列展開並聚焦；新回合只自動展開一次；往回捲時結算鈕第一下就送出", async () => {
+    const { room, hub, A, B, b } = await table();
+    const away = (p: Phone, up: boolean) => {
+      const el = p.q<HTMLElement>('[data-testid="story"]')!;
+      Object.defineProperty(el, "scrollHeight", { configurable: true, get: () => 2000 });
+      Object.defineProperty(el, "clientHeight", { configurable: true, get: () => 400 });
+      el.scrollTop = up ? 0 : 2000;
+      act(() => el.dispatchEvent(new Event("scroll")));
+    };
+    B.type('[data-testid="action-text"]', "我先記下");
+    await until(() => room.s.drafts[b] === "我先記下");
+    act(() => B.q<HTMLButtonElement>('[data-testid="action-tuck"]')!.click());
+    expect(B.q('[data-testid="action-text"]')).toBeNull();
+    expect(B.q('[data-testid="action-untuck"]')!.textContent).toContain("✎ 草稿");
+    expect(B.q('[data-testid="action-untuck"]')!.textContent).toContain("打字中");
+    expect(B.button("跳過")).toBeNull();
+    expect(room.s.drafts[b]).toBe("我先記下");
+    act(() => B.q<HTMLButtonElement>('[data-testid="action-untuck"]')!.click());
+    const area = B.q<HTMLTextAreaElement>('[data-testid="action-text"]')!;
+    expect(area.value).toBe("我先記下");
+    expect(document.activeElement).toBe(area);
+    expect(B.button("跳過")).toBeTruthy();
+    act(() => A.q<HTMLButtonElement>('[data-testid="action-tuck"]')!.click());
+    expect(A.button("跳過")).toBeNull();
+    expect(A.q('[data-testid="gm-controls"]')).toBeTruthy();
+    act(() => A.q<HTMLButtonElement>('[data-testid="action-untuck"]')!.click());
+    act(() => A.q<HTMLTextAreaElement>('[data-testid="action-text"]')!.blur());
+
+    act(() => B.q<HTMLButtonElement>('[data-testid="action-tuck"]')!.click());
+    A.click("結算這回合");
+    await until(() => room.s.round?.phase === "queued");
+    await room.finishGen("下一段");
+    hub.flush();
+    await until(() => B.q('[data-testid="action-text"]'));
+    act(() => B.q<HTMLButtonElement>('[data-testid="action-tuck"]')!.click());
+    A.type('[data-testid="action-text"]', "房主也在打");
+    await until(() => room.s.drafts[room.s.members[0].id] === "房主也在打");
+    expect(B.q('[data-testid="action-text"]')).toBeNull();
+
+    away(A, true);
+    expect(A.q(".room-screen")!.classList.contains("reading")).toBe(true);
+    act(() => A.q<HTMLButtonElement>('[data-testid="round-summary"]')!.click());
+    expect(A.q('[data-testid="round-waiting"]')).toBeNull();
+    expect(A.q(".room-screen")!.classList.contains("reading")).toBe(false);
+    away(A, false);
+    away(A, true);
+    expect(A.q(".room-screen")!.classList.contains("reading")).toBe(true);
+    act(() => A.q<HTMLTextAreaElement>('[data-testid="action-text"]')!.focus());
+    expect(A.q(".room-screen")!.classList.contains("reading")).toBe(false);
+    act(() => A.q<HTMLTextAreaElement>('[data-testid="action-text"]')!.blur());
+    expect(A.q(".room-screen")!.classList.contains("reading")).toBe(false);
+    away(A, true);
+    expect(A.q(".room-screen")!.classList.contains("reading")).toBe(true);
+    A.click("結算這回合");
+    await until(() => room.s.round?.phase === "queued");
+  });
+
+  it("往回捲打過字後，失焦再點送出仍送出一次，輸入列還在", async () => {
+    const { room, B } = await table();
+    const away = (up: boolean) => {
+      const el = B.q<HTMLElement>('[data-testid="story"]')!;
+      Object.defineProperty(el, "scrollHeight", { configurable: true, get: () => 2000 });
+      Object.defineProperty(el, "clientHeight", { configurable: true, get: () => 400 });
+      el.scrollTop = up ? 0 : 2000;
+      act(() => el.dispatchEvent(new Event("scroll")));
+    };
+    B.type('[data-testid="action-text"]', "我推門");
+    const area = B.q<HTMLTextAreaElement>('[data-testid="action-text"]')!;
+    act(() => area.focus());
+    away(true);
+    act(() => area.blur());
+    expect(B.q(".room-screen")!.classList.contains("reading")).toBe(false);
+    B.click("送出");
+    await until(() => room.events("action.submitted").length === 1);
+    expect(room.events("action.submitted")).toHaveLength(1);
+    expect(room.events("action.submitted")[0].payload.text).toBe("我推門");
+    expect(B.q('[data-testid="action-text"]')).toBeTruthy();
+    expect(B.q(".room-screen")!.classList.contains("reading")).toBe(false);
   });
 });
 

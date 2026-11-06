@@ -21,4 +21,16 @@ export const de: PartyMessages = {
   delegatedReturned:
     "Die Geschichte während deiner Abwesenheit steht weiter oben. Scrolle hoch, um sie zu lesen.",
   hostMemberOptions: "{name} verwalten",
+  storyJumpLatest: "↓ Zurück zum Neuesten",
+  displayTitle: "Anzeige",
+  roomCode: "Raum {code}",
+  storySize: "Schriftgröße der Geschichte",
+  storySize_s: "S",
+  storySize_m: "M",
+  storySize_l: "L",
+  storySize_xl: "XL",
+  pairFold: "GM mit meinem Kontingent",
+  actionFold: "▾ Einklappen",
+  actionWrite: "✎ Aktion schreiben",
+  actionDraft: "✎ Entwurf",
 };

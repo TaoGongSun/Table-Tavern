@@ -1,4 +1,5 @@
-// 故事頁頂端的三鍵狀態列：只看已落段的 story，串流中不換。
+// 故事頁頂端的三鍵狀態列：只看已落段的 story，串流中不換；手機平時一行、點一下展開。
+import { useState } from "react";
 import type { SceneStatus } from "../../../server/core/types";
 import { t, type MsgKey } from "../../i18n";
 
@@ -31,9 +32,15 @@ export function visibleSceneStatus(parts: readonly { state?: SceneStatus }[]) {
 
 export function SceneStatusLine({ parts }: { parts: readonly { state?: SceneStatus }[] }) {
   const items = visibleSceneStatus(parts);
+  const [open, setOpen] = useState(false);
   if (!items.length) return null;
+  // 手機平時一行，點一下展開到三行（桌面版一律三行，App.css 只在 .party-phone 收）
   return (
-    <div className="scene-status" data-testid="scene-status">
+    <div
+      className={open ? "scene-status open" : "scene-status"}
+      data-testid="scene-status"
+      onClick={() => setOpen((o) => !o)}
+    >
       <div className="scene-status-text">
         {items.map((item, index) => (
           <span key={item.key} className="scene-status-item" title={`${item.label} ${item.text}`}>

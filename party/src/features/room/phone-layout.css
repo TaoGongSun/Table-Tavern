@@ -1,0 +1,205 @@
+/* 手機版版面（party-phone-ux）：空間讓給劇情。只有手機外殼（App.tsx）載入，桌面嵌入不吃這份。 */
+
+/* 上方一列：頁籤靠右、回合摘要在左；房主鈕多時回合列自己換到下一行 */
+.app.party-phone .room-head {
+  display: flex;
+  flex-direction: row-reverse;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  align-items: flex-start;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+.app.party-phone .room-head .tabs {
+  flex: none;
+  gap: 2px;
+  padding: 4px 8px 4px 0;
+  border-bottom: 0;
+}
+.app.party-phone .room-head .tab {
+  min-height: 32px;
+  padding: 2px 10px;
+  font-size: 14px;
+}
+.app.party-phone .room-head .round-bar {
+  flex: 1 1 9rem;
+  min-width: 0;
+  padding: 4px 0 4px var(--gutter);
+  border-bottom: 0;
+}
+.app.party-phone .round-summary {
+  display: block;
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 14px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app.party-phone .round-summary[aria-expanded]::after {
+  content: " ▾";
+  color: var(--muted);
+}
+.app.party-phone .round-summary[aria-expanded="true"] {
+  white-space: normal;
+}
+.app.party-phone .round-summary[aria-expanded="true"]::after {
+  content: " ▴";
+}
+.app.party-phone .round-more {
+  padding-bottom: 4px;
+}
+.app.party-phone .round-actions:not(:empty) {
+  margin: 2px 0 6px;
+}
+.app.party-phone .round-waiting,
+.app.party-phone .reopen-note {
+  padding-bottom: 4px;
+}
+
+/* 場景列平時一行，點一下展開到三行 */
+.app.party-phone .scene-status {
+  cursor: pointer;
+}
+.app.party-phone .scene-status:not(.open) .scene-status-text {
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+}
+
+/* 劇情字級：玩家自調（--story-size，名單頁「顯示」）；系統標記維持小字 */
+.app.party-phone .part:not(.part-system) .part-text {
+  font-size: var(--story-size, 17px);
+}
+
+/* 聊天式輸入格：輸入框一行起跳、長到約 5 行；送出在右；跳過與 GM 鈕一條小鈕列。
+   iOS 輸入框字小於 16px 會在聚焦時整頁放大，所以下限 16px */
+.app.party-phone .action-box {
+  padding-top: 8px;
+}
+.app.party-phone .action-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.app.party-phone .action-row textarea {
+  flex: 1;
+  min-height: 42px;
+  max-height: calc(5 * 1.5em + 18px);
+  line-height: 1.5;
+  font-size: max(16px, var(--story-size, 17px));
+  overflow-y: auto;
+}
+.app.party-phone .action-row > button {
+  flex: none;
+  min-height: 42px;
+}
+.app.party-phone .action-minor {
+  justify-content: flex-start;
+  margin-top: 6px;
+}
+.app.party-phone .action-minor .action-leading {
+  margin-right: 0;
+}
+.app.party-phone .action-minor .action-skip {
+  margin-left: auto;
+}
+.app.party-phone .action-minor:empty {
+  display: none;
+}
+
+/* 打字中（鍵盤開著）：場景列與回合詳情先讓位給劇情 */
+.app.party-phone .room-screen:has(.action-box textarea:focus) .scene-status,
+.app.party-phone .room-screen:has(.action-box textarea:focus) .round-more,
+.app.party-phone .room-screen:has(.action-box textarea:focus) [data-testid="countdown-note"] {
+  display: none;
+}
+
+/* 手動收合的細列，跟「回到最新」同一套：置中、浮在故事下方 */
+.app.party-phone .dock-strip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  align-self: center;
+  width: fit-content;
+  max-width: calc(100% - 2 * var(--gutter));
+  margin: 6px auto calc(6px + env(safe-area-inset-bottom));
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+}
+.app.party-phone .action-untuck {
+  justify-content: space-between;
+  min-width: min(18rem, calc(100% - 2 * var(--gutter)));
+}
+.app.party-phone .action-untuck small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+/* 沒有 GM 鈕時，收合後的細列直接當底部那顆（跟回到最新同一個位子） */
+.app.party-phone .action-box:has(.action-untuck):not(:has(.action-leading)) {
+  display: contents;
+}
+
+/* 往回捲讀舊劇情：上方只剩一行摘要（能按的鈕照留），場景列收起，輸入列換成「回到最新」。
+   已入座房主只留 GM 列（跳過跟著輸入列藏）；沒有 GM 鈕的玩家整格藏起。 */
+.app.party-phone .reading .room-head .tabs,
+.app.party-phone .reading .scene-status,
+.app.party-phone .reading .round-more,
+.app.party-phone .reading [data-testid="countdown-note"],
+.app.party-phone .reading .seat-picker,
+.app.party-phone .reading .action-box:not(:has(.action-leading)) {
+  display: none;
+}
+.app.party-phone .reading .action-row,
+.app.party-phone .reading .action-skip,
+.app.party-phone .reading .action-untuck,
+.app.party-phone .reading .action-hint,
+.app.party-phone .reading .returned,
+.app.party-phone .reading .action-box .field-error {
+  display: none;
+}
+.app.party-phone .reading .round-summary {
+  min-height: 24px;
+  padding: 0;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* 名單頁：自己那列的「編輯我的角色」、收起的配對碼、底部顯示設定 */
+.app .pair-fold {
+  margin: 12px 0 16px;
+}
+.app .pair-fold summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 14px;
+}
+.app .display-settings {
+  margin-top: 8px;
+}
+.app .size-seg {
+  display: inline-flex;
+}
+.app .size-seg > button {
+  min-width: 44px;
+  padding: 4px 10px;
+  border-radius: 0;
+}
+.app .size-seg > button + button {
+  border-left: 0;
+}
+.app .size-seg > button:first-child {
+  border-radius: 999px 0 0 999px;
+}
+.app .size-seg > button:last-child {
+  border-radius: 0 999px 999px 0;
+}
+.app .size-seg > button.on {
+  background: var(--surface-2);
+  font-weight: 600;
+}

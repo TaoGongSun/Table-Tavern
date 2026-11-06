@@ -22,4 +22,16 @@ export const ru: PartyMessages = {
   delegatedReturned:
     "Сюжет за время вашего отсутствия находится выше. Прокрутите вверх, чтобы прочитать.",
   hostMemberOptions: "Управление: {name}",
+  storyJumpLatest: "↓ К последнему",
+  displayTitle: "Вид",
+  roomCode: "Комната {code}",
+  storySize: "Размер текста",
+  storySize_s: "S",
+  storySize_m: "M",
+  storySize_l: "L",
+  storySize_xl: "XL",
+  pairFold: "Запустить GM на моей квоте",
+  actionFold: "▾ Свернуть",
+  actionWrite: "✎ Написать действие",
+  actionDraft: "✎ Черновик",
 };
