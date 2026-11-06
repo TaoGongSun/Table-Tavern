@@ -195,6 +195,8 @@ export interface ExecutorView {
   /** 房主重開房間、執行端正在補送關房期間的劇情（同步閘門，room-host-actions §3.3）：補完前不結算 */
   syncing: boolean;
   modelLabel: string | null;
+  /** 這一幕到了換幕提醒門檻。沒報過、或幕號已經換掉而執行端還沒重報＝false */
+  capacityHint: boolean;
 }
 
 export type ErrorCode =
@@ -313,6 +315,8 @@ export interface RoomState {
     sync?: "needed" | null;
     imageGen?: boolean;
     imageGenRoute?: boolean;
+    /** 執行端上次報的提醒，蓋上當時的房間幕號。舊狀態沒有這欄＝沒有 */
+    capacity?: { scene: number; hint: boolean } | null;
     caps: Capabilities | null;
     quota: QuotaReport | null;
   };

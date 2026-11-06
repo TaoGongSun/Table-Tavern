@@ -343,6 +343,29 @@ describe("手機客戶端對真伺服器核心", () => {
     expect(B.q('[data-testid="submitted"]')!.textContent).toContain("我推開門");
   });
 
+  it("這一幕快滿時只提醒房主，換幕完成後消失", async () => {
+    const { room, hub, A, B } = await table();
+    await hub.exec("status", { keepAwake: null, busy: false, capacityHint: true });
+    await until(() => A.q('[data-testid="capacity-note"]'));
+    expect(A.q('[data-testid="capacity-note"]')!.textContent).toBe(
+      "這一幕快滿了，再玩幾回合 GM 就送不出去，建議換幕",
+    );
+    expect(B.q('[data-testid="capacity-note"]')).toBeNull();
+
+    A.click("換幕 ▾"); // 回合列選單（room-scene-advance-bar）
+    const endScene = () =>
+      [...A.el.querySelectorAll<HTMLButtonElement>(".menu .menu-item")].find((b) =>
+        b.textContent?.startsWith("結束本幕"),
+      );
+    await until(() => endScene());
+    act(() => endScene()!.click());
+    await until(() => room.s.status === "transition");
+    const { jobId } = room.frames("x1", "job.scene_advance")[0].p;
+    await hub.exec("job.result", { jobId, ok: true, result: { summary: "前情：大家進了酒館。" } });
+    await until(() => !A.q('[data-testid="capacity-note"]'));
+    expect(B.q('[data-testid="capacity-note"]')).toBeNull();
+  });
+
   it("換幕：已送出的行動退回草稿、新幕開場帶前情摘要；房主移出成員、關房後畫面唯讀", async () => {
     const { room, hub, A, B } = await table();
     B.type('[data-testid="action-text"]', "我想走");

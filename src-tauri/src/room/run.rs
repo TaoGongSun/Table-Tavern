@@ -33,7 +33,34 @@ pub(super) fn status_frame(room: &Room) -> Value {
     };
     let route = super::cards::gen_route(room);
     let image_gen = route && !room.saved().image_gen_off;
-    json!({ "t": "status", "p": { "keepAwake": room.status().keep_awake, "busy": busy, "imageGen": image_gen, "imageGenRoute": route } })
+    let status = room.status();
+    let mut p = json!({
+        "keepAwake": status.keep_awake,
+        "busy": busy,
+        "imageGen": image_gen,
+        "imageGenRoute": route,
+    });
+    // 沒量過不帶欄位：伺服器收到缺欄位不會清掉上次的值
+    if let Some(hint) = status.capacity_hint {
+        p["capacityHint"] = json!(hint);
+    }
+    json!({ "t": "status", "p": p })
+}
+
+/// 量本幕是否到提醒門檻。讀整桌紀錄，放 `spawn_blocking`，而且不等它：
+/// `gen.done`／`job.result` 已經送出，下一筆派工也不等這次量完。
+fn measure_capacity(room: &Arc<Room>) {
+    let room = Arc::clone(room);
+    tokio::spawn(async move {
+        let world = room.world();
+        let engine = Arc::clone(&room.engine);
+        let Ok(hint) = tokio::task::spawn_blocking(move || engine.capacity_hint(&world)).await
+        else {
+            return;
+        };
+        room.status().capacity_hint = hint;
+        report(&room);
+    });
 }
 
 /// 狀態上送（額度協定允許不報：撞額度由 `gen.failed` 的 quota 類錯誤帶）；面板的目前模型跟著 capabilities
@@ -230,6 +257,7 @@ async fn chain(room: &Arc<Room>) {
     report(room);
     let outcome = steps(room, &run.id).await;
     let world = room.world();
+    let measured = outcome.is_ok();
     match outcome {
         Ok(aborted) => {
             let (arrived, called) = room
@@ -265,15 +293,21 @@ async fn chain(room: &Arc<Room>) {
         work.dispatch = None;
         work.turn = None;
     }
-    report(room);
+    // 失敗那句自己會講，不重算容量；成功的等量完再報，免得先送一則沒有 capacityHint 的狀態
+    if !measured {
+        report(room);
+    }
     room.engine.table_changed(&world);
-    // 收尾期間又來了新的派工（它看到這支還在跑就沒開工）：接著跑
+    // 收尾期間又來了新的派工（它看到這支還在跑就沒開工）：接著跑，不等容量量完
     if room
         .saved()
         .dispatch
         .is_some_and(|next| next.id != run.id && next.state == RunState::Running)
     {
         spawn_chain(room);
+    }
+    if measured {
+        measure_capacity(room);
     }
 }
 
@@ -756,12 +790,12 @@ pub(super) fn on_job(room: &Arc<Room>, job: &Value) {
             if run.id == id
                 && scene_of(&root, &world).is_ok_and(|scene| scene > run.scene_before) =>
         {
-            return settle_job(room, &id, None);
+            return finish_scene(room, &id, None);
         }
         Some(run) if run.id == id => {}
         _ => {
             let Ok(scene_before) = scene_of(&root, &world) else {
-                return settle_job(room, &id, Some("SCENE_READ_FAILED".to_owned()));
+                return finish_scene(room, &id, Some("SCENE_READ_FAILED".to_owned()));
             };
             room.update(|saved| {
                 saved.job = Some(JobRun {
@@ -783,6 +817,8 @@ async fn scene_job(room: &Arc<Room>, id: String) {
         work.job = Some(id.clone());
         work.job_turn = Some(turn.clone());
     }
+    // 舊量測不帶進新幕。背景那次若晚到，換幕成功後會再量一次蓋掉
+    room.status().capacity_hint = None;
     report(room);
     // 摘要可能跑很久：至少每 5 分鐘一則進度（協定 §3.5，不套 30 秒逾時）
     let ticker = {
@@ -803,14 +839,25 @@ async fn scene_job(room: &Arc<Room>, id: String) {
         work.job = None;
         work.job_turn = None;
     }
-    settle_job(room, &id, result.err());
-    report(room);
+    let advanced = settle_job(room, &id, result.err());
+    if advanced {
+        measure_capacity(room);
+    } else {
+        report(room);
+    }
     room.engine.table_changed(&room.world());
 }
 
+/// 換幕工作收尾：成功才重算容量（新幕剛開，通常把舊提醒消掉）
+fn finish_scene(room: &Arc<Room>, id: &str, error: Option<String>) {
+    if settle_job(room, id, error) {
+        measure_capacity(room);
+    }
+}
+
 /// 照實回換幕結果：桌上幕號已推進就是 ok（帶已落的摘要），否則失敗。中止、程序重啟、
-/// `job.cancel` 時本機沒在跑，都走這裡，**一定回**（協定 §3.5）
-fn settle_job(room: &Room, id: &str, error: Option<String>) {
+/// `job.cancel` 時本機沒在跑，都走這裡，**一定回**（協定 §3.5）。回傳值＝這次是不是換幕成功
+fn settle_job(room: &Room, id: &str, error: Option<String>) -> bool {
     let (_, root) = room.engine.roots();
     let world = room.world();
     let run = room.saved().job.filter(|run| run.id == id);
@@ -833,6 +880,7 @@ fn settle_job(room: &Room, id: &str, error: Option<String>) {
             saved.synced_scene = Some(scene); // 房間跟著換到這一幕
         }
     });
+    advanced
 }
 
 fn summary_of(root: &Path, world: &str, scene: u64) -> String {
@@ -856,7 +904,7 @@ pub(super) fn on_cancel(room: &Arc<Room>, p: &Value) {
     };
     match turn {
         Some(turn) => room.engine.abort(&room.world(), &turn),
-        None => settle_job(room, &id, Some("SCENE_ADVANCE_CANCELLED".to_owned())),
+        None => finish_scene(room, &id, Some("SCENE_ADVANCE_CANCELLED".to_owned())),
     }
 }
 

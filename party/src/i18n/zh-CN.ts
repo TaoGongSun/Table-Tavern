@@ -340,6 +340,7 @@ export const zhCN: PartyMessages = {
   leaveDelegate: "交给 AI 代管再离开",
   leaveKeep: "直接离开（座位保留）",
   roundCountdownNote: "没发送就算观望，草稿会留着",
+  roundCapacityHint: "这一幕快满了，再玩几回合 GM 就送不出去，建议换幕",
   roundAllDelegatedHost: "全员代管中：按 GM 推进，或取消某人的代管",
   roundAllDelegated: "全员代管中，等房主处理",
   reopenMissing: "还没连上：{names}",

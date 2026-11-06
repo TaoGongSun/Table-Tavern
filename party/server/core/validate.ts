@@ -104,7 +104,7 @@ const EXECUTOR_FRAMES: Record<string, string> = {
   "job.result": "jobId:s ok:b result?:o error?:o",
   "pair.create": "grantHost:b",
   "pair.revoke": "",
-  status: "keepAwake:b~ busy:b paused?:b imageGen?:b imageGenRoute?:b",
+  status: "keepAwake:b~ busy:b paused?:b imageGen?:b imageGenRoute?:b capacityHint?:b",
   quota:
     "route:s routeLabel:s window:s state:s usedRatio:n~ resetsAt:i~ creditsLeft:s~ observedAt:i",
   "ctl.result": "ctlId:s ok:b error?:o",

@@ -10,6 +10,7 @@
 
 ## 等實機驗收（順序見[實測佇列](reference/verification-queue.md)）
 - [room-scene-advance-bar](handoffs/room-scene-advance-bar.md) — 換幕鈕搬到回合列（房主回饋「需要換幕」，功能已有但藏在房主頁）：已合併 main（2026-11-06），部署與桌面版打包等作者說
+- [room-scene-capacity](handoffs/room-scene-capacity.md) — 幕容量提醒（執行端報 `capacityHint`、房主回合列先提醒再換幕）：已合併 main（2026-11-06），部署與桌面版打包等作者說
 - [room-status-strip](handoffs/room-status-strip.md) — 桌邊狀態列＋房主提醒（玩家回饋第 1 案）：已合併 main（2026-11-06），等作者實機看桌面版與手機
 - [room-round-timer](handoffs/room-round-timer.md) — 回合倒數由房主當場開關（玩家回饋第 2 案）：已合併 main（2026-11-06），伺服器已部署（2026-11-06），桌面版打包等作者說
 - [room-table-chat](handoffs/room-table-chat.md) — 桌邊聊天（玩家回饋第 3 案）：已合併 main（2026-11-06），伺服器已部署（2026-11-06），桌面版打包等作者說

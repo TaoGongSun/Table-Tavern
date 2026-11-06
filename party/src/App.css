@@ -851,6 +851,13 @@
   font-size: 14px;
 }
 
+.app .round-capacity {
+  flex-basis: 100%;
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 600;
+}
+
 /* 手機圖庫與裁切窗（room-phone-gallery） */
 .app .card-gallery-grid {
   display: grid;

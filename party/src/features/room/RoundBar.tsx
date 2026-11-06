@@ -255,6 +255,14 @@ export function RoundBar({
           </button>
         )}
       </div>
+      {host &&
+        view.room.status === "playing" &&
+        r?.phase === "acting" &&
+        view.executor.capacityHint && (
+          <div className="round-capacity" data-testid="capacity-note">
+            {t("roundCapacityHint")}
+          </div>
+        )}
       {shown && r?.phase === "acting" && r.deadline !== null && (
         <div className="round-waiting" data-testid="countdown-note">
           {t("roundCountdownNote")}

@@ -454,6 +454,10 @@ export const EXECUTOR: Record<string, (tx: Tx, p: any) => ReturnType<Handler>> =
       imageGen: p.imageGen === true,
       imageGenRoute: p.imageGenRoute !== false,
     });
+    // 沒帶欄位不動既有值。幕號用房間自己的，不信執行端報的幕
+    if (p.capacityHint !== undefined) {
+      tx.w.exec.capacity = { scene: tx.s.scene, hint: p.capacityHint };
+    }
     announceExec(tx);
   },
   quota: (tx, p) => {

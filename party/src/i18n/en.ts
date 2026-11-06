@@ -360,6 +360,8 @@ export const en: PartyMessages = {
   leaveDelegate: "Let the AI play, then leave",
   leaveKeep: "Just leave (seat kept)",
   roundCountdownNote: "If you don't send, you sit this round out; your draft stays",
+  roundCapacityHint:
+    "This scene is almost full. A few more rounds and the GM won't be able to continue — advance the scene.",
   roundAllDelegatedHost: "Everyone is AI-played: use GM advance, or stop someone's AI play",
   roundAllDelegated: "Everyone is AI-played; waiting for the host",
   reopenMissing: "Not back yet: {names}",

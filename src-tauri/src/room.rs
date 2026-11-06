@@ -79,6 +79,8 @@ pub(crate) trait Engine: Send + Sync + 'static {
         &self,
         request: crate::commands::image::ImageRequest,
     ) -> BoxFut<'_, Result<(String, Vec<u8>), String>>;
+    /// 這一幕到了換幕提醒門檻沒有。`None`＝量不到，狀態訊框不帶這個欄位
+    fn capacity_hint(&self, world: &str) -> Option<bool>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -190,6 +192,8 @@ pub(crate) struct Status {
     pub(crate) image_gen_route: bool,
     /// 最近的玩家生圖（新的在後，最多 20 行）
     pub(crate) gen_log: Vec<GenLog>,
+    /// 這一幕到了換幕提醒門檻。`None`＝還沒量過或量不到，`status` 訊框不帶欄位（舊伺服器忽略多出來的欄位；開新訊框會被 4400 關線）
+    pub(crate) capacity_hint: Option<bool>,
 }
 
 /// 在程序裡跑著的那些（不落地）
@@ -890,6 +894,20 @@ impl Engine for AppEngine {
         Box::pin(crate::commands::image::generate_to_gallery(
             &self.app, request,
         ))
+    }
+
+    fn capacity_hint(&self, world: &str) -> Option<bool> {
+        // `read_config` 套了房間覆寫的路線／模型，算出來的就是這間房目前模型的容量
+        let config = data::read_config(&self.config_root).ok()?;
+        let budget = crate::scene_budget::compute(
+            &self.config_root,
+            &self.data_root,
+            world,
+            &config,
+            true,
+        )
+        .ok()?;
+        Some(budget.summary.map_or(false, |summary| summary.path.hint) || budget.chat_hint)
     }
 }
 

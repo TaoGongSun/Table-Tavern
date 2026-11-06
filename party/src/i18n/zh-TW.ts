@@ -341,6 +341,7 @@ export const zhTW = {
   leaveDelegate: "交給 AI 代管再離開",
   leaveKeep: "直接離開（座位保留）",
   roundCountdownNote: "沒送出就算觀望，草稿會留著",
+  roundCapacityHint: "這一幕快滿了，再玩幾回合 GM 就送不出去，建議換幕",
   roundAllDelegatedHost: "全員代管中：按 GM 推進，或取消某人的代管",
   roundAllDelegated: "全員代管中，等房主處理",
   reopenMissing: "還沒連上：{names}",

@@ -287,6 +287,7 @@ interface ExecutorView {
   online: boolean; since: number;
   keepAwake: boolean | null;              // 防休眠是否生效（§7.4）
   modelLabel: string | null;              // 下一幕設定的顯示名
+  capacityHint: boolean;                  // 這一幕到了換幕提醒門檻；沒報過、或已換幕而執行端還沒重報＝false
 }
 ```
 
@@ -322,7 +323,7 @@ interface CreateRoomRes { roomCode: string; joinSecret: string; executorToken: s
 | `job.result` | `{ jobId, ok, result?, error?: ExecutorError }` | 收到 `job.*` 後 | 以 `jobId` 冪等；依工作種類推進（換幕 §3.5、建卡） |
 | `pair.create` | `{ grantHost: boolean }` | 任何時候 | 回 `{ pairCode, expiresAt }`，舊碼作廢 |
 | `pair.revoke` | `{}` | 有出額度者時 | 解除配對（桌面版面板「不是我」／出額度者換手機） |
-| `status` | `{ keepAwake: boolean \| null, busy: boolean }` | 任何時候 | 廣播 `vol.executor` |
+| `status` | `{ keepAwake: boolean \| null, busy: boolean, capacityHint?: boolean }` | 任何時候。`capacityHint` 可省，只在量過之後帶：GM 說完（`gen.done`）後，以及換幕成功後 | 廣播 `vol.executor`。有帶 `capacityHint` 才更新：蓋上房間當下幕號存 `exec.capacity`，投影成 `ExecutorView.capacityHint`（幕號對不上或沒報過＝false）。新資料只掛既有訊框的可省欄位——未知訊框回 `E_BAD_FRAME` 並以 4400 關線，執行端會當成伺服器過舊而停止重連 |
 | `quota` | `QuotaReport` | 任何時候 | 廣播 `vol.quota`（粗）與 `vol.quota_detail`（細） |
 | `ctl.result` | `{ ctlId, ok, error?: ExecutorError }` | 收到 `ctl` 後 | 轉回發令者 |
 

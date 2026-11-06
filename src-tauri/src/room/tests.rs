@@ -31,6 +31,8 @@ struct Fake {
     release: AtomicBool,
     aborted: AtomicBool,
     settings: Mutex<Option<(String, String)>>,
+    /// 測試設定的幕容量提醒；`None`＝還沒量過
+    capacity_hint: Mutex<Option<bool>>,
 }
 
 impl Fake {
@@ -41,6 +43,7 @@ impl Fake {
             release: AtomicBool::new(false),
             aborted: AtomicBool::new(false),
             settings: Mutex::new(None),
+            capacity_hint: Mutex::new(None),
         })
     }
 
@@ -184,6 +187,10 @@ impl Engine for Fake {
             std::fs::write(dir.join("1700000000000.png"), &png).unwrap();
             Ok(("1700000000000.png".to_owned(), png))
         })
+    }
+
+    fn capacity_hint(&self, _: &str) -> Option<bool> {
+        *lock(&self.capacity_hint)
     }
 }
 
@@ -719,6 +726,79 @@ async fn remote_control_replies_first_then_acts() {
     .await;
     assert_eq!(conn.expect("ctl.result").await["p"]["ok"], true);
     assert_eq!(stop_reason(&world).as_deref(), Some(PAUSED_REMOTELY));
+    running.stop().await;
+}
+
+/// 連上時還沒量過：status 不帶 capacityHint。gen.done 之後帶測試引擎設的值
+#[tokio::test]
+async fn status_reports_capacity_hint_after_gen_done() {
+    let (root, world, tao, _) = table("capacity-gen");
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let server = format!("http://{}", listener.local_addr().unwrap());
+    let fake = Fake::new(&root, vec![Act::Say("一句。", None)]);
+    *lock(&fake.capacity_hint) = Some(true);
+    let mut first = saved(&server, &world);
+    first.seeded = true;
+    let running = start(fake, first, FAST, false).await;
+    let mut conn = accept(&listener).await;
+    conn.welcome(false, Value::Null, Value::Null).await;
+    conn.expect("capabilities").await;
+    let before = conn.expect("status").await;
+    assert!(
+        before["p"].get("capacityHint").is_none(),
+        "還沒量過不帶欄位：{before}"
+    );
+
+    conn.send("dispatch", dispatch("d1", &tao, act(&tao, "我看看。")))
+        .await;
+    conn.expect("gen.done").await;
+    let status = conn.expect("status").await;
+    assert_eq!(status["p"]["capacityHint"], json!(true));
+    assert_eq!(status["p"]["busy"], json!(false));
+    running.stop().await;
+}
+
+/// 換幕開始先清掉舊值（這段 status 不帶欄位）；成功後重算，帶上測試引擎當時的新值
+#[tokio::test]
+async fn scene_advance_recomputes_capacity_hint() {
+    let (root, world, tao, _) = table("capacity-scene");
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let server = format!("http://{}", listener.local_addr().unwrap());
+    let fake = Fake::new(&root, vec![Act::Say("一句。", None), Act::Advance]);
+    *lock(&fake.capacity_hint) = Some(true);
+    let mut first = saved(&server, &world);
+    first.seeded = true;
+    let running = start(fake.clone(), first, FAST, false).await;
+    let mut conn = accept(&listener).await;
+    conn.welcome(false, Value::Null, Value::Null).await;
+    conn.send("dispatch", dispatch("d1", &tao, act(&tao, "我看看。")))
+        .await;
+    conn.expect("gen.done").await;
+    let before = conn.expect("status").await;
+    assert_eq!(before["p"]["capacityHint"], json!(true));
+    conn.send(
+        "job.scene_advance",
+        json!({
+            "jobId": "j1",
+            "kind": "scene_advance",
+            "scene": 1,
+            "nextSettings": { "route": "api", "model": "m1", "modelLabel": "M1" },
+        }),
+    )
+    .await;
+    conn.expect("job.ack").await;
+    let mid = conn.expect("status").await;
+    assert!(
+        mid["p"].get("capacityHint").is_none(),
+        "換幕開始先清掉：{mid}"
+    );
+    assert_eq!(mid["p"]["busy"], json!(true));
+    *lock(&fake.capacity_hint) = Some(false);
+    conn.expect("job.progress").await;
+    fake.release.store(true, Ordering::SeqCst);
+    assert_eq!(conn.expect("job.result").await["p"]["ok"], json!(true));
+    let status = conn.expect("status").await;
+    assert_eq!(status["p"]["capacityHint"], json!(false));
     running.stop().await;
 }
 

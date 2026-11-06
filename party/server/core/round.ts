@@ -41,6 +41,8 @@ export const execView = (s: RoomState): ExecutorView => ({
   imageGenRoute: s.exec.imageGenRoute !== false,
   syncing: s.exec.online && s.exec.sync === "needed",
   modelLabel: (s.nextSettings ?? s.sceneSettings ?? s.exec.caps?.current)?.modelLabel ?? null,
+  // 幕號對不上（已換幕、執行端還沒重報）或舊版從不報：不當成到門檻
+  capacityHint: !!s.exec.capacity && s.exec.capacity.scene === s.scene && s.exec.capacity.hint,
 });
 /** 給某位成員看的執行端狀態：出額度者另帶路線與模型清單（遠端控制要選） */
 export const execViewFor = (s: RoomState, who: string | null) => ({
