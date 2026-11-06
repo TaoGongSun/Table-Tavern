@@ -767,9 +767,10 @@ describe("lobby and table navigation", () => {
       // 新遊戲先到標題畫面（等待室），按開始才進播放器
       expect(document.querySelector(".vn-title-screen")).not.toBeNull();
       await click(buttonText(t("vnTitleStart")));
-      // 桌名在遊戲選單的標題；聊天視圖也在選單裡
+      // 桌名在遊戲選單的標題；聊天視圖在選單的「更多…」裡
       await click(buttonText(t("vnMenu")));
       expect(vnView()?.textContent).toContain("Harbor");
+      await click(buttonText(t("vnMenuMore")));
       await click(buttonText(t("vnShowChat")));
       expect(vnView()).toBeNull();
       expect(homeButton()).not.toBeNull();

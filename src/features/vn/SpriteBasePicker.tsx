@@ -62,7 +62,7 @@ export function SpriteBasePicker({
         </button>
         <button
           type="button"
-          className={alreadyPicked ? "btn btn-sm" : "btn btn-sm btn-primary"}
+          className={slot.selected && !alreadyPicked ? "btn btn-sm btn-primary" : "btn btn-sm"}
           disabled={disabled || !slot.selected || alreadyPicked}
           onClick={() => void slot.pick()}
         >

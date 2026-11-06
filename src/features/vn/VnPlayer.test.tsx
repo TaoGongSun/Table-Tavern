@@ -839,13 +839,13 @@ describe("VnPlayer", () => {
       expect(button(t("vnShowChat"))).toBeUndefined();
       await act(async () => button(t("vnMenu"))!.click());
       expect(menuItems()).toEqual([
-        t("vnBackToTitle"),
         t("vnSaves"),
         t("vnTitleSettings"),
+        t("vnWorkChapterSelect"),
         t("vnEndingsList"),
         t("vnGallery"),
-        t("vnWorkChapterSelect"),
         t("vnHideUi"),
+        t("vnBackToTitle"),
         t("backToLobby"),
       ]);
       await act(async () => button(t("vnChapterClose"))!.click());
@@ -1067,6 +1067,37 @@ describe("VnPlayer", () => {
       await press("Escape");
       expect(host.querySelector(".vn-backlog")).toBeNull();
       expect(host.querySelector(".vn-game-menu")).toBeNull();
+    });
+
+    it("the menu keeps chat view and export under More…; Esc and a right click go back to the main menu", async () => {
+      backend.cells = three();
+      await render({ events: [event("g1")] });
+      await press("Escape");
+      expect(menuItems()).toEqual([
+        t("vnSaves"),
+        t("vnTitleSettings"),
+        t("vnNextChapter"),
+        t("vnReplayChapter"),
+        t("vnEndingsList"),
+        t("vnGallery"),
+        t("vnHideUi"),
+        t("vnMenuMore"),
+        t("vnBackToTitle"),
+        t("backToLobby"),
+      ]);
+      await act(async () => button(t("vnMenuMore"))!.click());
+      expect(menuItems()).toEqual([t("vnShowChat"), t("vnCardExport"), t("vnWorkExport")]);
+      await press("Escape");
+      expect(menuItems()).toContain(t("vnMenuMore"));
+      await act(async () => button(t("vnMenuMore"))!.click());
+      expect((await click(host.querySelector(".vn-game-menu")!, "contextmenu")).defaultPrevented).toBe(true);
+      expect(menuItems()).toContain(t("vnMenuMore"));
+      await act(async () => button(t("vnMenuMore"))!.click());
+      await act(async () => host.querySelector<HTMLButtonElement>(".vn-menu-back")!.click());
+      expect(menuItems()).toContain(t("vnMenuMore"));
+      await press("Escape");
+      expect(host.querySelector(".vn-game-menu")).toBeNull();
+      expect(text()).toBe("a");
     });
 
     it("clicking or wheeling the stage advances, a right click opens the menu, an open choice ignores the stage", async () => {

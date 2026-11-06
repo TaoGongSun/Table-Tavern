@@ -19,7 +19,7 @@ import { ChapterPanel, EndingsPanel } from "./StoryPanels";
 import { SavesPanel } from "./SavesPanel";
 import { TitleScreen } from "./TitleScreen";
 import { ArtGallery } from "./gallery/ArtGallery";
-import { GameMenu, gameMenuItems } from "./GameMenu";
+import { GameMenu, gameMenuItems, gameMoreItems } from "./GameMenu";
 import { SettingsPanel } from "./SettingsPanel";
 import { QuickBar } from "./QuickBar";
 import { useVnKeys, type VnLayer } from "./useVnKeys";
@@ -134,7 +134,7 @@ export function VnPlayer({
   sceneLabels: Record<string, SceneLabel>;
 }) {
   const [logOpen, setLogOpen] = useState(false);
-  const [panel, setPanel] = useState<"menu" | "endings" | "gallery" | "chapters" | "saves" | "settings" | null>(null);
+  const [panel, setPanel] = useState<"menu" | "menu-more" | "endings" | "gallery" | "chapters" | "saves" | "settings" | null>(null);
   // 隱藏介面（H）：對話框、選項、快捷列整塊收起，任一點擊或按鍵恢復；auto／skip 照跑
   const [hidden, setHidden] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -450,7 +450,7 @@ export function VnPlayer({
   }, [layer]);
   const closeLayer = () => {
     if (logOpen) setLogOpen(false);
-    else setPanel(null);
+    else setPanel(panel === "menu-more" ? "menu" : null);
   };
   useVnKeys({
     layer,
@@ -482,19 +482,24 @@ export function VnPlayer({
     if ((event.target as Element).closest("button, a, input, select, textarea, label, .vn-dialogue, .vn-quick, .vn-choices, .vn-error")) return;
     proceedOutside();
   };
-  // 右鍵＝Esc（開選單或收起隱藏）；面板、紀錄、匯出開著與輸入欄位留原生選單（存檔名稱要能貼上）
+  // 右鍵＝Esc（開選單、子選單回主選單或收起隱藏）；面板、紀錄、匯出開著與輸入欄位留原生選單（存檔名稱要能貼上）
   const onContextMenu = (event: React.MouseEvent) => {
+    if (panel === "menu-more") {
+      event.preventDefault();
+      return setPanel("menu");
+    }
     if (layer === "closable" || layer === "blocked") return;
     event.preventDefault();
     if (hidden) setHidden(false);
     else setPanel("menu");
   };
-  const menuItems = gameMenuItems({
+  const menuActions = {
     replay,
     busy,
     nextDisabled: actionsDisabled || ending !== null,
     open: openPanel,
     close: () => setPanel(null),
+    openMore: () => setPanel("menu-more"),
     onTitle: () => onTitle(true),
     onNextChapter: () => void askNextChapter(),
     onShowChat,
@@ -502,7 +507,7 @@ export function VnPlayer({
     onExportWork: exportWork,
     onHide: () => setHidden(true),
     onLobby: onGoLobby,
-  });
+  };
   const hasProgress = Object.keys(progress.positions).length > 0;
   return (
     <main className="vn-player" onWheel={onWheel} onClick={onClick} onContextMenu={onContextMenu}>
@@ -658,7 +663,15 @@ export function VnPlayer({
           onClose={() => setPanel(null)}
         />
       )}
-      {panel === "menu" && <GameMenu title={tableName} items={menuItems} onClose={() => setPanel(null)} />}
+      {panel === "menu" && <GameMenu title={tableName} items={gameMenuItems(menuActions)} onClose={() => setPanel(null)} />}
+      {panel === "menu-more" && (
+        <GameMenu
+          title={t("vnMenuMoreTitle")}
+          items={gameMoreItems(menuActions)}
+          onClose={() => setPanel(null)}
+          onBack={() => setPanel("menu")}
+        />
+      )}
       {panel === "endings" && <EndingsPanel worldId={worldId} onClose={() => setPanel(null)} />}
       {panel === "gallery" && (
         <ArtGallery worldId={worldId} images={images} backgrounds={backgrounds} replay={replay} onClose={() => setPanel(null)} />
