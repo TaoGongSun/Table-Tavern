@@ -2,6 +2,7 @@
 // 到場整理（AI 代管、轉讓、移除、封鎖、指派座位，在 Attendance）、匯出、手機房主的暫停房間。回合級的結算／中止在回合列。
 // 結束房間只在桌面版桌卡（房間要能重開，room-host-desktop-play）。
 import { t } from "../../i18n";
+import { setHostSound, useHostSound } from "../room/host-sound";
 import type { RoomView } from "../room/room-state";
 import { useRun, type Act } from "../room/useRoom";
 import { Attendance } from "./Attendance";
@@ -27,6 +28,7 @@ export function HostPanel({
   focusAttendance?: boolean;
 }) {
   const { run, error, setError } = useRun(act);
+  const sound = useHostSound();
   const r = view.round;
   const s = view.room.settings;
   const canAdvance =
@@ -74,6 +76,15 @@ export function HostPanel({
           onChange={(e) => run("room.settings", { patch: { shuffleOrder: e.target.checked } })}
         />
         {t("hostShuffle")}
+      </label>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={sound}
+          data-testid="host-alert-sound"
+          onChange={(e) => setHostSound(e.target.checked)}
+        />
+        {t("hostAlertSound")}
       </label>
       {canAdvance && (
         <>

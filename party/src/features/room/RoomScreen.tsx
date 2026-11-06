@@ -30,9 +30,13 @@ import { DelegateButton } from "./DelegateButton";
 import { DelegatedBanner } from "./DelegatedBanner";
 import { canDelegate, sentThisRound } from "./delegation";
 import type { RoomView } from "./room-state";
+import { useHostAlerts } from "./host-alerts";
+import { useHostSound } from "./host-sound";
 import { RoundBar } from "./RoundBar";
 import { SceneStatusLine } from "./scene-status";
+import { SeatStrip } from "./SeatStrip";
 import { StoryView } from "./StoryView";
+import { Toasts } from "./Toasts";
 import { useRun, type Act } from "./useRoom";
 
 const STATUS: Record<string, MsgKey> = {
@@ -316,6 +320,8 @@ export function RoomScreen({ view, c: controls }: { view: RoomView; c: RoomContr
   }, []);
   const deadline = view.round?.phase === "acting" ? view.round.deadline : null;
   const now = useNow(phone && deadline != null);
+  const hostSound = useHostSound();
+  const alerts = useHostAlerts(view, { sound: hostSound });
   const mine = view.round?.roster.find((e) => e.memberId === view.me.memberId);
   const awaiting =
     view.round?.phase === "acting" &&
@@ -385,6 +391,8 @@ export function RoomScreen({ view, c: controls }: { view: RoomView; c: RoomContr
       )}
       {tab === "story" && (
         <>
+          {open && <SeatStrip view={view} act={c.act} />}
+          {isHost && open && <Toasts toasts={alerts.toasts} dismiss={alerts.dismiss} />}
           <SceneStatusLine parts={view.story} />
           <StoryView
             view={view}

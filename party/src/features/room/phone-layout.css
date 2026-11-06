@@ -115,7 +115,8 @@
 /* 打字中（鍵盤開著）：場景列與回合詳情先讓位給劇情 */
 .app.party-phone .room-screen:has(.action-box textarea:focus) .scene-status,
 .app.party-phone .room-screen:has(.action-box textarea:focus) .round-more,
-.app.party-phone .room-screen:has(.action-box textarea:focus) [data-testid="countdown-note"] {
+.app.party-phone .room-screen:has(.action-box textarea:focus) [data-testid="countdown-note"],
+.app.party-phone .room-screen:has(.action-box textarea:focus) .seat-strip {
   display: none;
 }
 
@@ -151,6 +152,7 @@
 .app.party-phone .reading .scene-status,
 .app.party-phone .reading .round-more,
 .app.party-phone .reading [data-testid="countdown-note"],
+.app.party-phone .reading .seat-strip,
 .app.party-phone .reading .seat-picker,
 .app.party-phone .reading .action-box:not(:has(.action-leading, .nudge-bar)) {
   display: none;

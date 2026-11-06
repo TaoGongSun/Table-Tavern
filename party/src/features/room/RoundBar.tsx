@@ -1,9 +1,8 @@
 // 回合列：回合號與幕、倒數、GM 生成中／主機離線等待中、held 的公開錯誤；房主（與出額度者）的回合級按鈕也在這裡。
-// AI 代管（room-seat-delegate §5.1）：倒數說明、全員代管停住的原因、「還在等」裡離線者的代管鈕、重開後還沒連上的提醒。
+// AI 代管（room-seat-delegate §5.1）：倒數說明、全員代管停住的原因、重開後還沒連上的提醒。誰還沒送出改看狀態列。
 import { useEffect, useState, type ReactNode } from "react";
 import { modelName, t } from "../../i18n";
 import { DelegateButton } from "./DelegateButton";
-import { NudgeButton } from "./NudgeButton";
 import { allDelegated, offlineSeated } from "./delegation";
 import { clock, HOLD_TEXT } from "./error-text";
 import { HeldActions } from "../controls/HeldActions";
@@ -60,8 +59,8 @@ export interface Reopen {
 }
 
 /** `heldDetail`：桌面版本機遮罩過的錯誤原文；沒給就用房間的分類說明（只給出額度者，他才能處理）。
- *  `compact`（手機）：平時只一行摘要（狀態＋回合號，含倒數），點了展開 GM 模型、還在等誰、倒數說明；
- *  能按、要處理的東西（回合鈕、卡住處理與錯誤詳情、離線者的代管鈕、重開提醒）不收。 */
+ *  `compact`（手機）：平時只一行摘要（狀態＋回合號，含倒數），點了展開 GM 模型與倒數說明；
+ *  能按、要處理的東西（回合鈕、卡住處理與錯誤詳情、重開提醒）不收。 */
 export function RoundBar({
   view,
   act,
@@ -88,11 +87,11 @@ export function RoundBar({
   }, [r?.deadline]);
   const host = view.room.hostId === view.me.memberId;
   const boss = host || view.room.payerId === view.me.memberId;
-  // 還沒送的人（純顯示，取自 roster）
-  const waiting =
+  // 結算鈕就地算還沒送的人數；人在狀態列，不在這裡點名
+  const pending =
     r?.phase === "acting"
-      ? r.roster.filter((e) => e.status === "pending" || e.status === "drafting")
-      : [];
+      ? r.roster.filter((e) => e.status === "pending" || e.status === "drafting").length
+      : 0;
   const nameOf = (cardId: string) => view.cards.find((c) => c.cardId === cardId)?.name ?? cardId;
   const offline = host ? offlineSeated(view) : [];
   const missing = reopen?.shown && view.room.status === "playing" ? offline : [];
@@ -132,15 +131,7 @@ export function RoundBar({
   );
   const shown = !compact || more;
   // 沒有可展開的細節（大廳、生成中）：摘要不畫 ▾
-  const expandable =
-    !!gmModel || waiting.length > 0 || (r?.phase === "acting" && r.deadline !== null);
-  const offlineIds = new Set(offline.map((m) => m.memberId));
-  // 房主能催的人：在線、還沒送、不是自己
-  const nudgeable = (id: string) => host && id !== view.me.memberId && !offlineIds.has(id);
-  // 能操作的東西不藏：手機收起時「還在等」只要有房主能按的代管鈕或催一下鈕就露出
-  const waitingShown =
-    waiting.length > 0 &&
-    (shown || waiting.some((e) => offlineIds.has(e.memberId) || nudgeable(e.memberId)));
+  const expandable = !!gmModel || (r?.phase === "acting" && r.deadline !== null);
   return (
     <div className="round-bar" data-testid="round-bar">
       {compact ? (
@@ -184,7 +175,7 @@ export function RoundBar({
         )}
         {host && r?.phase === "acting" && r.roster.length > 0 && (
           <button type="button" onClick={() => run("round.resolve", { round: r.round })}>
-            {waiting.length > 0 ? t("hostResolvePending", { n: waiting.length }) : t("hostResolve")}
+            {pending > 0 ? t("hostResolvePending", { n: pending }) : t("hostResolve")}
           </button>
         )}
         {boss && r?.phase === "generating" && (
@@ -207,39 +198,6 @@ export function RoundBar({
       {shown && r?.phase === "acting" && r.deadline !== null && (
         <div className="round-waiting" data-testid="countdown-note">
           {t("roundCountdownNote")}
-        </div>
-      )}
-      {/* 房主：還在等的人，在線的名字旁給「催一下」，沒連線的直接給代管鈕，不必切到房主頁 */}
-      {waitingShown && (
-        <div className="round-waiting" data-testid="round-waiting">
-          {t("roundWaiting", { names: "" })}
-          {waiting.map((e, i) => (
-            <span key={e.memberId} className="waiting-name">
-              {i > 0 && "、"}
-              {nameOf(e.cardId)}
-              {nudgeable(e.memberId) && (
-                <>
-                  {" "}
-                  <NudgeButton act={act} round={r!.round} memberId={e.memberId} />
-                </>
-              )}
-              {offline.some((m) => m.memberId === e.memberId) && (
-                <>
-                  {" "}
-                  <span className="dot" title={t("offline")} />{" "}
-                  <DelegateButton
-                    view={view}
-                    act={act}
-                    memberIds={[e.memberId]}
-                    on
-                    label={t("delegateOnOther")}
-                    className="ghost small"
-                    testId={`waiting-delegate-${e.memberId}`}
-                  />
-                </>
-              )}
-            </span>
-          ))}
         </div>
       )}
       {missing.length > 0 && (

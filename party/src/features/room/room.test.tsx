@@ -209,7 +209,7 @@ describe("手機客戶端對真伺服器核心", () => {
     Reflect.deleteProperty(navigator, "vibrate");
   });
 
-  it("空房：沒人入座時開始鈕停用並說原因；自建角色名字預填暱稱、執行端建卡後入座就能開始；回合列列出還沒送的人；房主暫停跟離線分開顯示", async () => {
+  it("空房：沒人入座時開始鈕停用並說原因；自建角色名字預填暱稱、執行端建卡後入座就能開始；狀態列看得到自己；房主暫停跟離線分開顯示", async () => {
     const room = await Room.create();
     await room.exec();
     const hub = new Hub(room);
@@ -245,10 +245,11 @@ describe("手機客戶端對真伺服器核心", () => {
     await hub.exec("gen.part.begin", { dispatchId, part: 0, speaker: { kind: "gm" } });
     await hub.exec("gen.part.end", { dispatchId, part: 0, text: "開場。", interrupted: false });
     await hub.exec("gen.done", { dispatchId, aborted: false });
-    // 手機回合列平時一行：點摘要才展開還在等誰
-    act(() => A.q<HTMLButtonElement>('[data-testid="round-summary"]')!.click());
-    await until(() => A.q('[data-testid="round-waiting"]'));
-    expect(A.q('[data-testid="round-waiting"]')!.textContent).toBe("還在等：阿明"); // 自己不給催促鈕
+    // 自己在狀態列，不是按鈕，沒有催促
+    await until(() => A.q('[data-testid="seat-m1"]'));
+    expect(A.q('[data-testid="round-waiting"]')).toBeNull();
+    expect(A.q('[data-testid="seat-m1"]')!.textContent).toContain("阿明");
+    expect(A.q('[data-testid="seat-m1"]')!.closest("button")).toBeNull();
     expect(A.button("結算這回合")!.textContent).toBe("結算這回合（1 人還沒送）");
     await hub.exec("status", { keepAwake: null, busy: false, paused: true });
     await act(async () => {
@@ -595,13 +596,16 @@ describe("手機客戶端對真伺服器核心", () => {
     const { room, hub, A, B } = await table();
     expect(A.q('[data-testid="gm-controls"]')).toBeTruthy();
     expect(B.q('[data-testid="gm-controls"]')).toBeNull();
-    // 能操作的東西不藏：手機回合列收著，「還在等」照樣露出催一下
+    // 催一下在狀態列的選單裡，回合列收著也點得到
+    act(() => A.q('[data-testid="seat-m2"]')!.closest("button")!.click());
     await until(() => A.q('[data-testid="nudge-m2"]'));
     // 被催的人輸入格收著：催一下就自動展開一次，橫條與輸入框露出、輸入框取得焦點
     act(() => B.q<HTMLButtonElement>('[data-testid="action-tuck"]')!.click());
     await until(() => B.q('[data-testid="action-untuck"]'));
     A.click("催一下");
-    await until(() => B.q('[data-testid="nudged-note"]') && A.button("已提醒"));
+    await until(() => B.q('[data-testid="nudged-note"]'));
+    act(() => A.q('[data-testid="seat-m2"]')!.closest("button")!.click());
+    await until(() => A.button("已提醒"));
     expect(B.q('[data-testid="action-untuck"]')).toBeNull();
     await until(() => document.activeElement === B.q('[data-testid="action-text"]'));
     expect(A.q('[data-testid="nudged-note"]')).toBeNull();
@@ -1154,7 +1158,7 @@ describe("玩家卡（room-player-cards）", () => {
     away(A, true);
     expect(A.q(".room-screen")!.classList.contains("reading")).toBe(true);
     act(() => A.q<HTMLButtonElement>('[data-testid="round-summary"]')!.click());
-    // 第一下只結束閱讀、不展開詳情（「還在等」因為有催一下鈕本來就露出）
+    // 第一下只結束閱讀、不展開詳情
     expect(A.q('[data-testid="round-summary"]')!.getAttribute("aria-expanded")).toBe("false");
     expect(A.q(".room-screen")!.classList.contains("reading")).toBe(false);
     away(A, false);
@@ -1210,6 +1214,8 @@ describe("往回捲閱讀時被催", () => {
       expect(B.q(".room-screen")!.classList.contains("reading")).toBe(true);
       const shown = (sel: string) => getComputedStyle(B.q<HTMLElement>(sel)!).display !== "none";
       expect(shown('[data-testid="action-box"]')).toBe(false); // 沒被催：整格收起（原規則）
+      expect(shown('[data-testid="seat-strip"]')).toBe(false);
+      act(() => A.q('[data-testid="seat-m2"]')!.closest("button")!.click());
       await until(() => A.q('[data-testid="nudge-m2"]'));
       A.click("催一下");
       await until(() => B.q('[data-testid="nudged-note"]'));
@@ -1274,13 +1280,16 @@ describe("AI 代管（room-seat-delegate 包 3）", () => {
     expect(room.s.members.find((m) => m.id === b)!.delegated).toBe(true);
   });
 
-  it("房主：「還在等」裡離線的人旁邊直接代管；全員代管時房主與玩家看到不同的原因，接回寫馬上能行動", async () => {
+  it("房主從狀態列代管離線的人；全員代管時房主與玩家看到不同的原因，接回寫馬上能行動", async () => {
     const { room, A, B, b } = await table();
     B.tab("members");
     B.click("暫時離開");
     inside(B, "leave-confirm", "直接離開（座位保留）");
-    await until(() => A.q(`[data-testid="waiting-delegate-${b}"]`));
-    act(() => A.q<HTMLButtonElement>(`[data-testid="waiting-delegate-${b}"]`)!.click());
+    await until(() => A.q(`[data-testid="seat-${b}"]`)!.textContent!.includes("離線"));
+    const offline = A.q<HTMLElement>(`[data-testid="seat-${b}"]`)!;
+    expect((offline.closest(".seat-slot") as HTMLElement).style.opacity).toBe("0.5");
+    act(() => offline.closest("button")!.click());
+    A.click("交給 AI 代管");
     await until(() => room.s.members.find((m) => m.id === b)!.delegated);
 
     const { room: r2, A: A2, B: B2, a: a2, b: b2 } = await table();
@@ -1388,4 +1397,69 @@ describe("名單與接回提示（room-desktop-layout 包 C）", () => {
     });
     expect(B.q('[data-testid="delegate-returned"]')).toBeNull();
   }, 10000);
+});
+
+describe("桌邊狀態列與房主提醒", () => {
+  const chip = (p: Phone, id: string) => p.q<HTMLElement>(`[data-testid="seat-${id}"]`)!;
+
+  it("徽章從打字中到已送出、交給 GM；非房主不可點；房主看到還剩幾人", async () => {
+    const { room, A, B, a, b } = await table();
+    const ids = [...A.el.querySelectorAll("[data-testid^=seat-m]")].map((el) =>
+      el.getAttribute("data-testid"),
+    );
+    expect(ids).toEqual([`seat-${a}`, `seat-${b}`]);
+    expect(chip(A, a).closest("button")).toBeNull();
+    expect(chip(B, a).closest("button")).toBeNull();
+    expect(chip(A, b).closest("button")).toBeTruthy();
+    expect(chip(A, b).closest("button")!.getAttribute("title")).toBe("小華 · 角色2");
+    B.type('[data-testid="action-text"]', "我推門");
+    await until(() => room.s.drafts[b] === "我推門");
+    await until(
+      () => chip(A, b).textContent!.includes("打字中") && chip(A, b).querySelector(".seat-dots"),
+    );
+    B.click("送出");
+    await until(() => chip(A, b).textContent!.includes("✓ 已送出"));
+    expect(A.text()).toContain("角色2 已送出，還剩 1 人");
+    expect(B.q('[data-testid="host-toasts"]')).toBeNull();
+    // 點了就收：只收那一條（前面「選了角色」的還在）
+    const toasts = () => A.el.querySelectorAll('[data-testid="host-toast"]').length;
+    const before = toasts();
+    act(() => A.q<HTMLButtonElement>('[data-testid="host-toast"]')!.click());
+    expect(toasts()).toBe(before - 1);
+    B.click("收回修改");
+    await until(() => chip(A, b).textContent!.includes("打字中"));
+    B.click("交給 GM");
+    await until(() => chip(A, b).textContent!.includes("交給 GM"));
+    expect(A.text()).toContain("角色2 交給 GM，還剩 1 人");
+    B.click("收回修改");
+    await until(() => !chip(A, b).textContent!.includes("交給 GM"));
+    act(() => chip(A, b).closest("button")!.click());
+    await until(() => A.q(`[data-testid="nudge-${b}"]`));
+    A.click("催一下");
+    await until(() => B.q('[data-testid="nudged-note"]'));
+    expect(A.socket().sent.some((f) => f.t === "host.nudge" && f.p.memberId === b)).toBe(true);
+    act(() => chip(A, b).closest("button")!.click());
+    expect(A.button("已提醒")!.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("大廳列出還沒選角的人，房主收到進房提醒", async () => {
+    const room = await Room.create();
+    await room.exec();
+    await room.send("x1", "roster.update", { cards: [...CARDS, STAGE] });
+    const hub = new Hub(room);
+    hub.wrap = (fn) => act(fn);
+    const A = phone(hub, `k=${room.joinSecret}&p=${await room.pairCode(true)}`);
+    await joinAndSit(A, "阿明", "角色1");
+    const B = phone(hub, `k=${room.joinSecret}`);
+    B.type('[data-testid="nickname"]', "小華");
+    await act(async () => B.q<HTMLFormElement>("form")!.requestSubmit());
+    await until(() => chip(A, "m2").textContent?.includes("還沒選角"));
+    expect(chip(A, "m2").textContent).toContain("小華");
+    expect((chip(A, "m2").closest(".seat-slot") as HTMLElement).style.opacity).toBe("0.5");
+    expect(chip(A, "m2").closest("button")).toBeNull();
+    expect(chip(A, "m1").textContent).toContain("角色1");
+    expect((chip(A, "m1").closest(".seat-slot") as HTMLElement).style.opacity).toBe("");
+    expect(A.text()).toContain("小華 進房了，還沒選角");
+    expect(B.q('[data-testid="host-toasts"]')).toBeNull();
+  });
 });
