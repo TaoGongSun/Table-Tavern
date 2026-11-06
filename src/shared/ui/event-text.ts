@@ -7,6 +7,7 @@ const NAMED: Record<string, "name" | "title"> = {
   gm_call: "name",
   person_arrival: "title",
   player_watch: "name",
+  player_handed_to_gm: "name",
   player_arrival: "name",
   player_to_npc: "name",
   player_absent: "name",
@@ -45,6 +46,9 @@ export function markerHeading(marker: KnownMarker): string {
     // 多人房間（multiplayer-room 包 3）的在場標記：本文都是空的，整則只有標頭
     case "player_watch":
       return t("marker_player_watch", { name: marker.name });
+    // 交給 GM（room-speak-request §2）：標記原文是寫給 GM 的演法提示；玩家看到的標頭只寫狀態
+    case "player_handed_to_gm":
+      return t("roomMarkerHandedToGm", { name: marker.name });
     case "player_arrival":
       return t("marker_player_arrival", { name: marker.name });
     case "player_to_npc":

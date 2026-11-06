@@ -18,6 +18,10 @@ export interface RoomView extends Omit<Snapshot, "quotaDetail"> {
   routes: RouteOffer[] | null;
   /** 這次連線期間 playing 中離座的卡，房主可決定 npc／absent（快照不帶，重新整理後清空） */
   departed: string[];
+  /** 房主催促本人（只給本人、不補送）：只收當前回合的；`n` 每催一次加一，同回合再催也會再提醒 */
+  nudged: { round: number; n: number } | null;
+  /** 這個 acting 回合開出來時，本人的行動是從房主 GM 回合前保留下來的（客戶端記憶體） */
+  kept: number | null;
 }
 
 const key = (p: StoryPart) => `${p.round}:${p.part}`;
@@ -45,6 +49,8 @@ function fromSnapshot(s: Snapshot): RoomView {
     errorDetail: s.errorDetail ?? null,
     routes: s.routes ?? null,
     departed: [],
+    nudged: null,
+    kept: null,
   };
 }
 
@@ -137,6 +143,11 @@ function onEvent(v: RoomView, e: any, at: number) {
       setSeat(v, e.from, null);
       setSeat(v, e.to, e.cardId);
       for (const x of v.round?.roster ?? []) if (x.memberId === e.from) x.memberId = e.to;
+      // 房主 GM 回合期間保留的行動跟著卡走（同伺服器 member.reassign）
+      if (v.round?.carry)
+        v.round.carry = v.round.carry.map((x) =>
+          x.memberId === e.from ? { ...x, memberId: e.to } : x,
+        );
       break;
     case "seat.delegated": // 交給 AI 代管／接回：代管中不在名單（接回時回名單靠 roster_status）
       for (const m of v.members) if (m.memberId === e.memberId) m.delegated = e.on;
@@ -161,7 +172,10 @@ function onEvent(v: RoomView, e: any, at: number) {
     case "scene.failed":
       Object.assign(v.room, { status: "playing", transition: null });
       break;
-    case "round.opened":
+    case "round.opened": {
+      const isMe = (x: { memberId: string }) => x.memberId === v.me.memberId;
+      v.kept =
+        e.kind === "play" && v.round?.kind === "host" && v.round.carry?.some(isMe) ? e.round : null;
       v.round = {
         round: e.round,
         kind: e.kind,
@@ -172,9 +186,11 @@ function onEvent(v: RoomView, e: any, at: number) {
         pausedRemainingMs: null,
         dispatchId: null,
         hold: null,
+        ...(e.carry ? { carry: e.carry } : {}),
       };
       Object.assign(v, { streaming: null, errorDetail: null });
       break;
+    }
     case "round.deadline":
       if (round && round.round === e.round)
         Object.assign(round, { deadline: e.deadline, pausedRemainingMs: e.pausedRemainingMs });
@@ -206,7 +222,8 @@ function onEvent(v: RoomView, e: any, at: number) {
       break;
     case "round.cancelled": {
       const x = entry(v.me.memberId);
-      if (x?.status === "submitted" && x.text) v.me.draft = x.text; // 換幕：已送出的行動退回成草稿
+      // 換幕：已送出的行動退回成草稿；房主 GM 鈕（kept）是留著等 GM 說完放回，不動草稿
+      if (!e.kept && x?.status === "submitted" && x.text) v.me.draft = x.text;
       v.round = null;
       break;
     }
@@ -250,6 +267,9 @@ function onVolatile(v: RoomView, x: any) {
       break;
     case "returned": // 只給本人：房主收回的行動原文（null＝丟掉了）
       v.me.returned = x.text;
+      break;
+    case "nudged": // 只給本人：房主在等他的行動
+      if (round) v.nudged = { round: x.round, n: (v.nudged?.n ?? 0) + 1 };
       break;
     case "called": // 只給房主：上一則 GM 旁白點到的 NPC
       if (round) round.called = x.cardId;

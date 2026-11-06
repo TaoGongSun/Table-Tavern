@@ -1,5 +1,5 @@
 // 重連快照（協定 §4.3）：整份換掉本地狀態用。草稿只給本人、額度細節只給出額度者，裝置碼與雜湊一律不出。
-import { execViewFor, isOnline } from "./round";
+import { carryOf, execViewFor, isOnline } from "./round";
 import type { Tx } from "./tx";
 import type {
   ActionItem,
@@ -121,6 +121,16 @@ export function storyOf(events: StoredEvent[]): StoryPart[] {
           interrupted: false,
           at,
         });
+      else if (a.watchReason === "skipped")
+        story.push({
+          round: p.round as number,
+          part: -1 - i,
+          speaker: { kind: "player", memberId: a.memberId, cardId: a.cardId, name: a.name },
+          text: "",
+          interrupted: false,
+          at,
+          handed: true,
+        });
     });
   }
   return story.filter((p, i) => !(isUndoneNote(p) && story[i + 1] && isUndoneNote(story[i + 1]))); // 連續收回只留一行提示
@@ -208,6 +218,7 @@ export function buildSnapshot(
       dispatchId: r.dispatchId,
       hold: r.hold,
       called: viewer === s.hostId ? (r.called ?? null) : null,
+      ...carryOf(s, r.kind),
     },
     story: storyOf(events),
     streaming,

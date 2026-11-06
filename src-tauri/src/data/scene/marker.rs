@@ -29,6 +29,10 @@ pub enum EventMarker {
     PlayerWatch {
         name: String,
     },
+    /// 多人房間（room-speak-request）：真人玩家把這回合交給 GM（協定 `watchReason: "skipped"`），GM 可以替他安排小動作。
+    PlayerHandedToGm {
+        name: String,
+    },
     /// 多人房間：真人玩家中途入座，這回合起在場。
     PlayerArrival {
         name: String,
@@ -158,6 +162,9 @@ pub fn marker_heading(marker: &EventMarker, lang: &str) -> Option<String> {
             template(lang, "gm_call", Some(("name", name)))
         }
         EventMarker::PlayerWatch { name } => template(lang, "player_watch", Some(("name", name))),
+        EventMarker::PlayerHandedToGm { name } => {
+            template(lang, "player_handed_to_gm", Some(("name", name)))
+        }
         EventMarker::PlayerArrival { name } => {
             template(lang, "player_arrival", Some(("name", name)))
         }

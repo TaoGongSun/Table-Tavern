@@ -61,6 +61,20 @@ export function offered(s: RoomState, route: unknown, model: unknown): SceneSett
   return { route: route as string, model: found.id, modelLabel: found.label };
 }
 
+/** 已送出的原文還給本人（收回、保留的行動對不上座位）：不碰草稿，已有一筆沒處理的就接在後面 */
+export function giveBack(tx: Tx, memberId: string, text: string | null) {
+  if (!text || !tx.s.members.some((m) => m.id === memberId && !m.banned)) return;
+  const w = tx.w;
+  const prev = w.returned?.[memberId];
+  const all = prev ? `${prev}\n${text}` : text;
+  (w.returned ??= {})[memberId] = all;
+  tx.toMember(memberId, "vol", { type: "returned", text: all });
+}
+
+/** host 回合在 round.opened 與快照裡帶的保留行動 */
+export const carryOf = (s: RoomState, kind: RoundKind) =>
+  kind === "host" && s.carry?.length ? { carry: s.carry } : {};
+
 export function openRound(tx: Tx, kind: RoundKind, host?: HostTurn) {
   const s = tx.w;
   const arrivals: string[] = [];
@@ -81,6 +95,15 @@ export function openRound(tx: Tx, kind: RoundKind, host?: HostTurn) {
     kind === "play" && s.settings.actionTimeoutSec !== null
       ? s.settings.actionTimeoutSec * 1000
       : null;
+  // 房主 GM 鈕保留的行動：同一位、同一張卡還在名單上就原樣放回，其餘原文還給本人
+  if (kind === "play" && s.carry) {
+    for (const c of s.carry) {
+      const e = roster.find((x) => x.memberId === c.memberId && x.cardId === c.cardId);
+      if (e) Object.assign(e, { status: c.status, text: c.text });
+      else giveBack(tx, c.memberId, c.text);
+    }
+    s.carry = null;
+  }
   const run = ms !== null && roster.length > 0 && execReady(s);
   s.lastError = null; // 新回合，上一回合的錯誤細節作廢（客戶端同樣在 round.opened 清掉）
   s.round = {
@@ -102,7 +125,13 @@ export function openRound(tx: Tx, kind: RoundKind, host?: HostTurn) {
     called: null,
     ...(host ? { host } : {}),
   };
-  tx.emit("round.opened", { round: s.round.round, kind, roster, deadline: s.round.deadline });
+  tx.emit("round.opened", {
+    round: s.round.round,
+    kind,
+    roster,
+    deadline: s.round.deadline,
+    ...carryOf(s, kind),
+  });
   if (kind !== "play") pushDispatch(tx);
 }
 
@@ -138,14 +167,23 @@ export function resolve(tx: Tx, by: "all" | "host" | "timeout") {
   pushDispatch(tx);
 }
 
-/** 作廢當前回合（換幕、房主 GM 鈕）：已送出的行動退回草稿；還沒派工的回合裡剛登場的人，下一次開 acting 再登場 */
-export function cancelRound(tx: Tx) {
+/** 作廢當前回合：已送出的行動退回草稿（換幕、補送），`keep`＝改存進 carry 等 GM 跑完放回（房主 GM 鈕）；
+ *  沒放回就作廢的 carry 原文還給本人。還沒派工的回合裡剛登場的人，下一次開 acting 再登場 */
+export function cancelRound(tx: Tx, keep = false) {
   const w = tx.w;
   const r = w.round!;
-  for (const e of r.roster) if (e.status === "submitted" && e.text) w.drafts[e.memberId] = e.text;
+  if (keep)
+    w.carry = r.roster
+      .filter((e) => e.status === "submitted" || e.status === "skipped")
+      .map((e) => ({ ...e }));
+  else {
+    for (const e of r.roster) if (e.status === "submitted" && e.text) w.drafts[e.memberId] = e.text;
+    for (const c of w.carry ?? []) giveBack(tx, c.memberId, c.text);
+    w.carry = null;
+  }
   if (!r.dispatch)
     for (const m of w.members) if (m.cardId && r.arrivals.includes(m.cardId)) m.arriving = true;
-  tx.emit("round.cancelled", { round: r.round });
+  tx.emit("round.cancelled", { round: r.round, ...(keep ? { kept: true } : {}) });
 }
 
 /** 同一回合只派一次：dispatchId 只在這裡產生一次，之後重送、重連、retry 都用同一份。
@@ -218,6 +256,7 @@ export function reopen(tx: Tx, from: Dispatch) {
     roster: [],
     deadline: null,
     phase: "queued",
+    ...carryOf(s, from.kind),
   });
   if (from.kind === "play")
     tx.emit("round.resolved", { round: s.round.round, by: "host", batch: from.actions });

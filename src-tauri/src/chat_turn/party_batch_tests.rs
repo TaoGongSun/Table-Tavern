@@ -67,6 +67,7 @@ fn first_round(root: &std::path::Path, world_id: &str, ids: &[String; 5]) -> Par
             act(tao, "我拔劍。"),
             PartyAction::Watch {
                 card_id: yu.clone(),
+                to_gm: false,
             },
             act(guard, "我守著門。"),
         ],
@@ -238,7 +239,7 @@ fn prompts_carry_the_party_round() {
         positions.windows(2).all(|pair| pair[0] < pair[1]),
         "{history}"
     );
-    let en = transport::party_instruction("en", &["A".to_owned(), "B".to_owned()], true);
+    let en = transport::party_instruction("en", &["A".to_owned(), "B".to_owned()], true, &[]);
     assert!(en.starts_with(" (Multiplayer table) This table has 2 real players"));
     assert!(en.contains("`Next: __PLAYER__`"));
     // NPC 老闆接話：玩家句帶各自的名字
@@ -544,5 +545,52 @@ fn delegate_and_return_markers() {
         data::read_state(&root, &world_id).unwrap().player_card_ids,
         [tao.clone(), yu.clone()]
     );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// 交給 GM（room-speak-request §2）：落成專屬標記；提示詞例外只認當次派工的標記，下一個派工（房主推進）不沿用
+#[test]
+fn handed_to_gm_exception_is_bound_to_its_dispatch() {
+    let (root, world_id, ids) = table("party-handed");
+    let [tao, yu, ..] = &ids;
+    let play = batch(
+        "p1",
+        &[tao, yu],
+        vec![
+            act(tao, "我拔劍。"),
+            PartyAction::Watch {
+                card_id: yu.clone(),
+                to_gm: true,
+            },
+        ],
+    );
+    land(&root, &world_id, &play);
+    let events = transcript(&root, &world_id);
+    assert_eq!(
+        events[1].marker,
+        Some(data::EventMarker::PlayerHandedToGm {
+            name: "小雨".to_owned()
+        })
+    );
+    let mut materials = chat_assembly::gm_materials(&root, &world_id).unwrap();
+    materials.party.hand_over(&materials.events, Some("p1"));
+    assert_eq!(materials.party.handed, ["小雨"]);
+    let names = materials.party.names();
+    let prompt = transport::party_instruction("zh-TW", &names, false, &materials.party.handed);
+    assert!(
+        prompt.contains("例外：小雨 這回合把行動交給 GM"),
+        "{prompt}"
+    );
+    // 房主接著按推進：host 派工沒有行動、id 不同 → 名單空、提示一字不變
+    land(&root, &world_id, &batch("h2", &[tao, yu], Vec::new()));
+    materials.party.hand_over(&materials.events, Some("h2"));
+    assert!(materials.party.handed.is_empty());
+    assert_eq!(
+        transport::party_instruction("zh-TW", &names, false, &materials.party.handed),
+        transport::party_instruction("zh-TW", &names, false, &[]),
+    );
+    assert!(!transport::party_instruction("zh-TW", &names, false, &[]).contains("例外"));
+    materials.party.hand_over(&materials.events, None);
+    assert!(materials.party.handed.is_empty());
     let _ = std::fs::remove_dir_all(&root);
 }

@@ -63,16 +63,28 @@ pub fn narrate_instruction(
 
 /// 多人房間（multiplayer-room 包 3）接在導演指示後的一段：在場真人玩家、本回合行動在哪、不替玩家發言；
 /// `call`＝這輪有「下一位」點名行，補點真人玩家的寫法。`players` 空＝一般桌，回空字串（提示逐字不變）。
-pub fn party_instruction(lang: &str, players: &[String], call: bool) -> String {
+/// `handed`＝當次派工把回合交給 GM 的角色名：非空才接一句窄例外（room-speak-request §2）。
+pub fn party_instruction(lang: &str, players: &[String], call: bool, handed: &[String]) -> String {
     if players.is_empty() {
         return String::new();
     }
     let names = players.join("、");
+    let handed = match (handed.is_empty(), scaffold_en(lang)) {
+        (true, _) => String::new(),
+        (false, true) => format!(
+            " Exception: {} left this round to the GM; you may give them one small in-character action, but do not speak for them or make major decisions for them.",
+            handed.join(", "),
+        ),
+        (false, false) => format!(
+            "例外：{} 這回合把行動交給 GM，可以替他安排一個小動作，但不替他說話、不替他做重大決定。",
+            handed.join("、"),
+        ),
+    };
     match (scaffold_en(lang), call) {
         (true, call) => format!(
             " (Multiplayer table) This table has {count} real players, each playing their own character: {names}. \
              The latest player lines and (System) notes in the transcript are this round's actions, in order; \
-             respond to every player's action, and never speak or act for any real player.{call}",
+             respond to every player's action, and never speak or act for any real player.{handed}{call}",
             count = players.len(),
             call = match call {
                 true => format!(" To call on a specific real player, write their character name in the `Next:` line; to leave it open, write `Next: {PLAYER_SENTINEL}`."),
@@ -81,7 +93,7 @@ pub fn party_instruction(lang: &str, players: &[String], call: bool) -> String {
         ),
         (false, call) => format!(
             "（多人桌）本桌有 {count} 位真人玩家，各自扮演自己的角色：{names}。\
-             逐字稿最後那批玩家發言與（系統）標記就是本回合依序的行動，旁白要回應每一位的行動；不要替任何真人玩家說話或行動。{call}",
+             逐字稿最後那批玩家發言與（系統）標記就是本回合依序的行動，旁白要回應每一位的行動；不要替任何真人玩家說話或行動。{handed}{call}",
             count = players.len(),
             call = match call {
                 true => format!("要點某位真人玩家行動，「下一位」就寫他的角色名；不指定是誰就寫「下一位：{PLAYER_SENTINEL}」。"),

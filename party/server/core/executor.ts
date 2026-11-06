@@ -123,7 +123,8 @@ function undoResult(tx: Tx, j: PendingJob, p: any) {
     else tx.err(j.reply.conn, "E_STATE_CONFLICT", { id: j.reply.id });
   }
   if (!ok) return;
-  if (w.round?.phase === "acting") cancelRound(tx); // 收回後開出的那回合，已送出的退回草稿
+  // 收回後開出的那回合：已送出的退回草稿；收回的是房主 GM 回合就照現況存進 carry，重跑完再放回
+  if (w.round?.phase === "acting") cancelRound(tx, ld.kind === "host");
   w.lastDispatch = null; // 只收一層
   tx.emit("round.undone", { round: ld.round });
   if (u.mode === "regenerate") {

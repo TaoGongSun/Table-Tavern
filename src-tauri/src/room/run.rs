@@ -539,6 +539,7 @@ fn land_batch(
                 },
                 false => PartyAction::Watch {
                     card_id: text(&a["cardId"]),
+                    to_gm: a["watchReason"] == "skipped",
                 },
             })
             .collect(),

@@ -547,6 +547,7 @@ fn summary_party_note(events: &[TranscriptEvent], en: bool) -> String {
                 event.marker,
                 Some(
                     PlayerWatch { .. }
+                        | PlayerHandedToGm { .. }
                         | PlayerArrival { .. }
                         | PlayerToNpc { .. }
                         | PlayerAbsent { .. }

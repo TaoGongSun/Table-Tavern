@@ -5,12 +5,16 @@ import { playing, type Room } from "./room-test-kit";
 import { buildSnapshot } from "./snapshot";
 
 describe("房主 GM 鈕（§3.1）", () => {
-  it("送出一半時按旁白：已送出的退回草稿、開 host 回合直接派工（不帶行動與登場），GM 點到的 NPC 只告訴房主", async () => {
+  it("送出一半時按旁白：已送出的行動留著、開 host 回合直接派工（不帶行動與登場），GM 跑完放回；GM 點到的 NPC 只告訴房主", async () => {
     const room = await playing();
     await room.send("b", "action.submit", { round: 2, text: "我推門" });
     await room.send("a", "host.gm", { round: 2, mode: "narrate" });
-    expect(room.s.drafts.m2).toBe("我推門");
-    expect(room.events("round.cancelled").at(-1)?.payload).toEqual({ round: 2 });
+    expect(room.s.drafts.m2).toBeUndefined();
+    expect(room.s.carry).toEqual([
+      { memberId: "m2", cardId: "c2", status: "submitted", text: "我推門" },
+    ]);
+    expect(room.events("round.cancelled").at(-1)?.payload).toEqual({ round: 2, kept: true });
+    expect(room.events("round.opened").at(-1)?.payload.carry).toEqual(room.s.carry);
     expect(room.s.round).toMatchObject({ round: 3, kind: "host", phase: "queued", roster: [] });
     const d = room.frames("x1", "dispatch").at(-1)!.p;
     expect(d).toMatchObject({ kind: "host", actions: [], arrivals: [], host: { mode: "narrate" } });
@@ -18,6 +22,11 @@ describe("房主 GM 鈕（§3.1）", () => {
     const dispatchId = room.dispatchId();
     await room.send("x1", "gen.done", { dispatchId, aborted: false, called: "c3" });
     expect(room.s.round).toMatchObject({ round: 4, kind: "play", phase: "acting", called: "c3" });
+    expect(room.s.round!.roster).toEqual([
+      { memberId: "m1", cardId: "c1", status: "pending", text: null },
+      { memberId: "m2", cardId: "c2", status: "submitted", text: "我推門" },
+    ]);
+    expect(room.s.carry).toBeNull();
     expect(room.frames("a", "vol", "called").at(-1)?.p).toEqual({
       type: "called",
       round: 4,

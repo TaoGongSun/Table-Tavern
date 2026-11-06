@@ -7,8 +7,9 @@ use std::path::Path;
 pub(crate) enum PartyAction {
     /// 行動文字（玩家輸入，信任邊界：這裡再驗一次長度，不只信伺服器）
     Act { card_id: String, text: String },
-    /// 這回合觀望（跳過、逾時、房主結算都一樣，GM 只需要知道沒行動）
-    Watch { card_id: String },
+    /// 這回合沒行動。`to_gm`＝玩家按「交給 GM」（`watchReason: "skipped"`），落成交給 GM 標記；
+    /// 逾時、房主結算都是一般觀望
+    Watch { card_id: String, to_gm: bool },
 }
 
 /// 離席處置（協定 `departures[].mode`）。
@@ -180,12 +181,15 @@ fn batch_events(
         }));
     }
     for action in &batch.actions {
-        let (PartyAction::Act { card_id, .. } | PartyAction::Watch { card_id }) = action;
+        let (PartyAction::Act { card_id, .. } | PartyAction::Watch { card_id, .. }) = action;
         if !batch.players.contains(card_id) {
             return Err(format!("行動者 {card_id} 不在這回合的在場玩家裡"));
         }
         let name = name(card_id)?;
         events.push(match action {
+            PartyAction::Watch { to_gm: true, .. } => {
+                system(EventMarker::PlayerHandedToGm { name })
+            }
             PartyAction::Watch { .. } => system(EventMarker::PlayerWatch { name }),
             PartyAction::Act { text, .. } => {
                 // 同前端單人送出：去頭尾空白後才驗、才落檔

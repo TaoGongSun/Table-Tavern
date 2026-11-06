@@ -56,6 +56,7 @@ const MEMBER_FRAMES: Record<string, string> = {
   "round.continue": "round:i",
   "gen.abort": "round:i",
   "host.gm": "round:i mode:s cardId?:s",
+  "host.nudge": "round:i memberId:s",
   "round.undo": "round:i mode:s next?:o",
   "action.returned_dismiss": "draft?:s",
   "room.start": "",

@@ -10,6 +10,7 @@ import {
   MIN,
   offered,
   openRound,
+  isOnline,
   resolve,
   seatedMembers,
   undelegate,
@@ -323,8 +324,20 @@ export const MEMBER: Record<string, Handler> = {
       need(card && card.playable && !card.hidden && card.claimedBy === null, "E_SEAT_TAKEN");
       turn = { mode: "call", cardId: card.cardId, call: r.called === card.cardId }; // GM 剛點到他＝「讓 X 接話」，先寫點名列
     }
-    cancelRound(tx);
+    cancelRound(tx, true); // 已送出的行動留著，GM 跑完開新的 acting 時放回（room-speak-request §3）
     openRound(tx, "host", turn);
+  },
+  // 房主催促一位還沒送出的玩家（room-speak-request §1）：只私下通知本人，不動回合、不進日誌；同一對象 30 秒一次
+  "host.nudge": (tx, p, m) => {
+    host(tx, m);
+    const r = roundAt(tx, p.round);
+    const e = r.roster.find((x) => x.memberId === p.memberId);
+    need(
+      e && (e.status === "pending" || e.status === "drafting") && isOnline(tx.s, e.memberId),
+      "E_STATE_CONFLICT",
+    );
+    rate(tx, `n:${m.id}:${e.memberId}`, 1, 30_000);
+    tx.toMember(e.memberId, "vol", { type: "nudged", round: r.round });
   },
   // 收回／重生上一回合（§3.2）：存 undo、請執行端把那批事件從桌尾收掉，等 job.result 才動回合
   "round.undo": (tx, p, m) => {
@@ -496,7 +509,8 @@ export const MEMBER: Record<string, Handler> = {
       delete s.returned[from.id];
     }
     s.cards = s.cards.map((c) => (c.cardId === to.cardId ? { ...c, claimedBy: to.id } : c));
-    for (const e of s.round?.roster ?? []) if (e.memberId === from.id) e.memberId = to.id;
+    for (const e of [...(s.round?.roster ?? []), ...(s.carry ?? [])])
+      if (e.memberId === from.id) e.memberId = to.id;
     tx.emit("seat.reassigned", { from: from.id, to: to.id, cardId: to.cardId });
     // 代管中的座位有人接手＝人在玩：照接回處理（暫離沒派出就抵消，否則下一回合登場）
     if (wasDelegated) {

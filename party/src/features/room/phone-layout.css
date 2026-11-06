@@ -152,13 +152,14 @@
 .app.party-phone .reading .round-more,
 .app.party-phone .reading [data-testid="countdown-note"],
 .app.party-phone .reading .seat-picker,
-.app.party-phone .reading .action-box:not(:has(.action-leading)) {
+.app.party-phone .reading .action-box:not(:has(.action-leading, .nudge-bar)) {
   display: none;
 }
 .app.party-phone .reading .action-row,
 .app.party-phone .reading .action-skip,
 .app.party-phone .reading .action-untuck,
 .app.party-phone .reading .action-hint,
+.app.party-phone .reading .action-status,
 .app.party-phone .reading .returned,
 .app.party-phone .reading .action-box .field-error {
   display: none;

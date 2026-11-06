@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { modelName, t } from "../../i18n";
 import { DelegateButton } from "./DelegateButton";
+import { NudgeButton } from "./NudgeButton";
 import { allDelegated, offlineSeated } from "./delegation";
 import { clock, HOLD_TEXT } from "./error-text";
 import { HeldActions } from "../controls/HeldActions";
@@ -133,10 +134,13 @@ export function RoundBar({
   // 沒有可展開的細節（大廳、生成中）：摘要不畫 ▾
   const expandable =
     !!gmModel || waiting.length > 0 || (r?.phase === "acting" && r.deadline !== null);
-  // 手機收起時「還在等」只在有房主能按的代管鈕時露出
+  const offlineIds = new Set(offline.map((m) => m.memberId));
+  // 房主能催的人：在線、還沒送、不是自己
+  const nudgeable = (id: string) => host && id !== view.me.memberId && !offlineIds.has(id);
+  // 能操作的東西不藏：手機收起時「還在等」只要有房主能按的代管鈕或催一下鈕就露出
   const waitingShown =
     waiting.length > 0 &&
-    (shown || waiting.some((e) => offline.some((m) => m.memberId === e.memberId)));
+    (shown || waiting.some((e) => offlineIds.has(e.memberId) || nudgeable(e.memberId)));
   return (
     <div className="round-bar" data-testid="round-bar">
       {compact ? (
@@ -205,7 +209,7 @@ export function RoundBar({
           {t("roundCountdownNote")}
         </div>
       )}
-      {/* 房主：還在等的人裡沒連線的，名字旁直接給代管鈕，不必切到房主頁 */}
+      {/* 房主：還在等的人，在線的名字旁給「催一下」，沒連線的直接給代管鈕，不必切到房主頁 */}
       {waitingShown && (
         <div className="round-waiting" data-testid="round-waiting">
           {t("roundWaiting", { names: "" })}
@@ -213,6 +217,12 @@ export function RoundBar({
             <span key={e.memberId} className="waiting-name">
               {i > 0 && "、"}
               {nameOf(e.cardId)}
+              {nudgeable(e.memberId) && (
+                <>
+                  {" "}
+                  <NudgeButton act={act} round={r!.round} memberId={e.memberId} />
+                </>
+              )}
               {offline.some((m) => m.memberId === e.memberId) && (
                 <>
                   {" "}

@@ -468,6 +468,7 @@ export type KnownMarker =
   | { type: "state_update" }
   | { type: "gm_call"; name: string }
   | { type: "player_watch"; name: string }
+  | { type: "player_handed_to_gm"; name: string }
   | { type: "player_arrival"; name: string }
   | { type: "player_to_npc"; name: string }
   | { type: "player_absent"; name: string }

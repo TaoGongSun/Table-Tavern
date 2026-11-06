@@ -47,6 +47,8 @@ pub(crate) struct GmMaterials {
 pub(crate) struct Party {
     pub present: Vec<(String, String)>,
     pub absent: Vec<String>,
+    /// 當次派工裡把回合交給 GM 的玩家角色名（room-speak-request §2）；`hand_over` 填，預設空
+    pub handed: Vec<String>,
 }
 
 impl Party {
@@ -68,7 +70,24 @@ impl Party {
                 .filter(|id| !state.player_card_ids.contains(id))
                 .cloned()
                 .collect(),
+            handed: Vec::new(),
         }
+    }
+
+    /// 只認 `action_id` 等於當次派工的交給 GM 標記：host 回合的派工沒有行動、id 也不同，名單必定是空的；
+    /// retry 與重連續跑是同一個派工，regenerate 會以新派工重落同一批標記
+    pub(crate) fn hand_over(&mut self, events: &[data::TranscriptEvent], action_id: Option<&str>) {
+        let Some(id) = action_id else {
+            return self.handed.clear();
+        };
+        self.handed = events
+            .iter()
+            .filter(|event| event.action_id.as_deref() == Some(id))
+            .filter_map(|event| match &event.marker {
+                Some(data::EventMarker::PlayerHandedToGm { name }) => Some(name.clone()),
+                _ => None,
+            })
+            .collect();
     }
 
     pub(crate) fn names(&self) -> Vec<String> {
@@ -546,6 +565,7 @@ pub(crate) fn gm_turn_instruction(
         lang,
         &materials.party.names(),
         call,
+        &materials.party.handed,
     ));
     (instruction, closing)
 }

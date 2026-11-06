@@ -501,6 +501,10 @@
   font-size: 14px;
 }
 
+.app .part-handed {
+  font-style: italic;
+}
+
 .app .part-name {
   font-family:
     system-ui,
@@ -549,6 +553,41 @@
   margin-bottom: 6px;
   color: var(--muted);
   font-size: 14px;
+}
+
+/* 行動格的狀態句（已送出、交給 GM）：那一區最顯眼的一句 */
+.app .action-status {
+  margin-bottom: 6px;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* 交給 GM 期間的輸入框：唯讀、灰底淡字、不顯示聚焦邊框與游標 */
+.app .action-box textarea[readonly],
+.app .action-box textarea[readonly]:focus {
+  border-color: var(--line);
+  outline: none;
+  background: var(--surface-2);
+  color: var(--muted);
+  caret-color: transparent;
+}
+
+/* 房主 GM 鈕列正下方的小字 */
+.app .action-box .gm-keep-note {
+  margin: 6px 0 0;
+}
+
+/* 房主催促：強調色淡底＋左邊色條、粗體大一級，被催的人一眼看到 */
+.app .nudge-bar {
+  margin-bottom: 6px;
+  padding: 6px 10px;
+  border-left: 4px solid var(--accent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 700;
 }
 
 .app .field-error {

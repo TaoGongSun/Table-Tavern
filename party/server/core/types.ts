@@ -38,6 +38,8 @@ export interface RoundView {
   hold: PublicExecutorError | null;
   /** 上一則 GM 旁白點到的 NPC（「讓 X 接話」）；只給房主，這回合結束就失效 */
   called?: string | null;
+  /** host 回合才有：房主按 GM 鈕前已送出的行動，GM 跑完開新的 acting 時原樣放回（原文送出時就已公開） */
+  carry?: RosterEntry[];
 }
 export interface PublicCard {
   cardId: string;
@@ -81,6 +83,8 @@ export interface StoryPart {
   interrupted: boolean;
   at: number;
   state?: SceneStatus;
+  /** 玩家把這回合交給 GM（`watchReason: "skipped"`）：沒有原文，客戶端照語系寫一行 */
+  handed?: true;
 }
 export interface ActionItem {
   memberId: string;
@@ -336,6 +340,8 @@ export interface RoomState {
   } | null;
   /** 被收回的行動原文，只給本人（帶回／丟掉） */
   returned?: Record<string, string>;
+  /** 房主 GM 鈕保留下來的已送出行動（submitted／skipped）：下一次開 play 回合時恢復，對不上的原文走 returned */
+  carry?: RosterEntry[] | null;
   lastError?: { round: number; error: ExecutorError } | null; // 最近一筆錯誤細節，只給出額度者（重連後還看得到）；舊房間沒有這欄
   ctls: Record<
     string,

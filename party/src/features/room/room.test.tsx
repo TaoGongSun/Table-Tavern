@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
+/// <reference types="node" />
 // 手機客戶端整合測試：真的伺服器核心（room-test-kit）當假伺服器，兩支「手機」各自渲染 App，透過假 WebSocket 連進同一房。
+import { readFileSync } from "node:fs";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -191,6 +193,22 @@ describe("手機客戶端對真伺服器核心", () => {
     expect(B.text()).toContain("角色2");
   });
 
+  it("大廳裡掛上行動格不會被當成催促：不震動、不搶焦點", async () => {
+    const vibrate = vi.fn();
+    Object.defineProperty(navigator, "vibrate", { value: vibrate, configurable: true });
+    const room = await Room.create();
+    await room.exec();
+    await room.send("x1", "roster.update", { cards: [...CARDS, STAGE] });
+    const hub = new Hub(room);
+    hub.wrap = (fn) => act(fn);
+    const A = phone(hub, `k=${room.joinSecret}&p=${await room.pairCode(true)}`);
+    await joinAndSit(A, "阿明", "角色1");
+    await until(() => A.q('[data-testid="action-box"]'));
+    expect(vibrate).not.toHaveBeenCalled();
+    expect(document.activeElement).not.toBe(A.q('[data-testid="action-text"]'));
+    Reflect.deleteProperty(navigator, "vibrate");
+  });
+
   it("空房：沒人入座時開始鈕停用並說原因；自建角色名字預填暱稱、執行端建卡後入座就能開始；回合列列出還沒送的人；房主暫停跟離線分開顯示", async () => {
     const room = await Room.create();
     await room.exec();
@@ -230,7 +248,7 @@ describe("手機客戶端對真伺服器核心", () => {
     // 手機回合列平時一行：點摘要才展開還在等誰
     act(() => A.q<HTMLButtonElement>('[data-testid="round-summary"]')!.click());
     await until(() => A.q('[data-testid="round-waiting"]'));
-    expect(A.q('[data-testid="round-waiting"]')!.textContent).toBe("還在等：阿明");
+    expect(A.q('[data-testid="round-waiting"]')!.textContent).toBe("還在等：阿明"); // 自己不給催促鈕
     expect(A.button("結算這回合")!.textContent).toBe("結算這回合（1 人還沒送）");
     await hub.exec("status", { keepAwake: null, busy: false, paused: true });
     await act(async () => {
@@ -265,7 +283,7 @@ describe("手機客戶端對真伺服器核心", () => {
       "已送出：我拔劍（結算前可以收回修改）",
     ); // 輸入框清空了，寫出送了什麼
 
-    B.click("跳過");
+    B.click("交給 GM");
     await until(() => room.s.round?.phase === "queued");
     await until(() => A.text().includes("GM 生成中…") && B.text().includes("GM 生成中…"));
     // 結算後收不回：不留一顆灰著的「收回修改」，照常給停用的跳過／送出
@@ -273,6 +291,7 @@ describe("手機客戶端對真伺服器核心", () => {
     expect((A.button("送出") as HTMLButtonElement).disabled).toBe(true);
     expect(room.events("round.resolved").at(-1)!.payload.by).toBe("all");
     expect(B.q('[data-testid="story"]')!.textContent).toContain("我拔劍"); // 結算後進故事串
+    expect(A.q('[data-testid="story"]')!.textContent).toContain("角色2這回合交給 GM 安排");
   });
 
   it("房主結算；回合已往下走時送出被拒，草稿原樣保留", async () => {
@@ -560,7 +579,7 @@ describe("手機客戶端對真伺服器核心", () => {
     const { room, B, b } = await table({ timing: { requestMs: 100, now: () => now } });
     const old = B.socket();
     old.held = true; // 手機熄螢幕：之後什麼都收不到，onclose 也不來
-    B.click("跳過");
+    B.click("交給 GM");
     await act(() => new Promise((r) => setTimeout(r, 150)));
     await until(() => B.q('[data-testid="action-error"]'));
     expect(B.q('[data-testid="action-error"]')!.textContent).toBe("連線中斷，等重新連上再試");
@@ -572,26 +591,51 @@ describe("手機客戶端對真伺服器核心", () => {
     expect(B.socket().sent[0].p.lastSeq).toBeGreaterThan(0); // 補事件路徑
   });
 
-  it("房主 GM 鈕：只有房主看得到；按旁白時別人已送出的行動回到輸入框；GM 點到的 NPC 只在房主那邊出現「讓 X 接話」", async () => {
+  it("房主 GM 鈕：只有房主看得到；按旁白時別人已送出的行動留著、GM 說完放回並提示；房主催促只給本人；GM 點到的 NPC 只在房主那邊出現「讓 NPC X 接話」", async () => {
     const { room, hub, A, B } = await table();
     expect(A.q('[data-testid="gm-controls"]')).toBeTruthy();
     expect(B.q('[data-testid="gm-controls"]')).toBeNull();
+    // 能操作的東西不藏：手機回合列收著，「還在等」照樣露出催一下
+    await until(() => A.q('[data-testid="nudge-m2"]'));
+    // 被催的人輸入格收著：催一下就自動展開一次，橫條與輸入框露出、輸入框取得焦點
+    act(() => B.q<HTMLButtonElement>('[data-testid="action-tuck"]')!.click());
+    await until(() => B.q('[data-testid="action-untuck"]'));
+    A.click("催一下");
+    await until(() => B.q('[data-testid="nudged-note"]') && A.button("已提醒"));
+    expect(B.q('[data-testid="action-untuck"]')).toBeNull();
+    await until(() => document.activeElement === B.q('[data-testid="action-text"]'));
+    expect(A.q('[data-testid="nudged-note"]')).toBeNull();
+    B.type('[data-testid="action-text"]', "還在想");
+    B.click("交給 GM");
+    await until(() => B.text().includes("這回合交給 GM 安排（結算前可以收回）"));
+    expect(B.q('[data-testid="nudged-note"]')).toBeNull();
+    const box = () => B.q<HTMLTextAreaElement>('[data-testid="action-text"]')!;
+    expect(box().readOnly).toBe(true); // 交給 GM 期間唯讀，草稿留在框裡
+    expect(box().value).toBe("還在想");
+    await until(() => A.q('[data-testid="gm-keep-note"]'));
+    expect(A.q('[data-testid="gm-keep-note"]')!.textContent).toBe(
+      "已送出的 1 個行動會保留，GM 說完照常結算",
+    );
+    expect(B.q('[data-testid="gm-keep-note"]')).toBeNull();
+    B.click("收回修改");
+    await until(() => B.button("送出") && !box().readOnly);
+    expect(box().value).toBe("還在想");
     B.type('[data-testid="action-text"]', "我點酒");
     B.click("送出");
     await until(() => A.q('[data-testid="submitted"]'));
+    expect(B.q('[data-testid="nudged-note"]')).toBeNull();
     A.click("GM 旁白");
-    await until(
-      () =>
-        room.s.round?.kind === "host" &&
-        B.q<HTMLTextAreaElement>('[data-testid="action-text"]')!.value === "我點酒",
-    );
+    await until(() => room.s.round?.kind === "host" && A.q('[data-testid="submitted"]'));
+    expect(B.q('[data-testid="submitted-note"]')!.textContent).toContain("我點酒");
+    expect(B.q<HTMLTextAreaElement>('[data-testid="action-text"]')!.value).toBe("");
     expect(A.q<HTMLButtonElement>('[data-testid="gm-main"]')!.disabled).toBe(true);
     const dispatchId = room.dispatchId();
     await hub.exec("dispatch.ack", { dispatchId });
     await hub.exec("gen.done", { dispatchId, aborted: false, called: "c3" });
-    await until(() => A.button("讓角色3接話"));
-    expect(B.button("讓角色3接話")).toBeNull();
-    A.click("讓角色3接話");
+    await until(() => A.button("讓 NPC 角色3接話") && B.q('[data-testid="kept-note"]'));
+    expect(B.button("收回修改")).toBeTruthy();
+    expect(B.button("讓 NPC 角色3接話")).toBeNull();
+    A.click("讓 NPC 角色3接話");
     await until(() => room.s.round?.host?.call === true);
   });
 
@@ -612,7 +656,7 @@ describe("手機客戶端對真伺服器核心", () => {
     const { room, hub, A, B } = await table();
     B.type('[data-testid="action-text"]', "我推門");
     B.click("送出");
-    A.click("跳過");
+    A.click("交給 GM");
     await until(() => room.s.round?.phase === "queued");
     const dispatchId = room.dispatchId();
     await hub.exec("dispatch.ack", { dispatchId });
@@ -651,7 +695,7 @@ describe("手機客戶端對真伺服器核心", () => {
     const { room, hub, A, B } = await table();
     B.type('[data-testid="action-text"]', "我推門");
     B.click("送出");
-    A.click("跳過");
+    A.click("交給 GM");
     await until(() => room.s.round?.phase === "queued");
     await room.finishGen("門後是一片黑。");
     hub.flush();
@@ -1083,15 +1127,15 @@ describe("玩家卡（room-player-cards）", () => {
     expect(B.q('[data-testid="action-text"]')).toBeNull();
     expect(B.q('[data-testid="action-untuck"]')!.textContent).toContain("✎ 草稿");
     expect(B.q('[data-testid="action-untuck"]')!.textContent).toContain("打字中");
-    expect(B.button("跳過")).toBeNull();
+    expect(B.button("交給 GM")).toBeNull();
     expect(room.s.drafts[b]).toBe("我先記下");
     act(() => B.q<HTMLButtonElement>('[data-testid="action-untuck"]')!.click());
     const area = B.q<HTMLTextAreaElement>('[data-testid="action-text"]')!;
     expect(area.value).toBe("我先記下");
     expect(document.activeElement).toBe(area);
-    expect(B.button("跳過")).toBeTruthy();
+    expect(B.button("交給 GM")).toBeTruthy();
     act(() => A.q<HTMLButtonElement>('[data-testid="action-tuck"]')!.click());
-    expect(A.button("跳過")).toBeNull();
+    expect(A.button("交給 GM")).toBeNull();
     expect(A.q('[data-testid="gm-controls"]')).toBeTruthy();
     act(() => A.q<HTMLButtonElement>('[data-testid="action-untuck"]')!.click());
     act(() => A.q<HTMLTextAreaElement>('[data-testid="action-text"]')!.blur());
@@ -1110,7 +1154,8 @@ describe("玩家卡（room-player-cards）", () => {
     away(A, true);
     expect(A.q(".room-screen")!.classList.contains("reading")).toBe(true);
     act(() => A.q<HTMLButtonElement>('[data-testid="round-summary"]')!.click());
-    expect(A.q('[data-testid="round-waiting"]')).toBeNull();
+    // 第一下只結束閱讀、不展開詳情（「還在等」因為有催一下鈕本來就露出）
+    expect(A.q('[data-testid="round-summary"]')!.getAttribute("aria-expanded")).toBe("false");
     expect(A.q(".room-screen")!.classList.contains("reading")).toBe(false);
     away(A, false);
     away(A, true);
@@ -1146,6 +1191,35 @@ describe("玩家卡（room-player-cards）", () => {
     expect(room.events("action.submitted")[0].payload.text).toBe("我推門");
     expect(B.q('[data-testid="action-text"]')).toBeTruthy();
     expect(B.q(".room-screen")!.classList.contains("reading")).toBe(false);
+  });
+});
+
+describe("往回捲閱讀時被催", () => {
+  it("行動格只露出催促橫條，輸入列照舊收起", async () => {
+    const css = document.createElement("style");
+    // vitest 不載 CSS：直接讀檔塞進頁面，讓 getComputedStyle 套真的閱讀模式規則
+    css.textContent = readFileSync(`${process.cwd()}/src/features/room/phone-layout.css`, "utf8");
+    document.head.append(css);
+    try {
+      const { B, A } = await table();
+      const el = B.q<HTMLElement>('[data-testid="story"]')!;
+      Object.defineProperty(el, "scrollHeight", { configurable: true, get: () => 2000 });
+      Object.defineProperty(el, "clientHeight", { configurable: true, get: () => 400 });
+      el.scrollTop = 0;
+      act(() => el.dispatchEvent(new Event("scroll")));
+      expect(B.q(".room-screen")!.classList.contains("reading")).toBe(true);
+      const shown = (sel: string) => getComputedStyle(B.q<HTMLElement>(sel)!).display !== "none";
+      expect(shown('[data-testid="action-box"]')).toBe(false); // 沒被催：整格收起（原規則）
+      await until(() => A.q('[data-testid="nudge-m2"]'));
+      A.click("催一下");
+      await until(() => B.q('[data-testid="nudged-note"]'));
+      expect(B.q(".room-screen")!.classList.contains("reading")).toBe(true);
+      expect(shown('[data-testid="action-box"]')).toBe(true);
+      expect(shown('[data-testid="nudged-note"]')).toBe(true);
+      expect(shown(".action-row")).toBe(false);
+    } finally {
+      css.remove();
+    }
   });
 });
 

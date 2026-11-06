@@ -151,7 +151,10 @@ pub(crate) async fn gm_narrate(
     )?;
     // 回合開始（鎖內）：記回合紀錄與固定輸入；中止、出錯時 TurnGuard 把它改成已中止（計畫 8.3）
     let turn = TurnGuard::begin(&root, &world_id, &turn_id, &lang)?;
-    let materials = gm_materials(&root, &world_id)?;
+    let mut materials = gm_materials(&root, &world_id)?;
+    materials
+        .party
+        .hand_over(&materials.events, action_id.as_deref());
     // 世界書（方案三之 2）：回合交接（begin 裡）之後先結算上一次落地，再以 GM 視角掃一次；
     // 掃描結果供組裝、導演指示點名格式條目、落地三者共用。落地之後的確定失敗由 TurnGuard（finish_turn）撤回
     let scene = materials.state.current_scene;

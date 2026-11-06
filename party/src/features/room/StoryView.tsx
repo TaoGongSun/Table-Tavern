@@ -103,8 +103,10 @@ export function StoryView({
     if (stick.current && box.current) box.current.scrollTop = box.current.scrollHeight;
   }, [view.story.length, s?.text, view.round]);
   const name = (cardId: string) => view.cards.find((c) => c.cardId === cardId)?.name ?? cardId;
-  const pending =
-    view.round?.phase === "acting" ? view.round.roster.filter((e) => e.status === "submitted") : [];
+  // 房主 GM 回合期間，之前已送出的行動留在 carry，照樣列著（GM 說完放回名單）
+  const pending = (
+    view.round?.phase === "acting" ? view.round.roster : (view.round?.carry ?? [])
+  ).filter((e) => e.status === "submitted");
   return (
     <div
       className="story"
@@ -129,15 +131,30 @@ export function StoryView({
             {t("storyOlder")}
           </button>
         )}
-      {view.story.map((p) => (
-        <Part
-          key={`${p.round}:${p.part}`}
-          view={view}
-          speaker={p.speaker}
-          text={p.text}
-          flag={p.interrupted ? t("storyInterrupted") : undefined}
-        />
-      ))}
+      {view.story.map((p) =>
+        p.handed && p.speaker.kind === "player" ? (
+          // 交給 GM：旁白式一行（樣式比照系統行），左邊色條保留角色色
+          <div
+            key={`${p.round}:${p.part}`}
+            className="part part-system part-handed"
+            style={{
+              borderColor:
+                view.cards.find((c) => "cardId" in p.speaker && c.cardId === p.speaker.cardId)
+                  ?.color ?? undefined,
+            }}
+          >
+            {t("storyHandedToGm", { name: "name" in p.speaker ? p.speaker.name : "" })}
+          </div>
+        ) : (
+          <Part
+            key={`${p.round}:${p.part}`}
+            view={view}
+            speaker={p.speaker}
+            text={p.text}
+            flag={p.interrupted ? t("storyInterrupted") : undefined}
+          />
+        ),
+      )}
       {s && (
         <div data-testid="streaming">
           <Part

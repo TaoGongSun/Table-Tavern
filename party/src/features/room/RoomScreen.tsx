@@ -15,7 +15,7 @@ function useNow(on: boolean) {
 }
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { t, type MsgKey } from "../../i18n";
-import { GmControls } from "../controls/GmControls";
+import { GmControls, GmKeepNote } from "../controls/GmControls";
 import { GuideLink } from "../join/GuideLink";
 import { HostPanel } from "../controls/HostPanel";
 import { UndoControls } from "../controls/UndoControls";
@@ -401,6 +401,7 @@ export function RoomScreen({ view, c: controls }: { view: RoomView; c: RoomContr
               // 沒入座的房主：GM 鈕單獨一列，入座是列尾的小鈕
               <div className="host-controls">
                 {gm}
+                <GmKeepNote view={view} />
                 {folded && (
                   <button
                     type="button"
@@ -435,6 +436,7 @@ export function RoomScreen({ view, c: controls }: { view: RoomView; c: RoomContr
                 sendDraft={c.sendDraft}
                 cancelDraft={c.cancelDraft}
                 leading={hostPlaying ? gm : undefined}
+                below={hostPlaying ? <GmKeepNote view={view} /> : undefined}
                 compact={phone}
                 urgent={urgent}
                 onTyping={phone ? onTyping : undefined}

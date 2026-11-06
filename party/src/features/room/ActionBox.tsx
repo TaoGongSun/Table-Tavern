@@ -1,4 +1,4 @@
-// 行動格（協定 §3.3）：草稿節流上傳（不公開）、送出即公開、收回成草稿、跳過。GM 生成中可打字不可送；
+// 行動格（協定 §3.3）：草稿節流上傳（不公開）、送出即公開、收回成草稿、交給 GM（協定的 skip）。GM 生成中可打字不可送；
 // 被拒（回合已往下走、GM 還在說）時草稿原樣保留。交給 AI 代管中照樣能打字存草稿，只是送不出（不在名單上）。
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
@@ -25,6 +25,7 @@ export function ActionBox({
   compact = false,
   urgent = false,
   onTyping,
+  below,
 }: {
   view: RoomView;
   act: Act;
@@ -34,6 +35,8 @@ export function ActionBox({
   compact?: boolean;
   urgent?: boolean;
   onTyping?: (typing: boolean) => void;
+  /** 動作列正下方（房主：已送出的行動會保留那行小字） */
+  below?: ReactNode;
 }) {
   const area = useRef<HTMLTextAreaElement>(null);
   // 每個觸發每回合最多一次；同一回合又手動收起就留著
@@ -42,6 +45,7 @@ export function ActionBox({
     urgent: false,
     returned: false,
     returnText: null as string | null,
+    nudge: 0, // 已處理過的催促次數（view.nudged.n）
   });
   const [text, setText] = useState(view.me.draft ?? "");
   const [tucked, setTucked] = useState(false); // 只在記憶體：進房一律展開
@@ -78,6 +82,13 @@ export function ActionBox({
   const acting = r?.phase === "acting" && !!entry;
   const done = entry?.status === "submitted" || entry?.status === "skipped";
   const openTurn = acting && !done;
+  // 房主 GM 回合期間：之前送出的行動留著，GM 說完放回名單
+  const carried =
+    r?.phase !== "acting" ? r?.carry?.find((e) => e.memberId === view.me.memberId) : undefined;
+  const shown = acting ? entry : carried;
+  // 交給 GM 期間：輸入框唯讀（草稿留在框裡），收回後恢復可編輯
+  const handed = shown?.status === "skipped";
+  const nudged = openTurn && view.nudged?.round === r?.round;
   const live = view.room.status === "playing" || view.room.status === "transition";
   // 生成中、不在名單上、已送出時不展開
   useEffect(() => {
@@ -106,6 +117,17 @@ export function ActionBox({
     }
     if (open) setTucked(false);
   }, [compact, r?.round, openTurn, urgent, returned]);
+  // 房主催促（每催一次一回）：還沒送出才理；瀏覽器支援才震（iOS Safari 不支援），收起就展開，輸入框取得焦點
+  useEffect(() => {
+    const n = view.nudged?.n ?? 0;
+    if (n === fired.current.nudge) return;
+    fired.current.nudge = n;
+    if (!nudged) return;
+    navigator.vibrate?.(200);
+    setTucked(false);
+    setTimeout(() => area.current?.focus());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view.nudged?.n]);
   useEffect(() => () => onTyping?.(false), [onTyping]);
   const run = async (tt: string, p: Record<string, unknown> = {}) => {
     await send(tt, { round: r?.round ?? 0, ...p });
@@ -130,6 +152,7 @@ export function ActionBox({
     <textarea
       ref={area}
       value={text}
+      readOnly={handed}
       rows={compact ? 1 : 3}
       maxLength={2000}
       placeholder={t("actionPlaceholder")}
@@ -159,6 +182,7 @@ export function ActionBox({
       type="button"
       className={compact ? "ghost small action-skip" : "ghost"}
       disabled={!acting}
+      title={t("actionSkipTitle")}
       onClick={() => commit("action.skip")}
     >
       {t("actionSkip")}
@@ -180,25 +204,40 @@ export function ActionBox({
       ? t("actionDelegated")
       : r?.phase === "held"
         ? t("actionHeld")
-        : r?.phase !== "acting"
-          ? t("errRoundNotActing")
-          : !entry
-            ? t("actionNextRound")
-            : done && !(entry?.status === "submitted" && entry.text)
-              ? t("actionDone")
-              : null;
+        : carried
+          ? t("actionCarried")
+          : r?.phase !== "acting"
+            ? t("errRoundNotActing")
+            : !entry
+              ? t("actionNextRound")
+              : entry?.status === "skipped"
+                ? t("actionHanded")
+                : done && !entry?.text
+                  ? t("actionDone")
+                  : null;
+  // 房主催促：醒目橫條緊貼輸入框上方；送出、交給 GM、回合結束任一發生就消失
+  const nudgeBar = nudged && (
+    <div className="nudge-bar" role="status" data-testid="nudged-note">
+      ⏰ {t("actionNudged")}
+    </div>
+  );
   return (
     <div className="action-box" data-testid="action-box">
-      {hint && <div className="action-hint">{hint}</div>}
+      {hint && <div className={acting && handed ? "action-status" : "action-hint"}>{hint}</div>}
       {/* 送出後輸入框清空：寫出送了什麼，免得以為沒送出又打一次（原文就在名單上，結算後消失） */}
-      {r?.phase === "acting" && entry?.status === "submitted" && entry.text && (
-        <div className="action-hint" data-testid="submitted-note">
+      {shown?.status === "submitted" && shown.text && (
+        <div className="action-status" data-testid="submitted-note">
           {t("actionSubmittedNote", {
             text:
-              [...entry.text].length > 20
-                ? `${[...entry.text].slice(0, 20).join("")}…`
-                : entry.text,
+              [...shown.text].length > 20
+                ? `${[...shown.text].slice(0, 20).join("")}…`
+                : shown.text,
           })}
+        </div>
+      )}
+      {acting && done && view.kept === r?.round && (
+        <div className="action-hint" data-testid="kept-note">
+          {t("actionKeptNote")}
         </div>
       )}
       {taken && (
@@ -252,10 +291,13 @@ export function ActionBox({
               )}
             </button>
           ) : (
-            <div className="action-row">
-              {input}
-              {retractable ? retract : submit}
-            </div>
+            <>
+              {nudgeBar}
+              <div className="action-row">
+                {input}
+                {retractable ? retract : submit}
+              </div>
+            </>
           )}
           {errorLine}
           {/* 收起時跳過跟著輸入列走；下面只留 GM 列，要跳過先點細列展開 */}
@@ -275,9 +317,11 @@ export function ActionBox({
               {!tucked && !retractable && skip}
             </div>
           )}
+          {below}
         </>
       ) : (
         <>
+          {nudgeBar}
           {input}
           {errorLine}
           <div className="action-buttons">
@@ -291,6 +335,7 @@ export function ActionBox({
               </>
             )}
           </div>
+          {below}
         </>
       )}
     </div>
