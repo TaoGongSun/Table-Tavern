@@ -3,6 +3,7 @@ import type { ChatMsg } from "../../../server/core/types";
 import { t } from "../../i18n";
 import type { RoomView } from "../room/room-state";
 import { chatSpeaker } from "./chat-label";
+import "./chat.css";
 
 export function ChatNotice({
   view,

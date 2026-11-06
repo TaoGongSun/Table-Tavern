@@ -675,3 +675,10 @@ interface ExecutorPort { deliver(frame: Frame): void } // v1：轉成 WebSocket 
 5. 不做多程序或叢集（同一房必須落在同一程序）；水平擴充列已知限制。
 6. 成員 WS 來源只認 `PUBLIC_ORIGIN` 一個（Workers 比的是請求自己的網址）；同一台用兩個網址（例：區網 IP 與網域）開客戶端，只有設定的那個能加入。
 7. 靜態檔由 Node 自己送（Workers 用 Static Assets）：字面路徑與 realpath 後的目標都要在 `party/dist` 裡，根內指向根外的符號連結不送。
+
+## 16 玩家回饋三案的協定追加（2026-11-06）
+
+1. **`round.timer { round, action: "start" | "stop", sec? }`**（房主）：當回合開／停倒數。start 的 `sec` 限 60／120／300，先寫 `pausedRemainingMs`，交易尾端 `settle` 照既有規則換成 `deadline`；stop 清兩欄。只發既有的 `round.deadline`。名單空回 `E_STATE_CONFLICT`，秒數不對回 `E_SETTING_INVALID`。
+2. **`chat.send { to?, text }`**（任一成員，不須入座）：桌邊閒聊。`text` 走 `cleanText(1, 500)`；`to` 省略＝公開，給了必須是存在、未封鎖、不是自己的成員。每人 10 秒 10 則。不進事件日誌、不佔 seq、不進匯出；伺服器狀態留最後 200 則且 JSON UTF-8 ≤ 64 KiB。送達只用 `vol { type: "chat", msg }` 給成員連線（公開給所有未封鎖成員、私訊只給雙方），執行端永遠收不到。回 `ok { id }`。
+3. **快照與 `welcome.live` 多 `chat: ChatMsg[]`**：`ChatMsg { id, at, from, to: string | null, text }`，依收件人過濾（公開、或自己是收發方）；viewer 不是成員（執行端）一律空陣列。
+4. 狀態列與房主提醒（room-status-strip）不改協定，全由既有 `presence`、`roster_status`、事件推導。

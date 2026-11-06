@@ -7,6 +7,7 @@ import { t } from "../../i18n";
 import type { RoomView } from "../room/room-state";
 import { useRun, type Act } from "../room/useRoom";
 import { chatOption, chatWho } from "./chat-label";
+import "./chat.css";
 
 const LIMIT = 500;
 const chars = (s: string) => [...s.replace(/\r\n/g, "\n").normalize("NFC")].length;

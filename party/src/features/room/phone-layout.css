@@ -116,7 +116,8 @@
 .app.party-phone .room-screen:has(.action-box textarea:focus) .scene-status,
 .app.party-phone .room-screen:has(.action-box textarea:focus) .round-more,
 .app.party-phone .room-screen:has(.action-box textarea:focus) [data-testid="countdown-note"],
-.app.party-phone .room-screen:has(.action-box textarea:focus) .seat-strip {
+.app.party-phone .room-screen:has(.action-box textarea:focus) .seat-strip,
+.app.party-phone .room-screen:has(.action-box textarea:focus) .chat-notice {
   display: none;
 }
 

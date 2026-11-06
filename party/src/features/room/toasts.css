@@ -1,0 +1,34 @@
+/* 房主提醒的浮層（room-status-strip §2）：不佔版面，疊在故事區頂端 */
+.app .host-toasts {
+  position: relative;
+  z-index: 5;
+  flex: none;
+  height: 0;
+}
+
+.app .host-toast-stack {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  left: 8px;
+  max-width: 28rem; /* 桌面寬度下不要橫跨整個故事區 */
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.app button.host-toast {
+  min-height: 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  font-family:
+    system-ui,
+    -apple-system,
+    "PingFang TC",
+    sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: left;
+}

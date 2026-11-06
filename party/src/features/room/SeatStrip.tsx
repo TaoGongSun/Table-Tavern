@@ -7,6 +7,7 @@ import { useDelegate } from "./DelegateButton";
 import { canDelegate } from "./delegation";
 import type { RoomView } from "./room-state";
 import type { Act } from "./useRoom";
+import "./seat-strip.css";
 
 type Person = RoomView["members"][number];
 

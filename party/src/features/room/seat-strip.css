@@ -1,0 +1,115 @@
+/* 桌邊狀態列（room-status-strip §1）：手機與桌面嵌入共用；閱讀與打字時的收起在 phone-layout.css */
+/* 放不下就換行：橫向捲動會把沒送的人藏到畫面外 */
+.app .seat-strip {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  box-sizing: border-box;
+  min-height: 36px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.app .seat-slot {
+  display: flex;
+  flex: none;
+}
+
+.app .seat-strip .party-menu-anchor {
+  display: flex;
+}
+
+.app .seat-chip,
+.app button.seat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  min-height: 0;
+  padding: 0 8px 0 3px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-family:
+    system-ui,
+    -apple-system,
+    "PingFang TC",
+    sans-serif;
+  font-size: 13px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.app .seat-face {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 名字太長就截，徽章要看得到 */
+.app .seat-name {
+  max-width: 5em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app .seat-avatar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  object-fit: cover;
+  object-position: top;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.app .seat-badge {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.app .seat-dots i {
+  display: inline-block;
+  width: 3px;
+  height: 3px;
+  margin-left: 2px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: seat-dot 1s infinite;
+}
+
+.app .seat-dots i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.app .seat-dots i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes seat-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.2;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app .seat-dots i {
+    animation: none;
+    opacity: 1;
+  }
+}

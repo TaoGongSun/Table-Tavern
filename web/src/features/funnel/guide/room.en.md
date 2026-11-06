@@ -39,6 +39,8 @@ One person is the **host** and opens a room on their computer; everyone else is 
 - **GM Advance**: move the story one step forward without waiting for anyone.
 - **Ask someone to speak**: the little arrow lists the characters on the cards; pick one to have them say something.
 - **Take back last round / Regenerate last round**: at the very bottom of the story. If the GM's last part went sideways, "Regenerate" rewrites it (you can switch model while you're at it); "Take back" undoes the whole round so everyone writes again — each person's original action stays on their phone so they can resend or drop it.
+- **Who's here, who's done**: the row of name chips under the round bar shows typing, submitted, handed to GM, offline and AI-run at a glance; tap someone to nudge them or hand them to the AI. You also get a short toast and a chime when someone joins, picks a character, submits or drops (turn the chime off on the Host tab).
+- **⏱ Timer**: if someone is dragging, start a 1/2/5-minute countdown for this round; when it runs out the round resolves and anyone who hasn't submitted just watches. "Stop timer" cancels it. "Default countdown per round" on the Host tab starts one every round.
 
 ![](room-06)
 
@@ -99,8 +101,10 @@ One person is the **host** and opens a room on their computer; everyone else is 
 
 - The bar at the top tells you whether it's everyone's turn to act or the GM is writing.
 - On your turn, write what your character does in the box below and tap "Submit". You can still take it back and edit until the round resolves.
-- Don't want to do anything? Tap "Skip".
+- Don't want to do anything? Tap "Hand to GM" and the GM may give your character a small move, or just let them watch.
 - Then wait for the others. Once everyone is in (or the host resolves the round), the GM's next part shows up right on your phone.
+- The row of name chips under the round bar shows everyone's status: who's typing, who's submitted, who's offline. If the host starts a timer, a bar above your input box tells you how many minutes are left.
+- Want to agree on who does what first? Use the **Chat** tab: say something to everyone or pick one person for a private message. Chat never enters the story and the GM can't see it.
 
 ![](room-15)
 

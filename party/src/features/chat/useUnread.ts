@@ -3,8 +3,11 @@
 import { useEffect, useState } from "react";
 import type { ChatMsg } from "../../../server/core/types";
 
+// 根目錄桌面版的 tsconfig lib 沒有 Array.prototype.at，這裡用索引取最後一則
+const lastId = (chat: ChatMsg[]) => chat[chat.length - 1]?.id ?? 0;
+
 export function useUnread(chat: ChatMsg[], me: string, onChat: boolean) {
-  const [seen, setSeen] = useState(() => chat.at(-1)?.id ?? 0);
+  const [seen, setSeen] = useState(() => lastId(chat));
   const [visible, setVisible] = useState(() => globalThis.document?.visibilityState !== "hidden");
   useEffect(() => {
     const onVis = () => setVisible(document.visibilityState === "visible");
@@ -12,8 +15,8 @@ export function useUnread(chat: ChatMsg[], me: string, onChat: boolean) {
     return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
   useEffect(() => {
-    if (onChat && visible) setSeen(chat.at(-1)?.id ?? 0);
+    if (onChat && visible) setSeen(lastId(chat));
   }, [onChat, visible, chat]);
   const unread = chat.filter((m) => m.id > seen && m.from !== me);
-  return { count: unread.length, latest: unread.at(-1) ?? null };
+  return { count: unread.length, latest: unread[unread.length - 1] ?? null };
 }

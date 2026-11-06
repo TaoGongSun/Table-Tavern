@@ -1,5 +1,6 @@
 // 房主提醒的浮層（room-status-strip §2）：不佔版面，疊在故事區頂端，最多三條、直排不重疊，點了就收。
 import type { HostToast } from "./host-alerts";
+import "./toasts.css";
 
 export function Toasts({
   toasts,
