@@ -77,6 +77,7 @@ const MEMBER_FRAMES: Record<string, string> = {
   ctl: "ctlId:s cmd:o",
   "history.page": "beforeSeq:i limit:i",
   ping: "",
+  "chat.send": "to?:s text:s",
   "card.mine": "",
   "card.save":
     "cardId:s name?:s avatar?:s publicMd?:s privateMd?:s removeImage?:b imageFromGallery?:s crop?:o",

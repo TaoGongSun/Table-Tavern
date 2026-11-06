@@ -3,6 +3,7 @@
 // 劇情段落直接用伺服器的 storyOf 投影（玩家行動段號為負、幕摘要段號 32），快照與即時事件長得一樣。
 import { keptCount, storyOf, type Snapshot } from "../../../server/core/snapshot";
 import type {
+  ChatMsg,
   ExecutorError,
   Frame,
   RosterEntry,
@@ -24,6 +25,19 @@ export interface RoomView extends Omit<Snapshot, "quotaDetail"> {
   kept: number | null;
   /** 房主在這個回合當場開的倒數（客戶端記憶體，快照不帶）。房間設定一開就有的倒數不算 */
   timerStarted: number | null;
+}
+
+/** 依 id 去重、升冪，只留最後 200 則（長時間在線不累積） */
+export function keepChat(chat: ChatMsg[]): ChatMsg[] {
+  const sorted = [...chat].sort((a, b) => a.id - b.id);
+  const seen = new Set<number>();
+  const out: ChatMsg[] = [];
+  for (const m of sorted) {
+    if (seen.has(m.id)) continue;
+    seen.add(m.id);
+    out.push(m);
+  }
+  return out.slice(-200);
 }
 
 const key = (p: StoryPart) => `${p.round}:${p.part}`;
@@ -54,6 +68,7 @@ function fromSnapshot(s: Snapshot): RoomView {
     nudged: null,
     kept: null,
     timerStarted: null,
+    chat: keepChat(s.chat ?? []),
   };
 }
 
@@ -65,6 +80,7 @@ function copy(v: RoomView): RoomView {
     me: { ...v.me },
     members: v.members.map((m) => ({ ...m })),
     round: v.round && { ...v.round, roster: v.round.roster.map((e) => ({ ...e })) },
+    chat: v.chat.map((m) => ({ ...m })),
   };
 }
 
@@ -310,6 +326,11 @@ function onVolatile(v: RoomView, x: any) {
     case "error_detail":
       v.errorDetail = { round: x.round, error: x.error };
       break;
+    case "chat": {
+      if (v.chat.some((m) => m.id === x.msg.id)) break;
+      v.chat = keepChat([...v.chat, x.msg]);
+      break;
+    }
   }
 }
 
@@ -324,6 +345,7 @@ export function applyFrame(view: RoomView | null, f: Frame): RoomView | null {
     for (const p of live.presence) onVolatile(v, { type: "presence", ...p });
     for (const r of live.rosterStatus) onVolatile(v, { type: "roster_status", ...r });
     Object.assign(v, { quota: live.quota, streaming: live.streaming });
+    if (Array.isArray(live.chat)) v.chat = keepChat(live.chat); // 補事件重連：整份換，含離線期間的訊息
     if (live.errorDetail !== undefined) v.errorDetail = live.errorDetail; // 只有出額度者會帶
   } else if (f.t === "ev") {
     if (f.p.seq <= view.seq) return view; // 重連補事件的重複

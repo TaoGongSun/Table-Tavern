@@ -11,6 +11,7 @@ import type {
   RoomState,
   RouteOffer,
   RoundView,
+  ChatMsg,
   Speaker,
   StoredEvent,
   StoryPart,
@@ -55,6 +56,8 @@ export interface Snapshot {
   story: StoryPart[];
   streaming: { round: number; part: number; speaker: Speaker; text: string } | null;
   quota: Pick<QuotaReport, "state" | "resetsAt"> | null;
+  /** 這位看得到的桌邊聊天（公開，或自己是收發方的私訊）。執行端不是成員，一律空陣列 */
+  chat: ChatMsg[];
   quotaDetail?: QuotaReport | null;
   routes?: RouteOffer[] | null; // 以下兩欄只給出額度者
   errorDetail?: { round: number; error: ExecutorError } | null;
@@ -137,6 +140,12 @@ export function storyOf(events: StoredEvent[]): StoryPart[] {
 }
 const isUndoneNote = (p: StoryPart) => p.part === 33;
 
+/** 這位成員看得到的聊天。viewer 不是成員（執行端 welcome 也走這裡）連公開訊息都不給 */
+export function visibleChat(s: RoomState, viewer: string): ChatMsg[] {
+  if (!s.members.some((m) => m.id === viewer)) return [];
+  return (s.chat ?? []).filter((m) => m.to === null || m.from === viewer || m.to === viewer);
+}
+
 /** 即時值（不落事件日誌）：補事件的重連路徑也要帶，否則手機一直顯示過時的在線與草稿狀態 */
 export function liveValues(s: RoomState, live: Live, viewer: string) {
   const st = live.stream;
@@ -156,6 +165,7 @@ export function liveValues(s: RoomState, live: Live, viewer: string) {
       : [],
     quota: s.exec.quota && { state: s.exec.quota.state, resetsAt: s.exec.quota.resetsAt },
     streaming: st && { round: st.round, part: st.part, speaker: st.speaker, text: st.text },
+    chat: visibleChat(s, viewer),
   };
 }
 
@@ -223,6 +233,7 @@ export function buildSnapshot(
     story: storyOf(events),
     streaming,
     quota,
+    chat: visibleChat(s, viewer),
     ...(payer
       ? {
           quotaDetail: s.exec.quota,

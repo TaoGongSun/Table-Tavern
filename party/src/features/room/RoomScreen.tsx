@@ -1,4 +1,4 @@
-// 房間畫面：回合列與分頁同一列在上、代管中的常駐列、分頁（故事／名單／房主／出額度）、故事頁底部固定行動格（沒座位時換成選角）。
+// 房間畫面：回合列與分頁同一列在上、代管中的常駐列、分頁（故事／聊天／名單／房主／出額度）、故事頁底部固定行動格（沒座位時換成選角）。
 // 手機往回捲讀舊劇情時上下收起（reading），捲回最底或點一下再出現。倒數最後 30 秒不收。
 // 輸入框一度聚焦後維持展開，直到下一次「輸入框沒有焦點」的故事區捲動才解除（blur 不直接收）。
 // 收起時點回合摘要或空白才展開；其他按鈕第一下就執行。
@@ -24,6 +24,9 @@ import { PayerPanel } from "../controls/PayerPanel";
 import { SeatPicker } from "../join/SeatPicker";
 import type { Upload } from "../my-card/card-upload";
 import { CardSheet } from "../my-card/CardSheet";
+import { ChatNotice } from "../chat/ChatNotice";
+import { ChatPanel } from "../chat/ChatPanel";
+import { useUnread } from "../chat/useUnread";
 import { ActionBox } from "./ActionBox";
 import { Confirm } from "./Confirm";
 import { DelegateButton } from "./DelegateButton";
@@ -261,11 +264,13 @@ export function RoomScreen({ view, c: controls }: { view: RoomView; c: RoomContr
       controls.sendDraft(text);
     },
   };
-  const [tab, setTab] = useState<"story" | "members" | "host" | "payer">("story");
+  const [tab, setTab] = useState<"story" | "chat" | "members" | "host" | "payer">("story");
+  const unread = useUnread(view.chat, view.me.memberId, tab === "chat");
   const isHost = view.room.hostId === view.me.memberId;
   const isPayer = view.room.payerId === view.me.memberId;
   const tabs: Array<typeof tab> = [
     "story",
+    "chat",
     "members",
     ...(isHost ? ["host" as const] : []),
     ...(isPayer ? ["payer" as const] : []),
@@ -349,6 +354,11 @@ export function RoomScreen({ view, c: controls }: { view: RoomView; c: RoomContr
           data-testid={`tab-${k}`}
         >
           {t(`tab_${k}`)}
+          {k === "chat" && unread.count > 0 && (
+            <span className="tab-badge" data-testid="chat-unread">
+              {unread.count}
+            </span>
+          )}
         </button>
       ))}
     </nav>
@@ -388,6 +398,9 @@ export function RoomScreen({ view, c: controls }: { view: RoomView; c: RoomContr
         </div>
       ) : (
         <DelegatedBanner view={view} act={c.act} />
+      )}
+      {tab !== "chat" && unread.latest && (
+        <ChatNotice view={view} msg={unread.latest} onOpen={() => setTab("chat")} />
       )}
       {tab === "story" && (
         <>
@@ -488,6 +501,8 @@ export function RoomScreen({ view, c: controls }: { view: RoomView; c: RoomContr
       {tab === "payer" && isPayer && (
         <PayerPanel view={view} act={c.act} desktop={c.pairForm === false} extra={c.payerExtra} />
       )}
+      {/* 聊天一直掛著（排在最後，藏起來時不佔位）：切頁不丟對象與沒送的字 */}
+      <ChatPanel view={view} act={c.act} desktop={c.pairForm === false} hidden={tab !== "chat"} />
     </div>
   );
 }

@@ -278,6 +278,14 @@ export interface PendingJob {
   job: Job;
   reply: { conn: string; id?: string } | null;
 }
+/** 桌邊閒聊。不進事件日誌；`to === null` 是公開。舊房間沒有這型別的欄位。 */
+export interface ChatMsg {
+  id: number;
+  at: number;
+  from: string;
+  to: string | null;
+  text: string;
+}
 export interface RoomState {
   code: string;
   status: RoomStatus;
@@ -340,6 +348,9 @@ export interface RoomState {
   } | null;
   /** 被收回的行動原文，只給本人（帶回／丟掉） */
   returned?: Record<string, string>;
+  /** 桌邊閒聊，最後 200 則且 JSON UTF-8 ≤ 64 KiB；舊房間沒有這兩欄 */
+  chat?: ChatMsg[];
+  chatNo?: number;
   /** 房主 GM 鈕保留下來的已送出行動（submitted／skipped）：下一次開 play 回合時恢復，對不上的原文走 returned */
   carry?: RosterEntry[] | null;
   lastError?: { round: number; error: ExecutorError } | null; // 最近一筆錯誤細節，只給出額度者（重連後還看得到）；舊房間沒有這欄

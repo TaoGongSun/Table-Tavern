@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { playing, type Room } from "../../../server/core/room-test-kit";
 import { buildSnapshot } from "../../../server/core/snapshot";
 import { applyFrame, type RoomView } from "./room-state";
+import type { Frame } from "../../../server/core/types";
 
 const live = (room: Room, conn: string) =>
   room.frames(conn).reduce<RoomView | null>((v, f) => applyFrame(v, f as never), null)!;
@@ -45,5 +46,23 @@ describe("客戶端投影", () => {
       round: 2,
       n: 2,
     });
+  });
+
+  it("聊天 vol 依 id 去重，客戶端只留最後 200 則", async () => {
+    const room = await playing();
+    await room.send("a", "chat.send", { text: "第一則" });
+    let view = live(room, "a");
+    const again = view.chat[0];
+    const duped = applyFrame(view, { t: "vol", p: { type: "chat", msg: again } } as Frame)!;
+    expect(duped.chat).toHaveLength(1);
+    for (let i = 0; i < 205; i++) {
+      view = applyFrame(view, {
+        t: "vol",
+        p: { type: "chat", msg: { id: 1000 + i, at: 1, from: "m2", to: null, text: "x" } },
+      } as Frame)!;
+    }
+    expect(view.chat).toHaveLength(200);
+    expect(view.chat[0].id).toBe(1005);
+    expect(view.chat.at(-1)!.id).toBe(1204);
   });
 });

@@ -7,6 +7,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { MemoryStorage } from "@web/features/openrouter/memory-storage";
 import { CARDS, Room, STAGE } from "../../../server/core/room-test-kit";
+import { ChatPanel } from "../chat/ChatPanel";
+import type { Act } from "./useRoom";
+import type { RoomView } from "./room-state";
 import { receiveUpload } from "../../../server/core/upload";
 import App from "../../App";
 import { applyLang } from "../../i18n";
@@ -1534,5 +1537,201 @@ describe("房主當場開關倒數", () => {
     expect(A.button("⏱ 倒數 ▾")).toBeTruthy();
     expect(B.button("⏱ 倒數 ▾")).toBeNull();
     expect(B.button("停止倒數")).toBeNull();
+  });
+});
+
+describe("桌邊聊天", () => {
+  const sendChat = (p: Phone, text: string) => {
+    p.tab("chat");
+    p.type('[data-testid="chat-text"]', text);
+    act(() => p.q<HTMLButtonElement>('[data-testid="chat-send"]')!.click());
+  };
+  const pickTo = (p: Phone, id: string) =>
+    act(() => {
+      const sel = p.q<HTMLSelectElement>('[data-testid="chat-to"]')!;
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(sel, id);
+      sel.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+  it("公開訊息對方看得到、未讀 1，切到聊天頁歸零", async () => {
+    const { A, B } = await table();
+    sendChat(A, "我先去找酒保");
+    await until(() => B.q('[data-testid="chat-unread"]')?.textContent === "1");
+    expect(B.q('[data-testid="chat-notice"]')!.textContent).toContain("阿明：我先去找酒保");
+    B.tab("chat");
+    await until(() => B.q('[data-testid="chat-list"]')!.textContent!.includes("我先去找酒保"));
+    expect(B.q('[data-testid="chat-unread"]')).toBeNull();
+    expect(B.text()).toContain("房主 → 大家");
+  });
+
+  it("私訊第三人看不到；提示列點了切到聊天頁", async () => {
+    const { hub, room, A, B } = await table();
+    const C = phone(hub, `k=${room.joinSecret}`);
+    C.type('[data-testid="nickname"]', "阿凱");
+    await act(async () => C.q<HTMLFormElement>("form")!.requestSubmit());
+    await until(() => C.q('[data-testid="tab-chat"]'));
+    A.tab("chat");
+    pickTo(A, room.s.members[1].id);
+    sendChat(A, "這句只有小華");
+    await until(() => B.q('[data-testid="chat-notice"]')?.textContent?.includes("這句只有小華"));
+    expect(C.q('[data-testid="chat-unread"]')).toBeNull();
+    expect(C.q('[data-testid="chat-notice"]')).toBeNull();
+    act(() => B.q<HTMLButtonElement>('[data-testid="chat-notice"]')!.click());
+    await until(() => B.q('[data-testid="chat-list"]')!.textContent!.includes("你（私訊）"));
+    expect(B.q('[data-testid="chat-unread"]')).toBeNull();
+    C.tab("chat");
+    expect(C.q('[data-testid="chat-list"]')!.textContent).not.toContain("這句只有小華");
+    expect(A.q<HTMLSelectElement>('[data-testid="chat-to"]')!.value).toBe(room.s.members[1].id);
+    expect(A.text()).toContain("你 → 小華（私訊）");
+    expect(B.q('[data-testid="chat-text"]')!.getAttribute("placeholder")).toBe("跟大家說…");
+    expect(A.q('[data-testid="chat-text"]')!.getAttribute("placeholder")).toBe("私訊 小華…");
+    // 切到故事再回來：對象與沒送的字都還在
+    A.type('[data-testid="chat-text"]', "還沒送的");
+    A.tab("story");
+    A.tab("chat");
+    expect(A.q<HTMLSelectElement>('[data-testid="chat-to"]')!.value).toBe(room.s.members[1].id);
+    expect(A.q<HTMLTextAreaElement>('[data-testid="chat-text"]')!.value).toBe("還沒送的");
+  });
+
+  it("送出只清那一次送的內容，等回覆期間接著打的字留著", async () => {
+    const { A, B } = await table();
+    A.tab("chat");
+    A.type('[data-testid="chat-text"]', "第一句");
+    act(() => A.q<HTMLButtonElement>('[data-testid="chat-send"]')!.click());
+    A.type('[data-testid="chat-text"]', "第一句第二句"); // 回覆還沒回來就繼續打
+    await until(() => B.q('[data-testid="chat-notice"]'));
+    await until(() => A.q<HTMLTextAreaElement>('[data-testid="chat-text"]')!.value === "第二句");
+  });
+
+  it("超過 500 字送出鈕停用並寫剩餘", async () => {
+    const { A } = await table();
+    A.tab("chat");
+    A.type('[data-testid="chat-text"]', "測".repeat(501));
+    expect(A.q<HTMLButtonElement>('[data-testid="chat-send"]')!.disabled).toBe(true);
+    expect(A.q('[data-testid="chat-over"]')!.textContent).toContain("還剩 -1 字");
+    A.type('[data-testid="chat-text"]', "測".repeat(500));
+    expect(A.q<HTMLButtonElement>('[data-testid="chat-send"]')!.disabled).toBe(false);
+    expect(A.q('[data-testid="chat-over"]')).toBeNull();
+  });
+
+  it("重新整理後舊訊息不算未讀", async () => {
+    const { hub, room, A, B } = await table();
+    sendChat(A, "剛才那句");
+    await until(() => B.q('[data-testid="chat-unread"]')?.textContent === "1");
+    const again = phone(hub, `k=${room.joinSecret}`, { storage: B.env.storage });
+    await until(() => again.q('[data-testid="tab-chat"]'));
+    expect(again.q('[data-testid="chat-unread"]')).toBeNull();
+    expect(again.q('[data-testid="chat-notice"]')).toBeNull();
+    again.tab("chat");
+    expect(again.q('[data-testid="chat-list"]')!.textContent).toContain("剛才那句");
+  });
+
+  it("故事頁斷線重連期間到的訊息算未讀", async () => {
+    let now = Date.now();
+    const { room, A, B } = await table({ timing: { now: () => now } });
+    const old = B.socket();
+    old.held = true;
+    sendChat(A, "你斷線時這句到了");
+    await until(() => room.s.chat?.length === 1);
+    expect(B.q('[data-testid="chat-unread"]')).toBeNull();
+    now += 41_000;
+    act(() => void document.dispatchEvent(new Event("visibilitychange")));
+    await until(
+      () => B.socket() !== old && B.q('[data-testid="chat-unread"]')?.textContent === "1",
+    );
+    expect(B.q('[data-testid="chat-notice"]')!.textContent).toContain("你斷線時這句到了");
+  });
+
+  it("聊天頁開著但頁面不可見時收到訊息不歸零，恢復可見才歸零", async () => {
+    const { A, B } = await table();
+    B.tab("chat");
+    let hidden = false;
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => (hidden ? "hidden" : "visible"),
+    });
+    try {
+      hidden = true;
+      act(() => void document.dispatchEvent(new Event("visibilitychange")));
+      sendChat(A, "螢幕暗著");
+      await until(() => B.q('[data-testid="chat-unread"]')?.textContent === "1");
+      expect(B.q('[data-testid="chat-list"]')!.textContent).toContain("螢幕暗著");
+      hidden = false;
+      act(() => void document.dispatchEvent(new Event("visibilitychange")));
+      await until(() => !B.q('[data-testid="chat-unread"]'));
+    } finally {
+      delete (document as { visibilityState?: string }).visibilityState;
+    }
+  });
+
+  it("手機 Enter 不送出；桌面 Enter 送出，組字中與 Shift+Enter 不送", async () => {
+    const { room, A } = await table();
+    A.tab("chat");
+    A.type('[data-testid="chat-text"]', "換行就好");
+    const area = A.q<HTMLTextAreaElement>('[data-testid="chat-text"]')!;
+    const enter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    act(() => area.dispatchEvent(enter));
+    await act(async () => void (await new Promise((r) => setTimeout(r, 30))));
+    expect(room.s.chat ?? []).toHaveLength(0);
+    expect(enter.defaultPrevented).toBe(false);
+
+    const sent: unknown[] = [];
+    const el = document.body.appendChild(document.createElement("div"));
+    const root = createRoot(el);
+    mounted.push(root);
+    const view = {
+      chat: [],
+      members: [
+        { memberId: "m1", nickname: "阿明", cardId: null, connected: true, delegated: false },
+        { memberId: "m2", nickname: "小華", cardId: null, connected: true, delegated: false },
+      ],
+      me: {
+        memberId: "m1",
+        nickname: "阿明",
+        cardId: null,
+        isHost: true,
+        isPayer: true,
+        draft: null,
+        returned: null,
+        delegated: false,
+      },
+      room: { hostId: "m1" },
+    } as unknown as RoomView;
+    const actSend: Act = async (_t, p) => {
+      sent.push(p);
+      return { ok: true, result: { id: 1 } };
+    };
+    act(() => root.render(<ChatPanel view={view} act={actSend} desktop hidden={false} />));
+    const box = el.querySelector<HTMLTextAreaElement>('[data-testid="chat-text"]')!;
+    const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!;
+    act(() => {
+      set.call(box, "桌面這句");
+      box.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const plain = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    act(() => box.dispatchEvent(plain));
+    await until(() => sent.length === 1);
+    expect(plain.defaultPrevented).toBe(true);
+    expect(sent[0]).toEqual({ text: "桌面這句" });
+
+    act(() => {
+      set.call(box, "組字");
+      box.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const ime = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    Object.defineProperty(ime, "isComposing", { value: true });
+    Object.defineProperty(ime, "keyCode", { value: 229 });
+    act(() => box.dispatchEvent(ime));
+    const shift = new KeyboardEvent("keydown", {
+      key: "Enter",
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    act(() => box.dispatchEvent(shift));
+    await act(async () => void (await new Promise((r) => setTimeout(r, 30))));
+    expect(sent).toHaveLength(1);
+    expect(ime.defaultPrevented).toBe(false);
+    expect(shift.defaultPrevented).toBe(false);
   });
 });

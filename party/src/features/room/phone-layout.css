@@ -163,7 +163,8 @@
 .app.party-phone .reading .action-hint,
 .app.party-phone .reading .action-status,
 .app.party-phone .reading .returned,
-.app.party-phone .reading .action-box .field-error {
+.app.party-phone .reading .action-box .field-error,
+.app.party-phone .reading .chat-notice {
   display: none;
 }
 .app.party-phone .reading .round-summary {

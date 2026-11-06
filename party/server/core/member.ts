@@ -19,6 +19,7 @@ import {
 import { CROCKFORD8, secret, sameHash, sha256Hex, ulid } from "./secrets";
 import { Fail, need, type Tx } from "./tx";
 import type {
+  ChatMsg,
   HostTurn,
   Member,
   RemoteCommand,
@@ -224,9 +225,49 @@ function setDelegated(tx: Tx, by: Member, memberId: string, on: boolean) {
   tx.emit("seat.delegated", { memberId: t.id, cardId: t.cardId, on, by: by.id });
 }
 
+const CHAT_KEEP = 200;
+const CHAT_BYTES = 64 * 1024;
+
+/** 從頭丟，直到則數與 UTF-8 JSON 位元組都放得進 Durable Object 那一列 */
+function trimChat(chat: ChatMsg[]) {
+  const enc = new TextEncoder();
+  while (
+    chat.length > CHAT_KEEP ||
+    (chat.length > 0 && enc.encode(JSON.stringify(chat)).length > CHAT_BYTES)
+  )
+    chat.shift();
+}
+
 export const MEMBER: Record<string, Handler> = {
   ping: (tx) => {
     tx.send(tx.conn, "pong", undefined);
+    return "later" as const;
+  },
+  // 桌邊閒聊：不進事件日誌（執行端、故事、匯出都看不到）。回 ok 自己帶 id，所以不走外層的空 ok
+  "chat.send": (tx, p, m) => {
+    need(tx.s.status !== "closed", "E_ROOM_CLOSED");
+    const text = cleanText(p.text, 1, 500);
+    need(text !== null, "E_TEXT_INVALID");
+    let to: string | null = null;
+    if (p.to !== undefined) {
+      const target = tx.s.members.find((x) => x.id === p.to && !x.banned);
+      need(target, "E_STATE_CONFLICT");
+      need(target.id !== m.id, "E_STATE_CONFLICT");
+      to = target.id;
+    }
+    rate(tx, `c:${m.id}`, 10, 10_000);
+    const w = tx.w;
+    const id = (w.chatNo ?? 0) + 1;
+    const msg: ChatMsg = { id, at: tx.now, from: m.id, to, text };
+    const chat = [...(w.chat ?? []), msg];
+    trimChat(chat);
+    w.chatNo = id;
+    w.chat = chat;
+    const frame = { type: "chat", msg };
+    const recipients =
+      to === null ? w.members.filter((x) => !x.banned).map((x) => x.id) : [m.id, to];
+    for (const memberId of recipients) tx.toMember(memberId, "vol", frame);
+    tx.ok({ id });
     return "later" as const;
   },
   "profile.rename": (tx, p, m) => {
