@@ -336,11 +336,11 @@ pub fn chars_lane_turn_with(
     if !own.private.trim().is_empty() {
         let heading = match scaffold_en(lang) {
             true => format!(
-                "## {}'s private profile (only they know this; do not reveal it unless the story gets there)",
+                "## {}'s private profile (only they know this; unless the story gets there, do not reveal it in dialogue, narration, or inner thoughts)",
                 card.name
             ),
             false => format!(
-                "## 「{}」的私有設定（只有他自己知道；除非劇情走到，不要主動說破）",
+                "## 「{}」的私有設定（只有他自己知道；除非劇情走到，不要在台詞、旁白或內心獨白裡主動說破）",
                 card.name
             ),
         };

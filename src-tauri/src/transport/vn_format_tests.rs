@@ -61,5 +61,36 @@ fn format_rules_teach_chapter_and_ending_markers() {
             character.contains("[chapter]") && character.contains("[ending]"),
             "{lang}"
         );
+        let assigned = vn_assigned_line("格羅姆", lang);
+        let (shown, now, hidden) = match lang {
+            "en" => (
+                "shown to the player",
+                "feels or reacts to right now",
+                "does not yet know from the private profile",
+            ),
+            _ => ("會播給玩家", "此刻的感受與反應", "還不知道"),
+        };
+        for text in [&rules, &character, &assigned] {
+            assert!(
+                text.contains(shown) && text.contains(now) && text.contains(hidden),
+                "{lang}: {text}"
+            );
+        }
+        match lang {
+            "en" => {
+                assert!(rules.contains("story bible") && rules.contains("other setting material"));
+                assert!(rules.contains("may be followed as written"));
+                assert!(!character.contains("story bible") && !assigned.contains("story bible"));
+                assert!(character.contains("held back") && assigned.contains("held back"));
+                assert!(!rules.contains("held back"));
+            }
+            _ => {
+                assert!(rules.contains("劇本聖經") && rules.contains("其他設定"));
+                assert!(rules.contains("可以照著鋪"));
+                assert!(!character.contains("劇本聖經") && !assigned.contains("劇本聖經"));
+                assert!(character.contains("心虛") && assigned.contains("心虛"));
+                assert!(!rules.contains("心虛"));
+            }
+        }
     }
 }

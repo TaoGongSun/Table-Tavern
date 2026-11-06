@@ -35,7 +35,7 @@ pub fn vn_format_rules(lang: &str, extra: bool, places: bool) -> String {
              This table is played as a visual novel (VN). Write all story text in the script format below; the app splits it into cells and plays them one at a time.\n\
              - Narration: plain lines; a blank line starts the next cell. Keep narration lean, two or three sentences per cell.\n\
              - Dialogue: `Name (expression): \"line\"`, one line per cell, short lines. Expressions: {expressions}; leaving out the parentheses means neutral. Write names exactly as on the Characters list. Supporting characters without cards use the same form and must keep the parentheses.\n\
-             - Inner thoughts: `Name (expression) thought: text`, without quotation marks.\n\
+             - Inner thoughts: `Name (expression) thought: text`, without quotation marks. Inner thoughts are shown to the player. Write only what the character feels or reacts to right now. Never reveal anything the player does not yet know from the private profile, the story bible, or any other setting material, and never add hints beyond the hint the story bible already wrote for that secret; that written hint may be followed as written.\n\
              - Staging: after the expression you may add `, closeup` or `, shake`, e.g. `Name (surprised, shake): \"line\"`; at most two per turn.\n\
              - Scene: `[bg: location | time | weather]` on its own line, only when the location, time or weather changes; {times}. Weather is optional and only for outdoor scenes: overcast, fog, rain, or clear when it clears up; left out, it stays the same at the same location and is clear at a new one. A new location clears the stage.\n\
              - Choices: only when the story reaches a point where the player must decide, end the story text with `[choices]` followed by 2–4 lines `- option`. No choices anywhere else.\n\
@@ -52,7 +52,7 @@ pub fn vn_format_rules(lang: &str, extra: bool, places: bool) -> String {
              這桌以視覺小說（VN）呈現。正文一律用下面的劇本格式寫，App 會把它拆成一格一格播放：\n\
              - 旁白：直接寫，空一行＝換下一格。旁白惜字，一格兩三句。\n\
              - 對白：`名字 (表情): 「台詞」`，一行一格，台詞要短。表情只能用 {expressions}，不寫括號＝neutral。名字照「登場角色」名單原字逐字寫；沒有角色卡的配角同樣寫法，括號不可省。\n\
-             - 內心獨白：`名字 (表情) thought: 台詞`，不加引號。\n\
+             - 內心獨白：`名字 (表情) thought: 台詞`，不加引號。內心獨白會播給玩家，只寫這個角色此刻的感受與反應。私設、劇本聖經與其他設定裡玩家還不知道的事，不要直接說破，也不要加上超出設計的暗示；劇本聖經為這條秘密寫好的「暗示」可以照著鋪。\n\
              - 演出：表情後可加 `, closeup`（特寫）或 `, shake`（震動），例如 `名字 (surprised, shake): 「台詞」`；每回合最多兩個。\n\
              - 換場景：`[bg: 地點 | 時段 | 天氣]` 單獨一行，只在地點、時段或天氣改變時寫；{times}；天氣可省、只寫室外：陰、霧、雨，轉晴時寫「晴」；不寫＝同地點沿用、換地點回晴；換地點＝舞台清空。\n\
              - 選項：只在劇情走到需要玩家抉擇的分岔點時，在正文最後寫 `[choices]`，下面每行 `- 選項` 共 2–4 個；其他時候不要出選項。\n\
@@ -160,13 +160,17 @@ pub fn vn_character_rules(lang: &str) -> String {
              This table is played as a visual novel. Write only the assigned character's own part: dialogue as `Name (expression): \"line\"` \
              (expressions: {expressions}), inner thoughts as `Name (expression) thought: text`, and actions or expressions as narration \
              (plain lines, no `Narration:` prefix); a blank line starts the next cell. Use the name exactly as on the list. Do not write markers such as `[bg]`, `[choices]`, `[chapter]` or `[ending]`, \
-             and do not speak for other characters or the player.\n"
+             and do not speak for other characters or the player. Inner thoughts are shown to the player. \
+             Write only what the character feels or reacts to right now. You may show them faltering, guilty, or stopping short of speaking, so the player senses something is held back without learning what it is. Never reveal anything the player does not yet know from the private profile, \
+             and never hint at it so the player could guess it.\n"
         ),
         false => format!(
             "\n## 視覺小說劇本格式\n\
              這桌以視覺小說呈現。每一輪只寫被指定角色自己的部分：對白 `名字 (表情): 「台詞」`（表情限 {expressions}）、\
              內心獨白 `名字 (表情) thought: 台詞`，動作與神情寫成旁白（直接寫，不加「旁白：」），空一行換下一格。名字照名單原字。\
-             不要寫 `[bg]`、`[choices]`、`[chapter]`、`[ending]` 這類標記，不要替其他角色或玩家說話。\n"
+             不要寫 `[bg]`、`[choices]`、`[chapter]`、`[ending]` 這類標記，不要替其他角色或玩家說話。\
+             內心獨白會播給玩家，跟台詞一樣，只寫這個角色此刻的感受與反應。可以寫出動搖、心虛或欲言又止，讓玩家感覺到有事，但不點出是什麼事。\
+             私設裡玩家還不知道的事，不要說破，也不要暗示到猜得出。\n"
         ),
     }
 }
@@ -177,11 +181,15 @@ pub fn vn_assigned_line(name: &str, lang: &str) -> String {
         true => format!(
             "You are now \"{name}\". Following the visual novel script format above, write only {name}'s own part: \
              lines as `{name} (expression): \"line\"`, inner thoughts as `{name} (expression) thought: text`, and actions or expressions as narration. \
+             Inner thoughts are shown to the player. Write only what the character feels or reacts to right now. \
+             You may show them faltering, guilty, or stopping short of speaking, so the player senses something is held back without learning what it is. \
+             Never reveal anything the player does not yet know from the private profile, and never hint at it so the player could guess it. \
              Do not write markers or any explanation outside the character."
         ),
         false => format!(
             "現在你是「{name}」。照上面的視覺小說劇本格式只寫「{name}」自己的部分：台詞用 `{name} (表情): 「台詞」`、\
-             內心獨白用 `{name} (表情) thought: 台詞`，動作與神情寫成旁白；不要寫標記、不要任何角色之外的說明。"
+             內心獨白用 `{name} (表情) thought: 台詞`，動作與神情寫成旁白。內心獨白會播給玩家，只寫此刻的感受與反應。可以寫出動搖、心虛或欲言又止，讓玩家感覺到有事，但不點出是什麼事。私設裡玩家還不知道的事，不要說破，也不要暗示到猜得出。\
+             不要寫標記、不要任何角色之外的說明。"
         ),
     }
 }
