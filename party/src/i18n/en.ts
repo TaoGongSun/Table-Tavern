@@ -142,6 +142,9 @@ export const en: PartyMessages = {
   hostResolve: "Resolve this round",
   hostResolvePending: "Resolve this round ({n} not sent yet)",
   hostAdvance: "Next scene",
+  hostAdvanceMenu: "Next scene ▾",
+  hostAdvanceItem: "End this scene",
+  hostAdvanceNote: "Summarize and open a new scene; sent actions return to drafts",
   hostAdvanceCancel: "Cancel scene change",
   hostInviteNeedsExecutor:
     "The computer is offline; wait for it to come back before making a new link",

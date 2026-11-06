@@ -9,6 +9,7 @@
 - [card-mvu-shim](handoffs/card-mvu-shim.md) — 卡片介面沙盒墊 MVU 讀寫變數：全部已合併 main，剩實測佇列梯 1 項目（含 iframe 內按鈕實際互動）
 
 ## 等實機驗收（順序見[實測佇列](reference/verification-queue.md)）
+- [room-scene-advance-bar](handoffs/room-scene-advance-bar.md) — 換幕鈕搬到回合列（房主回饋「需要換幕」，功能已有但藏在房主頁）：已合併 main（2026-11-06），部署與桌面版打包等作者說
 - [room-status-strip](handoffs/room-status-strip.md) — 桌邊狀態列＋房主提醒（玩家回饋第 1 案）：已合併 main（2026-11-06），等作者實機看桌面版與手機
 - [room-round-timer](handoffs/room-round-timer.md) — 回合倒數由房主當場開關（玩家回饋第 2 案）：已合併 main（2026-11-06），伺服器已部署（2026-11-06），桌面版打包等作者說
 - [room-table-chat](handoffs/room-table-chat.md) — 桌邊聊天（玩家回饋第 3 案）：已合併 main（2026-11-06），伺服器已部署（2026-11-06），桌面版打包等作者說

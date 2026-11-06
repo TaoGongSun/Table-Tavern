@@ -57,7 +57,7 @@ One person is the **host** and opens a room on their computer; everyone else is 
 ### 6. Tune the GM to how you play
 
 - On the "Host" tab: **Action timer** — set a time limit per round so it resolves on its own; **Shuffle action order every round** — nobody always goes first.
-- **Next scene**: when a chapter is done and you want a new setting, click "Next scene" on the "Host" tab; you can switch model at the same time.
+- **Next scene**: when a chapter is done and you want a new setting, click "Next scene ▾" → "End this scene" on the round bar. If the GM is stuck on "This scene is full", the round bar has a "Next scene" button right there. To switch models, save "Next scene settings" on the GM quota tab first.
 - **GM quota** tab: see how much AI you've used and choose the model for the next scene. If the AI provider blocks the GM (the round bar will say so), click "Retry" or "Switch model" right there.
 - Want a friend to cover the AI? In the "⋯" on the computer's top row, click "Hand over to phone" to get a pairing code, and have them enter it at the bottom of their "Players" tab. Their phone then becomes the host and the one covering the AI (the GM still runs on the computer), and their row shows "Using their quota".
 

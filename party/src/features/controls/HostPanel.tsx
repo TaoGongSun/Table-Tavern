@@ -1,6 +1,6 @@
-// 房主面板（協定 §5.1 H 欄）：邀請新朋友／換新連結、房間設定、換幕（自己是出額度者可同時定下一幕路線／模型）、離席處置、
+// 房主面板（協定 §5.1 H 欄）：邀請新朋友／換新連結、房間設定、離席處置、
 // 到場整理（AI 代管、轉讓、移除、封鎖、指派座位，在 Attendance）、匯出、手機房主的暫停房間。回合級的結算／中止在回合列。
-// 結束房間只在桌面版桌卡（房間要能重開，room-host-desktop-play）。
+// 換幕在回合列。結束房間只在桌面版桌卡（房間要能重開，room-host-desktop-play）。
 import { t } from "../../i18n";
 import { setHostSound, useHostSound } from "../room/host-sound";
 import type { RoomView } from "../room/room-state";
@@ -8,7 +8,6 @@ import { useRun, type Act } from "../room/useRoom";
 import { Attendance } from "./Attendance";
 import { InviteControls, type InviteSource } from "./InviteControls";
 import { PauseRoom } from "./PauseRoom";
-import { RoutePicker } from "./RoutePicker";
 
 const TIMEOUTS = [null, 60, 120, 300, 900];
 
@@ -29,12 +28,7 @@ export function HostPanel({
 }) {
   const { run, error, setError } = useRun(act);
   const sound = useHostSound();
-  const r = view.round;
   const s = view.room.settings;
-  const canAdvance =
-    view.room.status === "playing" &&
-    r &&
-    (r.phase === "acting" || (r.phase === "held" && r.hold?.kind === "scene_full"));
   const card = (id: string | null) => view.cards.find((c) => c.cardId === id)?.name ?? "";
   return (
     <div className="panel" data-testid="host-panel">
@@ -86,23 +80,6 @@ export function HostPanel({
         />
         {t("hostAlertSound")}
       </label>
-      {canAdvance && (
-        <>
-          <h3>{t("hostAdvance")}</h3>
-          {view.room.payerId === view.me.memberId ? (
-            <RoutePicker
-              routes={view.routes}
-              current={view.room.sceneSettings}
-              label={t("hostAdvance")}
-              onPick={(next) => run("scene.advance", { round: r.round, next })}
-            />
-          ) : (
-            <button type="button" onClick={() => run("scene.advance", { round: r.round })}>
-              {t("hostAdvance")}
-            </button>
-          )}
-        </>
-      )}
       {view.departed.map((cardId) => (
         <div key={cardId} className="row">
           <span>{t("hostDeparted", { name: card(cardId) })}</span>

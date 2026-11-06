@@ -348,8 +348,18 @@ describe("手機客戶端對真伺服器核心", () => {
     B.type('[data-testid="action-text"]', "我想走");
     B.click("送出");
     await until(() => room.events("action.submitted").length === 1);
-    A.tab("host");
-    A.click("換幕"); // A 也是出額度者：可同時定下一幕路線／模型（伺服器沒給清單時手填，預設目前這組）
+    const round = room.s.round!.round;
+    A.click("換幕 ▾"); // 故事頁回合列：一項選單就是確認，不帶下一幕路線
+    const endScene = () =>
+      [...A.el.querySelectorAll<HTMLButtonElement>(".menu .menu-item")].find((b) =>
+        b.textContent?.startsWith("結束本幕"),
+      );
+    await until(() => endScene());
+    expect(endScene()!.querySelector(".menu-note")?.textContent).toBe(
+      "整理前情開新幕；已送出的行動退回草稿",
+    );
+    act(() => endScene()!.click());
+    expect(A.socket().sent.find((f) => f.t === "scene.advance")?.p).toEqual({ round });
     await until(() => B.text().includes("換幕中，GM 正在整理前情…"));
     expect(B.q<HTMLTextAreaElement>('[data-testid="action-text"]')!.value).toBe("我想走");
     const { jobId } = room.frames("x1", "job.scene_advance")[0].p;
@@ -357,6 +367,7 @@ describe("手機客戶端對真伺服器核心", () => {
     await until(() => B.text().includes("第 2 幕 · 第 3 回合"));
     expect(B.q('[data-testid="story"]')!.textContent).toContain("前情摘要前情：大家進了酒館。");
 
+    A.tab("host");
     const sockets = hub.sockets.length;
     // 到場整理的次要動作收進每人的選單，移除仍先確認角色處置
     expect(A.button("移除…")).toBeNull();
@@ -394,6 +405,55 @@ describe("手機客戶端對真伺服器核心", () => {
     expect(A.q('[data-testid="story"]') ?? A.q('[data-testid="host-panel"]')).toBeTruthy(); // 留著畫面，房主還能匯出
     A.tab("story");
     expect(A.q('[data-testid="action-box"]')).toBeNull(); // 關了就不再給行動格
+  });
+
+  it("非房主的回合列沒有換幕", async () => {
+    const { A, B } = await table();
+    expect(A.button("換幕 ▾")).toBeTruthy();
+    expect(B.button("換幕 ▾")).toBeNull();
+    expect(B.button("換幕")).toBeNull();
+  });
+
+  it("GM 生成中房主沒有換幕", async () => {
+    const { room, hub, A } = await table();
+    A.click("結算這回合");
+    await until(() => room.s.round?.phase === "queued");
+    await hub.exec("dispatch.ack", { dispatchId: room.dispatchId() });
+    await until(() => room.s.round?.phase === "generating" && A.text().includes("GM 生成中…"));
+    expect(A.button("換幕 ▾")).toBeNull();
+    expect(A.button("換幕")).toBeNull();
+  });
+
+  it("這一幕滿了：不是出額度者的房主點回合列換幕主鈕", async () => {
+    const { room, hub, A, B, b } = await table();
+    await room.send(A.socket().id, "host.transfer", { memberId: b });
+    hub.flush();
+    await until(() => B.button("結算這回合"));
+    B.click("結算這回合");
+    await until(() => room.s.round?.dispatchId && room.s.round.phase === "queued");
+    const dispatchId = room.dispatchId();
+    await hub.exec("dispatch.ack", { dispatchId });
+    await hub.exec("gen.failed", {
+      dispatchId,
+      atPart: null,
+      error: {
+        kind: "scene_full",
+        code: "scene_capacity_full",
+        message: "",
+        actions: ["scene_advance"],
+        resetsAt: null,
+      },
+    });
+    await until(() => B.text().includes("這一幕滿了，請房主換幕"));
+    const btn = B.button("換幕") as HTMLButtonElement | null;
+    expect(btn?.classList.contains("primary")).toBe(true);
+    expect(A.button("換幕")).toBeNull();
+    expect(A.button("換幕 ▾")).toBeNull();
+    expect(B.button("換幕 ▾")).toBeNull();
+    const round = room.s.round!.round;
+    B.click("換幕");
+    await until(() => B.socket().sent.some((f) => f.t === "scene.advance"));
+    expect(B.socket().sent.find((f) => f.t === "scene.advance")?.p).toEqual({ round });
   });
 
   it("GM 被擋時全員看到公開說明；出額度者看到細節並從面板重試", async () => {

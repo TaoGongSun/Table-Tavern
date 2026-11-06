@@ -1,4 +1,5 @@
 // 回合列：回合號與幕、倒數、GM 生成中／主機離線等待中、held 的公開錯誤；房主（與出額度者）的回合級按鈕也在這裡。
+// 換幕在這裡（房主、進行中才有）：行動中是「換幕 ▾」一項選單當確認，這一幕滿了是主鈕。都不帶下一幕路線。
 // AI 代管（room-seat-delegate §5.1）：倒數說明、全員代管停住的原因、重開後還沒連上的提醒。誰還沒送出改看狀態列。
 import { useEffect, useState, type ReactNode } from "react";
 import { modelName, t } from "../../i18n";
@@ -209,6 +210,34 @@ export function RoundBar({
               {t("roundTimerStop")}
             </button>
           ))}
+        {host && view.room.status === "playing" && r?.phase === "acting" && (
+          <PartyMenu
+            label={t("hostAdvanceMenu")}
+            trigger={t("hostAdvanceMenu")}
+            ariaLabelTrigger={false}
+            className="ghost"
+            items={[
+              {
+                key: "end-scene",
+                label: t("hostAdvanceItem"),
+                note: t("hostAdvanceNote"),
+                onSelect: () => run("scene.advance", { round: r.round }),
+              },
+            ]}
+          />
+        )}
+        {host &&
+          view.room.status === "playing" &&
+          r?.phase === "held" &&
+          r.hold?.kind === "scene_full" && (
+            <button
+              type="button"
+              className="primary"
+              onClick={() => run("scene.advance", { round: r.round })}
+            >
+              {t("hostAdvance")}
+            </button>
+          )}
         {boss && r?.phase === "generating" && (
           <button type="button" onClick={() => run("gen.abort", { round: r.round })}>
             {t("roundAbort")}
