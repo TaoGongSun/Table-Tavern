@@ -12,9 +12,9 @@ app 是規則中立引擎：規則書＝世界書的一種，內建零規則內�
 **跑團不是獨立桌種**，是聊天桌上的能力組（規則書＋骰池＋角色紙＋戰鬥數值面板），大廳以徽章標示；畫面仍是聊天桌加側欄，另立桌種會把引擎再叉一次（GM 接力已有兩份實作）。〔作者裁決 2026-11-07，採納主線建議〕
 
 ## 與相鄰案的邊界
-- 戰鬥數值（HP／先攻／狀態效果由 app 計算、多人廣播）歸 [ttrpg-combat-tracker](ttrpg-combat-tracker.md)；本案管規則書、骰子、角色紙初始宣告。
+- 狀態欄容器與無卡桌預設欄位歸 [table-status-panel](table-status-panel.md)；戰鬥數值（先攻、HP 加減）歸 [ttrpg-combat-tracker](ttrpg-combat-tracker.md)；本案管規則書、骰子、角色紙初始宣告。
 - 大廳徽章與篩選歸 [lobby-table-badges](lobby-table-badges.md)。
-- 原方案 v2 寫「等狀態欄二期」：二期已以 state-values-mvu 結案，前置改成 ttrpg-combat-tracker 的角色分頁。
+- 原方案 v2 寫「等狀態欄二期」：二期已以 state-values-mvu 結案，前置改成 table-status-panel 的角色格。
 
 ## Next action
 - v1 不依賴任何狀態欄工作，可直接開工；開工第一步照規約重讀現況（MVU 引擎、`TableState.characters` 佔位、多人房間協定），重估範圍。
