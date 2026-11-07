@@ -147,6 +147,27 @@ button.lobby-new-card {
   color: var(--ink-3);
 }
 
+.lobby-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.lobby-filter {
+  padding: 5px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font: 600 var(--fs-meta) / 1.4 var(--font-ui);
+}
+
+.lobby-filter[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
 .lobby-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -302,6 +323,11 @@ button.table-cover {
   background: var(--neutral-plate);
   color: var(--neutral-plate-ink);
   box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+
+.table-cover-ribbon[data-state="room"] {
+  background: var(--accent);
+  color: var(--accent-ink);
 }
 
 .table-cover-ribbon[data-state="drafting"]::before {

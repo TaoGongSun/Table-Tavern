@@ -77,7 +77,6 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [ai-connection-provider-panels](tasks/ai-connection-provider-panels.md) — AI 連線設定重整：供應商專屬面板（延後） — 下一步：暫不動工〔模型判斷·未裁決〕；前置 free-player-onboarding 已結案，等真實玩家回饋設定頁困擾再評估
 - [ttrpg-rules-system](tasks/ttrpg-rules-system.md) — 跑團規則系統：規則書引入＋擲骰＋角色紙（v1 中案估 200–300；跑團＝聊天桌能力組、不另立桌種〔作者裁決 2026-11-07〕） — 下一步：v1 不依賴狀態欄可直接開工，開工先重讀 MVU 與房間協定現況
 - [ttrpg-combat-tracker](tasks/ttrpg-combat-tracker.md) — 跑團戰鬥面板：HP／先攻／狀態效果 app 計算、多人廣播（大案估 >300，方案與驗收送審） — 下一步：等 ttrpg-rules-system v1；開工先拍「規則桌也掛角色分頁」
-- [lobby-table-badges](tasks/lobby-table-badges.md) — 大廳不分單人／多人：房間釘頂、桌多才出篩選籤、跑團徽章、入口卡依意圖重排（中案估 150–250） — 下一步：釘頂／篩選籤／入口卡可先做，徽章等跑團 v1
 - [release-1-mac-signing](tasks/release-1-mac-signing.md) — 發佈 1：Mac 正式簽章＋公證（Developer ID＋notarytool） — 下一步：首發不簽章〔作者裁決 2026-10-04〕，等使用者變多再考慮；Gatekeeper 繞過說明併入 release-2 發布說明
 - [cli-custom-provider](tasks/cli-custom-provider.md) — 自訂 CLI 供應商：使用者自填指令模板接任意 CLI（如 Kimi） — 下一步：暫不動工〔模型判斷·未裁決〕；確認真實需求後拍板設定 schema，v1 只做純文字模式
 - [character-to-player-card](tasks/character-to-player-card.md) — 角色卡升級成玩家卡（角色編輯頁的獨立入口） — 下一步：維持排後；兩項待拍板，建議最小版（直接互換、不做取消成零張）〔模型判斷·未裁決〕已寫進任務檔，開工時請作者確認

@@ -28,6 +28,7 @@
 
 排這梯前先確認該項驗收步驟裡沒有換幕：換幕一定走模型產前情提要摘要（`advance_scene`），避不開。
 
+- [lobby-table-badges](../handoffs/lobby-table-badges.md)（作者實機）：開一間房後回大廳，該桌排第一、封面帶「房間中・房間碼」橘色帶；桌數湊到 8 張（且聊天與 VN 都有）看篩選籤出現、切籤只隱藏不符的卡。
 - [room-host-actions](../handoffs/archive/room-host-actions.md) 包 3（作者實機）：關房後單人玩到 GM 替朋友的卡說台詞，重開房間，看手機故事串上那段「朋友的卡被 GM 代演」顯示成什麼樣子（照實送成 NPC 段，靠「房主在關房期間自己玩了這一段」分隔辨認）。
 
 ## 梯 2：要開 API 實聊、會燒額度

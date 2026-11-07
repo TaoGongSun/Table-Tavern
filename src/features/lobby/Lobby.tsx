@@ -1,6 +1,6 @@
 // 大廳：沒有載入任何桌時的畫面。頂列（品牌、版本、設定）、通知區、新桌區、牌桌卡片牆。
 // 新桌入口集中在「新桌區」一塊，日後換成引導精靈時整塊替換即可。
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { t } from "../../i18n";
 import type { WorldMeta } from "../../shared/contracts/backend-contracts";
 import { IconBook, IconPlus, IconSettings, IconSparkle, IconUsers } from "../../shared/ui/icons";
@@ -41,6 +41,15 @@ interface LobbyProps {
   onEndRoom: (id: string) => void;
 }
 
+type TableFilter = "all" | "chat" | "vn" | "roomed";
+
+const TABLE_FILTERS = [
+  ["all", "lobbyFilterAll"],
+  ["chat", "lobbyFilterChat"],
+  ["vn", "lobbyFilterVn"],
+  ["roomed", "lobbyFilterRoomed"],
+] as const;
+
 export function Lobby({
   worlds,
   busy,
@@ -65,6 +74,18 @@ export function Lobby({
   onEndRoom,
 }: LobbyProps) {
   useWorkDrop(onImportWork);
+  const [filter, setFilter] = useState<TableFilter>("all");
+  // 房間是桌的暫時狀態，只把正在開房的桌移到最前面，其他桌保留後端順序。
+  const activeTable = worlds.find((world) => world.id === activeRoom);
+  const orderedWorlds = activeTable
+    ? [activeTable, ...worlds.filter((world) => world.id !== activeRoom)]
+    : worlds;
+  const matches = (world: WorldMeta, value: TableFilter) =>
+    value === "all" || (value === "roomed" ? world.id in rooms : world.table_kind === value);
+  // 點了只會看到空牆的籤是死路：一桌都沒有的類別不出籤；只剩「全部」加一個類別時籤分不出東西，整排省掉
+  const filters = worlds.length < 8 ? [] : TABLE_FILTERS.filter(([value]) => worlds.some((world) => matches(world, value)));
+  const showFilters = filters.length > 2;
+  const visibleWorlds = orderedWorlds.filter((world) => !showFilters || matches(world, filter));
   return (
     <div className="lobby">
       <header className="lobby-top">
@@ -120,6 +141,15 @@ export function Lobby({
               <span>{t("lobbyGenTableHint")}</span>
             </span>
           </button>
+          <button type="button" className="lobby-new-card" disabled={busy} onClick={onVnTable}>
+            <span className="lobby-new-icon">
+              <IconBook />
+            </span>
+            <span className="lobby-new-text">
+              <b>{t("vnEntryTitle")}</b>
+              <span>{t("vnEntryHint")}</span>
+            </span>
+          </button>
           <button type="button" className="lobby-new-card" disabled={busy} onClick={onOpenRoom}>
             <span className="lobby-new-icon">
               <IconUsers />
@@ -128,15 +158,6 @@ export function Lobby({
               {/* 一次只開一間房：另一間開著時這格帶回那間 */}
               <b>{t(activeRoom ? "roomBack" : "roomOpen")}</b>
               <span>{t(activeRoom ? "roomActive" : "roomOpenHint")}</span>
-            </span>
-          </button>
-          <button type="button" className="lobby-new-card" disabled={busy} onClick={onVnTable}>
-            <span className="lobby-new-icon">
-              <IconBook />
-            </span>
-            <span className="lobby-new-text">
-              <b>{t("vnEntryTitle")}</b>
-              <span>{t("vnEntryHint")}</span>
             </span>
           </button>
         </div>
@@ -148,8 +169,23 @@ export function Lobby({
             {t("vnWorkImport")}
           </button>
         </div>
+        {showFilters && (
+          <div className="lobby-filters" role="group" aria-label={t("lobbyTableFiltersAria")}>
+            {filters.map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className="lobby-filter"
+                aria-pressed={filter === value}
+                onClick={() => setFilter(value)}
+              >
+                {t(label)}
+              </button>
+            ))}
+          </div>
+        )}
         <section className="lobby-grid" aria-label={t("tableListAria")}>
-          {worlds.map((world) => (
+          {visibleWorlds.map((world) => (
             <TableCard
               key={world.id}
               world={world}

@@ -1,7 +1,8 @@
 // 多人房間（room-host-desktop-play）：首頁開房、桌面版房間畫面的房主資訊列、桌卡的重開／結束。手機端文案在 party/，不在這裡。
 const COPY = {
   "zh-TW": {
-    roomOpen: "開房間",
+    roomOpen: "和朋友一起玩",
+    lobbyRibbonRoom: "房間中・房間碼 {code}",
     roomOpenHint: "跟朋友連線一起玩，這台電腦當 GM 主機",
     roomOpenFromTable: "用這張桌開房",
     roomTitleFromTable: "用「{name}」開房",
@@ -64,7 +65,8 @@ const COPY = {
     roomGenFailed: "{name} 生圖失敗",
   },
   "zh-CN": {
-    roomOpen: "开房间",
+    roomOpen: "和朋友一起玩",
+    lobbyRibbonRoom: "房间中・房间码 {code}",
     roomOpenHint: "和朋友联机一起玩，这台电脑当 GM 主机",
     roomOpenFromTable: "用这张桌开房",
     roomTitleFromTable: "用“{name}”开房",
@@ -127,7 +129,8 @@ const COPY = {
     roomGenFailed: "{name} 生图失败",
   },
   en: {
-    roomOpen: "Open a room",
+    roomOpen: "Play with friends",
+    lobbyRibbonRoom: "Room open · Code {code}",
     roomOpenHint: "Play online with friends; this computer is the GM host",
     roomOpenFromTable: "Open a room with this table",
     roomTitleFromTable: "Open a room with “{name}”",
@@ -190,7 +193,8 @@ const COPY = {
     roomGenFailed: "{name}: image generation failed",
   },
   ja: {
-    roomOpen: "ルームを開く",
+    roomOpen: "友だちと遊ぶ",
+    lobbyRibbonRoom: "ルーム開室中・コード {code}",
     roomOpenHint: "友だちとオンラインで遊ぶ。このパソコンが GM ホスト",
     roomOpenFromTable: "このテーブルでルームを開く",
     roomTitleFromTable: "「{name}」でルームを開く",
@@ -253,7 +257,8 @@ const COPY = {
     roomGenFailed: "{name} の画像生成に失敗しました",
   },
   ko: {
-    roomOpen: "방 만들기",
+    roomOpen: "친구와 함께 플레이",
+    lobbyRibbonRoom: "방 열림 · 방 코드 {code}",
     roomOpenHint: "친구와 온라인으로 함께 플레이, 이 컴퓨터가 GM 호스트",
     roomOpenFromTable: "이 테이블로 방 만들기",
     roomTitleFromTable: "“{name}”로 방 만들기",
@@ -316,7 +321,8 @@ const COPY = {
     roomGenFailed: "{name} 님의 이미지 생성 실패",
   },
   es: {
-    roomOpen: "Abrir una sala",
+    roomOpen: "Jugar con amigos",
+    lobbyRibbonRoom: "Sala abierta · Código {code}",
     roomOpenHint: "Juega en línea con amigos; este ordenador es el anfitrión del GM",
     roomOpenFromTable: "Abrir una sala con esta mesa",
     roomTitleFromTable: "Abrir una sala con «{name}»",
@@ -379,7 +385,8 @@ const COPY = {
     roomGenFailed: "{name}: falló la generación de imagen",
   },
   "pt-BR": {
-    roomOpen: "Abrir uma sala",
+    roomOpen: "Jogar com amigos",
+    lobbyRibbonRoom: "Sala aberta · Código {code}",
     roomOpenHint: "Jogue online com amigos; este computador é o anfitrião do GM",
     roomOpenFromTable: "Abrir uma sala com esta mesa",
     roomTitleFromTable: "Abrir uma sala com “{name}”",
@@ -442,7 +449,8 @@ const COPY = {
     roomGenFailed: "{name}: falha ao gerar imagem",
   },
   de: {
-    roomOpen: "Raum öffnen",
+    roomOpen: "Mit Freunden spielen",
+    lobbyRibbonRoom: "Raum offen · Code {code}",
     roomOpenHint: "Online mit Freunden spielen; dieser Computer ist der GM-Host",
     roomOpenFromTable: "Raum mit diesem Tisch öffnen",
     roomTitleFromTable: "Raum mit „{name}“ öffnen",
@@ -505,7 +513,8 @@ const COPY = {
     roomGenFailed: "{name}: Bilderstellung fehlgeschlagen",
   },
   fr: {
-    roomOpen: "Ouvrir une salle",
+    roomOpen: "Jouer avec des amis",
+    lobbyRibbonRoom: "Salle ouverte · Code {code}",
     roomOpenHint: "Jouez en ligne entre amis ; cet ordinateur héberge le MJ",
     roomOpenFromTable: "Ouvrir une salle avec cette table",
     roomTitleFromTable: "Ouvrir une salle avec « {name} »",
@@ -568,7 +577,8 @@ const COPY = {
     roomGenFailed: "{name} : échec de la génération d’image",
   },
   ru: {
-    roomOpen: "Открыть комнату",
+    roomOpen: "Играть с друзьями",
+    lobbyRibbonRoom: "Комната открыта · Код {code}",
     roomOpenHint: "Играйте онлайн с друзьями; этот компьютер — хост ГМ",
     roomOpenFromTable: "Открыть комнату с этим столом",
     roomTitleFromTable: "Открыть комнату со столом «{name}»",

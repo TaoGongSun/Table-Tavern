@@ -38,6 +38,12 @@ Rust 側相反：新 module 先用單檔 `foo.rs`，等它真的長出兩個以�
 - 不為了少改幾行 import，把新的同伴檔繼續丟在錯誤層級。
 - 不在功能案裡順手做大規模無關搬家；那要獨立立案。
 
+## 大廳擴充規則
+
+新的遊玩畫面才加 `table_kind` 與一枚篩選籤。
+新的玩法（開房、觀戰）放在桌卡徽章與動作。
+新的內容能力（規則書、擲骰、狀態欄）靠內容偵測自動掛上，不進大廳分類。
+
 ## 網頁版 `web/`
 
 網頁版是獨立的 Vite 專案：自己一份 `package.json`、lockfile、`tsconfig.json`、`vite.config.ts`、`vitest.config.ts`（建置外掛也放 `web/` 根，例：`mvu-engine-plugin.ts`、產生部署標頭 `_headers` 的 `site-headers.ts`），建置產物 `web/dist/` 是純靜態檔；`web/public/` 放原樣複製的靜態檔（卡片介面的 `sandbox.html`、`404.html`）。
