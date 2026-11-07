@@ -59,6 +59,8 @@ fn bible_messages_carry_preferences() {
         cast: Vec::new(),
         gm_entries: Vec::new(),
         preferences: Some(&preferences),
+        current: None,
+        instruction: None,
     };
     let text = &bible_messages(&source, "zh-TW")[0].content;
     assert!(text.contains("- Genres: 校園"), "{text}");
@@ -81,4 +83,29 @@ fn bible_messages_carry_preferences() {
     assert!(!bible_messages(&plain, "zh-TW")[0]
         .content
         .contains("Player preferences"));
+}
+
+/// 照指示重寫：提示詞帶目前聖經與玩家要求，輸出仍是完整圍欄
+#[test]
+fn bible_messages_include_current_bible_and_instruction() {
+    let source = BibleSource {
+        world_md: "霧港",
+        cast: Vec::new(),
+        gm_entries: Vec::new(),
+        preferences: None,
+        current: Some("{\"logline\":\"舊主線\",\"chapter_max\":6}"),
+        instruction: Some("多一條背叛結局"),
+    };
+    let text = &bible_messages(&source, "zh-TW")[0].content;
+    assert!(text.contains("舊主線"), "{text}");
+    assert!(text.contains("多一條背叛結局"), "{text}");
+    assert!(text.contains("## BIBLE"), "{text}");
+    let plain = BibleSource {
+        current: None,
+        instruction: None,
+        ..source
+    };
+    assert!(!bible_messages(&plain, "zh-TW")[0]
+        .content
+        .contains("revision request"));
 }

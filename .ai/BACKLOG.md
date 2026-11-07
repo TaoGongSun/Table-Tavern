@@ -46,7 +46,6 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 ## 階段 G：整理與立案
 - [ai-workspace-tidy](tasks/ai-workspace-tidy.md) — .ai/tasks/ 累積到 62 檔，逐檔判斷該留該刪該封存 — 下一步：未排程；開工首步＝比對 tasks/ 與 BACKLOG.md 列出三類清單，狀態不明的逐條問使用者。
 - [vn-audio](tasks/vn-audio.md) — VN 音訊 — 下一步：暫不動工、保留立案〔模型判斷·未裁決〕；屬 vn-mode 後續
-- [vn-story-flags](tasks/vn-story-flags.md) — 劇情旗標規格 — 下一步：暫不動工、保留立案〔模型判斷·未裁決〕；屬 vn-mode 後續
 - [vn-full-auto-dual-track](tasks/vn-full-auto-dual-track.md) — 全自動雙軌 — 下一步：暫不動工、保留立案〔模型判斷·未裁決〕；屬 vn-mode 後續
 
 ## 階段 H：VN 模式

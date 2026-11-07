@@ -133,6 +133,40 @@ fn same_missing_prefix_merges_into_one_note_but_keeps_every_ledger_record() {
 }
 
 #[test]
+fn top_level_miss_that_matches_a_locked_leaf_points_at_that_path() {
+    let mut mechanism = mechanism_with(&[]);
+    mechanism.locked_roots = vec!["flags".to_owned(), "revealed".to_owned()];
+    let mut tree = tree_from(&[("flags.trust_zhou", "false"), ("World.HP", "1")]);
+    let outcome = apply_updates(
+        &mut tree,
+        &mechanism,
+        &[replace("/trust_zhou", serde_json::json!(true))],
+    );
+    let note = only_note(&outcome);
+    assert!(note.contains("/flags/trust_zhou"), "{note}");
+    assert!(!note.contains("insert"), "{note}");
+    assert_eq!(
+        tree,
+        tree_from(&[("flags.trust_zhou", "false"), ("World.HP", "1")])
+    );
+}
+
+#[test]
+fn top_level_miss_without_a_locked_leaf_still_suggests_insert() {
+    let mut mechanism = mechanism_with(&[]);
+    mechanism.locked_roots = vec!["flags".to_owned()];
+    let mut tree = tree_from(&[("flags.trust_zhou", "false")]);
+    let outcome = apply_updates(
+        &mut tree,
+        &mechanism,
+        &[replace("/nope", serde_json::json!(true))],
+    );
+    let note = only_note(&outcome);
+    assert!(note.contains("insert"), "{note}");
+    assert!(!note.contains("/flags/trust_zhou"), "{note}");
+}
+
+#[test]
 fn explicit_readonly_rule_on_the_intended_path_answers_with_readonly_wording() {
     let mut tree = tree_from(&[("角色.甲.秘密", "x")]);
     let mechanism = mechanism_with(&[("角色.*.秘密", rule(FieldKind::ReadOnly, None, None))]);

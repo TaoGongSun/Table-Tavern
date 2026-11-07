@@ -4,13 +4,16 @@ use crate::transport::ChatMessage;
 
 /// 依序回覆；呼叫次數記在 `calls`
 struct Fake {
+    /// 每次呼叫送出的訊息（測提示詞內容用）
+    sent: Vec<Vec<ChatMessage>>,
     replies: Vec<String>,
     calls: usize,
 }
 
 impl SummaryCaller for Fake {
-    async fn call(&mut self, _messages: Vec<ChatMessage>) -> Result<String, String> {
+    async fn call(&mut self, messages: Vec<ChatMessage>) -> Result<String, String> {
         self.calls += 1;
+        self.sent.push(messages);
         Ok(self.replies.remove(0))
     }
 }
@@ -19,6 +22,7 @@ fn fake(replies: &[&str]) -> Fake {
     Fake {
         replies: replies.iter().map(|reply| reply.to_string()).collect(),
         calls: 0,
+        sent: Vec::new(),
     }
 }
 
@@ -60,7 +64,7 @@ async fn generate_retries_once_then_leaves_bible_null() {
     let (root, world_id, _) = vn_table("vn-bible-fail");
     let before = data::read_state(&root, &world_id).unwrap();
     let mut caller = fake(&["胡言亂語", "## BIBLE\n```json\n[1]\n```"]);
-    let error = generate(&root, &world_id, "zh-TW", Some(false), &mut caller).await;
+    let error = generate(&root, &world_id, "zh-TW", Some(false), None, &mut caller).await;
     assert_eq!(error, Err(FAILED.to_owned()));
     assert_eq!(caller.calls, 2);
     let file = vn::read_vn(&root, &world_id).unwrap();
@@ -74,7 +78,7 @@ async fn generate_installs_and_reroll_replaces_the_flag_table() {
     let (root, world_id, irene) = vn_table("vn-bible-install");
     let first = bible_reply("trust", "第一版");
     let mut caller = fake(&["壞的", &first]);
-    generate(&root, &world_id, "zh-TW", None, &mut caller)
+    generate(&root, &world_id, "zh-TW", None, None, &mut caller)
         .await
         .unwrap();
     let file = vn::read_vn(&root, &world_id).unwrap();
@@ -92,7 +96,7 @@ async fn generate_installs_and_reroll_replaces_the_flag_table() {
     assert!(mechanism.incremental && mechanism.rules.contains_key("flags.trust"));
 
     let second = bible_reply("courage", "第二版");
-    generate(&root, &world_id, "zh-TW", None, &mut fake(&[&second]))
+    generate(&root, &world_id, "zh-TW", None, None, &mut fake(&[&second]))
         .await
         .unwrap();
     assert_eq!(leaf(&root, &world_id, "flags.trust"), None);
@@ -125,7 +129,7 @@ async fn generate_installs_and_reroll_replaces_the_flag_table() {
     data::append_transcript(&root, &world_id, 0, &player).unwrap();
     let before = vn::read_vn(&root, &world_id).unwrap();
     let mut third = fake(&[&first]);
-    let refused = generate(&root, &world_id, "zh-TW", None, &mut third).await;
+    let refused = generate(&root, &world_id, "zh-TW", None, None, &mut third).await;
     assert_eq!(refused, Err(PLAYED.to_owned()));
     assert_eq!(third.calls, 0);
     assert_eq!(vn::read_vn(&root, &world_id).unwrap(), before);
@@ -139,6 +143,7 @@ async fn secret_reroll_swaps_only_that_holder() {
         &root,
         &world_id,
         "zh-TW",
+        None,
         None,
         &mut fake(&[&bible_reply("trust", "主線")]),
     )
@@ -179,6 +184,7 @@ async fn frozen_copy_changes_only_on_new_scene_and_stays_out_of_character_lane()
         &root,
         &world_id,
         "zh-TW",
+        None,
         None,
         &mut fake(&[&bible_reply("trust", "LOGLINE_TOKEN")]),
     )
@@ -317,6 +323,7 @@ async fn chapter_end_advances_chapter_then_finale_then_refuses_when_ended() {
         &world_id,
         "zh-TW",
         None,
+        None,
         &mut fake(&[&bible_reply("trust", "主線")]),
     )
     .await
@@ -379,6 +386,7 @@ async fn endings_overview_scans_every_scene() {
         &root,
         &world_id,
         "zh-TW",
+        None,
         None,
         &mut fake(&[&bible_reply("trust", "主線")]),
     )
@@ -466,7 +474,7 @@ async fn save_accepts_branching_and_gates_linear_endings() {
             "endings": [{"id": "good", "title": "好", "when": []}, {"id": "default", "when": []}]
         })
     );
-    generate(&root, &world_id, "zh-TW", None, &mut fake(&[&reply]))
+    generate(&root, &world_id, "zh-TW", None, None, &mut fake(&[&reply]))
         .await
         .unwrap();
     data::state_commit::with_commit(&root, &world_id, |tx| {
@@ -502,4 +510,115 @@ async fn save_accepts_branching_and_gates_linear_endings() {
         file.preferences.unwrap().branching,
         Some(vn::Branching::None)
     );
+}
+
+/// 指示超過 500 字：回錯誤碼，不呼叫模型
+#[tokio::test]
+async fn rewrite_instruction_over_500_chars_is_refused() {
+    let mut caller = fake(&[]);
+    let error = generate(
+        std::path::Path::new("."),
+        "unused",
+        "zh-TW",
+        None,
+        Some("字".repeat(501)),
+        &mut caller,
+    )
+    .await;
+    assert_eq!(error, Err(INSTRUCTION_TOO_LONG.to_owned()));
+    assert_eq!(caller.calls, 0);
+}
+
+/// 章數鎖的桌照指示重寫：chapter_max 與鎖維持原值，其餘照模型輸出套用
+#[tokio::test]
+async fn rewrite_keeps_locked_chapter_max() {
+    let (root, world_id, _) = vn_table("vn-bible-rewrite-lock");
+    generate(
+        &root,
+        &world_id,
+        "zh-TW",
+        None,
+        None,
+        &mut fake(&[&bible_reply("trust", "舊主線")]),
+    )
+    .await
+    .unwrap();
+    data::state_commit::with_commit(&root, &world_id, |tx| {
+        vn::edit_vn(tx, |file| {
+            let bible = file.bible.as_mut().unwrap();
+            bible.chapter_lock = true;
+            bible.chapter_max = 6;
+        })
+    })
+    .unwrap();
+    let reply = format!(
+        "## BIBLE\n```json\n{}\n```",
+        serde_json::json!({
+            "logline": "改過的主線",
+            "chapter_max": 20,
+            "chapters": [{"title": "序"}],
+            "flags": [{"id": "betrayal", "type": "bool", "initial": false}]
+        })
+    );
+    generate(
+        &root,
+        &world_id,
+        "zh-TW",
+        None,
+        Some("改成 20 章".to_owned()),
+        &mut fake(&[&reply]),
+    )
+    .await
+    .unwrap();
+    let bible = vn::read_vn(&root, &world_id).unwrap().bible.unwrap();
+    assert_eq!(bible.chapter_max, 6);
+    assert!(bible.chapter_lock);
+    assert_eq!(bible.logline, "改過的主線");
+    assert_eq!(
+        leaf(&root, &world_id, "flags.betrayal").as_deref(),
+        Some("false")
+    );
+}
+
+/// 照指示重寫：提示詞帶目前劇本與要求，不帶精靈偏好的硬限制（短篇 3–5 章不能跟「改成 12 章」打架）
+#[tokio::test]
+async fn rewrite_prompt_drops_wizard_preferences() {
+    let (root, world_id, _) = vn_table("vn-bible-rewrite-prefs");
+    generate(
+        &root,
+        &world_id,
+        "zh-TW",
+        None,
+        None,
+        &mut fake(&[&bible_reply("trust", "舊主線")]),
+    )
+    .await
+    .unwrap();
+    data::state_commit::with_commit(&root, &world_id, |tx| {
+        vn::edit_vn(tx, |file| {
+            file.preferences = Some(vn::Preferences {
+                length: Some(vn::Length::Short),
+                ..vn::Preferences::default()
+            })
+        })
+    })
+    .unwrap();
+    let mut caller = fake(&[&bible_reply("trust", "改過的主線")]);
+    generate(
+        &root,
+        &world_id,
+        "zh-TW",
+        None,
+        Some("改成 12 章".to_owned()),
+        &mut caller,
+    )
+    .await
+    .unwrap();
+    let prompt: String = caller.sent[0]
+        .iter()
+        .map(|message| message.content.clone())
+        .collect();
+    assert!(prompt.contains("改成 12 章"), "{prompt}");
+    assert!(prompt.contains("舊主線"), "{prompt}");
+    assert!(!prompt.contains("Player preferences"), "{prompt}");
 }

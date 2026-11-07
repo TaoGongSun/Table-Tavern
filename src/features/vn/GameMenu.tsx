@@ -1,5 +1,6 @@
 // 遊戲選單（Ren'Py game menu）：Esc、右鍵或快捷列「選單」開；桌名當標題，按鈕直列。
-// 玩家常用項在上、離開類（回標題、回大廳）在最底；聊天視圖與匯出收進「更多…」子選單。重播桌不出生成類項目，也沒有子選單。
+// 非重播四組：進度（存讀、進度頁、美術）、劇情操作（結束本章）、系統（設定、更多）、離開。
+// 重播桌沒有旗標，不出進度頁；章節與結局各自一顆。沒有結束本章與「更多…」，隱藏介面留在主選單。
 import { t } from "../../i18n";
 import { Panel } from "./StoryPanels";
 
@@ -8,7 +9,7 @@ export interface GameMenuItem {
   label: string;
   onSelect: () => void;
   disabled?: boolean;
-  /** 從這項起另成一段（「更多…」、離開類） */
+  /** 從這項起另成一段（組與組之間） */
   section?: boolean;
 }
 
@@ -16,7 +17,7 @@ interface GameMenuActions {
   replay: boolean;
   busy: boolean;
   nextDisabled: boolean;
-  open: (panel: "saves" | "settings" | "endings" | "gallery" | "chapters") => void;
+  open: (panel: "saves" | "settings" | "endings" | "gallery" | "chapters" | "progress") => void;
   /** 先收起選單再做（離開播放畫面或要看到結果的項目） */
   close: () => void;
   openMore: () => void;
@@ -34,27 +35,41 @@ const closing = (o: GameMenuActions, run: () => void) => () => {
   run();
 };
 
-/** 主選單：存讀、設定、（下一章）、章節、結局、美術一覽、隱藏介面；（更多…）；回標題、回大廳 */
+/** 主選單。確認「結束本章」在播放器的 `onNextChapter` 裡做，這裡只負責叫它。 */
 export function gameMenuItems(o: GameMenuActions): GameMenuItem[] {
   return [
     { key: "saves", label: t("vnSaves"), disabled: o.busy, onSelect: () => o.open("saves") },
-    { key: "settings", label: t("vnTitleSettings"), onSelect: () => o.open("settings") },
+    ...(o.replay
+      ? [
+          { key: "replay", label: t("vnWorkChapterSelect"), onSelect: () => o.open("chapters") },
+          { key: "endings", label: t("vnEndingsList"), onSelect: () => o.open("endings") },
+        ]
+      : [{ key: "progress", label: t("vnProgressPanel"), onSelect: () => o.open("progress") }]),
+    { key: "gallery", label: t("vnGallery"), onSelect: () => o.open("gallery") },
     ...(o.replay
       ? []
-      : [{ key: "next", label: t("vnNextChapter"), disabled: o.nextDisabled, onSelect: closing(o, o.onNextChapter) }]),
-    { key: "replay", label: t(o.replay ? "vnWorkChapterSelect" : "vnReplayChapter"), onSelect: () => o.open("chapters") },
-    { key: "endings", label: t("vnEndingsList"), onSelect: () => o.open("endings") },
-    { key: "gallery", label: t("vnGallery"), onSelect: () => o.open("gallery") },
-    { key: "hide", label: t("vnHideUi"), onSelect: closing(o, o.onHide) },
-    ...(o.replay ? [] : [{ key: "more", label: t("vnMenuMore"), onSelect: o.openMore, section: true }]),
+      : [
+          {
+            key: "next",
+            label: t("vnNextChapter"),
+            disabled: o.nextDisabled,
+            onSelect: closing(o, o.onNextChapter),
+            section: true,
+          },
+        ]),
+    { key: "settings", label: t("vnTitleSettings"), onSelect: () => o.open("settings"), section: true },
+    ...(o.replay
+      ? [{ key: "hide", label: t("vnHideUi"), onSelect: closing(o, o.onHide) }]
+      : [{ key: "more", label: t("vnMenuMore"), onSelect: o.openMore }]),
     { key: "title", label: t("vnBackToTitle"), disabled: o.busy, onSelect: closing(o, o.onTitle), section: true },
     { key: "lobby", label: t("backToLobby"), onSelect: o.onLobby },
   ];
 }
 
-/** 「更多…」子選單：聊天視圖與兩種匯出（只在非重播桌） */
+/** 「更多…」：隱藏介面放第一項（H 鍵不經過這裡）；其餘是聊天視圖與兩種匯出 */
 export function gameMoreItems(o: GameMenuActions): GameMenuItem[] {
   return [
+    { key: "hide", label: t("vnHideUi"), onSelect: closing(o, o.onHide) },
     { key: "chat", label: t("vnShowChat"), onSelect: o.onShowChat },
     { key: "export-card", label: t("vnCardExport"), disabled: o.busy, onSelect: o.onExportCard },
     { key: "export-work", label: t("vnWorkExport"), disabled: o.busy, onSelect: closing(o, o.onExportWork) },

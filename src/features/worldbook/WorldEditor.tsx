@@ -1,4 +1,4 @@
-import { type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { type FormEvent, type MutableRefObject, type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { t } from "../../i18n";
@@ -53,17 +53,21 @@ export function WorldEditor({
   onWorldChangeTaken: (worldId: string, generation: number) => void;
   /** 聊天 transport：重構初判失敗的錯誤分流用；不傳走中性文案 */
   transport?: string;
-  /** VN 桌的「劇本」分頁（features/vn/bible/BibleTab）；有給才出「世界｜劇本」切換。收回報未存與否的回呼 */
-  bibleTab?: (onDirtyChange: (dirty: boolean) => void) => ReactNode;
+  /** VN 桌的「劇本」分頁（features/vn/bible/BibleTab）；有給才出「世界｜劇本」切換。收回報未存與否的回呼，並交出 flush（頂列儲存時一併存劇本草稿） */
+  bibleTab?: (
+    onDirtyChange: (dirty: boolean) => void,
+    flushRef: MutableRefObject<(() => Promise<boolean>) | null>,
+  ) => ReactNode;
   /** VN 桌 GM-only 條目內文的劇透遮罩 */
   gmGuard?: (content: ReactNode) => ReactNode;
 }) {
   const [bibleShown, setBibleShown] = useState(false);
   const [bibleDirty, setBibleDirty] = useState(false);
+  const bibleFlush = useRef<(() => Promise<boolean>) | null>(null);
   const [text, setText] = useState<string | null>(null);
   const [savedText, setSavedText] = useState("");
   const [message, setMessage] = useState("");
-  // 頂列儲存鈕在表單外，用 form 屬性只送 world.md 這張表單
+  // 頂列儲存鈕在表單外，用 form 屬性送 world.md；存完再 flush 劇本草稿
   const formId = useId();
 
   const worldbook = useWorldbookEditor({ world, convertColor, onEntryConverted });
@@ -150,10 +154,13 @@ export function WorldEditor({
     try {
       await invoke("write_world_md", { worldId: world, content: text });
       setSavedText(text ?? "");
-      setMessage(t("saved"));
     } catch (reason) {
       setMessage(String(reason));
+      return;
     }
+    // 劇本存失敗時錯誤留在劇本分頁，頂列不報已儲存
+    if ((await bibleFlush.current?.()) === false) return;
+    setMessage(t("saved"));
   }
 
   async function confirmLeave() {
@@ -199,9 +206,9 @@ export function WorldEditor({
         </div>
       )}
       {/* 兩頁都保持掛載、只藏起來：world.md、條目與劇本草稿切頁都留著 */}
-      {bibleTab && <div hidden={!bibleShown}>{bibleTab(setBibleDirty)}</div>}
+      {bibleTab && <div hidden={!bibleShown}>{bibleTab(setBibleDirty, bibleFlush)}</div>}
       <div className="world-editor-page" hidden={Boolean(bibleTab) && bibleShown}>
-        {/* world form 只包這一格：世界書區有自己的條目表單，不能巢狀；頂列儲存只寫 world.md */}
+        {/* world form 只包這一格：世界書區有自己的條目表單，不能巢狀；頂列儲存寫 world.md 後再存劇本 */}
         <form id={formId} onSubmit={saveWorldSettings} className="settings-form">
           <label>
             {t("worldSummary")}

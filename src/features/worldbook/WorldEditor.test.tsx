@@ -165,6 +165,44 @@ describe("WorldEditor", () => {
     expect(commands("upsert_worldbook_entry")).toHaveLength(0);
   });
 
+  it("flushes the script draft from the top bar and skips the saved note when that fails", async () => {
+    let ok = true;
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    root = createRoot(host);
+    await act(async () => {
+      root?.render(
+        <WorldEditor
+          title={t("worldAria")}
+          world="w1"
+          worldName="Alpha"
+          onBack={() => {}}
+          leaveGuard={leaveGuard}
+          convertColor="#e07a5f"
+          onEntryConverted={async () => {}}
+          onRefactorApplied={async () => {}}
+          onRefreshReceipts={async () => {}}
+          isTurnRunning={() => false}
+          pendingRefactorCard={null}
+          onPendingRefactorCardTaken={taken}
+          worldChange={null}
+          onWorldChangeTaken={removalTaken}
+          bibleTab={(_onDirty, flushRef) => {
+            flushRef.current = async () => ok;
+            return <p>script</p>;
+          }}
+        />,
+      );
+    });
+    await act(async () => saveButton().click());
+    expect(commands("write_world_md")).toHaveLength(1);
+    expect(host.textContent).toContain(t("saved"));
+    ok = false;
+    await act(async () => saveButton().click());
+    expect(commands("write_world_md")).toHaveLength(2);
+    expect(host.textContent).not.toContain(t("saved"));
+  });
+
   it("keeps the entry form outside the world form", async () => {
     await mount();
     const worldForm = document.getElementById(saveButton().getAttribute("form")!)!;

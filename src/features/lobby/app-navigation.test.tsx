@@ -757,7 +757,7 @@ describe("lobby and table navigation", () => {
       expect(calls("generate_table_expand")[0].args.tableKind).toBe("vn");
       // 建好桌後留在 ② 接著生成聖經（帶 ② 預設勾的劇透鎖）
       expect(document.querySelector(".vn-build-progress")).not.toBeNull();
-      expect(calls("vn_bible_generate")[0].args).toEqual({ worldId: "vn1", spoilerLock: true });
+      expect(calls("vn_bible_generate")[0].args).toEqual({ worldId: "vn1", spoilerLock: true, instruction: null });
       expect(inLobby()).toBe(true);
       expect(document.querySelector(".table-badge")?.textContent).toBe(t("vnBadge"));
       await click(buttonText(t("vnNext")));
@@ -807,7 +807,7 @@ describe("lobby and table navigation", () => {
       expect(calls("import_character")).toHaveLength(1);
       await settle();
       expect(document.querySelector(".vn-stepbar [aria-current]")?.textContent).toContain(t("vnStepStory"));
-      expect(calls("vn_bible_generate")[0].args).toEqual({ worldId: "vn2", spoilerLock: false });
+      expect(calls("vn_bible_generate")[0].args).toEqual({ worldId: "vn2", spoilerLock: false, instruction: null });
       await click(buttonText(t("vnNext")));
       await click(buttonText(t("vnStartGame")));
       expect(calls("open_world").map((call) => call.args.worldId)).toEqual(["vn2"]);

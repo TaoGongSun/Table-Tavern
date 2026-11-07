@@ -8,10 +8,7 @@ import { backendText } from "../../../shared/ui/backend-text";
 import { restoresCardBible } from "../card/vn-card";
 import { BibleFields } from "./BibleFields";
 import { SpoilerMask } from "./SpoilerMask";
-import { bibleErrorKey, useBible } from "./useBible";
-
-const flagValue = (value: string) =>
-  value === "true" ? t("vnFlagOn") : value === "false" ? t("vnFlagOff") : value;
+import { bibleErrorKey, flagValueText, useBible } from "./useBible";
 
 const CHOICES = [
   ["none", "vnChoiceNone"],
@@ -38,6 +35,7 @@ export function BibleTab({
   const [draft, setDraft] = useState<Bible | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [instruction, setInstruction] = useState("");
   // 以內容為鍵重設草稿：開關鎖、別處重讀換了物件但聖經沒變時不洗掉未存的改動
   const savedJson = JSON.stringify(view?.bible ?? null);
   useEffect(() => setDraft(JSON.parse(savedJson) as Bible | null), [savedJson]);
@@ -59,6 +57,14 @@ export function BibleTab({
   }
   const regenerate = () =>
     view?.played ? Promise.reject(new Error("VN_BIBLE_PLAYED")) : bible.generate();
+  // 照指示重寫：有未存的草稿先存，指示才會套在玩家改過的版本上
+  const rewrite = () =>
+    act(async () => {
+      if (view?.played) throw new Error("VN_BIBLE_PLAYED");
+      if (dirty && draft) await bible.save(draft);
+      await bible.generate(undefined, instruction.trim());
+      setInstruction("");
+    });
   // VN 卡建的桌：重骰改成恢復卡內原版（後端 vn_bible_generate 同一支，不呼叫模型）
   const restore = restoresCardBible(view);
   async function confirmRegenerate() {
@@ -72,7 +78,6 @@ export function BibleTab({
     if (ok) await act(regenerate);
   }
 
-  const save = (next: Bible) => act(() => bible.save(next), t("saved"));
   if (flushRef) {
     flushRef.current = async () => {
       if (!dirty || !draft) return true;
@@ -102,19 +107,7 @@ export function BibleTab({
   const titleOf = (id: string) => view.bible?.secrets.find((secret) => secret.id === id)?.title ?? id;
   return (
     <section className="vn-bible-tab">
-      {!setup && (
-        <div className="vn-bible-actions">
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={!dirty || busy}
-            onClick={() => void save(draft)}
-          >
-            {t("vnBibleSave")}
-          </button>
-          <span className="vn-bible-note">{t("vnBibleNextScene")}</span>
-        </div>
-      )}
+      {!setup && <p className="vn-bible-note">{t("vnBibleNextScene")}</p>}
       {message && <p className="vn-spoiler-message">{message}</p>}
       <label className="vn-bible-max">
         {t("vnChapterMax")}
@@ -165,22 +158,42 @@ export function BibleTab({
           </ul>
         </div>
       )}
+      <div className="vn-bible-list">
+        <h3>{t("vnFlagValues")}</h3>
+        <ul>
+          {view.bible.flags.map((flag) => (
+            <li key={flag.id}>
+              {flag.label || flag.id}：{flagValueText(view.flagValues[flag.id] ?? flag.initial)}
+            </li>
+          ))}
+        </ul>
+      </div>
+      {/* 照指示重寫不會露出任何內容，放在遮罩外：鎖住劇透的玩家也能「不看就改」 */}
+      {!setup && (
+        <div className="vn-bible-rewrite">
+          <textarea
+            rows={3}
+            value={instruction}
+            placeholder={t("vnBibleInstructionPlaceholder")}
+            disabled={busy || view.played}
+            onChange={(event) => setInstruction(event.currentTarget.value)}
+          />
+          <button
+            type="button"
+            className="btn"
+            disabled={busy || view.played || instruction.trim() === ""}
+            onClick={() => void rewrite()}
+          >
+            {t("vnBibleRewrite")}
+          </button>
+        </div>
+      )}
       <SpoilerMask
         worldId={worldId}
         onReroll={restore ? undefined : regenerate}
         title="vnBibleMaskTitle"
         rerollLabel="vnBibleMaskReroll"
       >
-        <div className="vn-bible-list">
-          <h3>{t("vnFlagValues")}</h3>
-          <ul>
-            {view.bible.flags.map((flag) => (
-              <li key={flag.id}>
-                {flag.label || flag.id}：{flagValue(view.flagValues[flag.id] ?? flag.initial)}
-              </li>
-            ))}
-          </ul>
-        </div>
         <BibleFields draft={draft} names={view.names} onChange={setDraft} />
         <button type="button" className="btn" disabled={busy} onClick={() => void confirmRegenerate()}>
           {t(restore ? "vnBibleRestore" : "vnBibleRegenerate")}

@@ -203,7 +203,9 @@ export function MainView({
           transport={transport}
           bibleTab={
             vnTable
-              ? (onDirtyChange) => <BibleTab worldId={world} onDirtyChange={onDirtyChange} />
+              ? (onDirtyChange, flushRef) => (
+                  <BibleTab worldId={world} onDirtyChange={onDirtyChange} flushRef={flushRef} />
+                )
               : undefined
           }
           gmGuard={

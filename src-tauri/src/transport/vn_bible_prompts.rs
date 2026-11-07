@@ -15,6 +15,10 @@ pub struct BibleSource<'a> {
     pub gm_entries: Vec<(&'a str, &'a str)>,
     /// 精靈 ① 的偏好（vn.json `preferences`）；匯入建的桌沒有
     pub preferences: Option<&'a Preferences>,
+    /// 照指示重寫時帶上目前聖經 JSON；整份重骰不帶
+    pub current: Option<&'a str>,
+    /// 玩家的修改要求（已 trim、非空）；沒有就是整份重骰
+    pub instruction: Option<&'a str>,
 }
 
 pub struct CastEntry<'a> {
@@ -66,6 +70,12 @@ fn material(source: &BibleSource<'_>) -> String {
     }
     if let Some(preferences) = source.preferences {
         text.push_str(&preference_rules(preferences));
+    }
+    if let Some(instruction) = source.instruction {
+        text.push_str(&format!(
+            "\nCurrent bible JSON (keep everything the request does not change):\n{}\n\nPlayer's revision request (apply only this; leave everything else as it is):\n{instruction}\nThe output is still the complete bible: a line `## BIBLE` followed by one ```json fenced block.\n",
+            source.current.unwrap_or("(none)")
+        ));
     }
     text
 }

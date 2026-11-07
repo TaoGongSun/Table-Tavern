@@ -63,12 +63,24 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   gap: 0.8rem;
   padding: 1rem;
   overflow-y: auto;
   background: rgba(8, 10, 14, 0.94);
   color: var(--vn-ink);
+}
+/* 內容短時置中、超高時從頂端排並可捲到底：flex 的 justify-content: center 會把頂端溢出的內容推到捲不到的地方 */
+.vn-story-panel > :first-child {
+  margin-top: auto;
+}
+.vn-story-panel > :last-child {
+  margin-bottom: auto;
+}
+/* 劇情面板的小標：跟底下置中的清單對齊 */
+.vn-story-heading {
+  margin: 0 0 0.2rem;
+  text-align: center;
+  opacity: 0.85;
 }
 .vn-story-list {
   display: flex;
@@ -81,6 +93,13 @@
   padding: 0;
   list-style: none;
   font-family: var(--font-story);
+}
+/* 進度頁一章一列：章名與「從這章重玩」同一行，清單本身仍是直向 */
+.vn-progress-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
 }
 .vn-unreached {
   opacity: 0.5;

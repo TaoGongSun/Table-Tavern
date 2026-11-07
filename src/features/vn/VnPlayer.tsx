@@ -15,7 +15,7 @@ import { ExportWorkDialog } from "./work/ExportWorkDialog";
 import { Backlog } from "./Backlog";
 import { ChapterCardView } from "./ChapterCardView";
 import { EndingScreen } from "./EndingScreen";
-import { ChapterPanel, EndingsPanel } from "./StoryPanels";
+import { ChapterPanel, EndingsPanel, ProgressPanel } from "./StoryPanels";
 import { SavesPanel } from "./SavesPanel";
 import { TitleScreen } from "./TitleScreen";
 import { ArtGallery } from "./gallery/ArtGallery";
@@ -134,7 +134,7 @@ export function VnPlayer({
   sceneLabels: Record<string, SceneLabel>;
 }) {
   const [logOpen, setLogOpen] = useState(false);
-  const [panel, setPanel] = useState<"menu" | "menu-more" | "endings" | "gallery" | "chapters" | "saves" | "settings" | null>(null);
+  const [panel, setPanel] = useState<"menu" | "menu-more" | "endings" | "gallery" | "chapters" | "saves" | "settings" | "progress" | null>(null);
   // 隱藏介面（H）：對話框、選項、快捷列整塊收起，任一點擊或按鍵恢復；auto／skip 照跑
   const [hidden, setHidden] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -673,6 +673,15 @@ export function VnPlayer({
         />
       )}
       {panel === "endings" && <EndingsPanel worldId={worldId} onClose={() => setPanel(null)} />}
+      {panel === "progress" && (
+        <ProgressPanel
+          worldId={worldId}
+          chapter={chapterNow}
+          disabled={actionsDisabled}
+          onPick={(n) => void pickChapter(n)}
+          onClose={() => setPanel(null)}
+        />
+      )}
       {panel === "gallery" && (
         <ArtGallery worldId={worldId} images={images} backgrounds={backgrounds} replay={replay} onClose={() => setPanel(null)} />
       )}

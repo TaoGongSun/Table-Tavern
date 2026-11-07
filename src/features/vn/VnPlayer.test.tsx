@@ -840,10 +840,10 @@ describe("VnPlayer", () => {
       await act(async () => button(t("vnMenu"))!.click());
       expect(menuItems()).toEqual([
         t("vnSaves"),
-        t("vnTitleSettings"),
         t("vnWorkChapterSelect"),
         t("vnEndingsList"),
         t("vnGallery"),
+        t("vnTitleSettings"),
         t("vnHideUi"),
         t("vnBackToTitle"),
         t("backToLobby"),
@@ -1075,18 +1075,16 @@ describe("VnPlayer", () => {
       await press("Escape");
       expect(menuItems()).toEqual([
         t("vnSaves"),
-        t("vnTitleSettings"),
-        t("vnNextChapter"),
-        t("vnReplayChapter"),
-        t("vnEndingsList"),
+        t("vnProgressPanel"),
         t("vnGallery"),
-        t("vnHideUi"),
+        t("vnNextChapter"),
+        t("vnTitleSettings"),
         t("vnMenuMore"),
         t("vnBackToTitle"),
         t("backToLobby"),
       ]);
       await act(async () => button(t("vnMenuMore"))!.click());
-      expect(menuItems()).toEqual([t("vnShowChat"), t("vnCardExport"), t("vnWorkExport")]);
+      expect(menuItems()).toEqual([t("vnHideUi"), t("vnShowChat"), t("vnCardExport"), t("vnWorkExport")]);
       await press("Escape");
       expect(menuItems()).toContain(t("vnMenuMore"));
       await act(async () => button(t("vnMenuMore"))!.click());

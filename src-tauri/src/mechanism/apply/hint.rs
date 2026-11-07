@@ -85,6 +85,28 @@ fn leaf_in_the_way(mechanism: &Mechanism, prefix: &[String], value: &str, op: Pa
     rejected(prefix, plain(detail))
 }
 
+/// 頂層只差最後一段、而且某個受保護根底下已有同名葉子：模型多半漏了 `flags/` 這類前綴。
+/// 直接指到那條路徑。建議 insert 會在頂層長出野鍵，真正的葉子永遠不動。
+fn locked_leaf_redirect(
+    tree: &BTreeMap<String, StateNode>,
+    mechanism: &Mechanism,
+    path: &[String],
+    end: usize,
+) -> Option<Record> {
+    if end != path.len() || end != 1 {
+        return None;
+    }
+    let leaf = &path[0];
+    let target = mechanism.locked_roots.iter().find_map(|root| {
+        let at = [root.clone(), leaf.clone()];
+        matches!(data::node_at(tree, &at), Some(StateNode::Leaf(_))).then(|| at.to_vec())
+    })?;
+    Some(rejected(
+        path,
+        plain(format!("路徑應為 {}", shown_pointer(&target))),
+    ))
+}
+
 /// `path[..end]` 是第一個不存在的前綴：印前綴、列上一層現有的鍵；同一前綴的多筆在回饋裡合成一條。
 fn missing_prefix(
     tree: &BTreeMap<String, StateNode>,
@@ -93,6 +115,9 @@ fn missing_prefix(
     end: usize,
     op: PatchOp,
 ) -> Record {
+    if let Some(record) = locked_leaf_redirect(tree, mechanism, path, end) {
+        return record;
+    }
     let prefix = &path[..end];
     let parent = &prefix[..end - 1];
     let siblings = if parent.is_empty() {

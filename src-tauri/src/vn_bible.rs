@@ -15,6 +15,25 @@ pub const FAILED: &str = "VN_BIBLE_FAILED";
 pub const NO_BIBLE: &str = "VN_BIBLE_MISSING";
 /// VN 卡鎖住章數：劇本分頁存檔不收章數變更。
 pub const CHAPTER_LOCKED: &str = "VN_CHAPTER_LOCKED";
+/// 照指示重寫的要求超過 500 字。
+pub const INSTRUCTION_TOO_LONG: &str = "VN_BIBLE_INSTRUCTION_TOO_LONG";
+
+const INSTRUCTION_MAX: usize = 500;
+
+/// 空白當沒有指示；過長直接拒，不進鎖、不呼叫模型。
+fn cleaned_instruction(instruction: Option<String>) -> Result<Option<String>, String> {
+    let Some(raw) = instruction else {
+        return Ok(None);
+    };
+    let text = raw.trim().to_owned();
+    if text.is_empty() {
+        return Ok(None);
+    }
+    if text.chars().count() > INSTRUCTION_MAX {
+        return Err(INSTRUCTION_TOO_LONG.to_owned());
+    }
+    Ok(Some(text))
+}
 
 fn text<E: std::fmt::Display>(error: E) -> String {
     error.to_string()
@@ -64,6 +83,8 @@ impl Materials {
                 .map(|(title, content)| (title.as_str(), content.as_str()))
                 .collect(),
             preferences: self.preferences.as_ref(),
+            current: None,
+            instruction: None,
         }
     }
 
@@ -112,23 +133,55 @@ pub(crate) async fn generate(
     world_id: &str,
     lang: &str,
     spoiler_lock: Option<bool>,
+    instruction: Option<String>,
     caller: &mut impl SummaryCaller,
 ) -> Result<(), String> {
+    let instruction = cleaned_instruction(instruction)?;
     data::state_commit::with_commit(root, world_id, |tx| vn::create_if_missing(tx, spoiler_lock))
         .map_err(text)?;
-    // VN 卡建的桌（卡上有聖經）：重骰改成恢復卡內原版（§2.4），不呼叫模型
-    let card = vn::read_vn(root, world_id).map_err(text)?.card;
-    if card.is_some_and(|card| card.original_bible.is_some()) {
+    let file = vn::read_vn(root, world_id).map_err(text)?;
+    // VN 卡建的桌（卡上有聖經）：沒有指示時重骰改成恢復卡內原版（§2.4），不呼叫模型。
+    // 有指示就照常呼叫模型，恢復原版鈕仍走 `restore_original`。
+    if instruction.is_none()
+        && file
+            .card
+            .as_ref()
+            .is_some_and(|card| card.original_bible.is_some())
+    {
         return restore_original(root, world_id);
     }
     refuse_if_played(root, world_id)?;
+    let current = file
+        .bible
+        .as_ref()
+        .and_then(|bible| serde_json::to_string(bible).ok());
     let materials = Materials::load(root, world_id)?;
-    let messages = prompts::bible_messages(&materials.source(), lang);
-    let mut bible = call_parsed(caller, messages, prompts::parse_bible_reply).await?;
-    if let Some(preferences) = &materials.preferences {
-        preferences.apply(&mut bible);
+    let mut source = materials.source();
+    source.current = current.as_deref();
+    source.instruction = instruction.as_deref();
+    // 照指示重寫：目前劇本＋這次要求作準，不再注入精靈偏好（「短篇 3–5 章」會跟「改成 12 章」打架）
+    if instruction.is_some() {
+        source.preferences = None;
     }
-    install(root, world_id, &materials.cast(), None, |_| Ok(bible))
+    let messages = prompts::bible_messages(&source, lang);
+    let mut bible = call_parsed(caller, messages, prompts::parse_bible_reply).await?;
+    let rewrite = instruction.is_some();
+    // 回覆也不套偏好夾值；整份重骰才套
+    if !rewrite {
+        if let Some(preferences) = &materials.preferences {
+            preferences.apply(&mut bible);
+        }
+    }
+    install(root, world_id, &materials.cast(), None, move |latest| {
+        // parse 一律把 chapter_lock 讀成 false；鎖住的桌重寫後章數與鎖都維持原值（在 normalize 前寫回）
+        if rewrite {
+            if let Some(old) = latest.as_ref().filter(|old| old.chapter_lock) {
+                bible.chapter_max = old.chapter_max;
+                bible.chapter_lock = true;
+            }
+        }
+        Ok(bible)
+    })
 }
 
 /// 恢復卡內原版：走同一支套用函式（鎖內重驗未遊玩，聖經、狀態初值、機制規則、快照一起同步）。

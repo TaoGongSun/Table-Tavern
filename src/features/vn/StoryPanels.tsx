@@ -1,9 +1,14 @@
-// 結局一覽與章節選擇（vn-mode 包 5 §2.8、§2.9）：蓋在播放器上的暗幕面板，工具列 ⋯ 與完結畫面共用。
+// 結局一覽、章節選擇與進度頁：蓋在播放器上的暗幕面板。
+// 進度頁收章節重玩、旗標、已揭露秘密與結局；章節選擇與結局一覽本身留給完結畫面與重播桌。
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { t } from "../../i18n";
 import type { VnEndings } from "../../shared/contracts/backend-contracts";
+import { flagValueText, useBible } from "./bible/useBible";
 import "./vn-story.css";
+
+/** 沒讀到聖經時的章數上限，與後端 `CHAPTER_FALLBACK` 一致 */
+const CHAPTER_FALLBACK = 8;
 
 /** 結局表＋本桌任一分支達成過的（`vn_endings`）；`key` 變了就重讀 */
 export function useEndings(worldId: string, key: string) {
@@ -52,6 +57,89 @@ export function Panel({
         </button>
       </div>
     </div>
+  );
+}
+
+/**
+ * 遊戲選單的進度：章節重玩、關鍵事件、已揭露秘密、結局。
+ * 旗標說明與現值不算劇透（格邊提示鎖住時本來就顯示），不列觸發情境與未揭露的秘密，所以不包遮罩。
+ * 沒有聖經就不出關鍵事件；章數分母沿用後端 fallback，讀回聖經後改用 `chapter_max`。
+ */
+export function ProgressPanel({
+  worldId,
+  chapter,
+  disabled,
+  onPick,
+  onClose,
+}: {
+  worldId: string;
+  chapter: number;
+  disabled: boolean;
+  onPick: (chapter: number) => void;
+  onClose: () => void;
+}) {
+  const bibleState = useBible(worldId);
+  const view = bibleState.view;
+  const script = view?.bible ?? null;
+  const endings = useEndings(worldId, "");
+  const titleOf = (id: string) => script?.secrets.find((secret) => secret.id === id)?.title ?? id;
+  const reached = endings ? reachedText(endings) : null;
+  return (
+    <Panel label={t("vnProgressPanel")} onClose={onClose}>
+      <div>
+        <p className="vn-story-heading">
+          {t("vnStoryChapter", { n: chapter, m: script?.chapter_max || CHAPTER_FALLBACK })}
+        </p>
+        <div className="vn-story-list">
+          {Array.from({ length: chapter }, (_, index) => index + 1).map((n) => (
+            <div key={n} className="vn-progress-row">
+              <span>{t("vnChapterStart", { n })}</span>
+              <button type="button" className="btn" disabled={disabled} onClick={() => onPick(n)}>
+                {t("vnReplayFromHere")}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+      {script && (
+        <div>
+          <p className="vn-story-heading">{t("vnKeyEvents")}</p>
+          <ul className="vn-story-list">
+            {script.flags.map((flag) => (
+              <li key={flag.id}>
+                {flag.label || flag.id}：{flagValueText(view?.flagValues[flag.id] ?? flag.initial)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {view && view.revealed.length > 0 && (
+        <div>
+          <p className="vn-story-heading">{t("vnRevealedList")}</p>
+          <ul className="vn-story-list">
+            {view.revealed.map((item) => (
+              <li key={item.id}>
+                {titleOf(item.id)}
+                {item.chapter !== null && `（${t("vnRevealedAt", { n: item.chapter })}）`}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {endings && countedEndings(endings).length > 0 && (
+        <div>
+          <p className="vn-story-heading">{t("vnEndingsList")}</p>
+          {reached && <p className="vn-chapter-note">{reached}</p>}
+          <ol className="vn-story-list">
+            {countedEndings(endings).map((ending) => (
+              <li key={ending.id} className={ending.reached ? undefined : "vn-unreached"}>
+                {ending.reached ? ending.title || t("vnTheEnd") : "???"}
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+    </Panel>
   );
 }
 

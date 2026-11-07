@@ -2,7 +2,13 @@
 // GM 條目、劇本分頁、精靈 ②）共用同一份讀回，任何一處解鎖、重骰、存檔都通知其他處重讀。
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { t } from "../../../i18n";
 import type { Bible, BibleView } from "../../../shared/contracts/backend-contracts";
+
+/** 旗標現值：布林顯示是／否，其餘照字面。劇本分頁與遊戲選單的劇情面板共用。 */
+export function flagValueText(value: string): string {
+  return value === "true" ? t("vnFlagOn") : value === "false" ? t("vnFlagOff") : value;
+}
 
 const views = new Map<string, BibleView>();
 const listeners = new Set<(worldId: string) => void>();
@@ -52,10 +58,18 @@ export function acknowledgeBibleFailure(worldId: string) {
  * 同一桌同時只發一次 `vn_bible_generate`。進行中再呼叫回傳同一個 Promise；
  * 失敗留下 `{failed, error}`，明示重試才再發。
  */
-export function generateBible(worldId: string, spoilerLock?: boolean): Promise<void> {
+export function generateBible(
+  worldId: string,
+  spoilerLock?: boolean,
+  instruction?: string | null,
+): Promise<void> {
   const current = jobs.get(worldId);
   if (current?.state === "running") return current.promise;
-  const promise = invoke("vn_bible_generate", { worldId, spoilerLock: spoilerLock ?? null }).then(
+  const promise = invoke("vn_bible_generate", {
+    worldId,
+    spoilerLock: spoilerLock ?? null,
+    instruction: instruction ?? null,
+  }).then(
     () => {
       if (jobs.get(worldId)?.state === "running") jobs.delete(worldId);
       notifyJobs();
@@ -128,10 +142,10 @@ export function useBible(worldId: string) {
     /** 鎖住（沒讀回前也當鎖住，不先露出內容） */
     locked: view?.spoiler_lock ?? true,
     setLocked: (locked: boolean) => run(() => invoke("vn_spoiler_set", { worldId, locked })),
-    generate: (spoilerLock?: boolean) =>
+    generate: (spoilerLock?: boolean, instruction?: string | null) =>
       run(async () => {
         try {
-          await generateBible(worldId, spoilerLock);
+          await generateBible(worldId, spoilerLock, instruction);
         } catch (reason) {
           if (mounted.current && worldRef.current === worldId) acknowledgeBibleFailure(worldId);
           throw reason;
@@ -143,11 +157,12 @@ export function useBible(worldId: string) {
   };
 }
 
-/** 後端聖經錯誤碼 → i18n 鍵（`vn_bible.rs` 的 PLAYED／FAILED／MISSING／CHAPTER_LOCKED） */
+/** 後端聖經錯誤碼 → i18n 鍵（`vn_bible.rs` 的 PLAYED／FAILED／MISSING／CHAPTER_LOCKED／INSTRUCTION_TOO_LONG） */
 export function bibleErrorKey(
   reason: unknown,
-): "vnBiblePlayed" | "vnBibleFailed" | "vnBibleMissing" | "vnChapterLocked" | null {
+): "vnBiblePlayed" | "vnBibleFailed" | "vnBibleMissing" | "vnChapterLocked" | "vnBibleInstructionTooLong" | null {
   const text = String(reason);
+  if (text.includes("VN_BIBLE_INSTRUCTION_TOO_LONG")) return "vnBibleInstructionTooLong";
   if (text.includes("VN_CHAPTER_LOCKED")) return "vnChapterLocked";
   if (text.includes("VN_BIBLE_PLAYED")) return "vnBiblePlayed";
   if (text.includes("VN_BIBLE_FAILED")) return "vnBibleFailed";

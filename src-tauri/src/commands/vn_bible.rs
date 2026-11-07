@@ -95,9 +95,10 @@ pub(crate) async fn vn_bible_generate(
     app: tauri::AppHandle,
     world_id: String,
     spoiler_lock: Option<bool>,
+    instruction: Option<String>,
 ) -> Result<(), String> {
     with_caller(&app, &world_id, "bible", async |root, lang, caller| {
-        vn_bible::generate(root, &world_id, lang, spoiler_lock, caller).await
+        vn_bible::generate(root, &world_id, lang, spoiler_lock, instruction, caller).await
     })
     .await
 }
