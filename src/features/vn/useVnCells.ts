@@ -14,6 +14,8 @@ import { eventKeyOf, flatten, pendingCells, type FlatCell } from "./vn-cells";
 const THROTTLE_MS = 150;
 /** 換行結尾的 `[bg: …]` 行（寫完的背景標記；最後一行還在長的不算） */
 const BG_LINE = /^[ \t]*\[[ \t]*bg[ \t]*[:：][^\n]*\][ \t]*\n/gim;
+/** 換行結尾的 `[bgm]`／`[sfx]` 行（最後一行還在長的不算） */
+const AUDIO_LINE = /^[ \t]*\[[ \t]*(?:bgm|sfx)[ \t]*[:：][^\n]*\][ \t]*\n/gim;
 
 export interface Snapshot {
   generation: number;
@@ -122,7 +124,16 @@ export function useVnCells({
     }
   }, [generating, refresh]);
 
-  const text = useRef({ streamText, generating, parsed: 0, seq: 0, bgLines: 0, bgGeneration: -1 });
+  const text = useRef({
+    streamText,
+    generating,
+    parsed: 0,
+    seq: 0,
+    bgLines: 0,
+    bgGeneration: -1,
+    audioLines: 0,
+    audioGeneration: -1,
+  });
   text.current = { ...text.current, streamText, generating };
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -140,6 +151,14 @@ export function useVnCells({
     if (bgLines > text.current.bgLines) {
       text.current.bgLines = bgLines;
       invoke("vn_backgrounds_prefetch", { worldId, scene, source, text: raw }).catch(() => {});
+    }
+    const audioLines = raw.match(AUDIO_LINE)?.length ?? 0;
+    if (text.current.audioGeneration !== generation) {
+      text.current = { ...text.current, audioGeneration: generation, audioLines: 0 };
+    }
+    if (audioLines > text.current.audioLines) {
+      text.current.audioLines = audioLines;
+      invoke("vn_audio_prefetch", { worldId, scene, source, text: raw }).catch(() => {});
     }
     try {
       const result = await invoke<VnText | null>("parse_vn_text", { worldId, source, text: raw });

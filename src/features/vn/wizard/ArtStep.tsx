@@ -32,6 +32,7 @@ function FirstBackdrop({ worldId }: { worldId: string }) {
     invoke<Backdrop[]>("vn_backgrounds_fill", { worldId, scene: null })
       .then((used) => setFirst(used[0] ?? null))
       .catch(() => {});
+    invoke("vn_audio_fill", { worldId, scene: null }).catch(() => {});
   }, [worldId]);
   useEffect(() => {
     if (first) load(first);

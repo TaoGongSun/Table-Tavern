@@ -57,6 +57,15 @@ pub(crate) enum VnCell {
     Ending {
         id: String,
     },
+    /// `[bgm]`：空陣列＝`off`（靜音）；沒有這格＝沿用
+    Bgm {
+        moods: Vec<String>,
+    },
+    /// `[sfx]`：query 是正規化後的描述，key 是它的 SHA-256 前 16 hex
+    Sfx {
+        query: String,
+        key: String,
+    },
 }
 
 /// GM 這一拍停在哪種終止標記（停接力、球交回玩家）。
@@ -193,6 +202,10 @@ enum Marker {
     Choices,
     Chapter,
     Ending(String),
+    /// `None`＝詞不在表上，整格丟掉（不當旁白）
+    Bgm(Option<Vec<String>>),
+    /// `None`＝描述不合格，整格丟掉
+    Sfx(Option<(String, String)>),
 }
 
 /// 一行是不是章末／結局標記（包 5 提交時驗證用）。
@@ -221,6 +234,8 @@ fn marker(line: &str) -> Option<Marker> {
         ("choices", None) => Some(Marker::Choices),
         ("chapter", None) => Some(Marker::Chapter),
         ("ending", Some(id)) if !id.is_empty() => Some(Marker::Ending(id.to_owned())),
+        ("bgm", Some(rest)) => Some(Marker::Bgm(crate::vn_audio::parse_bgm(rest))),
+        ("sfx", Some(rest)) => Some(Marker::Sfx(crate::vn_audio::parse_sfx(rest))),
         ("bg", Some(rest)) => {
             // `[bg: 地點 | 時段 | 天氣]`，後兩欄可省
             let mut fields = rest.splitn(3, ['|', '｜']).map(str::trim);
@@ -386,6 +401,9 @@ fn parse_cells(text: &str, source: &VnSource, roster: &VnRoster) -> Vec<VnCell> 
                 Marker::Choices => choices = Some(Vec::new()),
                 Marker::Chapter => cells.push(VnCell::Chapter),
                 Marker::Ending(id) => cells.push(VnCell::Ending { id }),
+                Marker::Bgm(None) | Marker::Sfx(None) => {}
+                Marker::Bgm(Some(moods)) => cells.push(VnCell::Bgm { moods }),
+                Marker::Sfx(Some((query, key))) => cells.push(VnCell::Sfx { query, key }),
             }
             continue;
         }
@@ -615,6 +633,14 @@ pub(crate) fn parse_event(text: &str, source: &VnSource, roster: &VnRoster) -> V
             index - 1 == last || !matches!(cell, VnCell::Choices { .. })
         });
     }
+    let mut sounds = 0usize;
+    cells.retain(|cell| {
+        if !matches!(cell, VnCell::Sfx { .. }) {
+            return true;
+        }
+        sounds += 1;
+        sounds <= 2
+    });
     let mut directives = 0;
     for cell in &mut cells {
         if let VnCell::Dialogue {
@@ -664,7 +690,7 @@ pub(crate) fn gm_stop(
     }
 }
 
-/// 角色線過濾：`[bg]`／`[choices]`（連其下選項行）／`[chapter]`／`[ending]` 整行剝掉；
+/// 角色線過濾：`[bg]`／`[bgm]`／`[sfx]`／`[choices]`（連其下選項行）／`[chapter]`／`[ending]` 整行剝掉；
 /// 別人的對白行文字原樣留著，解析時（`VnSource::Character`）改成旁白格。
 pub(crate) fn filter_character_reply(text: &str) -> String {
     let mut kept = Vec::new();

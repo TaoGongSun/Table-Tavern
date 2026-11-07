@@ -131,6 +131,8 @@ export const ja: Record<MsgKey, string> = {
   transportCn: "SiliconFlow",
   cnGetKeyBtn: "キーを取得",
   cnKeyLabel: "SiliconFlow API キー",
+  freesoundKeyLabel: "Freesound API キー（VN 効果音、任意）",
+  freesoundKeyNote: "任意。空欄なら効果音は取りません。BGM にキーは不要です。",
   cnDefaultOption: "デフォルト（{model}）",
   cnRiskNote: "無料モデルのみ使用し、失敗しても有料モデルには切り替えません。SiliconFlow は内容を審査するため、成人向けや暴力的なカードは拒否されたりアカウントが停止されたりすることがあり、そのリスクはこのキーの持ち主が負います。",
   cliSubscriptionSuffix: "（サブスクリプションモード、上級）",

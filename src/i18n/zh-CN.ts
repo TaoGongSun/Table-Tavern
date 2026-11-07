@@ -131,6 +131,8 @@ export const zhCN: Record<MsgKey, string> = {
   transportCn: "硅基流动",
   cnGetKeyBtn: "申请密钥",
   cnKeyLabel: "硅基流动 API 密钥",
+  freesoundKeyLabel: "Freesound API 密钥（VN 音效，选填）",
+  freesoundKeyNote: "选填。留空就不抓音效；背景音乐不用密钥。",
   cnDefaultOption: "默认（{model}）",
   cnRiskNote: "只用免费模型，失败也不会改用付费模型。硅基流动会审核内容，成人或暴力向的卡可能被拒答甚至封号，风险由提供这把密钥的人承担。",
   cliSubscriptionSuffix: "（订阅模式，高级）",

@@ -489,6 +489,8 @@ fn write_pack(
     if images > LIMITS.images {
         return Err(UiMsg::VnWorkTooLarge.to_string());
     }
+    // 圖數算完才收 BGM，音訊不佔圖片上限。沒有合格 mp3 就整段省略。
+    write_audio(root, world_id, &mut out)?;
     for (name, bytes) in settings {
         out.put(name, bytes, true)?;
     }
@@ -507,6 +509,47 @@ fn write_pack(
         .into_inner()
         .map_err(|error| error.to_string())?;
     file.sync_all().map_err(text)
+}
+
+/// 只收 `bgm-<白名單鍵>.mp3`。檔頭不對或超過單檔上限的略過；音效與索引裡的音效條目不進包。
+fn write_audio(root: &Path, world_id: &str, out: &mut Writer<'_>) -> Result<(), String> {
+    let dir = data::vn_audio_dir(root, world_id).map_err(text)?;
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return Ok(());
+    };
+    let mut files: Vec<(String, PathBuf)> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().into_string().ok()?;
+            let key = name.strip_prefix("bgm-")?.strip_suffix(".mp3")?;
+            crate::vn_audio::valid_key(key).then(|| (key.to_owned(), entry.path()))
+        })
+        .collect();
+    files.sort();
+    let mut keys = Vec::new();
+    for (key, path) in &files {
+        let Ok(bytes) = std::fs::read(path) else {
+            continue;
+        };
+        if bytes.len() as u64 > LIMITS.audio_bytes || !crate::vn_audio::mp3_ok(&bytes) {
+            continue;
+        }
+        if keys.len() >= LIMITS.audio_files {
+            return Err(UiMsg::VnWorkTooLarge.to_string());
+        }
+        let name = Asset::Audio { key: key.clone() }.path();
+        out.put(&name, &bytes, false)?;
+        out.manifest.assets.push(name);
+        keys.push(key.clone());
+    }
+    if keys.is_empty() {
+        return Ok(());
+    }
+    let index = crate::vn_audio::export_entries(&dir, &keys);
+    let name = Asset::AudioIndex.path();
+    out.put(&name, &serde_json::to_vec(&index).map_err(text)?, true)?;
+    out.manifest.assets.push(name);
+    Ok(())
 }
 
 /// 一位角色的立繪：定稿驗過才帶 sprite.json 與其餘身體、臉層

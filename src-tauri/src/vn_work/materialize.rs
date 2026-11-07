@@ -11,7 +11,7 @@ use crate::data::{
 };
 use crate::import::png_clean::sanitize_png;
 use crate::ui_msg::UiMsg;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, serde::Serialize)]
@@ -164,8 +164,21 @@ impl Build<'_> {
             hook("worldbook")?;
         }
         let mut pixels = 0u64;
+        let mut audio_keys = BTreeSet::new();
+        let mut saw_index = false;
         for asset in assets {
-            self.write_asset(asset, &mut pixels)?;
+            match asset {
+                Asset::AudioIndex => saw_index = true,
+                Asset::Audio { key } => {
+                    audio_keys.insert(key.clone());
+                    self.write_asset(asset, &mut pixels)?;
+                }
+                _ => self.write_asset(asset, &mut pixels)?,
+            }
+        }
+        // 先落 mp3 再濾索引，對不到檔的條目丟掉。
+        if saw_index {
+            self.write_audio_index(&audio_keys)?;
         }
         hook("assets")?;
         let labels = self.write_scenes(script, hook)?;
@@ -249,13 +262,47 @@ impl Build<'_> {
                 .map_err(text)?
                 .with_extension("avatar.png"),
             Asset::Cover => vn::cover_path(root, world).map_err(text)?,
+            Asset::Audio { key } => data::vn_audio_dir(root, world)
+                .map_err(text)?
+                .join(format!("bgm-{key}.mp3")),
+            Asset::AudioIndex => data::vn_audio_dir(root, world)
+                .map_err(text)?
+                .join("audio.json"),
         })
+    }
+
+    fn write_audio_index(&mut self, keys: &BTreeSet<String>) -> Result<(), String> {
+        let name = Asset::AudioIndex.path();
+        let raw = self
+            .pack
+            .read(&name, self.limits.json_bytes)?
+            .unwrap_or_default();
+        let entries = crate::vn_audio::import_entries(&raw, keys).map_err(|error| {
+            if error == "AUDIO_INDEX_TOO_MANY" {
+                UiMsg::VnWorkTooLarge.to_string()
+            } else {
+                broken(format!("{name}: {error}"))
+            }
+        })?;
+        let bytes = serde_json::to_vec(&entries).map_err(text)?;
+        data::commit_world_write_atomic(&self.target(&Asset::AudioIndex)?, &bytes).map_err(text)
     }
 
     /// 落檔路徑由驗過的鍵重組（`target`），條目名只用來讀
     fn write_asset(&mut self, asset: &Asset, pixels: &mut u64) -> Result<(), String> {
         let name = asset.path();
         let bytes = match asset {
+            Asset::Audio { .. } => {
+                let raw = self
+                    .pack
+                    .read(&name, self.limits.audio_bytes)?
+                    .unwrap_or_default();
+                if !crate::vn_audio::mp3_ok(&raw) {
+                    return Err(broken(format!("{name}: bad mp3")));
+                }
+                raw
+            }
+            Asset::AudioIndex => Vec::new(),
             Asset::SpriteMeta { .. } => {
                 let raw = self
                     .pack

@@ -229,3 +229,6 @@
   align-items: center;
   gap: 0.5rem;
 }
+.vn-setting input[type="range"] {
+  accent-color: var(--amber);
+}

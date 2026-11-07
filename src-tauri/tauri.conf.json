@@ -28,10 +28,15 @@
         "connect-src": "ipc: http://ipc.localhost https://openrouter.ai",
         "frame-src": "tt-sandbox: http://tt-sandbox.localhost",
         "worker-src": "'self'",
+        "media-src": "asset: http://asset.localhost",
         "object-src": "'none'",
         "base-uri": "'none'",
         "form-action": "'none'",
         "frame-ancestors": "'none'"
+      },
+      "assetProtocol": {
+        "enable": true,
+        "scope": []
       }
     }
   },

@@ -35,6 +35,7 @@ import { useVnCells } from "./useVnCells";
 import { useSprites } from "./useSprites";
 import { backdropKey, useBackgrounds } from "./useBackgrounds";
 import { useVnPlayback } from "./useVnPlayback";
+import { useVnAudio } from "./audio/useVnAudio";
 import { nextScene, replayNav } from "./replay/replay-nav";
 import { UnfinishedPath } from "./replay/UnfinishedPath";
 import {
@@ -87,6 +88,12 @@ export function VnPlayer({
   autoWait,
   onTextSpeed,
   onAutoWait,
+  bgmVolume = 70,
+  sfxVolume = 100,
+  onBgmVolume = () => {},
+  onSfxVolume = () => {},
+  muted = false,
+  onMuted = () => {},
   title,
   onTitle,
   replay,
@@ -126,6 +133,14 @@ export function VnPlayer({
   autoWait: AutoWait;
   onTextSpeed: (speed: TextSpeed) => void;
   onAutoWait: (wait: AutoWait) => void;
+  /** 0–100，沒傳＝70／100，測試不用帶 */
+  bgmVolume?: number;
+  sfxVolume?: number;
+  onBgmVolume?: (volume: number) => void;
+  onSfxVolume?: (volume: number) => void;
+  /** 靜音：滑桿數字留著，實際不響。沒傳＝沒勾。 */
+  muted?: boolean;
+  onMuted?: (muted: boolean) => void;
   /** 標題畫面開著（從大廳進桌時，包 6 §2.8） */
   title: boolean;
   onTitle: (open: boolean) => void;
@@ -206,11 +221,24 @@ export function VnPlayer({
   realignRef.current = play.realign;
   playRef.current = play;
   const stage = useMemo(() => stageAt(vn.cells, play.flatIndex), [vn.cells, play.flatIndex]);
+  const { previewSfx } = useVnAudio({
+    worldId,
+    bgm: stage.bgm,
+    cells: vn.cells,
+    flatIndex: play.flatIndex,
+    lastEventKey: vn.lastEventKey,
+    bgmVolume,
+    sfxVolume,
+    // 標題、選單、字卡蓋著，或快轉中，不播音效，也不把這一格登記成已播；配樂照播。
+    active: !paused && play.current !== undefined && !play.skip,
+    muted,
+  });
   const sprites = useSprites(worldId);
   const backgrounds = useBackgrounds(worldId);
-  // 正式格有新事件落檔就排入這幕缺的背景（串流中寫完的 `[bg]` 行由 useVnCells 提早排）
+  // 正式格有新事件落檔就排入這幕缺的背景與曲子（串流中寫完的行由 useVnCells 提早排）
   useEffect(() => {
     invoke("vn_backgrounds_fill", { worldId, scene }).catch(() => {});
+    invoke("vn_audio_fill", { worldId, scene }).catch(() => {});
   }, [worldId, scene, vn.lastEventKey]);
   const backdrop = stage.backdrop;
   const backdropId = backdrop ? backdropKey(backdrop) : null;
@@ -664,6 +692,13 @@ export function VnPlayer({
           onTextSpeed={onTextSpeed}
           autoWait={autoWait}
           onAutoWait={onAutoWait}
+          bgmVolume={bgmVolume}
+          sfxVolume={sfxVolume}
+          onBgmVolume={onBgmVolume}
+          onSfxVolume={onSfxVolume}
+          muted={muted}
+          onMuted={onMuted}
+          onSfxPreview={previewSfx}
           onClose={() => setPanel(null)}
         />
       )}

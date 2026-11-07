@@ -22,6 +22,13 @@ export function SettingsPanel({
   onTextSpeed,
   autoWait,
   onAutoWait,
+  bgmVolume,
+  sfxVolume,
+  onBgmVolume,
+  onSfxVolume,
+  muted,
+  onMuted,
+  onSfxPreview,
   onClose,
 }: {
   flagHints: boolean;
@@ -30,6 +37,14 @@ export function SettingsPanel({
   onTextSpeed: (speed: TextSpeed) => void;
   autoWait: AutoWait;
   onAutoWait: (wait: AutoWait) => void;
+  bgmVolume: number;
+  sfxVolume: number;
+  onBgmVolume: (volume: number) => void;
+  onSfxVolume: (volume: number) => void;
+  muted: boolean;
+  onMuted: (muted: boolean) => void;
+  /** 放開音效滑桿時試聽；靜音或沒有落地音效由播放器決定不響。 */
+  onSfxPreview: () => void;
   onClose: () => void;
 }) {
   return (
@@ -57,6 +72,32 @@ export function SettingsPanel({
             </option>
           ))}
         </select>
+      </label>
+      <label className="vn-setting">
+        <input type="checkbox" checked={muted} onChange={(event) => onMuted(event.target.checked)} />
+        {t("vnMute")}
+      </label>
+      <label className="vn-setting">
+        {t("vnBgmVolume")}
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={bgmVolume}
+          onChange={(event) => onBgmVolume(Number(event.target.value))}
+        />
+      </label>
+      <label className="vn-setting">
+        {t("vnSfxVolume")}
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={sfxVolume}
+          onChange={(event) => onSfxVolume(Number(event.target.value))}
+          onPointerUp={onSfxPreview}
+          onKeyUp={onSfxPreview}
+        />
       </label>
     </Panel>
   );

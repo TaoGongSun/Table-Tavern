@@ -131,6 +131,8 @@ export const fr: Record<MsgKey, string> = {
   transportCn: "SiliconFlow",
   cnGetKeyBtn: "Créer une clé",
   cnKeyLabel: "Clé API SiliconFlow",
+  freesoundKeyLabel: "Jeton API Freesound (effets VN, facultatif)",
+  freesoundKeyNote: "Facultatif. Vide : pas d’effets ; la musique n’a pas besoin de clé.",
   cnDefaultOption: "Par défaut ({model})",
   cnRiskNote: "Modèles gratuits uniquement ; un échec ne bascule jamais vers un modèle payant. SiliconFlow modère le contenu : les cartes adultes ou violentes peuvent être refusées ou entraîner le bannissement du compte, et ce risque revient au propriétaire de cette clé.",
   cliSubscriptionSuffix: " (mode abonnement, avancé)",

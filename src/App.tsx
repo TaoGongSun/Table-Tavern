@@ -68,6 +68,7 @@ import { VnPlayer } from "./features/vn/VnPlayer";
 import { VnWizard, type VnWizardStart } from "./features/vn/wizard/VnWizard";
 import { openVnCardTable as openVnCardTableFlow } from "./features/vn/card/vn-card";
 import { ImportWorkDialog } from "./features/vn/work/ImportWorkDialog";
+import { prefVolume } from "./features/vn/audio/audio-policy";
 import { AUTO_WAITS, TEXT_SPEEDS, pickLevel } from "./features/vn/vn-cells";
 import {
   canContinueWork,
@@ -1173,6 +1174,12 @@ function App() {
             autoWait={pickLevel(AUTO_WAITS, config.preferences["vn_auto_wait"])}
             onTextSpeed={(speed) => void changePreference("vn_text_speed", speed)}
             onAutoWait={(wait) => void changePreference("vn_auto_wait", wait)}
+            bgmVolume={prefVolume(config.preferences["vn_bgm_volume"], 70)}
+            sfxVolume={prefVolume(config.preferences["vn_sfx_volume"], 100)}
+            onBgmVolume={(volume) => void changePreference("vn_bgm_volume", volume)}
+            onSfxVolume={(volume) => void changePreference("vn_sfx_volume", volume)}
+            muted={config.preferences["vn_muted"] === true}
+            onMuted={(on) => void changePreference("vn_muted", on)}
           />
         ) : (
           <AppWorkspace

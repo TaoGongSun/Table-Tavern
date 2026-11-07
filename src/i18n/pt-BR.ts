@@ -131,6 +131,8 @@ export const ptBR: Record<MsgKey, string> = {
   transportCn: "SiliconFlow",
   cnGetKeyBtn: "Obter chave",
   cnKeyLabel: "Chave de API da SiliconFlow",
+  freesoundKeyLabel: "Token de API do Freesound (efeitos de VN, opcional)",
+  freesoundKeyNote: "Opcional. Em branco não há efeitos; a música não precisa de chave.",
   cnDefaultOption: "Padrão ({model})",
   cnRiskNote: "Apenas modelos gratuitos; uma falha nunca troca para um modelo pago. A SiliconFlow modera o conteúdo: cartas adultas ou violentas podem ser recusadas ou levar ao banimento da conta, e esse risco é de quem é dono desta chave.",
   cliSubscriptionSuffix: " (modo de assinatura, avançado)",

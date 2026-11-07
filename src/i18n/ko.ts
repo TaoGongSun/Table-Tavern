@@ -131,6 +131,8 @@ export const ko: Record<MsgKey, string> = {
   transportCn: "SiliconFlow",
   cnGetKeyBtn: "키 발급",
   cnKeyLabel: "SiliconFlow API 키",
+  freesoundKeyLabel: "Freesound API 키 (VN 효과음, 선택)",
+  freesoundKeyNote: "선택. 비워 두면 효과음을 받지 않습니다. 배경음에는 키가 필요 없습니다.",
   cnDefaultOption: "기본 ({model})",
   cnRiskNote: "무료 모델만 사용하며, 실패해도 유료 모델로 바꾸지 않습니다. SiliconFlow는 콘텐츠를 심사하므로 성인·폭력 카드는 거부되거나 계정이 정지될 수 있고, 그 위험은 이 키의 주인이 집니다.",
   cliSubscriptionSuffix: " (구독 모드, 고급)",

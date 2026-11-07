@@ -181,6 +181,18 @@ pub(super) fn played(label: &str) -> Table {
     }
     let meta = r#"{"version":1,"face":{"x":0,"y":0,"w":2,"h":2},"variants":[],"default":"base"}"#;
     data::commit_world_write_atomic(&sprites.join("sprite.json"), meta.as_bytes()).unwrap();
+    let audio = data::vn_audio_dir(&root, &world).unwrap();
+    let mp3: &[u8] = b"ID3\x03\x00\x00";
+    for (name, bytes) in [
+        ("bgm-theme.mp3", mp3),
+        ("sfx-abcdef0123456789.mp3", mp3),
+        ("bgm-dark.mp3", b"NOPE".as_slice()),
+        ("bgm-Nope.mp3", mp3),
+    ] {
+        data::commit_world_write_atomic(&audio.join(name), bytes).unwrap();
+    }
+    let index = r#"[{"kind":"bgm","key":"theme","title":"Theme","author":"Kevin MacLeod","source_url":"https://incompetech.com/a","license":"https://creativecommons.org/licenses/by/4.0/"},{"kind":"sfx","key":"abcdef0123456789","title":"door","author":"x","source_url":"https://freesound.org/s","license":"Creative Commons 0"}]"#;
+    data::commit_world_write_atomic(&audio.join("audio.json"), index.as_bytes()).unwrap();
     Table { root, world, hero }
 }
 
@@ -292,6 +304,112 @@ fn export_then_import_rebuilds_the_same_scenes_and_branches() {
     )
     .unwrap();
     assert_eq!(chunk_kinds(&image), [*b"IHDR", *b"IDAT", *b"IEND"]);
+    let packed = entries(&pack);
+    let names: Vec<&str> = packed.iter().map(|(name, _)| name.as_str()).collect();
+    assert!(names.contains(&"assets/audio/bgm-theme.mp3"));
+    assert!(names.contains(&"assets/audio/audio.json"));
+    assert!(!names
+        .iter()
+        .any(|name| name.contains("sfx-") || name.contains("Nope") || name.contains("bgm-dark")));
+    let index = packed
+        .iter()
+        .find(|(name, _)| name == "assets/audio/audio.json")
+        .unwrap();
+    let text = String::from_utf8(index.1.clone()).unwrap();
+    assert!(!text.contains("sfx"));
+    assert!(text.contains("theme"));
+    let copied = data::vn_audio_dir(root, copy).unwrap();
+    assert_eq!(
+        std::fs::read(copied.join("bgm-theme.mp3")).unwrap(),
+        b"ID3\x03\x00\x00"
+    );
+    assert!(!copied.join("sfx-abcdef0123456789.mp3").exists());
+    assert!(!std::fs::read_to_string(copied.join("audio.json"))
+        .unwrap()
+        .contains("sfx"));
+}
+
+#[test]
+fn export_import_keeps_bgm_and_drops_sfx() {
+    let table = played("vn-audio-calming");
+    let audio = data::vn_audio_dir(&table.root, &table.world).unwrap();
+    for name in [
+        "bgm-theme.mp3",
+        "sfx-abcdef0123456789.mp3",
+        "bgm-dark.mp3",
+        "bgm-Nope.mp3",
+        "audio.json",
+    ] {
+        std::fs::remove_file(audio.join(name)).unwrap();
+    }
+    let mp3: &[u8] = b"ID3\x03\x00\x00";
+    data::commit_world_write_atomic(&audio.join("bgm-calming.mp3"), mp3).unwrap();
+    data::commit_world_write_atomic(&audio.join("sfx-abcdef0123456789.mp3"), mp3).unwrap();
+    let index = r#"[{"kind":"bgm","key":"calming","title":"Calm","author":"Kevin MacLeod","source_url":"https://incompetech.com/a","license":"https://creativecommons.org/licenses/by/4.0/"},{"kind":"sfx","key":"abcdef0123456789","title":"door","author":"x","source_url":"https://freesound.org/s","license":"Creative Commons 0"}]"#;
+    data::commit_world_write_atomic(&audio.join("audio.json"), index.as_bytes()).unwrap();
+
+    let pack = export(&table);
+    let packed = entries(&pack);
+    let manifest = packed
+        .iter()
+        .find(|(name, _)| name == "manifest.json")
+        .unwrap();
+    let manifest: serde_json::Value = serde_json::from_slice(&manifest.1).unwrap();
+    let audio_assets: Vec<&str> = manifest["assets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|item| item.as_str())
+        .filter(|name| name.starts_with("assets/audio/"))
+        .collect();
+    assert_eq!(
+        audio_assets,
+        ["assets/audio/bgm-calming.mp3", "assets/audio/audio.json"]
+    );
+
+    let imported = import_work(&table.root, &pack, ImportMode::Replay, false).unwrap();
+    let copied = data::vn_audio_dir(&table.root, &imported.world_id).unwrap();
+    let mut names: Vec<String> = std::fs::read_dir(&copied)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .collect();
+    names.sort();
+    assert_eq!(names, ["audio.json", "bgm-calming.mp3"]);
+    let text = std::fs::read_to_string(copied.join("audio.json")).unwrap();
+    assert!(text.contains("\"key\":\"calming\"") || text.contains("\"key\": \"calming\""));
+    assert!(!text.contains("sfx"));
+}
+
+#[test]
+fn audio_asset_names_are_whitelist_only() {
+    assert!(super::format::Asset::parse("assets/audio/bgm-theme.mp3").is_some());
+    assert!(super::format::Asset::parse("assets/audio/bgm-mysterious+dark.mp3").is_some());
+    assert!(super::format::Asset::parse("assets/audio/bgm-Nope.mp3").is_none());
+    assert!(super::format::Asset::parse("assets/audio/sfx-abcdef0123456789.mp3").is_none());
+    assert!(super::format::Asset::parse("assets/audio/../bgm-theme.mp3").is_none());
+}
+
+#[test]
+fn a_pack_with_a_bad_mp3_header_is_refused() {
+    let table = played("vn-audio-bad-mp3");
+    let pack = export(&table);
+    let broken = table.root.join("bad.ttvn");
+    let mut archive = zip::ZipArchive::new(std::fs::File::open(&pack).unwrap()).unwrap();
+    let mut out = zip::ZipWriter::new(std::fs::File::create(&broken).unwrap());
+    for index in 0..archive.len() {
+        let mut file = archive.by_index(index).unwrap();
+        let name = file.name().to_owned();
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes).unwrap();
+        if name.ends_with(".mp3") {
+            bytes = b"NOPE".to_vec();
+        }
+        out.start_file(&name, zip::write::SimpleFileOptions::default())
+            .unwrap();
+        std::io::Write::write_all(&mut out, &bytes).unwrap();
+    }
+    out.finish().unwrap();
+    assert!(import_work(&table.root, &broken, ImportMode::Replay, false).is_err());
 }
 
 #[test]

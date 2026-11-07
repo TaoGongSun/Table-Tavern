@@ -96,6 +96,9 @@ const COPY = {
     vnSpriteVariantDelete: "刪除變體",
     vnSpriteVariantInvalid: "變體名要 1–24 字、不能重名，也不能含 @、括號、逗號或冒號。",
     vnSpriteMattingDownload: "去背模型下載失敗或檔案不符，請稍後再試。",
+    vnBgmVolume: "音樂音量",
+    vnSfxVolume: "音效音量",
+    vnMute: "靜音",
   },
   "zh-CN": {
     vnBackgroundPreparing: "首幕背景生成中……可以先开始，背景好了会自动淡入。",
@@ -192,6 +195,9 @@ const COPY = {
     vnSpriteVariantDelete: "删除变体",
     vnSpriteVariantInvalid: "变体名要 1–24 字、不能重名，也不能含 @、括号、逗号或冒号。",
     vnSpriteMattingDownload: "去背模型下载失败或文件不符，请稍后再试。",
+    vnBgmVolume: "音乐音量",
+    vnSfxVolume: "音效音量",
+    vnMute: "静音",
   },
   en: {
     vnBackgroundPreparing: "Generating the first scene's background… You can start now; it fades in when ready.",
@@ -288,6 +294,9 @@ const COPY = {
     vnSpriteVariantDelete: "Delete variant",
     vnSpriteVariantInvalid: "Variant names need 1–24 characters, must be unique, and cannot contain @, brackets, commas or colons.",
     vnSpriteMattingDownload: "The background-removal model failed to download or did not match. Please try again later.",
+    vnBgmVolume: "Music volume",
+    vnSfxVolume: "Sound effect volume",
+    vnMute: "Mute",
   },
   ja: {
     vnBackgroundPreparing: "最初の場面の背景を生成中…先に始めても大丈夫です。完成すると自動でフェードインします。",
@@ -384,6 +393,9 @@ const COPY = {
     vnSpriteVariantDelete: "差分を削除",
     vnSpriteVariantInvalid: "名前は 1〜24 文字で重複不可、@・括弧・カンマ・コロンは使えません。",
     vnSpriteMattingDownload: "背景除去モデルのダウンロードに失敗したか、ファイルが一致しません。後でもう一度お試しください。",
+    vnBgmVolume: "音楽の音量",
+    vnSfxVolume: "効果音の音量",
+    vnMute: "ミュート",
   },
   ko: {
     vnBackgroundPreparing: "첫 장면 배경을 생성하는 중… 먼저 시작해도 됩니다. 완성되면 자동으로 페이드인됩니다.",
@@ -480,6 +492,9 @@ const COPY = {
     vnSpriteVariantDelete: "변형 삭제",
     vnSpriteVariantInvalid: "변형 이름은 1–24자, 중복 불가이며 @, 괄호, 쉼표, 콜론을 쓸 수 없습니다.",
     vnSpriteMattingDownload: "배경 제거 모델 다운로드에 실패했거나 파일이 일치하지 않습니다. 잠시 후 다시 시도하세요.",
+    vnBgmVolume: "음악 음량",
+    vnSfxVolume: "효과음 음량",
+    vnMute: "음소거",
   },
   es: {
     vnBackgroundPreparing: "Generando el fondo de la primera escena… Puedes empezar ya; aparecerá cuando esté listo.",
@@ -576,6 +591,9 @@ const COPY = {
     vnSpriteVariantDelete: "Eliminar variante",
     vnSpriteVariantInvalid: "El nombre debe tener 1–24 caracteres, ser único y no llevar @, paréntesis, comas ni dos puntos.",
     vnSpriteMattingDownload: "No se pudo descargar el modelo de recorte o no coincide. Inténtalo más tarde.",
+    vnBgmVolume: "Volumen de la música",
+    vnSfxVolume: "Volumen de efectos",
+    vnMute: "Silencio",
   },
   "pt-BR": {
     vnBackgroundPreparing: "Gerando o fundo da primeira cena… Você já pode começar; ele aparece quando ficar pronto.",
@@ -672,6 +690,9 @@ const COPY = {
     vnSpriteVariantDelete: "Excluir variante",
     vnSpriteVariantInvalid: "O nome precisa ter 1–24 caracteres, ser único e não conter @, parênteses, vírgulas ou dois-pontos.",
     vnSpriteMattingDownload: "Falha ao baixar o modelo de recorte ou o arquivo não confere. Tente mais tarde.",
+    vnBgmVolume: "Volume da música",
+    vnSfxVolume: "Volume dos efeitos",
+    vnMute: "Mudo",
   },
   de: {
     vnBackgroundPreparing: "Hintergrund der ersten Szene wird erzeugt … Du kannst schon starten; er blendet sich ein, sobald er fertig ist.",
@@ -768,6 +789,9 @@ const COPY = {
     vnSpriteVariantDelete: "Variante löschen",
     vnSpriteVariantInvalid: "Namen brauchen 1–24 Zeichen, müssen eindeutig sein und dürfen kein @, keine Klammern, Kommas oder Doppelpunkte enthalten.",
     vnSpriteMattingDownload: "Das Freistellungsmodell konnte nicht geladen werden oder stimmt nicht. Bitte später erneut versuchen.",
+    vnBgmVolume: "Musiklautstärke",
+    vnSfxVolume: "Effektlautstärke",
+    vnMute: "Stumm",
   },
   fr: {
     vnBackgroundPreparing: "Génération du fond de la première scène… Vous pouvez commencer ; il apparaîtra une fois prêt.",
@@ -864,6 +888,9 @@ const COPY = {
     vnSpriteVariantDelete: "Supprimer la variante",
     vnSpriteVariantInvalid: "Le nom doit faire 1 à 24 caractères, être unique et ne pas contenir @, parenthèses, virgules ni deux-points.",
     vnSpriteMattingDownload: "Le modèle de détourage n’a pas pu être téléchargé ou ne correspond pas. Réessayez plus tard.",
+    vnBgmVolume: "Volume de la musique",
+    vnSfxVolume: "Volume des effets",
+    vnMute: "Muet",
   },
   ru: {
     vnBackgroundPreparing: "Создаётся фон первой сцены… Можно начинать: он появится, когда будет готов.",
@@ -960,6 +987,9 @@ const COPY = {
     vnSpriteVariantDelete: "Удалить вариант",
     vnSpriteVariantInvalid: "Имя: 1–24 символа, без повторов и без @, скобок, запятых и двоеточий.",
     vnSpriteMattingDownload: "Не удалось загрузить модель удаления фона или файл не совпал. Повторите позже.",
+    vnBgmVolume: "Громкость музыки",
+    vnSfxVolume: "Громкость эффектов",
+    vnMute: "Без звука",
   },
 } as const;
 

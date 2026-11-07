@@ -158,6 +158,7 @@ export function VnWizard({
     setVisitedStory(true);
     void onCreated(id);
     invoke("vn_backgrounds_fill", { worldId: id, scene: null }).catch(() => {});
+    invoke("vn_audio_fill", { worldId: id, scene: null }).catch(() => {});
   }
 
   async function begin() {

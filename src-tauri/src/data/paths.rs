@@ -157,6 +157,11 @@ pub(crate) fn vn_background_dir(root: &Path, world_id: &str) -> DataResult<PathB
     Ok(world_dir(root, world_id)?.join("vn").join("backgrounds"))
 }
 
+/// VN 音訊目錄：worlds/<world_id>/vn/audio（BGM 與選填音效）。
+pub(crate) fn vn_audio_dir(root: &Path, world_id: &str) -> DataResult<PathBuf> {
+    Ok(world_dir(root, world_id)?.join("vn").join("audio"))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::data::test_support::*;

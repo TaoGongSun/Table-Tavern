@@ -132,6 +132,8 @@ export const en: Record<MsgKey, string> = {
   transportCn: "SiliconFlow",
   cnGetKeyBtn: "Get a key",
   cnKeyLabel: "SiliconFlow API key",
+  freesoundKeyLabel: "Freesound API token (VN sound effects, optional)",
+  freesoundKeyNote: "Optional. Leave blank to skip sound effects; background music needs no key.",
   cnDefaultOption: "Default ({model})",
   cnRiskNote: "Free models only; a failure never switches to a paid model. SiliconFlow moderates content: adult or violent cards may be refused or get the account banned, and that risk falls on whoever owns this key.",
   cliSubscriptionSuffix: " (subscription mode, advanced)",

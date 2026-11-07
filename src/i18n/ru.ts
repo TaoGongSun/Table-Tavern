@@ -131,6 +131,8 @@ export const ru: Record<MsgKey, string> = {
   transportCn: "SiliconFlow",
   cnGetKeyBtn: "Получить ключ",
   cnKeyLabel: "API-ключ SiliconFlow",
+  freesoundKeyLabel: "Токен API Freesound (эффекты VN, необязательно)",
+  freesoundKeyNote: "Необязательно. Пусто — без эффектов; музыке ключ не нужен.",
   cnDefaultOption: "По умолчанию ({model})",
   cnRiskNote: "Только бесплатные модели; при сбое переключения на платную модель не будет. SiliconFlow модерирует контент: карточки для взрослых или с насилием могут быть отклонены или привести к блокировке аккаунта, и этот риск несёт владелец ключа.",
   cliSubscriptionSuffix: " (режим подписки, для продвинутых)",

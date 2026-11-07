@@ -35,6 +35,9 @@ pub(crate) struct Limits {
     /// 附設定：`settings/history/<幕>.json` 每檔、`settings/world.md`
     pub history_bytes: u64,
     pub world_bytes: u64,
+    /// 作品包裡單首 BGM、以及 bgm 檔數（音效不進包）
+    pub audio_bytes: u64,
+    pub audio_files: usize,
 }
 
 pub(crate) const LIMITS: Limits = Limits {
@@ -53,6 +56,8 @@ pub(crate) const LIMITS: Limits = Limits {
     characters: 32,
     history_bytes: 16 << 20,
     world_bytes: 256 << 10,
+    audio_bytes: 32 << 20,
+    audio_files: 200,
 };
 
 /// 字串夾斷上限（字元）
@@ -225,6 +230,12 @@ pub(crate) enum Asset {
         character: String,
     },
     Cover,
+    /// `assets/audio/bgm-<key>.mp3`，key 白名單 `^[a-z0-9+]{1,64}$`
+    Audio {
+        key: String,
+    },
+    /// `assets/audio/audio.json`
+    AudioIndex,
 }
 
 impl Asset {
@@ -255,6 +266,8 @@ impl Asset {
                 format!("assets/characters/{character}.avatar.png")
             }
             Self::Cover => COVER.to_owned(),
+            Self::Audio { key } => format!("assets/audio/bgm-{key}.mp3"),
+            Self::AudioIndex => "assets/audio/audio.json".to_owned(),
         }
     }
 
@@ -309,6 +322,14 @@ impl Asset {
                     period: period.to_owned(),
                 })
             }
+            ["assets", "audio", "audio.json"] => Some(Self::AudioIndex),
+            ["assets", "audio", file] => {
+                let key = file.strip_prefix("bgm-")?.strip_suffix(".mp3")?;
+                crate::vn_audio::valid_key(key).then_some(())?;
+                Some(Self::Audio {
+                    key: key.to_owned(),
+                })
+            }
             ["assets", "characters", file] => match file.strip_suffix(".avatar.png") {
                 Some(character) => Some(Self::CharacterAvatar {
                     character: id(character)?,
@@ -328,7 +349,7 @@ impl Asset {
             | Self::SpriteFace { character, .. }
             | Self::CharacterImage { character }
             | Self::CharacterAvatar { character } => Some(character),
-            Self::Background { .. } | Self::Cover => None,
+            Self::Background { .. } | Self::Cover | Self::Audio { .. } | Self::AudioIndex => None,
         }
     }
 }

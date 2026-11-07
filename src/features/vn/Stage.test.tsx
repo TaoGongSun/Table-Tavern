@@ -49,6 +49,7 @@ function render(expressions: Record<string, string>, slots: (string | null)[] = 
     time: null,
     backdrop: null,
     weather: "clear",
+    bgm: null,
   };
   const host = document.createElement("div");
   act(() =>
@@ -129,6 +130,7 @@ describe("sprite arrival", () => {
     time: null,
     backdrop,
     weather,
+    bgm: null,
   });
   it("swaps card art for the new sprite only on the next cell, fading the old one out", () => {
     const host = document.createElement("div");
@@ -174,6 +176,7 @@ describe("weather layers", () => {
       time: null,
       backdrop: { location: "港口", slug: "s", period },
       weather,
+      bgm: null,
     };
     act(() => createRoot(host).render(<Stage stage={stage} sprites={{}} images={{}} cellKey="k" />));
     return host;

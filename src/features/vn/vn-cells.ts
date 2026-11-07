@@ -79,7 +79,7 @@ export const isTerminal = (cell: VnCell) =>
 
 /**
  * 游標可停的格：文字格（玩家句與換幕摘要除外，只進 log）＋正式終止格。串流暫定格裡的終止標記可能在提交時
- * 被剝掉，不當停點。`[bg]` 不停（舞台照摺疊）。
+ * 被剝掉，不當停點。`[bg]`、`[bgm]`、`[sfx]` 不停（舞台照摺疊）。
  * - 選項格看後端的選項點標記（包 6 §2.2）：已選過的可停（過去的選項面板）；未選的只在它是本幕最後一則
  *   正式事件時停，後面還有角色線就等播完再出面板（`liveChoice`）；不是選項點（被取代）不停。
  * - 章末、結局只在屬於本幕最後一則正式事件時有效。
@@ -178,6 +178,8 @@ export interface Stage {
   backdrop: Backdrop | null;
   /** 目前天氣 clear／overcast／fog／rain */
   weather: string;
+  /** null＝還沒寫過配樂（播主題曲）；空陣列＝靜音 */
+  bgm: string[] | null;
 }
 
 /** 進場順序：首位左、次位右、第三位中 */
@@ -196,6 +198,7 @@ export function stageAt(cells: FlatCell[], index: number): Stage {
     time: null,
     backdrop: null,
     weather: "clear",
+    bgm: null,
   };
   let recent: string[] = [];
   for (const { cell } of cells.slice(0, index + 1)) {
@@ -211,6 +214,10 @@ export function stageAt(cells: FlatCell[], index: number): Stage {
       // 天氣同理：暫定格沒寫＝同地點沿用、換地點回晴
       stage.weather = cell.weather ?? (stage.backdrop?.slug === cell.slug ? stage.weather : "clear");
       stage.backdrop = { location: cell.location, slug: cell.slug, period };
+      continue;
+    }
+    if (cell.type === "bgm") {
+      stage.bgm = cell.moods;
       continue;
     }
     if (cell.type !== "dialogue" || !cell.speaker_id || cell.speaker_id === PLAYER_ID) continue;

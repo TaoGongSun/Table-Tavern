@@ -399,3 +399,25 @@ fn leaked_relay_lines_never_become_cells() {
         vec![narration("門開了。"), choices(&["進去", "離開"])]
     );
 }
+
+#[test]
+fn bgm_and_sfx_markers_parse_and_drop_unknown_moods() {
+    match &gm("[bgm: Mysterious, Dark]")[0] {
+        VnCell::Bgm { moods } => assert_eq!(moods, &["Mysterious".to_owned(), "Dark".to_owned()]),
+        other => panic!("{other:?}"),
+    }
+    match &gm("[bgm: off]")[0] {
+        VnCell::Bgm { moods } => assert!(moods.is_empty()),
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(gm("[bgm: NotAMood]\n霧。"), vec![narration("霧。")]);
+    match &gm("[sfx: door creak]")[0] {
+        VnCell::Sfx { query, key } => {
+            assert_eq!(query, "door creak");
+            assert_eq!(key.len(), 16);
+        }
+        other => panic!("{other:?}"),
+    }
+    let reply = "[bgm: Mysterious]\n[sfx: door creak]\n狐狸 (happy): 「嗨」";
+    assert_eq!(filter_character_reply(reply), "狐狸 (happy): 「嗨」");
+}

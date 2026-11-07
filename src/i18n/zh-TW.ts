@@ -139,6 +139,8 @@ export const zh = {
   transportCn: "矽基流動",
   cnGetKeyBtn: "申請金鑰",
   cnKeyLabel: "矽基流動 API 金鑰",
+  freesoundKeyLabel: "Freesound API 金鑰（VN 音效，選填）",
+  freesoundKeyNote: "選填。空白就不抓音效；背景音樂不用金鑰。",
   cnDefaultOption: "預設（{model}）",
   cnRiskNote: "只用免費模型，失敗也不會改用付費模型。矽基流動會審核內容，成人或暴力向的卡可能被拒答甚至封號，風險由出這把金鑰的人承擔。",
   cliSubscriptionSuffix: "（訂閱模式，進階）",

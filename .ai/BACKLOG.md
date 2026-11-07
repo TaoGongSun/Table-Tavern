@@ -45,7 +45,6 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 
 ## 階段 G：整理與立案
 - [ai-workspace-tidy](tasks/ai-workspace-tidy.md) — .ai/tasks/ 累積到 62 檔，逐檔判斷該留該刪該封存 — 下一步：未排程；開工首步＝比對 tasks/ 與 BACKLOG.md 列出三類清單，狀態不明的逐條問使用者。
-- [vn-audio](tasks/vn-audio.md) — VN 音訊 — 下一步：暫不動工、保留立案〔模型判斷·未裁決〕；屬 vn-mode 後續
 
 ## 階段 H：VN 模式
 - [vn-cg-generation](tasks/vn-cg-generation.md) — VN 模式 CG 即時生成：外接吃到飽生圖訂閱（NAI 類）＋提示詞規範 — 下一步：前置 [vn-mode](handoffs/archive/vn-mode.md)（v1）已合 main（2026-11-04）、待作者實機試玩，本任務為其 v3 分期；最省驗證＝拿一把 NAI token 打一發看出圖品質與回傳格式

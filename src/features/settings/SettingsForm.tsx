@@ -1,6 +1,7 @@
 import { FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { t } from "../../i18n";
 import { backendText } from "../../shared/ui/backend-text";
 import { checkApiKey } from "../ai-connection/api-key-check";
@@ -175,6 +176,8 @@ export function Settings({
   // 中國供應商＝API 通道指到矽基流動：金鑰另存一槽，檔位模型照命令列工具那樣存 siliconflow:<檔位>
   const onSiliconFlow = isSiliconFlow(baseUrl);
   const [cnKey, setCnKey] = useState(config.api_keys["siliconflow"] ?? "");
+  const [freesoundKey, setFreesoundKey] = useState(config.api_keys["freesound"] ?? "");
+  const FREESOUND_KEY_URL = "https://freesound.org/apiv2/apply";
   const [imageModel, setImageModel] = useState(String(config.preferences["image_model"] ?? ""));
   const [claudeCompatBaseUrl, setClaudeCompatBaseUrl] = useState(
     String(config.preferences["claude_base_url"] ?? ""),
@@ -480,6 +483,7 @@ export function Settings({
   const dirtyCount = [
     apiKey.trim() !== (config.api_keys["openrouter"] ?? ""),
     cnKey.trim() !== (config.api_keys["siliconflow"] ?? ""),
+    freesoundKey.trim() !== (config.api_keys["freesound"] ?? ""),
     baseUrl.trim() !== String(config.preferences["base_url"] ?? ""),
     !imageModelHidden && imageModel.trim() !== String(config.preferences["image_model"] ?? ""),
     claudeCompatBaseUrl.trim() !== String(config.preferences["claude_base_url"] ?? ""),
@@ -568,6 +572,9 @@ export function Settings({
     const apiKeys: Record<string, string> = {};
     if (apiKey.trim() !== (config.api_keys["openrouter"] ?? "")) apiKeys.openrouter = apiKey.trim();
     if (cnKey.trim() !== (config.api_keys["siliconflow"] ?? "")) apiKeys.siliconflow = cnKey.trim();
+    if (freesoundKey.trim() !== (config.api_keys["freesound"] ?? "")) {
+      apiKeys.freesound = freesoundKey.trim();
+    }
     if (claudeCompatKey.trim() !== (config.api_keys["claude_compat"] ?? "")) {
       apiKeys.claude_compat = claudeCompatKey.trim();
     }
@@ -945,6 +952,22 @@ export function Settings({
               />
             </label>
           )}
+          {/* VN 音效的選填金鑰：放在 AI 連線整組之後，不夾進任何供應商那組 */}
+          <label>
+            {t("freesoundKeyLabel")}
+            <input
+              type="password"
+              value={freesoundKey}
+              autoComplete="off"
+              onChange={(e) => setFreesoundKey(e.currentTarget.value)}
+            />
+          </label>
+          <p className="cli-permission-note" role="note">
+            {t("freesoundKeyNote")}{" "}
+            <button type="button" className="link" onClick={() => void openUrl(FREESOUND_KEY_URL)}>
+              freesound.org
+            </button>
+          </p>
         </fieldset>
         {children}
       </div>

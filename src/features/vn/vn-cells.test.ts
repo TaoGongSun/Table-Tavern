@@ -155,6 +155,14 @@ describe("stageAt", () => {
     expect(at([bg("Inn", null, null)]).backdrop?.period).toBe("day");
   });
 
+  it("bgm sticks across a location change and off clears it", () => {
+    const bgm = (moods: string[]): VnCell => ({ type: "bgm", moods });
+    expect(at([n("x")]).bgm).toBeNull();
+    expect(at([bgm(["Mysterious", "Dark"]), n("a")]).bgm).toEqual(["Mysterious", "Dark"]);
+    expect(at([bgm(["Dark"]), bg("Inn"), n("a")]).bgm).toEqual(["Dark"]);
+    expect(at([bgm(["Dark"]), bgm([])]).bgm).toEqual([]);
+  });
+
   it("weather: a pending cell without one keeps it at the same place and clears at a new place", () => {
     expect(at([n("x")]).weather).toBe("clear");
     expect(at([bg("Port", "dusk", "dusk", "rain"), bg("Port", "night")]).weather).toBe("rain");

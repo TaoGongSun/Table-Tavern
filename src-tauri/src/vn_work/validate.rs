@@ -326,6 +326,7 @@ fn assets(
     let mut seen = BTreeSet::new();
     let mut out = Vec::new();
     let mut images = 0usize;
+    let mut audio_files = 0usize;
     let mut sprites = BTreeSet::new();
     let mut bases = BTreeSet::new();
     for path in &manifest.assets {
@@ -347,11 +348,13 @@ fn assets(
                 bases.insert(character.clone());
                 images += 1;
             }
+            Asset::Audio { .. } => audio_files += 1,
+            Asset::AudioIndex => {}
             _ => images += 1,
         }
         out.push(asset);
     }
-    if images > limits.images {
+    if images > limits.images || audio_files > limits.audio_files {
         return Err(UiMsg::VnWorkTooLarge.to_string());
     }
     if let Some(character) = sprites.difference(&bases).next() {
