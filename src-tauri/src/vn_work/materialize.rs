@@ -169,8 +169,8 @@ impl Build<'_> {
         for asset in assets {
             match asset {
                 Asset::AudioIndex => saw_index = true,
-                Asset::Audio { key } => {
-                    audio_keys.insert(key.clone());
+                Asset::Audio { kind, key } => {
+                    audio_keys.insert((kind.prefix().to_owned(), key.clone()));
                     self.write_asset(asset, &mut pixels)?;
                 }
                 _ => self.write_asset(asset, &mut pixels)?,
@@ -262,28 +262,29 @@ impl Build<'_> {
                 .map_err(text)?
                 .with_extension("avatar.png"),
             Asset::Cover => vn::cover_path(root, world).map_err(text)?,
-            Asset::Audio { key } => data::vn_audio_dir(root, world)
+            Asset::Audio { kind, key } => data::vn_audio_dir(root, world)
                 .map_err(text)?
-                .join(format!("bgm-{key}.mp3")),
+                .join(format!("{}-{key}.mp3", kind.prefix())),
             Asset::AudioIndex => data::vn_audio_dir(root, world)
                 .map_err(text)?
                 .join("audio.json"),
         })
     }
 
-    fn write_audio_index(&mut self, keys: &BTreeSet<String>) -> Result<(), String> {
+    fn write_audio_index(&mut self, keys: &BTreeSet<(String, String)>) -> Result<(), String> {
         let name = Asset::AudioIndex.path();
         let raw = self
             .pack
             .read(&name, self.limits.json_bytes)?
             .unwrap_or_default();
-        let entries = crate::vn_audio::import_entries(&raw, keys).map_err(|error| {
-            if error == "AUDIO_INDEX_TOO_MANY" {
-                UiMsg::VnWorkTooLarge.to_string()
-            } else {
-                broken(format!("{name}: {error}"))
-            }
-        })?;
+        let entries = crate::vn_audio::import_entries(&raw, keys, self.limits.audio_files)
+            .map_err(|error| {
+                if error == "AUDIO_INDEX_TOO_MANY" {
+                    UiMsg::VnWorkTooLarge.to_string()
+                } else {
+                    broken(format!("{name}: {error}"))
+                }
+            })?;
         let bytes = serde_json::to_vec(&entries).map_err(text)?;
         data::commit_world_write_atomic(&self.target(&Asset::AudioIndex)?, &bytes).map_err(text)
     }

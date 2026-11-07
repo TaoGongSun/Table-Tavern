@@ -142,23 +142,27 @@ fn license_rejects_a_forged_url_and_a_longer_attribution_name() {
 }
 
 #[test]
-fn import_drops_sfx_and_unknown_keys_and_rejects_too_many() {
+fn import_keeps_sfx_that_landed_and_drops_the_rest() {
     let bytes = br#"[
         {"kind":"bgm","key":"theme","title":"T","author":"Kevin MacLeod","source_url":"https://incompetech.com/a","license":"CC BY 4.0"},
         {"kind":"sfx","key":"abcdef0123456789","title":"door","author":"x","source_url":"https://freesound.org/s","license":"Creative Commons 0"},
+        {"kind":"sfx","key":"0123456789abcdef","title":"gone","author":"x","source_url":"","license":""},
         {"kind":"bgm","key":"Nope","title":"x","author":"x","source_url":"","license":""},
         {"kind":"bgm","key":"dark","title":"missing","author":"x","source_url":"","license":""}
     ]"#;
     let mut keys = BTreeSet::new();
-    keys.insert("theme".to_owned());
-    let entries = import_entries(bytes, &keys).unwrap();
-    assert_eq!(entries.len(), 1);
+    keys.insert(("bgm".to_owned(), "theme".to_owned()));
+    keys.insert(("sfx".to_owned(), "abcdef0123456789".to_owned()));
+    let entries = import_entries(bytes, &keys, 200).unwrap();
+    assert_eq!(entries.len(), 2);
     assert_eq!(entries[0].key, "theme");
+    assert_eq!(entries[1].kind, "sfx");
+    assert_eq!(entries[1].key, "abcdef0123456789");
     let many = format!(
         "[{}]",
         vec![r#"{"kind":"bgm","key":"theme"}"#; 201].join(",")
     );
-    assert!(import_entries(many.as_bytes(), &keys).is_err());
+    assert!(import_entries(many.as_bytes(), &keys, 200).is_err());
 }
 
 #[test]

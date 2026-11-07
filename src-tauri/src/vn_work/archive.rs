@@ -5,10 +5,11 @@
 //! 條目名只當查表鍵，從不拼進落檔路徑。重複名：zip crate 解析中央目錄時同名只留一筆，我們只透過這份解析結果讀，
 //! 不會出現「驗的是 A、讀到 B」。
 use super::format::Limits;
+use super::opaque::{self, Opaque};
 use crate::ui_msg::UiMsg;
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufReader, Read};
+use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
 use zip::{CompressionMethod, ZipArchive};
 
@@ -18,7 +19,7 @@ const S_IFREG: u32 = 0o100000;
 const S_IFDIR: u32 = 0o040000;
 
 pub(crate) struct Pack {
-    archive: ZipArchive<BufReader<File>>,
+    archive: ZipArchive<BufReader<Opaque<File>>>,
     index: HashMap<String, usize>,
     read_total: u64,
     limits: Limits,
@@ -45,8 +46,7 @@ const DIRECTORY_ENTRY_BYTES: u64 = 1024;
 /// 所以每個它可能採用的候選都要先驗——原始條目數（crate 用「本碟條目數」，兩個都驗）與中央目錄大小不得超限，
 /// 前面緊貼 zip64 定位標記就拒（crate 會改讀 zip64 的 64 位元條目數）。本碟號與目錄所在碟號不同的候選 crate 必拒，
 /// 跳過不驗，免得圖片位元組裡碰巧出現的簽名誤擋正常包。檔案已受 `pack_bytes` 限，串流讀不吃記憶體。
-fn check_directory(file: &mut File, entries: usize) -> Result<(), String> {
-    use std::io::{Seek, SeekFrom};
+fn check_directory(file: &mut (impl Read + Seek), entries: usize) -> Result<(), String> {
     const CHUNK: usize = 1 << 20;
     // 候選前 20 位元組（定位標記）＋本身 22 位元組，換塊時留尾巴接著驗
     const CARRY: usize = 64;
@@ -111,7 +111,13 @@ impl Pack {
         if size > limits.pack_bytes {
             return Err(too_large());
         }
-        let mut file = File::open(path).map_err(|error| {
+        let file = File::open(path).map_err(|error| {
+            UiMsg::IoFailed {
+                error: error.to_string(),
+            }
+            .to_string()
+        })?;
+        let mut file = opaque::open(file).map_err(|error| {
             UiMsg::IoFailed {
                 error: error.to_string(),
             }

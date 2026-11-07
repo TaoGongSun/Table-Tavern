@@ -37,7 +37,7 @@
 
 ## 4. 作品包
 
-`vn_work/format.rs` 的 `Asset` 加 `Audio { key }`（路徑 `assets/audio/bgm-<key>.mp3`，key 白名單 `^[a-z0-9+]{1,64}$`，副檔名由型別決定、不從索引拿）與 `AudioIndex`（`assets/audio/audio.json`，走 `json_bytes`）；`export.rs` 掃 `vn/audio/` 只帶 `bgm-*`、`materialize.rs` 寫回；`LIMITS` 加 `audio_bytes: 32 << 20`（每檔）與 `audio_files: 200`（實際計數），總量沿用 `total_bytes`。**匯入契約**：audio.json 最多 200 筆，每筆 `kind` 只准 `bgm`、`key` 合白名單、字串欄位夾斷（title／author ≤200、source_url／license ≤500）、每筆必須對到包內已驗過的 `bgm-<key>.mp3`，對不到的筆丟掉；寫回與取 URL 都用 kind＋key 重組路徑，不信索引字串。mp3 進包與匯入都做同一套檔頭檢查（§2），不轉碼。**音效不進作品包**：Freesound API 對快取與再散布的界線未確認，v1 只帶 BGM（CC BY 明確可散布）；匯入桌有 token 的話 `[sfx]` 格照常自己抓，audio.json 裡 sfx 條目匯出時剔除〔模型判斷·未裁決〕。
+`vn_work/format.rs` 的 `Asset` 有 `Audio { kind, key }`（路徑 `assets/audio/<kind>-<key>.mp3`；bgm 鍵白名單 `^[a-z0-9+]{1,64}$`、sfx 鍵 16 個小寫 hex；副檔名由型別決定、不從索引拿）與 `AudioIndex`（`assets/audio/audio.json`，走 `json_bytes`）；`export.rs` 掃 `vn/audio/` 的 bgm 與 sfx、`materialize.rs` 寫回；`LIMITS` 有 `audio_bytes: 32 << 20`（每檔）與 `audio_files: 1000`（兩種合計、實際計數），總量沿用 `total_bytes`。**匯入契約**：audio.json 最多 `audio_files` 筆，每筆 `kind` 只准 `bgm`／`sfx`、`key` 合該種白名單、字串欄位夾斷（title／author ≤200、source_url／license ≤500）、每筆必須對到包內已驗過的同種 mp3，對不到的筆丟掉；寫回與取 URL 都用 kind＋key 重組路徑，不信索引字串。mp3 進包與匯入都做同一套檔頭檢查（§2），不轉碼。容器與音效進包的裁決見 [vn-pack-opaque](vn-pack-opaque.md)。
 
 ## 5. 驗收（Sol 一輪）
 
@@ -57,7 +57,7 @@
 
 ## 已知限制
 - 只挑情緒不挑曲風，古代場景可能配到電子樂。
-- 音效不進作品包；匯入桌要自己的 Freesound token 才有音效。
+- 音效隨包帶走（vn-pack-opaque）。
 - 第一次播某情緒要等下載（5 分鐘曲約 12 MB），期間無聲。
 
 ## 觀察（範圍外，只記一行）

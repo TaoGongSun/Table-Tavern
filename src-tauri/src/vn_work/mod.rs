@@ -3,6 +3,7 @@ mod archive;
 mod export;
 mod format;
 mod materialize;
+mod opaque;
 mod settings;
 mod validate;
 

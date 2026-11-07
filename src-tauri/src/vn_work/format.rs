@@ -35,7 +35,7 @@ pub(crate) struct Limits {
     /// 附設定：`settings/history/<幕>.json` 每檔、`settings/world.md`
     pub history_bytes: u64,
     pub world_bytes: u64,
-    /// 作品包裡單首 BGM、以及 bgm 檔數（音效不進包）
+    /// 作品包裡單首音訊（bgm 或 sfx），以及兩者合計檔數
     pub audio_bytes: u64,
     pub audio_files: usize,
 }
@@ -57,7 +57,7 @@ pub(crate) const LIMITS: Limits = Limits {
     history_bytes: 16 << 20,
     world_bytes: 256 << 10,
     audio_bytes: 32 << 20,
-    audio_files: 200,
+    audio_files: 1_000,
 };
 
 /// 字串夾斷上限（字元）
@@ -202,6 +202,22 @@ pub(crate) struct Character {
     pub variants: Vec<String>,
 }
 
+/// 作品包裡的音訊種類。前綴同時是檔名與 audio.json 的 kind。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AudioKind {
+    Bgm,
+    Sfx,
+}
+
+impl AudioKind {
+    pub(crate) fn prefix(self) -> &'static str {
+        match self {
+            Self::Bgm => "bgm",
+            Self::Sfx => "sfx",
+        }
+    }
+}
+
 /// 作品包裡的一個資產，路徑形狀只收這幾種（鍵都驗過，落檔路徑由鍵重組，條目名不進路徑）
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Asset {
@@ -230,8 +246,9 @@ pub(crate) enum Asset {
         character: String,
     },
     Cover,
-    /// `assets/audio/bgm-<key>.mp3`，key 白名單 `^[a-z0-9+]{1,64}$`
+    /// `assets/audio/<kind>-<key>.mp3`。bgm 鍵 `^[a-z0-9+]{1,64}$`；sfx 鍵只收 16 個小寫 hex
     Audio {
+        kind: AudioKind,
         key: String,
     },
     /// `assets/audio/audio.json`
@@ -266,7 +283,7 @@ impl Asset {
                 format!("assets/characters/{character}.avatar.png")
             }
             Self::Cover => COVER.to_owned(),
-            Self::Audio { key } => format!("assets/audio/bgm-{key}.mp3"),
+            Self::Audio { kind, key } => format!("assets/audio/{}-{key}.mp3", kind.prefix()),
             Self::AudioIndex => "assets/audio/audio.json".to_owned(),
         }
     }
@@ -324,9 +341,17 @@ impl Asset {
             }
             ["assets", "audio", "audio.json"] => Some(Self::AudioIndex),
             ["assets", "audio", file] => {
-                let key = file.strip_prefix("bgm-")?.strip_suffix(".mp3")?;
-                crate::vn_audio::valid_key(key).then_some(())?;
-                Some(Self::Audio {
+                let (kind, rest) = file
+                    .strip_prefix("bgm-")
+                    .map(|rest| (AudioKind::Bgm, rest))
+                    .or_else(|| file.strip_prefix("sfx-").map(|rest| (AudioKind::Sfx, rest)))?;
+                let key = rest.strip_suffix(".mp3")?;
+                let ok = match kind {
+                    AudioKind::Bgm => crate::vn_audio::valid_key(key),
+                    AudioKind::Sfx => crate::vn_audio::valid_sfx_key(key),
+                };
+                ok.then_some(Self::Audio {
+                    kind,
                     key: key.to_owned(),
                 })
             }

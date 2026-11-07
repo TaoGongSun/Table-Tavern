@@ -2,6 +2,7 @@
 //! 圖在鎖外逐張「嚴驗＋chunk 白名單」後串流寫進 zip；先寫 `<path>.part` 再改名，失敗不留半個檔。
 //! 寫完前用匯入端同一支結構驗證自驗，保證自家包自家收得下。
 use super::format::*;
+use super::opaque;
 use super::validate::{self, Notice, NoticeKind};
 use crate::data::vn::{self, CardOrigin};
 use crate::data::{self, TranscriptEvent, TranscriptKind, WorldState};
@@ -357,7 +358,7 @@ fn characters_of(root: &Path, world_id: &str, snap: &Snapshot) -> Result<Charact
 
 /// 要出包的圖（磁碟來源路徑、包內資產）：立繪定稿先過驗，過不了整份立繪（含 sprite.json）都不帶
 struct Writer<'a> {
-    zip: ZipWriter<BufWriter<File>>,
+    zip: ZipWriter<BufWriter<opaque::Opaque<File>>>,
     manifest: &'a mut Manifest,
     notices: &'a mut Vec<Notice>,
     bytes: u64,
@@ -439,7 +440,7 @@ fn write_pack(
     settings: &[(String, Vec<u8>)],
     notices: &mut Vec<Notice>,
 ) -> Result<(), String> {
-    let file = File::create(part).map_err(text)?;
+    let file = opaque::create(File::create(part).map_err(text)?).map_err(text)?;
     let mut out = Writer {
         zip: ZipWriter::new(BufWriter::new(file)),
         manifest,
@@ -489,7 +490,7 @@ fn write_pack(
     if images > LIMITS.images {
         return Err(UiMsg::VnWorkTooLarge.to_string());
     }
-    // 圖數算完才收 BGM，音訊不佔圖片上限。沒有合格 mp3 就整段省略。
+    // 圖數算完才收音訊，音訊不佔圖片上限。沒有合格 mp3 就整段省略。
     write_audio(root, world_id, &mut out)?;
     for (name, bytes) in settings {
         out.put(name, bytes, true)?;
@@ -507,45 +508,49 @@ fn write_pack(
         .finish()
         .map_err(text)?
         .into_inner()
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| error.to_string())?
+        .into_inner();
     file.sync_all().map_err(text)
 }
 
-/// 只收 `bgm-<白名單鍵>.mp3`。檔頭不對或超過單檔上限的略過；音效與索引裡的音效條目不進包。
+/// 收 `bgm-`／`sfx-` 的合格 mp3。檔頭不對、超過單檔上限、或音效鍵不是 16 個小寫 hex 的略過。
 fn write_audio(root: &Path, world_id: &str, out: &mut Writer<'_>) -> Result<(), String> {
     let dir = data::vn_audio_dir(root, world_id).map_err(text)?;
     let Ok(entries) = std::fs::read_dir(&dir) else {
         return Ok(());
     };
-    let mut files: Vec<(String, PathBuf)> = entries
+    // 檔名與包內路徑同一套規則：認得回來的才算候選（sfx 鍵必須是 16 個小寫 hex）
+    let mut files: Vec<(Asset, PathBuf)> = entries
         .flatten()
         .filter_map(|entry| {
             let name = entry.file_name().into_string().ok()?;
-            let key = name.strip_prefix("bgm-")?.strip_suffix(".mp3")?;
-            crate::vn_audio::valid_key(key).then(|| (key.to_owned(), entry.path()))
+            let asset = Asset::parse(&format!("assets/audio/{name}"))?;
+            matches!(asset, Asset::Audio { .. }).then(|| (asset, entry.path()))
         })
         .collect();
-    files.sort();
-    let mut keys = Vec::new();
-    for (key, path) in &files {
+    files.sort_by_key(|(asset, _)| asset.path());
+    let mut pairs = BTreeSet::new();
+    for (asset, path) in &files {
         let Ok(bytes) = std::fs::read(path) else {
             continue;
         };
         if bytes.len() as u64 > LIMITS.audio_bytes || !crate::vn_audio::mp3_ok(&bytes) {
             continue;
         }
-        if keys.len() >= LIMITS.audio_files {
+        if pairs.len() >= LIMITS.audio_files {
             return Err(UiMsg::VnWorkTooLarge.to_string());
         }
-        let name = Asset::Audio { key: key.clone() }.path();
+        let name = asset.path();
         out.put(&name, &bytes, false)?;
         out.manifest.assets.push(name);
-        keys.push(key.clone());
+        if let Asset::Audio { kind, key } = asset {
+            pairs.insert((kind.prefix().to_owned(), key.clone()));
+        }
     }
-    if keys.is_empty() {
+    if pairs.is_empty() {
         return Ok(());
     }
-    let index = crate::vn_audio::export_entries(&dir, &keys);
+    let index = crate::vn_audio::export_entries(&dir, &pairs);
     let name = Asset::AudioIndex.path();
     out.put(&name, &serde_json::to_vec(&index).map_err(text)?, true)?;
     out.manifest.assets.push(name);

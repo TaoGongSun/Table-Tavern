@@ -203,7 +203,8 @@ fn export(table: &Table) -> PathBuf {
 }
 
 pub(super) fn entries(path: &Path) -> Vec<(String, Vec<u8>)> {
-    let mut archive = zip::ZipArchive::new(std::fs::File::open(path).unwrap()).unwrap();
+    let file = super::opaque::open(std::fs::File::open(path).unwrap()).unwrap();
+    let mut archive = zip::ZipArchive::new(file).unwrap();
     (0..archive.len())
         .map(|i| {
             let mut file = archive.by_index(i).unwrap();
@@ -307,30 +308,34 @@ fn export_then_import_rebuilds_the_same_scenes_and_branches() {
     let packed = entries(&pack);
     let names: Vec<&str> = packed.iter().map(|(name, _)| name.as_str()).collect();
     assert!(names.contains(&"assets/audio/bgm-theme.mp3"));
+    assert!(names.contains(&"assets/audio/sfx-abcdef0123456789.mp3"));
     assert!(names.contains(&"assets/audio/audio.json"));
     assert!(!names
         .iter()
-        .any(|name| name.contains("sfx-") || name.contains("Nope") || name.contains("bgm-dark")));
+        .any(|name| name.contains("Nope") || name.contains("bgm-dark")));
     let index = packed
         .iter()
         .find(|(name, _)| name == "assets/audio/audio.json")
         .unwrap();
     let text = String::from_utf8(index.1.clone()).unwrap();
-    assert!(!text.contains("sfx"));
+    assert!(text.contains("sfx"));
     assert!(text.contains("theme"));
     let copied = data::vn_audio_dir(root, copy).unwrap();
     assert_eq!(
         std::fs::read(copied.join("bgm-theme.mp3")).unwrap(),
         b"ID3\x03\x00\x00"
     );
-    assert!(!copied.join("sfx-abcdef0123456789.mp3").exists());
-    assert!(!std::fs::read_to_string(copied.join("audio.json"))
+    assert_eq!(
+        std::fs::read(copied.join("sfx-abcdef0123456789.mp3")).unwrap(),
+        b"ID3\x03\x00\x00"
+    );
+    assert!(std::fs::read_to_string(copied.join("audio.json"))
         .unwrap()
         .contains("sfx"));
 }
 
 #[test]
-fn export_import_keeps_bgm_and_drops_sfx() {
+fn export_import_keeps_bgm_and_sfx() {
     let table = played("vn-audio-calming");
     let audio = data::vn_audio_dir(&table.root, &table.world).unwrap();
     for name in [
@@ -349,6 +354,9 @@ fn export_import_keeps_bgm_and_drops_sfx() {
     data::commit_world_write_atomic(&audio.join("audio.json"), index.as_bytes()).unwrap();
 
     let pack = export(&table);
+    let raw = std::fs::read(&pack).unwrap();
+    assert_eq!(&raw[..8], b"TTVNPK\x01\x00");
+    assert!(zip::ZipArchive::new(std::fs::File::open(&pack).unwrap()).is_err());
     let packed = entries(&pack);
     let manifest = packed
         .iter()
@@ -364,7 +372,11 @@ fn export_import_keeps_bgm_and_drops_sfx() {
         .collect();
     assert_eq!(
         audio_assets,
-        ["assets/audio/bgm-calming.mp3", "assets/audio/audio.json"]
+        [
+            "assets/audio/bgm-calming.mp3",
+            "assets/audio/sfx-abcdef0123456789.mp3",
+            "assets/audio/audio.json"
+        ]
     );
 
     let imported = import_work(&table.root, &pack, ImportMode::Replay, false).unwrap();
@@ -374,10 +386,13 @@ fn export_import_keeps_bgm_and_drops_sfx() {
         .map(|entry| entry.unwrap().file_name().into_string().unwrap())
         .collect();
     names.sort();
-    assert_eq!(names, ["audio.json", "bgm-calming.mp3"]);
+    assert_eq!(
+        names,
+        ["audio.json", "bgm-calming.mp3", "sfx-abcdef0123456789.mp3"]
+    );
     let text = std::fs::read_to_string(copied.join("audio.json")).unwrap();
     assert!(text.contains("\"key\":\"calming\"") || text.contains("\"key\": \"calming\""));
-    assert!(!text.contains("sfx"));
+    assert!(text.contains("sfx"));
 }
 
 #[test]
@@ -385,7 +400,9 @@ fn audio_asset_names_are_whitelist_only() {
     assert!(super::format::Asset::parse("assets/audio/bgm-theme.mp3").is_some());
     assert!(super::format::Asset::parse("assets/audio/bgm-mysterious+dark.mp3").is_some());
     assert!(super::format::Asset::parse("assets/audio/bgm-Nope.mp3").is_none());
-    assert!(super::format::Asset::parse("assets/audio/sfx-abcdef0123456789.mp3").is_none());
+    assert!(super::format::Asset::parse("assets/audio/sfx-abcdef0123456789.mp3").is_some());
+    assert!(super::format::Asset::parse("assets/audio/sfx-Nope.mp3").is_none());
+    assert!(super::format::Asset::parse("assets/audio/sfx-abc.mp3").is_none());
     assert!(super::format::Asset::parse("assets/audio/../bgm-theme.mp3").is_none());
 }
 
@@ -394,8 +411,12 @@ fn a_pack_with_a_bad_mp3_header_is_refused() {
     let table = played("vn-audio-bad-mp3");
     let pack = export(&table);
     let broken = table.root.join("bad.ttvn");
-    let mut archive = zip::ZipArchive::new(std::fs::File::open(&pack).unwrap()).unwrap();
-    let mut out = zip::ZipWriter::new(std::fs::File::create(&broken).unwrap());
+    let mut archive =
+        zip::ZipArchive::new(super::opaque::open(std::fs::File::open(&pack).unwrap()).unwrap())
+            .unwrap();
+    let mut out = zip::ZipWriter::new(
+        super::opaque::create(std::fs::File::create(&broken).unwrap()).unwrap(),
+    );
     for index in 0..archive.len() {
         let mut file = archive.by_index(index).unwrap();
         let name = file.name().to_owned();

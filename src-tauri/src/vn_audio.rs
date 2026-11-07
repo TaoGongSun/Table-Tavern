@@ -115,6 +115,14 @@ pub(crate) fn valid_key(key: &str) -> bool {
             .all(|byte| matches!(byte, b'a'..=b'z' | b'0'..=b'9' | b'+'))
 }
 
+/// 音效檔名鍵：`parse_sfx` 的 SHA-256 前 16 個小寫 hex。
+pub(crate) fn valid_sfx_key(key: &str) -> bool {
+    key.len() == 16
+        && key
+            .bytes()
+            .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+}
+
 /// ≥4 bytes；`ID3` 且版本位元組 ≤4，或 MPEG frame sync（前 11 位為 1、layer ≠ 00、bitrate ≠ 0xF）。
 pub(crate) fn mp3_ok(bytes: &[u8]) -> bool {
     if bytes.len() < 4 {
@@ -543,29 +551,30 @@ fn upsert_entry(root: &Path, world: &str, entry: &Entry) -> Result<(), String> {
     data::commit_world_write_atomic(&path, &bytes).map_err(|error| error.to_string())
 }
 
-/// 匯出：只留這次放進包的 bgm 條目。
-pub(crate) fn export_entries(dir: &Path, keys: &[String]) -> Vec<Entry> {
-    let keep: BTreeSet<&str> = keys.iter().map(String::as_str).collect();
+/// 匯出：只留這次放進包的 bgm／sfx 條目。`keys` 是 (kind, key)。
+pub(crate) fn export_entries(dir: &Path, keys: &BTreeSet<(String, String)>) -> Vec<Entry> {
     let Ok(bytes) = std::fs::read(dir.join("audio.json")) else {
         return Vec::new();
     };
     serde_json::from_slice::<Vec<Entry>>(&bytes)
         .unwrap_or_default()
         .into_iter()
-        .filter(|entry| {
-            entry.kind == "bgm" && keep.contains(entry.key.as_str()) && valid_key(&entry.key)
-        })
+        .filter(|entry| index_keeps(entry, keys))
         .map(clip_entry)
         .collect()
 }
 
-/// 匯入：超過 200 筆拒收；其餘不合的筆丟掉，留下的必須對得到已落地的 bgm。
-pub(crate) fn import_entries(bytes: &[u8], keys: &BTreeSet<String>) -> Result<Vec<Entry>, String> {
+/// 匯入：超過 `max` 筆拒收；其餘不合的筆丟掉，留下的必須對得到已落地的音訊檔。
+pub(crate) fn import_entries(
+    bytes: &[u8],
+    keys: &BTreeSet<(String, String)>,
+    max: usize,
+) -> Result<Vec<Entry>, String> {
     let value: Value = serde_json::from_slice(bytes).map_err(|error| error.to_string())?;
     let Some(items) = value.as_array() else {
         return Err("AUDIO_INDEX_NOT_ARRAY".to_owned());
     };
-    if items.len() > 200 {
+    if items.len() > max {
         return Err("AUDIO_INDEX_TOO_MANY".to_owned());
     }
     let mut entries = Vec::new();
@@ -573,12 +582,20 @@ pub(crate) fn import_entries(bytes: &[u8], keys: &BTreeSet<String>) -> Result<Ve
         let Some(entry) = item_entry(item) else {
             continue;
         };
-        if entry.kind != "bgm" || !valid_key(&entry.key) || !keys.contains(&entry.key) {
-            continue;
+        if index_keeps(&entry, keys) {
+            entries.push(clip_entry(entry));
         }
-        entries.push(clip_entry(entry));
     }
     Ok(entries)
+}
+
+fn index_keeps(entry: &Entry, keys: &BTreeSet<(String, String)>) -> bool {
+    let key_ok = match entry.kind.as_str() {
+        "bgm" => valid_key(&entry.key),
+        "sfx" => valid_sfx_key(&entry.key),
+        _ => false,
+    };
+    key_ok && keys.contains(&(entry.kind.clone(), entry.key.clone()))
 }
 
 fn item_entry(item: &Value) -> Option<Entry> {
@@ -914,7 +931,7 @@ pub(crate) fn read(app: &AppHandle, world: &str) -> Result<AudioView, String> {
     Ok(AudioView { files, entries })
 }
 
-fn file_key(name: &str) -> Option<(String, String)> {
+pub(crate) fn file_key(name: &str) -> Option<(String, String)> {
     let (kind, rest) = if let Some(rest) = name.strip_prefix("bgm-") {
         ("bgm", rest)
     } else if let Some(rest) = name.strip_prefix("sfx-") {

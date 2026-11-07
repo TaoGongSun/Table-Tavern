@@ -199,3 +199,37 @@ fn not_a_zip_is_not_a_pack() {
     std::fs::write(&path, b"not a zip").unwrap();
     assert_eq!(error_of(&path, LIMITS), UiMsg::VnWorkNotPack.to_string());
 }
+
+#[test]
+fn opaque_pack_opens_and_reads() {
+    let path = crate::smart_free::test_root("vn-archive-opaque").join("p.ttvn");
+    let file = super::super::opaque::create(std::fs::File::create(&path).unwrap()).unwrap();
+    let mut zip = zip::ZipWriter::new(std::io::BufWriter::new(file));
+    zip.start_file("manifest.json", SimpleFileOptions::default())
+        .unwrap();
+    zip.write_all(b"{}").unwrap();
+    zip.finish()
+        .unwrap()
+        .into_inner()
+        .map_err(|error| error.to_string())
+        .unwrap();
+    let mut opened = Pack::open(&path, LIMITS).unwrap();
+    assert_eq!(opened.read("manifest.json", 10).unwrap().unwrap(), b"{}");
+}
+
+#[test]
+fn opaque_magic_with_garbage_is_not_a_pack() {
+    let path = crate::smart_free::test_root("vn-archive-opaque-junk").join("p.ttvn");
+    let mut bytes = b"TTVNPK\x01\x00".to_vec();
+    bytes.extend_from_slice(&[0; 8]);
+    bytes.extend_from_slice(b"not-a-zip");
+    std::fs::write(&path, bytes).unwrap();
+    assert_eq!(error_of(&path, LIMITS), UiMsg::VnWorkNotPack.to_string());
+}
+
+#[test]
+fn three_byte_file_is_not_a_pack() {
+    let path = crate::smart_free::test_root("vn-archive-short").join("p.ttvn");
+    std::fs::write(&path, b"abc").unwrap();
+    assert_eq!(error_of(&path, LIMITS), UiMsg::VnWorkNotPack.to_string());
+}
