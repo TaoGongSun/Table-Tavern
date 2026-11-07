@@ -551,12 +551,6 @@ async fn stream_turn_inner(
                 emit,
             };
             let result = smart_free::run_call(&root, &mut env).await?.result;
-            if let Some(reason) = result.truncated.as_deref() {
-                let _ = app.emit(
-                    "ai-response-truncated",
-                    serde_json::json!({ "world": world, "reason": reason }),
-                );
-            }
             return Ok((result.text, result.truncated.is_some()));
         }
 
@@ -588,12 +582,6 @@ async fn stream_turn_inner(
             .await
             .map_err(|error| ai_call_failure(error.to_string())),
         }?;
-        if let Some(reason) = result.truncated.as_deref() {
-            let _ = app.emit(
-                "ai-response-truncated",
-                serde_json::json!({ "world": world, "reason": reason }),
-            );
-        }
         return Ok((result.text, result.truncated.is_some()));
     }
 

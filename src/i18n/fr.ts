@@ -606,6 +606,7 @@ export const fr: Record<MsgKey, string> = {
   sendRelay: "Envoyer + réponse",
   sendRelayHint: "Envoie cette ligne ; après la narration du MJ, le personnage désigné répond une fois",
   callNominated: "Laisser {name} répondre",
+  requestReplyUnavailable: "{name} est un personnage de décor ou ne fait plus partie de la distribution : pas de réplique",
   callNominatedHint: "Fait répondre « {name} », désigné par le MJ, sans relancer le MJ",
   undoLast: "Annuler",
   undoLastHint: "Supprime la dernière entrée du journal\u00a0; appuie encore pour remonter, dans cette scène uniquement",

@@ -55,6 +55,7 @@ struct Fake {
     reply_calls: usize,
     state_notes: Vec<String>,
     landed_next: Vec<Option<String>>,
+    landed_all: Vec<TranscriptEvent>,
 }
 
 impl Fake {
@@ -79,6 +80,7 @@ impl Fake {
             reply_calls: 0,
             state_notes: Vec::new(),
             landed_next: Vec::new(),
+            landed_all: Vec::new(),
         }
     }
 
@@ -160,7 +162,10 @@ impl RelayHost for Fake {
                 "正文回報要早於變動紀錄"
             );
         }
-        self.landed_next.push(landed.next.clone());
+        if landed.event.kind != TranscriptKind::System {
+            self.landed_next.push(landed.next.clone());
+        }
+        self.landed_all.push(landed.event.clone());
     }
 
     fn note_state_error(&mut self, message: &str) {
@@ -234,7 +239,7 @@ async fn advance_stops_at_the_player_after_one_npc_reply() {
     host.names.insert(
         PLAYER_SENTINEL.to_owned(),
         Nominee::Player {
-            name: "阿濤".to_owned(),
+            name: "雷克".to_owned(),
         },
     );
     host.narrations = VecDeque::from([
@@ -273,7 +278,7 @@ async fn advance_stops_at_the_player_after_one_npc_reply() {
             (
                 TranscriptKind::System,
                 Some(EventMarker::GmCall {
-                    name: "阿濤".to_owned()
+                    name: "雷克".to_owned()
                 }),
                 String::new(),
                 false
@@ -290,6 +295,18 @@ async fn advance_stops_at_the_player_after_one_npc_reply() {
             .filter(|event| event.kind == TranscriptKind::Narration)
             .count(),
         2
+    );
+    // 每則落檔都即時回報、順序同收據同逐字稿（單人畫面靠它逐則顯示）
+    let ids = |events: &[TranscriptEvent]| {
+        events
+            .iter()
+            .map(|event| event.id.clone())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(ids(&host.landed_all), ids(&done.receipts));
+    assert_eq!(
+        ids(&host.landed_all),
+        ids(&transcript(&host.root, &host.world))
     );
 }
 

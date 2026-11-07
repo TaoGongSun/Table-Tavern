@@ -17,7 +17,6 @@ pub(crate) enum Halt {
     /// 玩家按停止。在途的模型呼叫由 host 自己中止；驅動不再發新呼叫。
     Interrupt,
     /// 換桌換幕。在途那段照常落完（含狀態提交），之後不再發新呼叫。房間不送。
-    #[allow(dead_code)]
     StopRelay,
 }
 
@@ -25,8 +24,7 @@ pub(crate) enum Halt {
 pub(crate) enum RelayMode {
     /// 一次旁白，回報點名，不寫點名列、不接話。
     Narrate,
-    /// 旁白加被點到的角色一句就停。寫點名列。單人包 2 用。
-    #[allow(dead_code)]
+    /// 旁白加被點到的角色一句就停。寫點名列。
     NarrateThenOne,
     /// 推進到上限。寫點名列。
     Advance,
@@ -38,19 +36,17 @@ pub(crate) enum RelayMode {
 pub(crate) enum CallList {
     /// 請 X 發言：不寫。
     Omit,
-    /// 讓 X 接話：寫，但那則旁白之後已有同名點名列就不疊。單人包 2 用。
-    #[allow(dead_code)]
+    /// 讓 X 接話：寫，但那則旁白之後已有同名點名列就不疊。
     UnlessSince { narration_id: String },
-    /// 照這個布林寫點名列。單人包 2 與測試用；房間的 call 在 Land 已寫過，驅動從 Reply 進來時用 Omit。
-    #[allow(dead_code)]
+    /// 照這個布林寫點名列。測試用；房間的 call 在 Land 已寫過，驅動從 Reply 進來時用 Omit。
+    #[cfg_attr(not(test), allow(dead_code))]
     AsHost(bool),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum RelayStep {
     Narrate,
-    /// 直接點名的起點（先點名列，再接話）。不寫進 room.json。單人包 2 用。
-    #[allow(dead_code)]
+    /// 直接點名的起點（先點名列，再接話）。不寫進 room.json；單人用。
     Call(String),
     Reply(String),
     Done,
@@ -101,9 +97,8 @@ pub(crate) enum Nominee {
     },
 }
 
-/// 正文落檔當下的回報。`next` 給「讓 X 接話」：停止或截斷是 None，其餘照模型點名（含玩家哨兵）。
-/// 房間 host 不讀欄位；單人包 2 讀。
-#[allow(dead_code)]
+/// 每則落檔當下的回報（正文、變動紀錄、點名列、角色回覆，依落檔順序）。`next` 只在旁白正文有：
+/// 給「讓 X 接話」，停止或截斷是 None，其餘照模型點名（含玩家哨兵）。房間 host 不讀；單人讀。
 pub(crate) struct Landed {
     pub(crate) event: TranscriptEvent,
     pub(crate) next: Option<String>,
@@ -129,14 +124,12 @@ pub(crate) struct RelayRequest {
 #[derive(Debug)]
 pub(crate) struct RelayDone {
     pub(crate) aborted: bool,
-    /// 收尾進度。房間已在 checkpoint 寫進 room.json，這裡留給單人包 2。
-    #[allow(dead_code)]
+    /// 收尾進度。房間已在 checkpoint 寫進 room.json，單人不需要；測試讀。
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) progress: RelayProgress,
-    /// 包 2 用來判斷玩家句算不算已回。房間不讀。
-    #[allow(dead_code)]
+    /// 單人用來判斷玩家句算不算已回。房間不讀。
     pub(crate) receipts: Vec<TranscriptEvent>,
-    /// 包 2 用來提示狀態沒寫成。房間不讀。
-    #[allow(dead_code)]
+    /// 單人用來提示狀態沒寫成。房間不讀。
     pub(crate) state_errors: Vec<String>,
 }
 
@@ -144,8 +137,7 @@ pub(crate) struct RelayDone {
 pub(crate) struct RelayFail {
     pub(crate) part: Option<u32>,
     pub(crate) message: String,
-    /// 失敗前已經落檔的收據。單人包 2 用來判斷能不能收回玩家句。
-    #[allow(dead_code)]
+    /// 失敗前已經落檔的收據。單人用來判斷能不能收回玩家句。
     pub(crate) receipts: Vec<TranscriptEvent>,
 }
 
@@ -289,8 +281,7 @@ async fn narrate_segment<H: RelayHost>(
         let next = (!piece.aborted && !piece.truncated)
             .then(|| piece.next.clone())
             .flatten();
-        run.receipts.push(event.clone());
-        host.landed(&Landed { event, next });
+        keep(host, run, event, next);
     }
     if !piece.aborted {
         if let Some(message) = piece.state_error.clone() {
@@ -299,7 +290,7 @@ async fn narrate_segment<H: RelayHost>(
         }
         if !piece.state_updates.is_empty() {
             let event = land_state(&run.desk, &req.action_id, &turn, &piece.state_updates)?;
-            run.receipts.push(event);
+            keep(host, run, event, None);
         }
     }
     run.progress.used += 1;
@@ -346,15 +337,15 @@ fn nominate<H: RelayHost>(
         Nominee::Stop => run.progress.step = RelayStep::Done,
         Nominee::Player { name } => {
             if write_row {
-                run.receipts
-                    .push(land_call(&run.desk, &req.action_id, name)?);
+                let event = land_call(&run.desk, &req.action_id, name)?;
+                keep(host, run, event, None);
             }
             run.progress.step = RelayStep::Done;
         }
         Nominee::Npc { id, name } => {
             if write_row {
-                run.receipts
-                    .push(land_call(&run.desk, &req.action_id, name)?);
+                let event = land_call(&run.desk, &req.action_id, name)?;
+                keep(host, run, event, None);
             }
             run.progress.step = match &req.mode {
                 RelayMode::Narrate => {
@@ -389,8 +380,8 @@ async fn call_segment<H: RelayHost>(
         return Ok(());
     };
     if should_write_call(&run.desk, &list, &name)? {
-        run.receipts
-            .push(land_call(&run.desk, &req.action_id, name)?);
+        let event = land_call(&run.desk, &req.action_id, name)?;
+        keep(host, run, event, None);
     }
     match host.halt() {
         Halt::Interrupt => {
@@ -444,8 +435,7 @@ async fn reply_segment<H: RelayHost>(
     let stopped = matches!(host.classify(&card_id, None), Nominee::Stop);
     let landed = land_line(&run.desk, &req.action_id, &turn, &card_id, &name, &line)?;
     if let Some(event) = landed {
-        run.receipts.push(event.clone());
-        host.landed(&Landed { event, next: None });
+        keep(host, run, event, None);
     }
     let one_shot = matches!(req.mode, RelayMode::NarrateThenOne | RelayMode::Call { .. });
     run.progress.step =
@@ -467,6 +457,17 @@ async fn reply_segment<H: RelayHost>(
         None,
     );
     Ok(())
+}
+
+/// 收據與即時回報同一處：每則落檔都經這裡。
+fn keep<H: RelayHost>(
+    host: &mut H,
+    run: &mut RelayRun,
+    event: TranscriptEvent,
+    next: Option<String>,
+) {
+    run.receipts.push(event.clone());
+    host.landed(&Landed { event, next });
 }
 
 fn close_part<H: RelayHost>(

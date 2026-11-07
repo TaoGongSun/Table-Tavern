@@ -606,6 +606,7 @@ export const ja: Record<MsgKey, string> = {
   sendRelay: "送信して応答",
   sendRelayHint: "送信後、GM のナレーションで指名されたキャラが一言返します",
   callNominated: "{name}に話させる",
+  requestReplyUnavailable: "{name}は舞台キャラクターか、もう一覧にいないため発言しません",
   callNominatedHint: "GM が指名した「{name}」に応答させます（GM は再実行しません）",
   undoLast: "取り消す",
   undoLastHint: "記録の最後の1件を削除します。続けて押せばさらに遡れます（この幕の中だけ）",

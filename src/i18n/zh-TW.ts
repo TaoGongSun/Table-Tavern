@@ -626,6 +626,7 @@ export const zh = {
   sendRelay: "送出並接話",
   sendRelayHint: "送出這句，GM 旁白後由被點名的角色接一句",
   callNominated: "讓{name}接話",
+  requestReplyUnavailable: "「{name}」是舞台角色或已不在名單，不會發言",
   callNominatedHint: "請 GM 剛點名的「{name}」接話，不重跑 GM",
   undoLast: "收回上一句",
   undoLastHint: "刪掉紀錄最後一則，可連按往回收；只收這一幕的",

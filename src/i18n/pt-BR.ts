@@ -606,6 +606,7 @@ export const ptBR: Record<MsgKey, string> = {
   sendRelay: "Enviar e responder",
   sendRelayHint: "Envia esta fala; depois da narração do GM, o personagem indicado responde uma vez",
   callNominated: "Deixar {name} responder",
+  requestReplyUnavailable: "{name} é um personagem de cenário ou não está mais no elenco, então não vai falar",
   callNominatedHint: "Faz “{name}”, indicado pelo GM, responder sem rodar o GM de novo",
   undoLast: "Desfazer",
   undoLastHint: "Apaga a última entrada do registro; pressione de novo para continuar voltando, apenas nesta cena",

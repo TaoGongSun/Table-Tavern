@@ -5,17 +5,26 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const backend = vi.hoisted(() => ({
-  handlers: {} as Record<string, (args: Record<string, unknown>) => unknown>,
-  calls: [] as { command: string; args: Record<string, unknown> }[],
-}));
+const backend = vi.hoisted(() => {
+  const backend = {
+    handlers: {} as Record<string, (args: Record<string, unknown>) => unknown>,
+    calls: [] as { command: string; args: Record<string, unknown> }[],
+    // chat_relay 由假後端拆回 gm_narrate／chat_with_character／append_transcript 幾支子呼叫，再照常記錄與分派
+    relay: null as { intercept(command: string, args: Record<string, unknown>): Promise<unknown> | undefined } | null,
+    async record(command: string, args: Record<string, unknown> = {}) {
+      backend.calls.push({ command, args });
+      const handler = backend.handlers[command];
+      return handler ? handler(args) : null;
+    },
+  };
+  return backend;
+});
 
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn(async (command: string, args: Record<string, unknown> = {}) => {
-    backend.calls.push({ command, args });
-    const handler = backend.handlers[command];
-    return handler ? handler(args) : null;
-  }),
+  invoke: vi.fn(
+    (command: string, args: Record<string, unknown> = {}) =>
+      backend.relay?.intercept(command, args) ?? backend.record(command, args),
+  ),
   Channel: class {
     onmessage: (delta: string) => void = () => {};
   },
@@ -28,11 +37,13 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ revealItemInDir: vi.fn(async () => {}) }));
 
+import { createRelayFake } from "../play/chat/chat-relay-fake";
 import { useImportController, type ImportController } from "./useImportController";
 import { useChatController, type ChatController } from "../play/chat/useChatController";
 import { useOpeningPost } from "./useOpeningPost";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+backend.relay = createRelayFake(backend.record, () => undefined);
 
 const turn = { running: false };
 let root: Root | null = null;

@@ -1,9 +1,8 @@
-// 逐字稿存取：這一幕畫面上的事件清單、本地改動追蹤、重讀與追加。
+// 逐字稿存取：這一幕畫面上的事件清單、本地改動追蹤、重讀，以及把後端已落檔的事件換進畫面。
 // 世代由 useChatController 持有（單一來源），這裡只讀；世代一變就換一份新的改動追蹤。
 import { MutableRefObject, useCallback, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { TranscriptEvent } from "../../../shared/contracts/backend-contracts";
-import { hasContent } from "./undo-stack";
 
 /** 一個換桌／換幕世代的本地改動追蹤：rev 每次改動換進畫面加一、inFlight 在途數、waiters 等在途清空的重讀 */
 interface WriteTrack {
@@ -17,8 +16,6 @@ export function useTranscriptStore({
   worldId,
   scene,
   generation,
-  actionIdRef,
-  appendFailed,
   onAppended,
   onError,
 }: {
@@ -26,11 +23,7 @@ export function useTranscriptStore({
   scene: number;
   /** controller 的換桌／換幕世代 */
   generation: MutableRefObject<number>;
-  /** 目前玩家動作的 id：追加的每一則都蓋上 */
-  actionIdRef: MutableRefObject<string | null>;
-  /** 這一輪有追加回錯（收尾時重讀用） */
-  appendFailed: MutableRefObject<boolean>;
-  /** 追加成功、換進畫面之後（清掉收回堆疊） */
+  /** 新事件換進畫面之後（清掉收回堆疊） */
   onAppended: () => void;
   onError: (message: string) => void;
 }) {
@@ -127,55 +120,20 @@ export function useTranscriptStore({
     [reload, onError],
   );
 
-  // started＝發起這一輪時的世代，由回合一路傳下來：換桌之後才呼叫也不會把新世代當成自己的。
-  // 回傳換進畫面的那一則；世代已變（落檔了但不碰畫面）回 undefined
-  const appendEvent = useCallback(
-    // turn＝GM 回合的一部分（main 正文／state_update 變動紀錄）：後端以 (turn_id, turn_part) 冪等落檔，
-    // main 掛上回合算好的變數表；characterTurn＝這則是那次角色聊天呼叫的回覆，後端憑它認世界書落地成功
-    async (
-      event: TranscriptEvent,
-      started: number,
-      turn?: { turnId: string; part: "main" | "state_update" },
-      characterTurn?: string,
-    ): Promise<TranscriptEvent | undefined> => {
-      // 空白事件一律不落地（stream-failure-visible）：AI 失敗時故事不該多出一則看不見的
-      // 回合，它還會進下一次呼叫的歷史把模型帶偏。後端 API 路徑已擋，這裡是 CLI 路徑
-      // 與任何未來新路徑的保險，錯誤碼與後端同一個
-      // 帶已知標頭代碼的事件（點名）本文可以是空的
-      if (!hasContent(event)) {
-        throw new Error("AI_EMPTY_RESPONSE: 空白回合不寫進故事");
-      }
-      // 用後端回傳的那份（快照已補好）進畫面：收回後要復原時，送回去的事件才帶著當時的
-      // 檯面值，狀態欄跟著回到那一刻
-      let stamped: TranscriptEvent;
-      // 動作中寫下的每一則都蓋上這個動作的 id：後端換幕容量預測靠它切出每個動作的回覆量
-      const action = actionIdRef.current;
-      const endWrite = beginWrite();
-      try {
-        try {
-          stamped = await invoke<TranscriptEvent>("append_transcript", {
-            worldId,
-            scene,
-            event: action ? { ...event, action_id: action } : event,
-            turnId: turn?.turnId ?? null,
-            turnPart: turn?.part ?? null,
-            characterTurn: characterTurn ?? null,
-          });
-        } catch (reason) {
-          appendFailed.current = true;
-          throw reason;
-        }
-        if (generation.current !== started) return;
-        setEvents((previous) => [...previous, stamped]);
-      } finally {
-        endWrite();
+  // 後端已落檔的一則（接力逐則回報）換進畫面。started＝發起那條接力時的世代：換桌之後才到的不碰畫面。
+  // 同 id 已在畫面上（重讀先讀到了）就不重複；rev 加一讓在途的重讀作廢重讀
+  const showLanded = useCallback(
+    (event: TranscriptEvent, started: number) => {
+      if (generation.current !== started) return;
+      writes.current.rev += 1;
+      if (event.id === undefined || !eventsLive.current.some((shown) => shown.id === event.id)) {
+        setEvents((previous) => [...previous, event]);
       }
       // 桌上一有新內容，收回的那幾句就不能再放回去了——位置已經被後面的話蓋掉
       onAppended();
-      return stamped;
     },
-    [worldId, scene, beginWrite, actionIdRef, appendFailed, generation, setEvents, onAppended],
+    [generation, setEvents, onAppended],
   );
 
-  return { events, eventsLive, setEvents, beginWrite, hydrate, reload, replaceEvent, appendEvent };
+  return { events, eventsLive, setEvents, beginWrite, hydrate, reload, replaceEvent, showLanded };
 }

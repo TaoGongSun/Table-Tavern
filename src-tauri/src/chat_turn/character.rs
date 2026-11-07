@@ -15,7 +15,7 @@ pub(crate) struct ChatReply {
     /// 剝殼前的台詞原文（已剝本輪前綴）；與 text 相同就是 None，前端照樣存進事件裡
     pub(crate) raw: Option<String>,
     pub(crate) aborted: bool,
-    /// 輸出上限截斷。不進單人 IPC（前端仍聽 `ai-response-truncated`）。
+    /// 這一次呼叫被輸出上限截斷；接力驅動落檔時據此標 `truncated`。
     #[serde(skip)]
     pub(crate) truncated: bool,
 }

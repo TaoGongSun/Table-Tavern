@@ -9,17 +9,22 @@ import type { AppConfig, TranscriptEvent } from "../../../shared/contracts/backe
 
 type Invoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
 const invokeMock = vi.hoisted(() => vi.fn<Invoke>());
+// chat_relay 由假後端拆回 gm_narrate／chat_with_character／append_transcript 幾支子呼叫，再交給 invokeMock
+const relay = vi.hoisted(() => ({ fake: null as ReturnType<typeof createRelayFake> | null }));
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: invokeMock,
+  invoke: (command: string, args: Record<string, unknown> = {}) =>
+    relay.fake?.intercept(command, args) ?? invokeMock(command, args),
   Channel: class {
     onmessage: ((value: unknown) => void) | null = null;
   },
 }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
 
+import { createRelayFake } from "./chat-relay-fake";
 import { useChatController, type ChatController } from "./useChatController";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+relay.fake = createRelayFake((command, args) => invokeMock(command, args), () => undefined, 1);
 
 describe("chat controller with marker events", () => {
   let root: Root | null = null;

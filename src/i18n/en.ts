@@ -624,6 +624,7 @@ export const en: Record<MsgKey, string> = {
   sendRelay: "Send + reply",
   sendRelayHint: "Send this line; after the GM's narration, the character it names replies once",
   callNominated: "Let {name} reply",
+  requestReplyUnavailable: "{name} is a stage character or no longer in the cast, so they won't speak",
   callNominatedHint: "Have “{name}”, named by the GM, reply now without rerunning the GM",
   undoLast: "Undo last",
   undoLastHint: "Delete the last entry in the log; press again to keep going back, within this scene only",

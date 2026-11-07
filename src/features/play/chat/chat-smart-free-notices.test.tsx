@@ -12,8 +12,11 @@ type Invoke = (command: string, args?: Record<string, unknown>) => Promise<unkno
 type Listener = (event: { payload: unknown }) => void;
 const invokeMock = vi.hoisted(() => vi.fn<Invoke>());
 const bus = vi.hoisted(() => ({ listeners: new Map<string, Set<(event: { payload: unknown }) => void>>() }));
+// chat_relay 由假後端拆回 gm_narrate／chat_with_character／append_transcript 幾支子呼叫，再交給 invokeMock
+const relay = vi.hoisted(() => ({ fake: null as ReturnType<typeof createRelayFake> | null }));
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: invokeMock,
+  invoke: (command: string, args: Record<string, unknown> = {}) =>
+    relay.fake?.intercept(command, args) ?? invokeMock(command, args),
   Channel: class {
     onmessage: ((value: unknown) => void) | null = null;
   },
@@ -28,9 +31,11 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 import { PlayView } from "../PlayView";
+import { createRelayFake } from "./chat-relay-fake";
 import { useChatController, type ChatController, type TurnFailure } from "./useChatController";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+relay.fake = createRelayFake((command, args) => invokeMock(command, args), () => undefined, 1);
 
 type Handler = (args: Record<string, unknown>) => unknown;
 const formEvent = { preventDefault() {} } as FormEvent<HTMLFormElement>;

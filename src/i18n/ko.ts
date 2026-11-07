@@ -606,6 +606,7 @@ export const ko: Record<MsgKey, string> = {
   sendRelay: "보내고 응답받기",
   sendRelayHint: "보낸 뒤 GM 내레이션에서 지목된 캐릭터가 한 번 응답합니다",
   callNominated: "{name}에게 말 넘기기",
+  requestReplyUnavailable: "{name}은(는) 무대 캐릭터이거나 목록에 없어 말하지 않습니다",
   callNominatedHint: "GM이 지목한 “{name}”이(가) 응답합니다(GM은 다시 실행하지 않음)",
   undoLast: "되돌리기",
   undoLastHint: "기록의 마지막 한 줄을 지웁니다. 계속 누르면 더 되돌아갑니다(이 장면 안에서만)",

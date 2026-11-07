@@ -9,16 +9,20 @@ import type { AppConfig, TranscriptEvent } from "../../../shared/contracts/backe
 
 type Invoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
 const invokeMock = vi.hoisted(() => vi.fn<Invoke>());
+// chat_relay 由假後端拆回 gm_narrate／chat_with_character／append_transcript 幾支子呼叫，再交給 invokeMock
+const relay = vi.hoisted(() => ({ fake: null as ReturnType<typeof createRelayFake> | null }));
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: invokeMock,
+  invoke: (command: string, args: Record<string, unknown> = {}) =>
+    relay.fake?.intercept(command, args) ?? invokeMock(command, args),
   Channel: class {
     onmessage: ((value: unknown) => void) | null = null;
   },
 }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
 
+import { createRelayFake } from "./chat-relay-fake";
 import { useChatController, type ChatController, type TurnFailure } from "./useChatController";
-import { callableAt, calledSince, lastStoryId } from "../next-speaker-call";
+import { callableAt, lastStoryId } from "../next-speaker-call";
 import { PlayView } from "../PlayView";
 import { t } from "../../../i18n";
 
@@ -80,6 +84,11 @@ describe("next speaker call", () => {
       ...overrides,
     };
     const calls: { command: string; args: Record<string, unknown> }[] = [];
+    relay.fake = createRelayFake(
+      (command, args) => invokeMock(command, args),
+      (cid) => (cid === "fox" ? { name: "狐狸", stage: foxStage } : undefined),
+      3,
+    );
     invokeMock.mockImplementation(async (command, args = {}) => {
       calls.push({ command, args });
       const handler = handlers[command];
@@ -341,9 +350,6 @@ describe("next-speaker-call 純推導", () => {
     expect(lastStoryId(events)).toBe("n");
     expect(callableAt(events, { narrationId: "n", characterId: "fox" }, ["fox"])).toBe(2);
     expect(callableAt(events, { narrationId: "a", characterId: "fox" }, ["fox"])).toBeNull();
-    const called = [ev("x", "system", { type: "gm_call", name: "狐狸" }), ...events];
-    expect(calledSince(called, "n", "狐狸")).toBe(false);
-    expect(calledSince([...events, ev("c", "system", { type: "gm_call", name: "狐狸" })], "n", "狐狸")).toBe(true);
   });
 });
 

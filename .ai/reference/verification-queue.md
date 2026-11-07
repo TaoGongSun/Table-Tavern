@@ -64,6 +64,7 @@
 | 29 | [cli-version-gate](../handoffs/archive/cli-version-gate.md) 更新鈕（Windows） | Windows 實機：執行中的 exe 不能覆寫時更新失敗要保住舊版、Job Object 逾時殺整組、codex `current` junction 切換、grok install.ps1 `.old` 改名、一鍵安裝帶已測版（install.ps1 `$Target`／`CODEX_RELEASE`／`GROK_VERSION`）；登入視窗帶關閉自動更新變數 |
 | 30 | [vn-mode](../handoffs/archive/vn-mode.md) VN 模式作者實機試玩（含 [vn-ui-polish](../handoffs/vn-ui-polish.md) 播放器改版、[vn-setup-wizard](../handoffs/vn-setup-wizard.md) 開桌精靈三步／自動定稿／色調遮罩／美術一覽） | 2026-11-04 已合 main（測試通道冒煙：VN 精靈到開演一輪過）、2026-11-05 播放器 UI／UX 改版合 main（點畫面／Space 推進、Esc／右鍵選單、快捷列在對話框下、標題「開始」從幕首）、2026-11-06 開桌精靈改版合 main（試玩重點見其交接檔「結案狀態」）；從沒實測過的是把 `.ttvn` 拖進大廳匯入、匯入選「當可續寫的桌」後讓 AI 接寫幾拍。試玩重點與現成測試包見交接檔「下一步」，各包已知限制見各方案檔 |
 | 31 | [table-status-panel](../handoffs/table-status-panel.md) 通用狀態欄作者實機 | 空桌或一句話開桌跑一輪真旁白：頂端長出「時間｜地點｜在場」一行，點開右側欄有每張卡一格（狀態一句、持有物 chip）與追蹤三欄；改 status、刪 chip、「＋欄位」加一欄再下一輪，GM 照新值演；手機開房：故事頁一行三鍵點開底部抽屜看到同一份。截圖已主線親看（種樹），差真旁白與真機 |
+| 32 | [gm-relay-unify](../handoffs/gm-relay-unify.md) GM 接力合一作者實機 | 單人：一般送出出「讓 X 接話」→點了接一句；送出並接話一句就停；GM 推進到點名你就停；推進中按停止（半截旁白標中斷、不再接）；請 X 發言照常。房間：開房雙端各推進一輪＋停止，手機逐字稿與桌面一致。測試通道截圖已主線親看，差真機與房間 |
 
 ## 梯 3：等外部條件，不排時程
 

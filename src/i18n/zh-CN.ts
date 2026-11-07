@@ -604,6 +604,7 @@ export const zhCN: Record<MsgKey, string> = {
   sendRelay: "发送并接话",
   sendRelayHint: "发送这句，GM 旁白后由被点名的角色接一句",
   callNominated: "让{name}接话",
+  requestReplyUnavailable: "「{name}」是舞台角色或已不在名单，不会发言",
   callNominatedHint: "请 GM 刚点名的“{name}”接话，不重跑 GM",
   undoLast: "收回上一句",
   undoLastHint: "删掉记录最后一条，可连按往回收；只收这一幕的",

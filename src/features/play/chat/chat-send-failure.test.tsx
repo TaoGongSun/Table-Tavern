@@ -9,17 +9,22 @@ import type { AppConfig, TranscriptEvent } from "../../../shared/contracts/backe
 
 type Invoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
 const invokeMock = vi.hoisted(() => vi.fn<Invoke>());
+// chat_relay 由假後端拆回 gm_narrate／chat_with_character／append_transcript 幾支子呼叫，再交給 invokeMock
+const relay = vi.hoisted(() => ({ fake: null as ReturnType<typeof createRelayFake> | null }));
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: invokeMock,
+  invoke: (command: string, args: Record<string, unknown> = {}) =>
+    relay.fake?.intercept(command, args) ?? invokeMock(command, args),
   Channel: class {
     onmessage: ((value: unknown) => void) | null = null;
   },
 }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
 
+import { createRelayFake } from "./chat-relay-fake";
 import { useChatController, type ChatController, type TurnFailure } from "./useChatController";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+relay.fake = createRelayFake((command, args) => invokeMock(command, args), () => ({ name: "狐狸" }) as never, 1);
 
 type Handler = (args: Record<string, unknown>) => unknown;
 
@@ -692,30 +697,35 @@ describe("chat turn failures", () => {
       expect(landed.map((call) => (call.args.event as TranscriptEvent).text)).toEqual(["舊桌旁白"]);
     });
 
-    it("table changes while the GM turn is refreshing state: no call event, no relay", async () => {
-      const refresh = gate<void>();
+    // gm-relay-unify：接力在後端跑，不等前端刷新檯面；換桌時在途那段（含變動紀錄）照常落完原桌，之後不寫點名列、不接話
+    it("table changes while the GM turn is still landing: the segment finishes in the old table, no call event, no relay", async () => {
+      const landing = gate<void>();
       const h = mount(
         {
-          gm_narrate: () => ({ text: "舊桌旁白", raw: null, next: "fox" }),
-          append_transcript: (args) => args.event,
+          gm_narrate: () => ({ text: "舊桌旁白", raw: null, next: "fox", state_updates: [{ path: "hp", value: "3" }] }),
+          append_transcript: async (args) => {
+            if (args.turnPart === "state_update") await landing.promise;
+            return args.event;
+          },
           chat_with_character: () => ({ text: "接話", aborted: false }),
         },
         { gm: true },
       );
-      h.refreshState.mockImplementationOnce(() => refresh.promise);
       let advancing!: Promise<void>;
       await act(async () => {
         advancing = h.chat().gmAdvance();
       });
-      await vi.waitFor(() => expect(h.refreshState).toHaveBeenCalled());
+      await vi.waitFor(() => expect(h.count("append_transcript")).toBe(2));
       h.moveTo("w2");
       await act(async () => {
-        refresh.resolve();
+        landing.resolve();
         await advancing;
       });
       const landed = h.calls.filter((call) => call.command === "append_transcript");
-      expect(landed.map((call) => (call.args.event as TranscriptEvent).text)).toEqual(["舊桌旁白"]);
+      expect(landed.map((call) => (call.args.event as TranscriptEvent).text)).toEqual(["舊桌旁白", "hp：3"]);
+      expect(landed.map((call) => call.args.worldId)).toEqual(["w1", "w1"]);
       expect(h.count("chat_with_character")).toBe(0);
+      expect(h.refreshState).not.toHaveBeenCalled();
     });
 
     it("undo or restore finishing after a switch leaves the new table alone", async () => {

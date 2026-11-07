@@ -9,21 +9,30 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { t } from "../../i18n";
 import type { TranscriptEvent } from "../../shared/contracts/backend-contracts";
 
-const backend = vi.hoisted(() => ({
-  handlers: {} as Record<string, (args: Record<string, unknown>) => unknown>,
-  calls: [] as { command: string; args: Record<string, unknown> }[],
-}));
+const backend = vi.hoisted(() => {
+  const backend = {
+    handlers: {} as Record<string, (args: Record<string, unknown>) => unknown>,
+    calls: [] as { command: string; args: Record<string, unknown> }[],
+    // chat_relay 由假後端拆回 gm_narrate／chat_with_character／append_transcript 幾支子呼叫，再照常記錄與分派
+    relay: null as { intercept(command: string, args: Record<string, unknown>): Promise<unknown> | undefined } | null,
+    async record(command: string, args: Record<string, unknown> = {}) {
+      backend.calls.push({ command, args });
+      const handler = backend.handlers[command];
+      return handler ? handler(args) : null;
+    },
+  };
+  return backend;
+});
 const dialogs = vi.hoisted(() => ({
   confirm: vi.fn(async (_text?: string, _options?: unknown): Promise<boolean> => true),
   message: vi.fn(async () => {}),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn(async (command: string, args: Record<string, unknown> = {}) => {
-    backend.calls.push({ command, args });
-    const handler = backend.handlers[command];
-    return handler ? handler(args) : null;
-  }),
+  invoke: vi.fn(
+    (command: string, args: Record<string, unknown> = {}) =>
+      backend.relay?.intercept(command, args) ?? backend.record(command, args),
+  ),
   Channel: class {
     onmessage: ((value: unknown) => void) | null = null;
   },
@@ -64,9 +73,11 @@ vi.mock("../characters/CastRail", async (importOriginal) => {
   };
 });
 
+import { createRelayFake } from "./chat/chat-relay-fake";
 import App from "../../App";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+backend.relay = createRelayFake(backend.record, () => ({ name: "狐狸" }));
 
 const actor = (id: string, name: string, autoHidden = false) => ({
   id,

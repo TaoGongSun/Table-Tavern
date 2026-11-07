@@ -103,7 +103,7 @@ pub(crate) struct GmNarration {
     pub(super) arrived_persons: Vec<String>,
     /// 玩家按下停止、而且取消贏過完成。true 時上面的寫入欄位都是空的。
     pub(crate) aborted: bool,
-    /// 這一次呼叫被輸出上限截斷。不進單人 IPC（前端仍聽 `ai-response-truncated`）。
+    /// 這一次呼叫被輸出上限截斷；接力驅動落檔時據此標 `truncated`。
     #[serde(skip)]
     pub(crate) truncated: bool,
     /// 狀態更新沒寫成（磁碟錯誤等）：正文照常落檔，前端提示這一輪的狀態可能沒更新

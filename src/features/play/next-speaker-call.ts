@@ -1,6 +1,5 @@
 // 「讓 X 接話」：單次 GM 旁白點了誰、那顆鈕現在該不該掛在那則旁白下面（純推導，不存失效狀態）。
 import { TranscriptEvent } from "../../shared/contracts/backend-contracts";
-import { parseMarker } from "../../shared/ui/event-text";
 
 /** GM 正文落檔當下回報：id＝落檔那則（世代已變時沒有）；next＝可接力的點名（停止或截斷的旁白給 null） */
 export interface Landed {
@@ -35,14 +34,4 @@ export function callableAt(
   if (lastStoryId(events) !== call.narrationId) return null;
   const index = events.findIndex((event) => event.id === call.narrationId);
   return index < 0 ? null : index;
-}
-
-/** 那則旁白之後到尾端，是否已有點同一人的點名列（「讓 X 接話」重試時不疊列） */
-export function calledSince(events: TranscriptEvent[], narrationId: string, name: string): boolean {
-  const index = events.findIndex((event) => event.id === narrationId);
-  if (index < 0) return false;
-  return events.slice(index + 1).some((event) => {
-    const marker = parseMarker(event.marker);
-    return marker?.type === "gm_call" && marker.name === name;
-  });
 }

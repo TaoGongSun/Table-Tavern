@@ -483,6 +483,30 @@ export interface PlayerAppend {
   offset: number;
 }
 
+/** `chat_relay` 的入口（Rust `solo_relay::relay_mode`）：請 X 發言不寫點名列；讓 X 接話寫，但那則旁白之後已有同名的不疊 */
+export type RelayEntry =
+  | { kind: "narrate" | "narrateThenOne" | "advance" }
+  | { kind: "request"; cardId: string }
+  | { kind: "nominated"; cardId: string; narrationId: string };
+
+/** `chat_relay` 經 Channel 逐則回報：段落開始（speaker 空字串＝GM）、增量、每則落檔（next 只在旁白正文有）、登場卡 */
+export type RelayMessage =
+  | { type: "start"; turnId: string; speaker: string; kind: "narration" | "dialogue" }
+  | { type: "delta"; text: string }
+  | { type: "landed"; event: TranscriptEvent; next: string | null }
+  | { type: "arrived"; ids: string[] };
+
+/** `chat_relay` 的整條結果：error 有值＝失敗，收據照樣帶；resync＝開場時後端代落了上一回合沒落成的部分；
+ *  owed＝收尾時仍有沒落成的部分，下一筆追加（玩家句、復原）會先代落 */
+export interface RelayReport {
+  aborted: boolean;
+  receipts: TranscriptEvent[];
+  stateErrors: string[];
+  error: string | null;
+  resync: boolean;
+  owed: boolean;
+}
+
 // 逐字稿事件標頭代碼：與 Rust `EventMarker` 同形（type 為判別欄）。認不得的 type 走 UnknownMarker，
 // 顯示前一律經 shared/ui/event-text.ts 的 parseMarker 做執行期形狀檢查。
 export type KnownMarker =
