@@ -9,7 +9,9 @@ One person is the **host** and opens a room on their computer; everyone else is 
 ### 1. Open a room
 
 - In the desktop app, click "Open a room" on the home screen. Connect an AI model first if you haven't (the gear "Settings" button, top right).
-- You can pick a few character cards to open with, or choose "Open without cards". Either way you get a fresh table.
+- You can pick a few character cards and open with them.
+- Or let the AI generate a world from one sentence: by default friends make their own characters when they sit down, or the AI can prepare characters for everyone to choose.
+- Or open with no cards and let the GM improvise. Either way you get a fresh table.
 - A solo table you're already playing can become a room too: open the table card's "⋯" menu in the lobby and choose "Open a room with this table". Friends can read what happened before.
 
 > While the room is open, keep this computer on and online and don't close the lid. The app keeps it from going to sleep.

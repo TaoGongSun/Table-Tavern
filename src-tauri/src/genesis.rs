@@ -115,13 +115,64 @@ fn vn_brief(preferences: Option<&Preferences>) -> String {
     })
 }
 
+/// 開房大綱。`cast`＝預製可入座角色；否則不要任何 CHARACTER 段。
+fn room_outline(input: &str, genres: &[String], lang: &str, cast: bool) -> String {
+    let genres = genre_line(genres);
+    let (character, rules) = match cast {
+        true => (
+            "\n\n## CHARACTER: <name>\n<one line: the lead a friend will play>",
+            "- Decide how many leads the group needs. One lead per friend; never pad the cast.\n- Characters are pre-made player characters a friend can play: one lead each, not supporting roles.\n- No text outside the sections above. Markers must be exactly \"## WORLD:\" and \"## CHARACTER:\".",
+        ),
+        false => (
+            "",
+            "- Do not write any CHARACTER section; the players bring their own characters.\n- No text outside the sections above. Markers must be exactly \"## WORLD:\".",
+        ),
+    };
+    format!(
+        "You are a tabletop RPG game master designing a new campaign for a group of players from their brief idea.\n\nGroup's idea: {input}\n{genres}\nWrite a campaign outline. All content must be written in the language with BCP-47 code \"{lang}\". Output EXACTLY this structure, using these exact English section markers at line start:\n\n## WORLD: <campaign title, one line>\n<2-4 short paragraphs: setting, tone, current situation, and what the players will be doing>{character}\n\nRules:\n{rules}"
+    )
+}
+
+/// 開房展開。`cast`＝預製可入座角色；否則結構裡沒有 CHARACTER 段。
+fn room_expand(
+    input: &str,
+    genres: &[String],
+    title: &str,
+    outline_raw: &str,
+    lang: &str,
+    cast: bool,
+) -> String {
+    let genres = genre_line(genres);
+    let (character, rules) = match cast {
+        true => (
+            "\n\n## CHARACTER: <name>\nEMOJI: <one single emoji fitting this character>\nPUBLIC:\n<what everyone can see: appearance, role, public personality>\nPRIVATE:\n<secrets, hidden motives, inner voice — visible only to the friend who plays this character>",
+            "- Keep the WORLD line exactly as written above; do not rename the campaign.\n- Keep the same characters and names as the outline.\n- Characters are pre-made player characters a friend can play: one lead each, not supporting roles. PUBLIC is what everyone can see; PRIVATE is what only that character's player knows.\n- Markers exactly as shown. No text outside the sections.",
+        ),
+        false => (
+            "",
+            "- Keep the WORLD line exactly as written above; do not rename the campaign.\n- Do not write any CHARACTER section; the players bring their own characters.\n- Markers exactly as shown. No text outside the sections.",
+        ),
+    };
+    format!(
+        "You are a tabletop RPG game master. The group approved this campaign outline. Expand it into full campaign materials.\n\nGroup's idea: {input}\n{genres}Approved outline:\n{outline_raw}\n\nAll content must be written in the language with BCP-47 code \"{lang}\". Output EXACTLY this structure, using these exact English markers at line start:\n\n## WORLD: {title}\n<full world setting in markdown: the setting, key places or factions, tone, current situation, and what the players will be doing. Enough substance for a GM to run scenes from.>{character}\n\n## OPENING\n<the opening narration the GM speaks to start the first scene, addressed to the whole group, ending at a moment that invites everyone to act>\n\nRules:\n{rules}"
+    )
+}
+
 /// `preferences` 有值＝VN 桌：空白點子也收（AI 自選題材）、加主角段、簡介當封底文案不劇透。
+/// `room`：None＝聊天桌或 VN；Some(false)＝開房、朋友自己建角色；Some(true)＝開房、預製角色。
 pub fn outline_messages(
     input: &str,
     genres: &[String],
     lang: &str,
     preferences: Option<&Preferences>,
+    room: Option<bool>,
 ) -> Vec<ChatMessage> {
+    if let Some(cast) = room {
+        return vec![ChatMessage {
+            role: "user".to_owned(),
+            content: room_outline(input, genres, lang, cast),
+        }];
+    }
     let vn = preferences.is_some();
     let idea = match (input.is_empty() && genres.is_empty(), vn) {
         (true, true) => "(left blank: choose an appealing premise and genre yourself)",
@@ -152,7 +203,14 @@ pub fn expand_messages(
     outline_raw: &str,
     lang: &str,
     preferences: Option<&Preferences>,
+    room: Option<bool>,
 ) -> Vec<ChatMessage> {
+    if let Some(cast) = room {
+        return vec![ChatMessage {
+            role: "user".to_owned(),
+            content: room_expand(input, genres, title, outline_raw, lang, cast),
+        }];
+    }
     let genres = genre_line(genres);
     let brief = vn_brief(preferences);
     // VN 桌：開場第一行就是場景標記，精靈 ③ 才有首幕背景可預生（plans/vn-mode-pkg3.md §2）；主角寫進世界與開場
@@ -174,7 +232,25 @@ pub fn character_messages(
     outline_raw: &str,
     hint: &str,
     lang: &str,
+    room: Option<bool>,
 ) -> Vec<ChatMessage> {
+    // 開房且要預製角色時才換說法；cast=false 不會叫到這支
+    if room == Some(true) {
+        let genres = genre_line(genres);
+        let hint = hint.trim();
+        let character_request = if hint.is_empty() {
+            "Character request: (none — invent a lead who fits the world and fills a gap in the cast)"
+                .to_owned()
+        } else {
+            format!("Character request: {hint}")
+        };
+        return vec![ChatMessage {
+            role: "user".to_owned(),
+            content: format!(
+                "You are a tabletop RPG game master. The group is drafting a campaign outline and wants one more pre-made player character a friend can play (one lead, not a supporting role).\n\nGroup's idea: {input}\n{genres}Current outline:\n{outline_raw}\n\n{character_request}\n\nAll content must be written in the language with BCP-47 code \"{lang}\". Output EXACTLY this structure, using this exact English marker at line start:\n\n## CHARACTER: <name>\n<one line: the lead a friend will play>\n\nRules:\n- Exactly one character. Do not duplicate or rename characters already in the outline.\n- No text outside the section."
+            ),
+        }];
+    }
     let genres = genre_line(genres);
     let hint = hint.trim();
     let character_request = if hint.is_empty() {
@@ -276,6 +352,15 @@ const TITLE_QUOTES: [(&str, &str); 8] = [
     ("\"", "\""),
     ("'", "'"),
 ];
+
+/// 開房且不要預製角色（`Some(false)`）時，模型多寫的 CHARACTER 段不建卡。
+/// 聊天桌、VN（`None`）與要預製角色（`Some(true)`）原樣留下。
+pub fn expanded_for_cast(mut expanded: Expanded, cast: Option<bool>) -> Expanded {
+    if cast == Some(false) {
+        expanded.characters.clear();
+    }
+    expanded
+}
 
 /// `title` 是玩家草稿的標題，桌名與重名補號都以它為準。`vn`＝精靈建的 VN 桌：偏好與劇透鎖寫進 vn.json、
 /// 設定階段從 ② 起；有名字就建一張只有名字的玩家卡（GM 用名字稱呼，走一般玩家分工）。

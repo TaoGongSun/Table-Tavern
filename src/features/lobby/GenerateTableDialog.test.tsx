@@ -46,14 +46,14 @@ describe("GenerateTableDialog", () => {
   });
 
   // 照 main.tsx 的實際入口包 StrictMode
-  function mount() {
+  function mount(room = false) {
     host = document.createElement("div");
     document.body.appendChild(host);
     root = createRoot(host, { onUncaughtError: (error) => renderErrors.push(error) });
     act(() => {
       root!.render(
         <StrictMode>
-          <GenerateTableDialog open onClose={onClose} onCreated={onCreated} transport="api" />
+          <GenerateTableDialog open room={room} onClose={onClose} onCreated={onCreated} transport="api" />
         </StrictMode>,
       );
     });
@@ -161,5 +161,74 @@ describe("GenerateTableDialog", () => {
     const section = alertSection()!;
     expect(section.textContent).toContain(t("genParseFail"));
     expect(section.querySelector("pre")!.textContent).toBe("not a marked outline");
+  });
+
+  it("room mode offers who builds characters and sends that choice", async () => {
+    mount(true);
+    const own = document.querySelector<HTMLInputElement>('input[name="room-cast"][value="own"]')!;
+    const made = document.querySelector<HTMLInputElement>('input[name="room-cast"][value="made"]')!;
+    expect(own.checked).toBe(true);
+    expect(document.body.textContent).toContain(t("genRoomCastOwnNote"));
+    expect(document.querySelector(".gen-table-dialog")!.textContent).toContain(t("genRoomTitle"));
+
+    await generateOutline(async () => ({ parsed: { title: "Harbor", world: "Fog.", characters: [] }, raw: "raw" }));
+    expect(invokeMock).toHaveBeenCalledWith(
+      "generate_table_outline",
+      expect.objectContaining({ room: { cast: false } }),
+    );
+    expect(document.querySelector(".gen-character-list")).toBeNull();
+    expect(document.body.textContent).not.toContain(t("genAddCharacterAI"));
+    const create = () => document.querySelector<HTMLButtonElement>(".dialog .btn-primary")!;
+    expect(create().textContent).toContain(t("genRoomCreateBtn"));
+    await act(async () => create().click());
+    expect(invokeMock).toHaveBeenCalledWith(
+      "generate_table_expand",
+      expect.objectContaining({ room: { cast: false }, tableKind: "chat" }),
+    );
+
+    act(() => made.click());
+    await generateOutline(async () => ({ parsed: OUTLINE, raw: "raw" }));
+    expect(invokeMock).toHaveBeenCalledWith(
+      "generate_table_outline",
+      expect.objectContaining({ room: { cast: true } }),
+    );
+    expect(document.querySelector(".gen-character-list")).not.toBeNull();
+    await act(async () => create().click());
+    expect(invokeMock).toHaveBeenCalledWith(
+      "generate_table_expand",
+      expect.objectContaining({ room: { cast: true } }),
+    );
+  });
+
+  it("drops a chat outline when the dialog is closed and reopened for a room", async () => {
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    root = createRoot(host, { onUncaughtError: (error) => renderErrors.push(error) });
+    const show = (open: boolean, room: boolean) => {
+      act(() => {
+        root!.render(
+          <StrictMode>
+            <GenerateTableDialog open={open} room={room} onClose={onClose} onCreated={onCreated} transport="api" />
+          </StrictMode>,
+        );
+      });
+    };
+    show(true, false);
+    await generateOutline(async () => ({ parsed: OUTLINE, raw: "raw" }));
+    show(false, false);
+    show(true, true);
+    expect(document.querySelector(".dialog-foot-end button")).toBeNull();
+    expect(document.querySelector(".gen-outline-preview")).toBeNull();
+    expect(document.querySelector<HTMLTextAreaElement>("textarea[data-autofocus]")!.value).toBe("a foggy harbor");
+  });
+
+  it("chat mode has no cast choice and sends room null", async () => {
+    mount();
+    expect(document.querySelector('input[name="room-cast"]')).toBeNull();
+    await generateOutline(async () => ({ parsed: OUTLINE, raw: "raw" }));
+    expect(invokeMock).toHaveBeenCalledWith(
+      "generate_table_outline",
+      expect.objectContaining({ room: null }),
+    );
   });
 });

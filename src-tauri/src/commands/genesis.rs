@@ -2,7 +2,14 @@ use crate::data::vn::{Preferences, SetupStage};
 use crate::transport::dispatch::stream_via_transport;
 use crate::usage::log as usage_log;
 use crate::{config_root, data, data_root, genesis, transport};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+
+/// 開房生成才帶。`cast`＝AI 先生好可入座的角色；聊天桌與 VN 傳 null。
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoomGenesis {
+    cast: bool,
+}
 
 /// 聊天桌一句話與題材至少要有一樣；VN 精靈（帶偏好）全空白也收，由 AI 自選題材。
 fn refuse_empty(input: &str, genres: &[String], vn: bool) -> Result<(), String> {
@@ -50,13 +57,20 @@ pub(crate) async fn generate_table_outline(
     input: String,
     genres: Vec<String>,
     preferences: Option<Preferences>,
+    room: Option<RoomGenesis>,
 ) -> Result<OutlineOutcome, String> {
     crate::data::refuse_if_updating()?;
     let input = input.trim();
     refuse_empty(input, &genres, preferences.is_some())?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
-    let messages = genesis::outline_messages(input, &genres, &lang, preferences.as_ref());
+    let messages = genesis::outline_messages(
+        input,
+        &genres,
+        &lang,
+        preferences.as_ref(),
+        room.map(|room| room.cast),
+    );
     let raw = stream_via_transport(
         &app,
         &config,
@@ -84,12 +98,20 @@ pub(crate) async fn generate_table_character(
     genres: Vec<String>,
     outline_raw: String,
     hint: String,
+    room: Option<RoomGenesis>,
 ) -> Result<CharacterOutcome, String> {
     crate::data::refuse_if_updating()?;
     let input = input.trim();
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
-    let messages = genesis::character_messages(input, &genres, &outline_raw, &hint, &lang);
+    let messages = genesis::character_messages(
+        input,
+        &genres,
+        &outline_raw,
+        &hint,
+        &lang,
+        room.map(|room| room.cast),
+    );
     let raw = stream_via_transport(
         &app,
         &config,
@@ -127,6 +149,7 @@ pub(crate) async fn generate_table_expand(
     table_kind: data::TableKind,
     preferences: Option<Preferences>,
     spoiler_lock: Option<bool>,
+    room: Option<RoomGenesis>,
 ) -> Result<ExpandOutcome, String> {
     crate::data::refuse_if_updating()?;
     let input = input.trim();
@@ -137,6 +160,7 @@ pub(crate) async fn generate_table_expand(
     let title = genesis::draft_title(&title).ok_or_else(|| "EMPTY_TITLE".to_owned())?;
     let config = data::read_config(&config_root(&app)?).map_err(|error| error.to_string())?;
     let lang = transport::ui_language(&config);
+    let cast = room.as_ref().map(|room| room.cast);
     let messages = genesis::expand_messages(
         input,
         &genres,
@@ -144,6 +168,7 @@ pub(crate) async fn generate_table_expand(
         &outline_raw,
         &lang,
         preferences.as_ref(),
+        cast,
     );
     let raw = stream_via_transport(
         &app,
@@ -165,6 +190,7 @@ pub(crate) async fn generate_table_expand(
     });
     let world_id = genesis::parse_expand(&raw)
         .map(|expanded| {
+            let expanded = genesis::expanded_for_cast(expanded, cast);
             genesis::materialize(&data_root(&app)?, title, &expanded, table_kind, setup)
         })
         .transpose()

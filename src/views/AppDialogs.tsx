@@ -11,6 +11,8 @@ interface AppDialogsProps {
   genTableOpen: boolean;
   onCloseGenerateTable: () => void;
   onGeneratedTable: (worldId: string) => Promise<void>;
+  /** 這次是開房窗進來的一句話生成（同一份對話窗，文案與參數不同） */
+  generateRoom?: boolean;
   /** 目前的 AI 來源，生桌失敗時分流錯誤文案用 */
   transport?: string;
   settingsOpen: false | SettingsTab;
@@ -44,6 +46,7 @@ export function AppDialogs({
   genTableOpen,
   onCloseGenerateTable,
   onGeneratedTable,
+  generateRoom = false,
   transport,
   settingsOpen,
   settingsRequestKey,
@@ -74,6 +77,7 @@ export function AppDialogs({
         onClose={onCloseGenerateTable}
         onCreated={onGeneratedTable}
         transport={transport}
+        room={generateRoom}
       />
       {vnWizard}
 

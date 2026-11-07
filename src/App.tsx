@@ -1100,7 +1100,7 @@ function App() {
       {roomBanner}
       <div className="app-shell">
         <RoomSession ctl={deskRoom} />
-        {room.dialog && <OpenRoomDialog server={room.dialog.server} existingTable={room.dialog.world ? { name: room.dialog.name ?? "" } : undefined} onCancel={room.closeDialog} onOpen={(files, server) => void room.open(files, server)} />}
+        {room.dialog && <OpenRoomDialog server={room.dialog.server} existingTable={room.dialog.world ? { name: room.dialog.name ?? "" } : undefined} onCancel={room.closeDialog} onOpen={(files, server) => void room.open(files, server)} onGenerate={(server) => { setGenTableOpen(false); room.beginGenerate(server); }} />}
         {table === "" ? (
           <Lobby
             rooms={room.host.rooms}
@@ -1224,9 +1224,10 @@ function App() {
         )}
 
         <AppDialogs
-          genTableOpen={genTableOpen}
-          onCloseGenerateTable={() => setGenTableOpen(false)}
-          onGeneratedTable={enterGeneratedTable}
+          genTableOpen={genTableOpen || room.genesisServer !== null}
+          onCloseGenerateTable={() => (room.genesisServer !== null ? room.cancelGenerate() : setGenTableOpen(false))}
+          onGeneratedTable={(worldId) => (room.genesisServer !== null ? room.openGenerated(worldId) ?? Promise.resolve() : enterGeneratedTable(worldId))}
+          generateRoom={room.genesisServer !== null}
           transport={transport}
           settingsOpen={settingsOpen}
           settingsRequestKey={settingsRequestKey}

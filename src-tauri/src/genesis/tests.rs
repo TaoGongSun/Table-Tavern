@@ -1,6 +1,7 @@
 use super::{
-    character_messages, draft_title, expand_messages, materialize, outline_messages,
-    parse_character, parse_expand, parse_outline, Expanded, ExpandedCharacter, VnSetup,
+    character_messages, draft_title, expand_messages, expanded_for_cast, materialize,
+    outline_messages, parse_character, parse_expand, parse_outline, Expanded, ExpandedCharacter,
+    VnSetup,
 };
 use crate::data;
 use crate::data::vn::{Branching, Length, Mood, Preferences, SetupStage};
@@ -57,7 +58,7 @@ fn outline_accepts_mixed_case_fullwidth_markers_and_no_characters() {
 
 #[test]
 fn character_messages_omits_empty_genres_and_uses_default_hint() {
-    let messages = character_messages("海港冒險", &[], "## WORLD: 夜港", "  ", "zh-Hant");
+    let messages = character_messages("海港冒險", &[], "## WORLD: 夜港", "  ", "zh-Hant", None);
     assert_eq!(messages.len(), 1);
     assert!(messages[0]
         .content
@@ -76,6 +77,7 @@ fn character_messages_includes_genres_and_trimmed_hint() {
         "## WORLD: 夜港",
         "  尋找一位可靠的嚮導  ",
         "zh-Hant",
+        None,
     );
     assert!(messages[0]
         .content
@@ -211,7 +213,15 @@ fn outline_still_requires_a_title() {
 
 #[test]
 fn expand_messages_prefill_the_draft_title() {
-    let messages = expand_messages("idea", &[], "夜港", "## WORLD: 夜港\n霧。", "zh-TW", None);
+    let messages = expand_messages(
+        "idea",
+        &[],
+        "夜港",
+        "## WORLD: 夜港\n霧。",
+        "zh-TW",
+        None,
+        None,
+    );
     assert!(messages[0]
         .content
         .contains("\n## WORLD: 夜港\n<full world setting"));
@@ -231,7 +241,7 @@ fn prefs(name: &str) -> Preferences {
 #[test]
 fn vn_outline_messages_carry_preferences_and_accept_blank_idea() {
     let genres = vec!["戀愛".to_owned()];
-    let text = &outline_messages("", &genres, "zh-TW", Some(&prefs("阿哲")))[0].content;
+    let text = &outline_messages("", &genres, "zh-TW", Some(&prefs("阿哲")), None)[0].content;
     assert!(text.contains("Genre hints: 戀愛"), "{text}");
     assert!(text.contains("3-5 chapters"), "{text}");
     assert!(text.contains("Choices: none. A linear story"), "{text}");
@@ -243,10 +253,10 @@ fn vn_outline_messages_carry_preferences_and_accept_blank_idea() {
         text.contains("## PLAYER:") && text.contains("back-cover copy"),
         "{text}"
     );
-    let blank = &outline_messages("", &[], "zh-TW", Some(&Preferences::default()))[0].content;
+    let blank = &outline_messages("", &[], "zh-TW", Some(&Preferences::default()), None)[0].content;
     assert!(blank.contains("choose an appealing premise"), "{blank}");
     assert!(blank.contains("addresses them as \"you\""), "{blank}");
-    let chat = &outline_messages("霧港", &[], "zh-TW", None)[0].content;
+    let chat = &outline_messages("霧港", &[], "zh-TW", None, None)[0].content;
     assert!(
         !chat.contains("## PLAYER:") && !chat.contains("visual novel"),
         "{chat}"
@@ -262,6 +272,7 @@ fn vn_expand_messages_carry_preferences() {
         "## WORLD: 夜港\n霧。",
         "zh-TW",
         Some(&prefs("阿哲")),
+        None,
     )[0]
     .content;
     assert!(
@@ -349,4 +360,80 @@ fn draft_title_strips_wrapping_quotes() {
     assert_eq!(draft_title("風眼之夜"), Some("風眼之夜"));
     assert_eq!(draft_title("「甲」與「乙」"), Some("「甲」與「乙」"));
     assert_eq!(draft_title("《》"), None);
+}
+
+/// 開房、朋友自己建角色：大綱與展開都沒有 CHARACTER 段，世界寫給一群玩家
+#[test]
+fn room_cast_off_prompts_address_the_group_and_omit_characters() {
+    let outline = &outline_messages("霧港", &[], "zh-TW", None, Some(false))[0].content;
+    assert!(!outline.contains("## CHARACTER"), "{outline}");
+    assert!(
+        outline.contains("what the players will be doing"),
+        "{outline}"
+    );
+    assert!(
+        outline
+            .contains("Do not write any CHARACTER section; the players bring their own characters"),
+        "{outline}"
+    );
+    let expand = &expand_messages(
+        "霧港",
+        &[],
+        "夜港",
+        "## WORLD: 夜港\n霧。",
+        "zh-TW",
+        None,
+        Some(false),
+    )[0]
+    .content;
+    assert!(!expand.contains("## CHARACTER"), "{expand}");
+    assert!(
+        expand.contains("what the players will be doing"),
+        "{expand}"
+    );
+    assert!(expand.contains("whole group"), "{expand}");
+}
+
+/// 開房、朋友自己建角色：模型仍寫了一段有效 CHARACTER 也不建卡；世界與開場照常
+#[test]
+fn room_cast_off_drops_a_character_the_model_still_wrote() {
+    let root = TestRoot::new();
+    let parsed = parse_expand(
+        "## WORLD: 夜港\n迷霧籠罩碼頭。\n## CHARACTER: 伊利亞\nPUBLIC:\n走私者。\n## OPENING\n雨落在碼頭上。大家要怎麼做？",
+    )
+    .unwrap();
+    assert_eq!(parsed.characters.len(), 1);
+    let expanded = expanded_for_cast(parsed, Some(false));
+    let world_id = materialize(&root.0, "夜港", &expanded, data::TableKind::Chat, None).unwrap();
+    assert!(data::list_characters(&root.0, &world_id)
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        data::read_world_md(&root.0, &world_id).unwrap(),
+        "迷霧籠罩碼頭。"
+    );
+    let events = data::read_transcript(&root.0, &world_id, 0).unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].text, "雨落在碼頭上。大家要怎麼做？");
+}
+
+/// 零角色的展開可以建桌：世界與開場在，名冊是空的
+#[test]
+fn materialize_accepts_a_table_with_no_characters() {
+    let root = TestRoot::new();
+    let expanded =
+        parse_expand("## WORLD: 夜港\n迷霧籠罩碼頭。\n## OPENING\n雨落在碼頭上。大家要怎麼做？")
+            .unwrap();
+    assert!(expanded.characters.is_empty());
+    let world_id = materialize(&root.0, "夜港", &expanded, data::TableKind::Chat, None).unwrap();
+    assert_eq!(
+        data::read_world_md(&root.0, &world_id).unwrap(),
+        "迷霧籠罩碼頭。"
+    );
+    assert!(data::list_characters(&root.0, &world_id)
+        .unwrap()
+        .is_empty());
+    let events = data::read_transcript(&root.0, &world_id, 0).unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].text, "雨落在碼頭上。大家要怎麼做？");
 }

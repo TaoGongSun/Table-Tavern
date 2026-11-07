@@ -1,7 +1,7 @@
 // 一句話開桌的草稿與三支生成流程（大綱、AI 加一位、展開建桌）：聊天桌的 GenerateTableDialog 與 VN 精靈共用。
 // 草稿活在呼叫端的元件裡：對話窗關掉只是不畫、VN 精靈換步驟不卸載，草稿都留著。
 import { invoke } from "@tauri-apps/api/core";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { TableKind, VnPreferences } from "../../shared/contracts/backend-contracts";
 
 export interface OutlineCharacter {
@@ -37,8 +37,15 @@ function serializeOutline(outline: GeneratedOutline): string {
   return sections.join("\n\n");
 }
 
+/** 開房生成才帶；`cast`＝AI 先生好可入座的角色。聊天桌與 VN 傳 null。 */
+export interface RoomGenesis {
+  cast: boolean;
+}
+
 /** `preferences` 有值＝VN 精靈：後端收空白點子、偏好進提示詞；genres 是介面語言的題材文字 */
-export function useTableGenesis(tableKind: TableKind) {
+export function useTableGenesis(tableKind: TableKind, room: RoomGenesis | null = null) {
+  const roomRef = useRef(room);
+  roomRef.current = room;
   const [input, setInput] = useState("");
   const [genres, setGenres] = useState<string[]>([]);
   const [outline, setOutline] = useState<GeneratedOutline | null>(null);
@@ -64,6 +71,7 @@ export function useTableGenesis(tableKind: TableKind) {
         input: idea,
         genres: genreLabels,
         preferences,
+        room: roomRef.current,
       });
       setOutlineRaw(result.raw);
       if (result.parsed) setOutline(result.parsed);
@@ -89,6 +97,7 @@ export function useTableGenesis(tableKind: TableKind) {
         genres: genreLabels,
         outlineRaw: serializeOutline(outline),
         hint,
+        room: roomRef.current,
       });
       if (result.parsed) {
         const character = result.parsed;
@@ -104,6 +113,13 @@ export function useTableGenesis(tableKind: TableKind) {
     }
   }
 
+  /** 換模式時舊大綱作廢。點子與題材留著，玩家重按生成即可。 */
+  function discardOutline() {
+    setOutline(null);
+    setOutlineRaw(null);
+    setResultRaw(null);
+  }
+
   const canCreate = Boolean(outline && outline.title.trim() && outline.world.trim());
 
   /** 展開成桌；成功回新桌 id（草稿清掉），失敗或解析不出回 null（錯誤留在畫面上） */
@@ -117,14 +133,17 @@ export function useTableGenesis(tableKind: TableKind) {
     setResultRaw(null);
     setResultMessage("outline");
     try {
+      const roomNow = roomRef.current;
+      const draft = roomNow?.cast === false ? { ...outline, characters: [] } : outline;
       const result = await invoke<{ worldId: string | null; raw: string }>("generate_table_expand", {
         input: input.trim(),
         genres: genreLabels,
         title: outline.title.trim(),
-        outlineRaw: serializeOutline(outline),
+        outlineRaw: serializeOutline(draft),
         tableKind,
         preferences: vn?.preferences ?? null,
         spoilerLock: vn?.spoilerLock ?? null,
+        room: roomNow,
       });
       if (!result.worldId) {
         setResultRaw(result.raw);
@@ -158,6 +177,7 @@ export function useTableGenesis(tableKind: TableKind) {
     hint,
     setHint,
     canCreate,
+    discardOutline,
     generateOutline,
     addCharacter,
     createTable,

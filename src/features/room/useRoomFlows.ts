@@ -30,6 +30,8 @@ const roomError = (reason: unknown) => (String(reason).includes("ROOM_OTHER_TABL
 export function useRoomFlows(deps: Deps) {
   const host = useRoomHost();
   const [dialog, setDialog] = useState<{ server: string; world?: string; name?: string } | null>(null);
+  // 一句話生成完要開的房：有值＝開房模式的對話窗開著，值是伺服器網址
+  const [genesisServer, setGenesisServer] = useState<string | null>(null);
   const [queue, setQueue] = useState<{ world: string; files: File[] } | null>(null);
   // 選了卡開房：匯完才開房
   const [pending, setPending] = useState<{ world: string; server: string; fresh: boolean } | null>(null);
@@ -78,6 +80,29 @@ export function useRoomFlows(deps: Deps) {
     }
     const status = await readRoomStatus().catch(() => null);
     setDialog({ server: status?.server ?? "", world: worldId, name });
+  }
+
+  /** 關開房窗，改開一句話生成；沒建就關（cancelGenerate）不建桌、不開房 */
+  function beginGenerate(server: string) {
+    setDialog(null);
+    setGenesisServer(server);
+  }
+
+  /** 生成出來的桌走「用現有桌開房」同一條：進桌 → pending → bind(fresh=false)，桌名留生成的標題 */
+  function openGenerated(worldId: string) {
+    const server = genesisServer;
+    if (server === null) return;
+    setGenesisServer(null);
+    return deps.runTableOp(async () => {
+      deps.setError("");
+      try {
+        await deps.refreshWorlds();
+        await deps.enterTable(worldId);
+        setPending({ world: worldId, server, fresh: false });
+      } catch (reason) {
+        deps.setError(roomError(reason));
+      }
+    });
   }
 
   function open(files: File[], server: string) {
@@ -148,6 +173,10 @@ export function useRoomFlows(deps: Deps) {
     host,
     dialog,
     closeDialog: () => setDialog(null),
+    genesisServer,
+    beginGenerate,
+    cancelGenerate: () => setGenesisServer(null),
+    openGenerated,
     start,
     open,
     reopen,

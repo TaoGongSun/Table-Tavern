@@ -12,12 +12,15 @@ export function OpenRoomDialog({
   existingTable,
   onCancel,
   onOpen,
+  onGenerate,
 }: {
   server: string;
   /** 用現有的桌開房：不選卡，只有一顆開房鈕 */
   existingTable?: { name: string };
   onCancel: () => void;
   onOpen: (files: File[], server: string) => void;
+  /** 新桌：關開房窗，改開一句話生成（開房模式） */
+  onGenerate?: (server: string) => void;
 }) {
   const [server, setServer] = useState(initialServer);
   const input = useRef<HTMLInputElement>(null);
@@ -48,6 +51,9 @@ export function OpenRoomDialog({
           <>
             <button type="button" className="btn btn-primary" disabled={!server.trim()} onClick={() => input.current?.click()}>
               {t("roomPickCards")}
+            </button>
+            <button type="button" className="btn" disabled={!server.trim()} onClick={() => onGenerate?.(server)}>
+              {t("roomFromIdea")}
             </button>
             <button type="button" className="btn" disabled={!server.trim()} onClick={() => onOpen([], server)}>
               {t("roomNoCards")}

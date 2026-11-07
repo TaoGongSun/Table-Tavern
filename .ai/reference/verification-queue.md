@@ -91,3 +91,4 @@
 | [room-player-cards](../handoffs/archive/room-player-cards.md) 真手機 | 部署後用真手機（iOS Safari／Android Chrome）進房：匯入 PNG 卡、建立角色填秘密情報、換圖（相機照片 JPEG／HEIC 轉 PNG）、AI 生圖（房主本機生圖來源 API、有額度的金鑰）按「用這張」；通道只用瀏覽器窗格模擬手機、假圖片端點 |
 | [room-phone-gallery](../handoffs/archive/room-phone-gallery.md) 真手機 | iOS Safari、Android Chrome 各一次：編卡「從圖庫選」點縮圖開裁切窗，單指拖動、雙指縮放、滑桿縮放後套用、存檔；上傳相機照片也走一次裁切。通道只用瀏覽器窗格的滑鼠模擬拖動與滑桿 |
 | [room-seat-delegate](../handoffs/archive/room-seat-delegate.md) 其他玩家的全員代管 | 作者實機看：全員代管時，非房主玩家手機回合列寫「全員代管中，等房主處理」（實測只截了房主那一版，玩家版只有 UI 測試） |
+| [room-open-from-idea](../handoffs/room-open-from-idea.md) 開房窗一句話生成世界 | 打包後作者實機：開房窗三顆鈕；「一句話生成世界開房…」預設「朋友自己建角色」生成後直接進房、桌名是生成標題、開場對一群人說話；朋友手機入座只見「建立角色／匯入角色卡」；切「AI 先生好角色給朋友選」生出的角色可入座；大廳一句話開桌行為不變 |

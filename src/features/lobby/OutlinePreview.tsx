@@ -14,10 +14,13 @@ export function OutlinePreview({
   genesis,
   genreLabels,
   player,
+  showCharacters = true,
 }: {
   genesis: TableGenesis;
   genreLabels: string[];
   player?: ReactNode;
+  /** 開房且朋友自己建角色：不畫名單、手加、AI 再加一位 */
+  showCharacters?: boolean;
 }) {
   const { outline, setOutline, busy } = genesis;
   if (!outline) return null;
@@ -47,6 +50,8 @@ export function OutlinePreview({
         }}
       />
       {player}
+      {showCharacters && (
+      <>
       <h3>{t("genCharListTitle")}</h3>
       <div className="gen-character-list">
         {outline.characters.map((character, index) => (
@@ -105,6 +110,8 @@ export function OutlinePreview({
           {busy === "character" ? t("genCharGenerating") : t("genAddCharacterAI")}
         </button>
       </div>
+      </>
+      )}
     </section>
   );
 }

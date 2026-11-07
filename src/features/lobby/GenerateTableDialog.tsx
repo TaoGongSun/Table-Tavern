@@ -1,6 +1,8 @@
 // 一句話開桌（聊天桌）：把玩家的一句話（＋類型標籤）交給 AI 產出世界觀綱要與角色名單，就地改完再展開成一張真的桌。
 // 草稿與生成流程在 useTableGenesis；關閉只是不畫（open=false 時回 null，元件不卸載），草稿留著。
 // 生成中不能關（× 停用、Esc 無效）；點遮罩一律不關，免得誤觸丟掉整份草稿。VN 桌走 features/vn/wizard。
+// `room`：開房模式（同一份 hook）。朋友自己建角色時不畫角色區。
+import { useEffect, useState } from "react";
 import { t } from "../../i18n";
 import { Dialog, SwapLabel } from "../../shared/ui/Dialog";
 import { GenesisError, OutlinePreview } from "./OutlinePreview";
@@ -20,15 +22,24 @@ export function GenerateTableDialog({
   onClose,
   onCreated,
   transport,
+  room = false,
 }: {
   open: boolean;
   onClose: () => void;
-  /** 桌生出來了：桌次清單重讀並進去那張新桌 */
+  /** 桌生出來了：桌次清單重讀並進去那張新桌；開房模式改走開房 */
   onCreated: (worldId: string) => Promise<void>;
   /** 目前的 AI 來源：失敗訊息要指對地方（API 換金鑰／CLI 重新登入） */
   transport?: string;
+  /** 開房生成：標題與建立鈕改文案，題材下二選一角色由誰建 */
+  room?: boolean;
 }) {
-  const genesis = useTableGenesis("chat");
+  const [cast, setCast] = useState(false);
+  const genesis = useTableGenesis("chat", room ? { cast } : null);
+  // 聊天桌與開房共用這份草稿。換模式時舊大綱作廢（兩個方向都清），點子與題材留著。
+  useEffect(() => {
+    setCast(false);
+    genesis.discardOutline();
+  }, [room]);
   if (!open) return null;
 
   const { busy, hasOutline } = genesis;
@@ -42,7 +53,7 @@ export function GenerateTableDialog({
   }
   return (
     <Dialog
-      title={t("genTitle")}
+      title={t(room ? "genRoomTitle" : "genTitle")}
       size="l"
       className="gen-table-dialog"
       onDismiss={busy === null ? onClose : undefined}
@@ -67,7 +78,7 @@ export function GenerateTableDialog({
             disabled={busy !== null || !genesis.canCreate}
             onClick={() => void create()}
           >
-            <SwapLabel labels={[t("genCreateBtn"), t("genExpanding")]} current={busy === "expand" ? 1 : 0} />
+            <SwapLabel labels={[t(room ? "genRoomCreateBtn" : "genCreateBtn"), t("genExpanding")]} current={busy === "expand" ? 1 : 0} />
           </button>
         )
       }
@@ -102,6 +113,21 @@ export function GenerateTableDialog({
           );
         })}
       </div>
+      {room && (
+        <fieldset className="gen-room-cast" disabled={busy !== null}>
+          <label>
+            <input type="radio" name="room-cast" value="own" checked={!cast} onChange={() => setCast(false)} />
+            <span>
+              {t("genRoomCastOwn")}
+              <small>{t("genRoomCastOwnNote")}</small>
+            </span>
+          </label>
+          <label>
+            <input type="radio" name="room-cast" value="made" checked={cast} onChange={() => setCast(true)} />
+            {t("genRoomCastAi")}
+          </label>
+        </fieldset>
+      )}
       {/* 有綱要後底部「建立」接手主鈕，這顆降成次鈕但留在原位 */}
       <div className="gen-generate-row">
         <button
@@ -114,7 +140,7 @@ export function GenerateTableDialog({
         </button>
         <small>{t("genQuotaNote")}</small>
       </div>
-      <OutlinePreview genesis={genesis} genreLabels={labels} />
+      <OutlinePreview genesis={genesis} genreLabels={labels} showCharacters={!(room && !cast)} />
       <GenesisError genesis={genesis} transport={transport} />
     </Dialog>
   );
