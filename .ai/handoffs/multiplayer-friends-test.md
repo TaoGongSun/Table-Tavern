@@ -19,7 +19,7 @@ Created: 2026-11-03
 - 截圖：`web/src/features/funnel/tour/{table,roomHost,roomGuest}.zh-CN.webp`，來自 2026-11-03 正式伺服器端到端實測（測試通道房主＋Playwright WebKit iPhone 13 兩支手機，免費模型）。
 
 ## 下一步
-- 朋友實機測試：pCloud 演練包（版本號仍是 0.4.0，早上下載過的要重新下載）＋手機加入；回報問題再修。
+- 朋友實機測試：pCloud 包換成 0.5.2（作者上傳 `~/Downloads/TableTavern-v0.5.2/` 兩個檔）＋手機加入；回報問題再修。
 - 截圖裡模型顯示仍是 default（拍攝早於「默认」改動），不重拍。
 
 ## 觀察
