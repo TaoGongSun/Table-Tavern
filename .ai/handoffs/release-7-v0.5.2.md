@@ -16,7 +16,7 @@ room-scene-advance-bar、room-scene-capacity、room-open-from-idea、room-roster
 - [x] 版本 0.5.2 五處（`node scripts/check-version.mjs v0.5.2` 綠）。
 - [x] CHANGELOG `[0.5.2]` 段（繁中＋英文；資料段加矽基流動一條）。
 - [x] 說明文字對照現況（README、房間說明書三語、下載頁文案）——見本檔「說明文字」。
-- [ ] `npm run verify` 綠（版號 commit 後）。
+- [x] `npm run verify` 綠（版號 commit 後，5c75edf9 已推 main）。
 - [ ] 作者說發 → 推 tag。
 
 ## 說明文字（2026-11-07 對照，Opus 代理逐檔核、主線裁定）
