@@ -5,7 +5,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { t } from "../../i18n";
+import { setLang, t } from "../../i18n";
 import type { AppConfig } from "../../shared/contracts/backend-contracts";
 
 const patches = vi.hoisted(() => [] as Record<string, unknown>[]);
@@ -77,10 +77,12 @@ afterEach(() => {
     host.remove();
   }
   patches.length = 0;
+  setLang("zh-TW");
 });
 
 describe("中國供應商（矽基流動）", () => {
   it("選了就換 base_url、金鑰存 siliconflow 槽，OpenRouter 欄與 base URL 欄藏起來", async () => {
+    setLang("zh-CN");
     const host = await mount({});
     act(() => radio(host, t("transportCn")).click());
     await flush();
@@ -101,6 +103,7 @@ describe("中國供應商（矽基流動）", () => {
   });
 
   it("從矽基流動切回 API 直連會清掉 base_url", async () => {
+    setLang("zh-TW");
     const host = await mount({ base_url: SILICONFLOW_BASE_URL });
     expect(radio(host, t("transportCn")).checked).toBe(true);
     act(() => radio(host, t("transportApi")).click());

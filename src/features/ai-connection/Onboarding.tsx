@@ -1,15 +1,18 @@
-// 首次設定卡：transport 走 api、且還沒存過 OpenRouter key 時，才長在遊玩畫面頂端。
-// 主路徑是一鍵 OAuth；手動 key 只留在次要 fallback，兩條路都交給後端共用保存／bootstrap 邏輯。
-import { isSiliconFlow } from "./siliconflow";
+// 首次設定卡：transport 走 api、且還沒有可用路線時，才長在遊玩畫面頂端。
+// 簡中改推矽基流動貼金鑰；其他語系主路徑是一鍵 OAuth，手動 key 只留在次要 fallback。
+import { isSiliconFlow, SILICONFLOW_BASE_URL, SILICONFLOW_KEY_URL } from "./siliconflow";
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { t } from "../../i18n";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { currentLang, t } from "../../i18n";
 import { checkApiKey } from "./api-key-check";
 import {
   createOpenRouterPkce,
   openRouterOnboardingErrorKey,
 } from "./openrouter-onboarding";
+import { defaultApiProvider } from "./transport-lang";
+import { updateConfig } from "../settings/update-config";
 import { AppConfig } from "../../shared/contracts/backend-contracts";
 
 type Busy = "oauth" | "manual" | null;
@@ -27,6 +30,64 @@ export function Onboarding({ config, onSaved }: { config: AppConfig; onSaved: (c
   const keyWarning = checkApiKey(apiKey, String(config.preferences["base_url"] ?? ""));
 
   if (aiReady(config)) return null;
+
+  if (defaultApiProvider(currentLang()) === "siliconflow") {
+    const cnKeyWarning = checkApiKey(apiKey, SILICONFLOW_BASE_URL);
+    async function saveSiliconFlow(event: FormEvent<HTMLFormElement>) {
+      event.preventDefault();
+      const key = apiKey.trim();
+      if (!key) return;
+      setMessage("");
+      setBusy("manual");
+      try {
+        const next = await updateConfig({
+          api_keys: { siliconflow: key },
+          preferences: { transport: "api", base_url: SILICONFLOW_BASE_URL },
+        });
+        onSaved(next);
+      } catch {
+        setMessage(t("onboardErrSave"));
+      } finally {
+        setBusy(null);
+      }
+    }
+    return (
+      <section className="settings onboarding" role="note">
+        <div className="settings-form">
+          <strong>{t("onboardCnTitle")}</strong>
+          <p>{t("onboardCnIntro")}</p>
+          <button type="button" onClick={() => void openUrl(SILICONFLOW_KEY_URL)}>
+            {t("cnGetKeyBtn")}
+          </button>
+          <form className="settings-form" onSubmit={saveSiliconFlow}>
+            <div className="row">
+              <input
+                type="password"
+                aria-label={t("cnKeyLabel")}
+                value={apiKey}
+                onChange={(event) => setApiKey(event.currentTarget.value)}
+                disabled={busy !== null}
+              />
+              <button type="submit" disabled={busy !== null || !apiKey.trim()}>
+                {busy === "manual" ? t("onboardManualSaving") : t("onboardCnSave")}
+              </button>
+            </div>
+            {cnKeyWarning && (
+              <span className="field-warn" role="alert">
+                {t("apiKeyLooksPastedSf")}
+              </span>
+            )}
+          </form>
+          {message && (
+            <span role="alert" aria-live="polite">
+              {message}
+            </span>
+          )}
+          <small>{t("onboardConnectCliHint")}</small>
+        </div>
+      </section>
+    );
+  }
 
   async function connect() {
     setMessage("");

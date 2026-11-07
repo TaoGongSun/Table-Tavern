@@ -1,8 +1,9 @@
 // AI 分頁的連線方式清單：每列一個有框的選項（radio＋名稱是 label），
 // 偵測狀態、驗證／換帳號／安裝鈕與安裝進度是同列的兄弟節點，不包進 label 裡誤觸切換。
-import { t } from "../../i18n";
+import { currentLang, t } from "../../i18n";
 import { backendText } from "../../shared/ui/backend-text";
 import { CLI_LABELS, CliInfo, cliConnectedKey } from "../ai-connection/cli";
+import { transportRowsFor, type TransportRowId } from "../ai-connection/transport-lang";
 import { CliUpdateAction } from "../../shared/ui/CliUpdateAction";
 import { AppConfig } from "../../shared/contracts/backend-contracts";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -93,35 +94,48 @@ export function TransportChoice({
   /** 這次顯示「有測試過的新版本」提示的 CLI（只出現一次，見 SettingsForm） */
   testedPrompts: Record<string, string>;
 }) {
+  const rows = transportRowsFor(currentLang());
+  // 已選中的列不藏：換語系時人還看得到自己正在用的那一列
+  const showRow = (id: TransportRowId) =>
+    rows.includes(id) ||
+    (id === "siliconflow"
+      ? transport === "api" && siliconflow
+      : id === "api"
+        ? transport === "api" && !siliconflow
+        : transport === id);
   return (
     <fieldset className="transport-list">
       <legend>{t("transportLegend")}</legend>
-      <div className={optionClass(transport === "api" && !siliconflow)}>
-        <label className="transport-option-name">
-          <input
-            type="radio"
-            name="transport"
-            checked={transport === "api" && !siliconflow}
-            onChange={() => onTransport("api")}
-          />
-          {t("transportApi")}
-        </label>
-      </div>
-      <div className={optionClass(transport === "api" && siliconflow)}>
-        <label className="transport-option-name">
-          <input
-            type="radio"
-            name="transport"
-            checked={transport === "api" && siliconflow}
-            onChange={() => onTransport("siliconflow")}
-          />
-          {t("transportCn")}
-        </label>
-        <button type="button" className="btn btn-sm" onClick={() => void openUrl(SILICONFLOW_KEY_URL)}>
-          {t("cnGetKeyBtn")}
-        </button>
-      </div>
-      {(["claude", "codex", "agy", "grok"] as const).map((id) => {
+      {showRow("api") && (
+        <div className={optionClass(transport === "api" && !siliconflow)}>
+          <label className="transport-option-name">
+            <input
+              type="radio"
+              name="transport"
+              checked={transport === "api" && !siliconflow}
+              onChange={() => onTransport("api")}
+            />
+            {t("transportApi")}
+          </label>
+        </div>
+      )}
+      {showRow("siliconflow") && (
+        <div className={optionClass(transport === "api" && siliconflow)}>
+          <label className="transport-option-name">
+            <input
+              type="radio"
+              name="transport"
+              checked={transport === "api" && siliconflow}
+              onChange={() => onTransport("siliconflow")}
+            />
+            {t("transportCn")}
+          </label>
+          <button type="button" className="btn btn-sm" onClick={() => void openUrl(SILICONFLOW_KEY_URL)}>
+            {t("cnGetKeyBtn")}
+          </button>
+        </div>
+      )}
+      {(["claude", "codex", "agy", "grok"] as const).filter((id) => showRow(id)).map((id) => {
         // clis === null＝偵測還沒回來，與「偵測不到」是兩回事：此時不給按鈕，避免誤按一鍵安裝
         const detecting = clis === null;
         const found = clis?.find((c) => c.id === id);
