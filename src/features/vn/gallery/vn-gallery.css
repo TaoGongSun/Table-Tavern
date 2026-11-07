@@ -224,3 +224,27 @@
   -webkit-line-clamp: 2;
   word-break: break-all;
 }
+.vn-credits-section h3 {
+  margin: 0 0 0.4rem;
+  font-size: 1rem;
+}
+.vn-credits-section + .vn-credits-section {
+  margin-top: 1rem;
+}
+.vn-credits-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.vn-credits-title {
+  font-weight: 700;
+}
+.vn-credits-row {
+  flex-wrap: wrap;
+}
+.vn-credits-row .link {
+  margin-left: auto;
+}

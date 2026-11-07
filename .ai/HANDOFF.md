@@ -9,6 +9,7 @@
 - [card-mvu-shim](handoffs/card-mvu-shim.md) — 卡片介面沙盒墊 MVU 讀寫變數：全部已合併 main，剩實測佇列梯 1 項目（含 iframe 內按鈕實際互動）
 
 ## 等實機驗收（順序見[實測佇列](reference/verification-queue.md)）
+- [vn-credits](handoffs/vn-credits.md) — VN 感謝名單：完結字卡精簡署名＋「美術與音樂」面板音樂頁（曲名、作者、授權、來源連結）：已合 main（2026-11-07）、Sol 驗收 1 輪 DONE；等作者試玩
 - [vn-audio](handoffs/vn-audio.md) — VN 音訊：零金鑰 BGM（Incompetech、GM `[bgm: 情緒]` 標記自動切換、標題主題曲）＋選填 Freesound 音效、音量設定、作品包帶 BGM：已合 main（2026-11-07）、Sol 方案審 2 輪＋驗收 2 輪 PASS；等作者試玩
 - [vn-full-auto-dual-track](handoffs/vn-full-auto-dual-track.md) — VN 開桌一鍵開始（① 「直接開始」主鈕串起大綱→建桌→劇本→標題畫面、首幕背景並行、劇本失敗停在 ②、標題畫面露主角一句話）：已合 main（2026-11-07）、Sol 1 輪 PASS；等作者試玩
 - [vn-story-flags](handoffs/vn-story-flags.md) — 劇情旗標剩餘缺口五項（回饋句指路、頂列一鍵存劇本、照指示重寫劇本、VN 遊戲選單重排成四組八顆＋「進度」頁）：已合 main（2026-11-07）、Sol 4 輪 PASS；等作者試玩

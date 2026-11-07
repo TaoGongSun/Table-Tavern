@@ -1,8 +1,19 @@
-// 完結畫面（vn-mode 包 5 §2.7、包 6 §2.8、包 8 §2.2）：「完」、結局標題、已達成 x／y；回標題（主鈕）、從某一章重玩、
+// 完結畫面（vn-mode 包 5 §2.7、包 6 §2.8、包 8 §2.2）：「完」、結局標題、已達成 x／y、音訊署名；回標題（主鈕）、從某一章重玩、
 // 開新周目、匯出成 VN 作品、結局一覽。重播桌（包 8）不出開新周目與匯出，重玩改叫章節選擇。
 import { t } from "../../i18n";
+import { creditLines, useCreditEntries, type CreditLine } from "./audio/credits";
 import { reachedText, useEndings } from "./StoryPanels";
 import "./vn-story.css";
+
+function creditText(line: CreditLine): string {
+  const join = t("vnCreditsJoin");
+  const authors = line.authors.join(join) + (line.more > 0 ? t("vnCreditsMore", { n: line.more }) : "");
+  return t(line.kind === "bgm" ? "vnCreditsLineMusic" : "vnCreditsLineSfx", {
+    authors,
+    hosts: line.hosts.join(join),
+    licenses: line.licenses.join(join),
+  });
+}
 
 export function EndingScreen({
   worldId,
@@ -25,12 +36,21 @@ export function EndingScreen({
   onTitle: () => void;
 }) {
   const endings = useEndings(worldId, endingId);
+  const creditEntries = useCreditEntries(worldId);
+  const lines = creditLines(creditEntries);
   const title = endings?.endings.find((ending) => ending.id === endingId)?.title;
   return (
     <div className="vn-ending-screen" role="dialog" aria-label={t("vnTheEnd")}>
       <p className="vn-chapter-heading">{t("vnTheEnd")}</p>
       {title && <p className="vn-ending-title">{title}</p>}
       {endings && reachedText(endings) && <p className="vn-chapter-note">{reachedText(endings)}</p>}
+      {lines.length > 0 && (
+        <div className="vn-credits-lines">
+          {lines.map((line) => (
+            <p key={line.kind}>{creditText(line)}</p>
+          ))}
+        </div>
+      )}
       <div className="vn-chapter-actions">
         <button type="button" className="btn btn-primary" onClick={onTitle}>
           {t("vnBackToTitle")}

@@ -452,6 +452,22 @@ export interface BackgroundStatus {
   reason: string | null;
 }
 
+/** `vn_audio_read` 的 audio.json 筆（Rust `vn_audio::Entry`）。只有落地的檔才有筆。 */
+export interface AudioEntry {
+  kind: string;
+  key: string;
+  title: string;
+  author: string;
+  source_url: string;
+  license: string;
+}
+
+/** `vn_audio_read`（Rust `AudioView`） */
+export interface AudioView {
+  files: { kind: string; key: string; path: string }[];
+  entries: AudioEntry[];
+}
+
 /** 串流中的暫定格：最後一格可能還在長 */
 export interface VnText {
   cells: VnCell[];

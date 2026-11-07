@@ -34,6 +34,16 @@
   max-width: 32rem;
   opacity: 0.85;
 }
+.vn-credits-lines {
+  margin: 0;
+  max-width: 40rem;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  opacity: 0.85;
+}
+.vn-credits-lines p {
+  margin: 0;
+}
 .vn-chapter-actions {
   display: flex;
   flex-wrap: wrap;

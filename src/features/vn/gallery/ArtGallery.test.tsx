@@ -4,13 +4,16 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { t } from "../../../i18n";
-import type { BackgroundPlace, BackgroundStatus } from "../../../shared/contracts/backend-contracts";
+import type { AudioEntry, BackgroundPlace, BackgroundStatus } from "../../../shared/contracts/backend-contracts";
+import { ArtGallery } from "./ArtGallery";
 import { BackgroundGallery } from "./BackgroundGallery";
 import { SpriteGallery } from "./SpriteGallery";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const calls: [string, Record<string, unknown>][] = [];
+const audio = { entries: [] as AudioEntry[], fail: false };
+const openUrl = vi.hoisted(() => vi.fn(async () => {}));
 const harbor: BackgroundPlace = {
   slug: "aaaaaaaaaaaaaaaa",
   location: "港口",
@@ -38,12 +41,16 @@ vi.mock("@tauri-apps/api/core", () => ({
           { worldId: "w", characterId: "c1", variant: null, expression: "sad", state: "running", reason: null },
           { worldId: "w", characterId: "c2", variant: null, expression: "base", state: "failed", reason: "x" },
         ];
+      case "vn_audio_read":
+        if (audio.fail) throw new Error("boom");
+        return { files: [], entries: audio.entries };
       default:
         return null;
     }
   }),
 }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
+vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl }));
 
 // statusOf 一覽不用，給個佔位
 const queuedNone = undefined as unknown as BackgroundStatus;
@@ -166,5 +173,66 @@ describe("SpriteGallery", () => {
     expect(dots(rows[0])).toEqual(["done", "done"]);
     expect(rows[0].textContent).not.toContain(t("vnGalleryEdit"));
     expect(rows[0].querySelector<HTMLButtonElement>(".vn-gallery-thumb")!.disabled).toBe(false);
+  });
+});
+
+describe("ArtGallery music", () => {
+  beforeEach(() => {
+    calls.length = 0;
+    audio.entries = [];
+    audio.fail = false;
+    openUrl.mockClear();
+  });
+
+  async function openMusic(replay = false) {
+    const host = document.createElement("div");
+    await act(async () => {
+      createRoot(host).render(
+        <ArtGallery worldId="w" images={{}} backgrounds={{} as never} replay={replay} onClose={() => {}} />,
+      );
+    });
+    await settle();
+    const tab = [...host.querySelectorAll<HTMLButtonElement>("[role=tab]")].find((button) => button.textContent === t("vnGalleryTabMusic"));
+    await act(async () => tab!.click());
+    await settle();
+    return host;
+  }
+
+  it("names the panel and adds a music tab that lists both kinds", async () => {
+    audio.entries = [
+      { kind: "bgm", key: "theme", title: "Theme", author: "Kevin MacLeod", source_url: "https://incompetech.com/a", license: "Attribution" },
+      { kind: "sfx", key: "door", title: "Door", author: "Ann", source_url: "http://freesound.org/a", license: "Creative Commons 0" },
+      { kind: "sfx", key: "bell", title: "Bell", author: "Bo", source_url: "", license: "CC0" },
+    ];
+    const host = await openMusic(true);
+    expect(host.querySelector(".vn-story-panel")?.getAttribute("aria-label")).toBe(t("vnGallery"));
+    expect(t("vnGallery")).toBe("美術與音樂");
+    const body = host.querySelector(".vn-credits")!;
+    expect([...body.querySelectorAll("h3")].map((node) => node.textContent)).toEqual([t("vnCreditsMusic"), t("vnCreditsSfx")]);
+    expect(body.textContent).toContain("Theme");
+    expect(body.textContent).toContain("CC BY");
+    expect(body.textContent).toContain("CC0");
+    const source = [...body.querySelectorAll("button")].filter((button) => button.textContent === t("vnCreditsSource"));
+    expect(source).toHaveLength(1);
+    await act(async () => source[0].click());
+    expect(openUrl).toHaveBeenCalledWith("https://incompetech.com/a");
+    expect(calls.filter(([command]) => command === "vn_audio_read")).toHaveLength(1);
+  });
+
+  it("hides an empty section and shows the empty state when nothing is landed", async () => {
+    audio.entries = [
+      { kind: "bgm", key: "theme", title: "Theme", author: "Kevin MacLeod", source_url: "https://incompetech.com/a", license: "Attribution" },
+    ];
+    const onlyMusic = await openMusic();
+    expect(onlyMusic.querySelector(".vn-credits")?.textContent).not.toContain(t("vnCreditsSfx"));
+    audio.entries = [];
+    const empty = await openMusic();
+    expect(empty.querySelector(".vn-credits")).toBeNull();
+    expect(empty.textContent).toContain(t("vnCreditsEmpty"));
+    audio.fail = true;
+    audio.entries = [
+      { kind: "bgm", key: "theme", title: "Theme", author: "Kevin MacLeod", source_url: "https://incompetech.com/a", license: "Attribution" },
+    ];
+    expect((await openMusic()).textContent).toContain(t("vnCreditsEmpty"));
   });
 });

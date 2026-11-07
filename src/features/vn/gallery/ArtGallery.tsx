@@ -1,13 +1,20 @@
-// 美術一覽（plans/vn-setup-wizard.md §4）：標題畫面與遊戲選單共用的面板，分頁「立繪｜背景」。
-// 縮圖點開燈箱檢視；重播桌只能看（立繪不開編輯、背景不出生成與上傳鈕）。
+// 美術與音樂（plans/vn-setup-wizard.md §4、plans/vn-credits.md）：標題畫面與遊戲選單共用的面板，分頁「立繪｜背景｜音樂」。
+// 縮圖點開燈箱檢視；重播桌只能看（立繪不開編輯、背景不出生成與上傳鈕）。音樂頁重播桌照常列。
 import { useState } from "react";
 import { t } from "../../../i18n";
 import { Panel } from "../StoryPanels";
 import type { useBackgrounds } from "../useBackgrounds";
 import { ArtViewer, type Viewing } from "./ArtViewer";
 import { BackgroundGallery } from "./BackgroundGallery";
+import { MusicCredits } from "./MusicCredits";
 import { SpriteGallery } from "./SpriteGallery";
 import "./vn-gallery.css";
+
+const TABS = [
+  ["sprites", "vnGalleryTabSprites"],
+  ["backgrounds", "vnGalleryTabBackgrounds"],
+  ["music", "vnGalleryTabMusic"],
+] as const;
 
 export function ArtGallery({
   worldId,
@@ -24,12 +31,12 @@ export function ArtGallery({
   replay: boolean;
   onClose: () => void;
 }) {
-  const [tab, setTab] = useState<"sprites" | "backgrounds">("sprites");
+  const [tab, setTab] = useState<(typeof TABS)[number][0]>("sprites");
   const [viewing, setViewing] = useState<Viewing | null>(null);
   return (
     <Panel label={t("vnGallery")} onClose={onClose} className="vn-gallery">
       <div className="vn-gallery-tabs" role="tablist">
-        {(["sprites", "backgrounds"] as const).map((key) => (
+        {TABS.map(([key, label]) => (
           <button
             key={key}
             type="button"
@@ -38,7 +45,7 @@ export function ArtGallery({
             aria-selected={tab === key}
             onClick={() => setTab(key)}
           >
-            {t(key === "sprites" ? "vnGalleryTabSprites" : "vnGalleryTabBackgrounds")}
+            {t(label)}
           </button>
         ))}
       </div>
@@ -46,8 +53,10 @@ export function ArtGallery({
       <div className="vn-gallery-body">
         {tab === "sprites" ? (
           <SpriteGallery worldId={worldId} images={images} readOnly={replay} onView={setViewing} />
-        ) : (
+        ) : tab === "backgrounds" ? (
           <BackgroundGallery worldId={worldId} backgrounds={backgrounds} readOnly={replay} onView={setViewing} />
+        ) : (
+          <MusicCredits worldId={worldId} />
         )}
       </div>
       {viewing && <ArtViewer viewing={viewing} onClose={() => setViewing(null)} />}

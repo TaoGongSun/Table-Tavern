@@ -2,15 +2,12 @@
 import * as tauriCore from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useRef, useState } from "react";
+import type { AudioView } from "../../../shared/contracts/backend-contracts";
 import type { FlatCell } from "../vn-cells";
 import { canStartSfx, desiredBgmKey, effectiveVolume, filePath, reachedSfx, type AudioFile } from "./audio-policy";
 
 const FADE_MS = 1000;
 const STATUS_EVENT = "vn-audio-status";
-
-interface AudioView {
-  files: AudioFile[];
-}
 
 interface Status {
   worldId: string;
