@@ -66,6 +66,7 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - card-preview-markdown — 手機選角清單的角色簡介直接顯示 Markdown 原文（「### 簡介…」），一般酒館卡常以標題開頭，匯卡的玩家都會看到（小案未估）〔模型判斷·未裁決；常識審查員〕 — 下一步：未排序
 - gm-direction — GM 旁白／推進帶方向輸入，單人版與房間一起做（要改協定與提示詞） — 下一步：等作者排序〔模型判斷·未裁決；常識審查員〕
 - room-delegate-duration — 到場整理標「代管 N 回合」，房主好決定要不要移除〔模型判斷·未裁決；常識審查員〕
+- [mobile-room-host](tasks/mobile-room-host.md) — Android 手機開房：APK 前景服務＋API 授權入口（OpenRouter 一鍵登入、國產模型金鑰）（案別未估） — 下一步：不急〔作者裁決 2026-11-06〕；開工先評估，疊在 cn-apk-shell 之上
 - [room-server-own-domain](tasks/room-server-own-domain.md) — 房間伺服器從暫用的 tt-room.pirahus.com 換成專用網域（小案，幾行＋部署打包） — 下一步：不急〔作者裁決 2026-11-03〕；朋友測試順利、作者買好網域後，跟下一次打包一起換
 
 ## 排後
@@ -74,7 +75,9 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [list-field-line-update](tasks/list-field-line-update.md) — 清單欄逐行更新（依鍵 upsert／remove） — 下一步：未排程〔作者裁決 2026-10-11〕；縮小成重構時拆欄位、不做 upsert 協定〔模型判斷·未裁決〕
 - [model-version-follow](tasks/model-version-follow.md) — 模型新版推出時跟上：CLI 手選型號的人提醒換新版、OpenRouter 檔位預填不再寫死 — 下一步：縮小〔模型判斷·未裁決〕：OpenRouter 預填改執行時決定、CLI 提醒先只做 grok〔作者裁決 2026-10-06：立案、兩件併一案〕
 - [ai-connection-provider-panels](tasks/ai-connection-provider-panels.md) — AI 連線設定重整：供應商專屬面板（延後） — 下一步：暫不動工〔模型判斷·未裁決〕；前置 free-player-onboarding 已結案，等真實玩家回饋設定頁困擾再評估
-- [ttrpg-rules-system](tasks/ttrpg-rules-system.md) — 跑團規則系統：規則書引入＋擲骰＋角色紙（規則中立引擎，零內建內容） — 下一步：五題拍板完成（2026-08-02）；前置 st-ecosystem 已結案，排程時機由作者定；v1（指南＋骰池＋骰鈕＋注入實測）不依賴狀態欄，v2 等狀態欄二期後細拍
+- [ttrpg-rules-system](tasks/ttrpg-rules-system.md) — 跑團規則系統：規則書引入＋擲骰＋角色紙（v1 中案估 200–300；跑團＝聊天桌能力組、不另立桌種〔作者裁決 2026-11-07〕） — 下一步：v1 不依賴狀態欄可直接開工，開工先重讀 MVU 與房間協定現況
+- [ttrpg-combat-tracker](tasks/ttrpg-combat-tracker.md) — 跑團戰鬥面板：HP／先攻／狀態效果 app 計算、多人廣播（大案估 >300，方案與驗收送審） — 下一步：等 ttrpg-rules-system v1；開工先拍「規則桌也掛角色分頁」
+- [lobby-table-badges](tasks/lobby-table-badges.md) — 大廳不分單人／多人：房間釘頂、桌多才出篩選籤、跑團徽章、入口卡依意圖重排（中案估 150–250） — 下一步：釘頂／篩選籤／入口卡可先做，徽章等跑團 v1
 - [release-1-mac-signing](tasks/release-1-mac-signing.md) — 發佈 1：Mac 正式簽章＋公證（Developer ID＋notarytool） — 下一步：首發不簽章〔作者裁決 2026-10-04〕，等使用者變多再考慮；Gatekeeper 繞過說明併入 release-2 發布說明
 - [cli-custom-provider](tasks/cli-custom-provider.md) — 自訂 CLI 供應商：使用者自填指令模板接任意 CLI（如 Kimi） — 下一步：暫不動工〔模型判斷·未裁決〕；確認真實需求後拍板設定 schema，v1 只做純文字模式
 - [character-to-player-card](tasks/character-to-player-card.md) — 角色卡升級成玩家卡（角色編輯頁的獨立入口） — 下一步：維持排後；兩項待拍板，建議最小版（直接互換、不做取消成零張）〔模型判斷·未裁決〕已寫進任務檔，開工時請作者確認
