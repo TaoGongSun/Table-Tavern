@@ -53,6 +53,7 @@ fn bible_messages_carry_preferences() {
         length: Some(Length::Long),
         branching: Some(Branching::Full),
         name: "阿哲".to_owned(),
+        tagline: String::new(),
     };
     let source = BibleSource {
         world_md: "霧港",

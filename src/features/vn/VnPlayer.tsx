@@ -90,6 +90,7 @@ export function VnPlayer({
   title,
   onTitle,
   replay,
+  tagline,
   sceneLabels,
 }: {
   worldId: string;
@@ -130,6 +131,8 @@ export function VnPlayer({
   onTitle: (open: boolean) => void;
   /** 作品包匯入的重播桌（`WorldMeta.replay`） */
   replay: boolean;
+  /** 主角一句話（`WorldMeta.tagline`）；空的不顯示 */
+  tagline?: string;
   /** 幕標籤（重播桌找換幕子幕與劇情前一幕） */
   sceneLabels: Record<string, SceneLabel>;
 }) {
@@ -626,6 +629,7 @@ export function VnPlayer({
         <TitleScreen
           worldId={worldId}
           tableName={tableName}
+          tagline={tagline}
           backdrop={(backdropId && backgrounds.images[backdropId]?.src) || undefined}
           disabled={actionsDisabled}
           progress={!progress.loaded ? "loading" : hasProgress ? "resume" : progress.saves.length > 0 ? "saved" : "fresh"}

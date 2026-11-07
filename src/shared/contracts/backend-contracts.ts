@@ -14,6 +14,8 @@ export interface WorldMeta {
   replay: boolean;
   /** VN 精靈沒走完停在哪一步：大廳標「設定未完成」、點進去回精靈 */
   setup?: VnSetupStage | null;
+  /** 主角一句話；空的或舊桌沒有就不給 */
+  tagline?: string;
 }
 
 export type VnSetupStage = "story" | "art";
@@ -25,6 +27,8 @@ export interface VnPreferences {
   length: "short" | "medium" | "long" | null;
   branching: Bible["branching"] | null;
   name: string;
+  /** 主角一句話；只落檔。生成大綱時還沒有，送空字串 */
+  tagline: string;
 }
 
 export interface AppConfig {

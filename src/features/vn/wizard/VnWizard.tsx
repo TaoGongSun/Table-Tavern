@@ -5,6 +5,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { t } from "../../../i18n";
 import type { VnSetupStage } from "../../../shared/contracts/backend-contracts";
 import { Dialog, SwapLabel } from "../../../shared/ui/Dialog";
@@ -55,6 +56,12 @@ export function VnWizard({
   onClose: () => void;
 }) {
   const genesis = useTableGenesis("vn");
+  // createTable 閉包看的是當下那次渲染的大綱；一鍵在 await 之後要先刷進主角名再拿最新的那份
+  const genesisRef = useRef(genesis);
+  genesisRef.current = genesis;
+  const [auto, setAuto] = useState(false);
+  const autoRef = useRef(false);
+  autoRef.current = auto;
   const [draft, setDraft] = useState<PreferenceDraft>(EMPTY_DRAFT);
   const [spoilerLock, setSpoilerLock] = useState(start.spoilerLock ?? true);
   const [worldId, setWorldId] = useState(start.worldId);
@@ -69,8 +76,15 @@ export function VnWizard({
   const flushStory = useRef<(() => Promise<boolean>) | null>(null);
   const [storyDirty, setStoryDirty] = useState(false);
   const onStoryDirty = useCallback(setStoryDirty, []);
-  const onBuild = useCallback(setBuild, []);
   const onArt = useCallback(setArt, []);
+  const beginRef = useRef<() => Promise<void>>(async () => {});
+  // 聖經完成且還在一鍵：直接進標題；寫失敗就退出一鍵，停在 ② 既有的重試畫面
+  const onBuild = useCallback((next: BuildState) => {
+    setBuild(next);
+    if (!autoRef.current) return;
+    if (next === "failed") setAuto(false);
+    else if (next === "done") void beginRef.current();
+  }, []);
 
   // 桌在了就記下停在哪一步（重開 app 也回得來）
   useEffect(() => {
@@ -107,10 +121,43 @@ export function VnWizard({
   }
 
   async function create() {
-    const id = await genesis.createTable(labels, { preferences: toPreferences(draft), spoilerLock });
+    const id = await genesis.createTable(labels, {
+      preferences: toPreferences(draft, genesis.outline?.player?.tagline ?? ""),
+      spoilerLock,
+    });
     if (id === null) return;
     setWorldId(id);
     void onCreated(id);
+  }
+
+  /** 不審任何一步。大綱或建桌失敗就退出一鍵，留下已生成的東西走逐步畫面 */
+  async function startAuto() {
+    setAuto(true);
+    const prefs = toPreferences(draft);
+    const name = draft.name;
+    if (!(await genesisRef.current.generateOutline(labels, prefs))) {
+      setAuto(false);
+      return;
+    }
+    flushSync(() => {
+      genesisRef.current.setOutline((current) =>
+        current && { ...current, player: { name, tagline: current.player?.tagline ?? "" } },
+      );
+    });
+    const id = await genesisRef.current.createTable(labels, {
+      preferences: toPreferences(draft, genesisRef.current.outline?.player?.tagline ?? ""),
+      spoilerLock,
+    });
+    if (id === null) {
+      setAuto(false);
+      setStep("story");
+      return;
+    }
+    setWorldId(id);
+    setStep("story");
+    setVisitedStory(true);
+    void onCreated(id);
+    invoke("vn_backgrounds_fill", { worldId: id, scene: null }).catch(() => {});
   }
 
   async function begin() {
@@ -119,11 +166,16 @@ export function VnWizard({
     try {
       if (!(await saveStory())) {
         setStarting(false);
+        setAuto(false);
         return;
       }
       // 定稿裝不上：留在 ③，失敗顯示在該列，再按開始＝重試
       if ((await finishArt.current?.()) === false) {
         setStarting(false);
+        if (autoRef.current) {
+          setAuto(false);
+          setStep("art");
+        }
         return;
       }
       await invoke("vn_setup_set", { worldId, stage: null, spoilerLock: null });
@@ -132,8 +184,10 @@ export function VnWizard({
       onFinish(worldId);
     } catch {
       setStarting(false);
+      setAuto(false);
     }
   }
+  beginRef.current = begin;
 
   const back = step === "art" ? "story" : step === "story" && worldId === null ? "idea" : null;
   // 桌還沒建、大綱在手：關掉會丟掉大綱，先問一句
@@ -149,6 +203,8 @@ export function VnWizard({
     if (await saveStory()) onClose();
   }
   const ready = art.total > 0 && art.ready < art.total;
+  const autoPhase: "outline" | "world" | "bible" | "done" =
+    worldId === null ? (genesis.busy === "expand" ? "world" : "outline") : build === "done" ? "done" : "bible";
   const footer =
     step === "idea" ? (
       genesis.outline && (
@@ -206,8 +262,8 @@ export function VnWizard({
               aria-current={step === id ? "step" : undefined}
               data-disabled={id === "idea" && worldId !== null ? "" : undefined}
             >
-              {/* 已走過、可退回的那格可點（同上一步） */}
-              {id === back ? (
+              {/* 已走過、可退回的那格可點（同上一步）；一鍵進行中整條不可點 */}
+              {!auto && id === back ? (
                 <button type="button" disabled={busy} onClick={() => setStep(back)}>
                   {index + 1}. {t(key)}
                 </button>
@@ -219,26 +275,29 @@ export function VnWizard({
         </ol>
       }
       start={
+        !auto &&
         back && (
           <button type="button" className="btn" disabled={busy} onClick={() => setStep(back)}>
             {t("vnPrevStep")}
           </button>
         )
       }
-      end={footer}
+      end={auto ? undefined : footer}
     >
-      {step === "idea" && (
+      {auto && <BuildProgress outline phase={autoPhase} />}
+      {!auto && step === "idea" && (
         <IdeaStep
           genesis={genesis}
           draft={draft}
           setDraft={setDraft}
           onGenerate={() => void generate()}
+          onStart={() => void startAuto()}
           spoilerLock={spoilerLock}
           setSpoilerLock={setSpoilerLock}
           onImportCard={onImportCard}
         />
       )}
-      {step === "story" && worldId === null && (
+      {!auto && step === "story" && worldId === null && (
         <>
           {genesis.busy === "expand" && <BuildProgress phase="world" />}
           <OutlinePreview
@@ -274,13 +333,13 @@ export function VnWizard({
           />
         </>
       )}
-      {(step === "idea" || (step === "story" && worldId === null)) && (
+      {!auto && (step === "idea" || (step === "story" && worldId === null)) && (
         <GenesisError genesis={genesis} transport={transport} />
       )}
       {worldId !== null && (
         <>
           {visitedStory && (
-            <div hidden={step !== "story"}>
+            <div hidden={auto || step !== "story"}>
               <StoryBuild
                 worldId={worldId}
                 spoilerLock={spoilerLock}

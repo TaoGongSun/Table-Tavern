@@ -746,7 +746,12 @@ describe("lobby and table navigation", () => {
       await boot();
       await click(buttonText(t("vnEntryTitle")));
       await typeInto(document.querySelector<HTMLTextAreaElement>("textarea[data-autofocus]")!, "fog");
-      await click(document.querySelector(".gen-generate-row button")!);
+      // SwapLabel 兩個字都在 DOM：用開頭比對「先看大綱」，不要點到第一顆「直接開始」
+      await click(
+        [...document.querySelectorAll(".gen-generate-row button")].find((b) =>
+          b.textContent?.trim().startsWith(t("vnSeeOutline")),
+        )!,
+      );
       // ① 生成後進 ② 可改大綱，「建立」在 ②
       expect(document.querySelector(".vn-stepbar [aria-current]")?.textContent).toContain(t("vnStepStory"));
       await click(

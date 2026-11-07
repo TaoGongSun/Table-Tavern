@@ -190,3 +190,25 @@ fn preferences_override_chapter_range_and_branching() {
     Preferences::default().apply(&mut bible);
     assert_eq!((bible.chapter_max, bible.branching), (5, Branching::None));
 }
+
+/// 主角一句話只落在 preferences：往返保留；舊 vn.json 沒這欄讀回來是空字串
+#[test]
+fn preferences_tagline_round_trips_and_legacy_vn_json_defaults_empty() {
+    let file = VnFile {
+        preferences: Some(Preferences {
+            tagline: "新來的燈塔看守".to_owned(),
+            ..Preferences::default()
+        }),
+        ..VnFile::default()
+    };
+    let back: VnFile = serde_json::from_slice(&serde_json::to_vec(&file).unwrap()).unwrap();
+    assert_eq!(back.preferences.unwrap().tagline, "新來的燈塔看守");
+    let legacy: VnFile =
+        serde_json::from_str(r#"{"version":1,"preferences":{"genres":["戀愛"],"name":"阿哲"}}"#)
+            .unwrap();
+    let preferences = legacy.preferences.unwrap();
+    assert_eq!(
+        (preferences.name.as_str(), preferences.tagline.as_str()),
+        ("阿哲", "")
+    );
+}

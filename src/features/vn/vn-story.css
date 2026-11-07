@@ -137,12 +137,20 @@
   /* 封面提亮後只在標題與選單後面局部壓暗，字才讀得清楚 */
   background: radial-gradient(closest-side, rgba(8, 10, 14, 0.7), rgba(8, 10, 14, 0.45) 70%, transparent);
 }
-.vn-title-name {
+.vn-title-name,
+.vn-title-tagline {
   margin: 0;
-  font-size: 2.6rem;
-  letter-spacing: 0.15em;
+  text-align: center;
   color: var(--amber);
   text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8);
+}
+.vn-title-name {
+  font-size: 2.6rem;
+  letter-spacing: 0.15em;
+}
+.vn-title-tagline {
+  max-width: 32rem;
+  font-size: 1.15rem;
 }
 .vn-title-art-progress {
   display: flex;

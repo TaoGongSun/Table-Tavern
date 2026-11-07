@@ -13,6 +13,7 @@ const state = vi.hoisted(() => ({
   /** 已裝定稿是哪張候選（undefined＝沒定稿） */
   installed: undefined as string | null | undefined,
   pickFails: false,
+  bibleFail: false,
 }));
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(async (command: string, args: Record<string, unknown> = {}) => {
@@ -45,6 +46,9 @@ vi.mock("@tauri-apps/api/core", () => ({
         return "data:image/png;base64,";
       case "vn_sprite_generate":
         return "new.png";
+      case "vn_bible_generate":
+        if (state.bibleFail) throw new Error("VN_BIBLE_FAILED");
+        return null;
       case "vn_backgrounds_fill":
       case "vn_backgrounds_status":
         return [];
@@ -69,6 +73,7 @@ beforeEach(() => {
   state.candidates = [];
   state.installed = undefined;
   state.pickFails = false;
+  state.bibleFail = false;
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
@@ -112,7 +117,7 @@ it("walks idea → story → art with a blank idea, keeping the draft across ste
   await act(async () => button(t("vnLengthShort")).click());
 
   // 什麼都沒填也能生成，偏好一起送
-  await act(async () => button(t("genGenerateBtn")).click());
+  await act(async () => button(t("vnSeeOutline")).click());
   const [, outlineArgs] = called("generate_table_outline")[0];
   expect(outlineArgs.input).toBe("");
   expect(outlineArgs.preferences).toMatchObject({ length: "short", name: "" });
@@ -216,4 +221,39 @@ it("knows which candidate is installed: the same one is not picked again, an upl
   await act(async () => button(t("vnStartGame")).click());
   await settle();
   expect(called("vn_sprite_pick")).toHaveLength(0);
+});
+
+const bible = { logline: "一句話", chapter_max: 5, branching: "full", endings: [], chapters: [], secrets: [], flags: [] };
+
+it("starts straight through to the title once the script is already there", async () => {
+  state.bible = bible;
+  const onFinish = vi.fn();
+  await mount({ worldId: null }, onFinish);
+  expect(button(t("vnStartNow")).classList.contains("btn-primary")).toBe(true);
+  expect(button(t("vnSeeOutline")).className).toBe("btn");
+  await act(async () => button(t("vnStartNow")).click());
+  for (let i = 0; i < 6; i += 1) await settle();
+  const names = state.calls.map(([name]) => name);
+  const outlineAt = names.indexOf("generate_table_outline");
+  const expandAt = names.indexOf("generate_table_expand");
+  const backdropAt = names.indexOf("vn_backgrounds_fill");
+  expect(outlineAt).toBeGreaterThanOrEqual(0);
+  expect(expandAt).toBeGreaterThan(outlineAt);
+  expect(backdropAt).toBeGreaterThan(expandAt);
+  expect(state.calls[expandAt][1].preferences).toMatchObject({ tagline: "新人" });
+  expect(state.calls[backdropAt][1]).toMatchObject({ worldId: "W", scene: null });
+  expect(called("vn_setup_set").some(([, args]) => args.stage === null)).toBe(true);
+  expect(onFinish).toHaveBeenCalledWith("W");
+});
+
+it("stays on the script failure screen when the bible generate rejects", async () => {
+  state.bibleFail = true;
+  const onFinish = vi.fn();
+  await mount({ worldId: null }, onFinish);
+  await act(async () => button(t("vnStartNow")).click());
+  for (let i = 0; i < 6; i += 1) await settle();
+  expect(onFinish).not.toHaveBeenCalled();
+  const failed = document.querySelector(".vn-bible-failed");
+  expect(failed?.closest("[hidden]")).toBeNull();
+  expect(failed?.querySelector("button")?.textContent).toBe(t("vnBibleRetry"));
 });

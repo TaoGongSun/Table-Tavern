@@ -11,6 +11,7 @@ import "./vn-story.css";
 export function TitleScreen({
   worldId,
   tableName,
+  tagline,
   backdrop,
   disabled,
   progress,
@@ -24,6 +25,8 @@ export function TitleScreen({
 }: {
   worldId: string;
   tableName: string;
+  /** 主角一句話；空的不顯示 */
+  tagline?: string;
   backdrop: string | undefined;
   disabled: boolean;
   /** loading＝進度還沒讀回來（先不出選單，免得主鈕閃一下）；fresh＝沒讀過也沒存檔；saved＝沒讀過但有存檔；resume＝讀過 */
@@ -55,6 +58,7 @@ export function TitleScreen({
       {image && <img className="vn-title-art" src={image} alt="" />}
       <div className="vn-title-body">
         <h1 className="vn-title-name">{tableName}</h1>
+        {tagline && <p className="vn-title-tagline">{tagline}</p>}
         <p className="vn-title-art-progress">
           {preparing && <span className="vn-pending">{t("vnArtPreparing", { n: art.ready, total: art.total })}</span>}
           {art !== null && art.failed > 0 && (

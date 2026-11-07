@@ -1,4 +1,4 @@
-// 精靈 ① 點子與偏好：兩個分頁「從點子生成｜用我的角色卡」。點子分頁第一眼只有一句話、題材、生成大綱，
+// 精靈 ① 點子與偏好：兩個分頁「從點子生成｜用我的角色卡」。點子分頁第一眼只有一句話、題材、直接開始，
 // 其餘偏好收在「更多偏好」；全部選填，什麼都不填也能生成（AI 自選題材）。卡分頁選檔交給匯入流程開 VN 桌。
 import { useRef, useState } from "react";
 import { t } from "../../../i18n";
@@ -42,6 +42,7 @@ export function IdeaStep({
   draft,
   setDraft,
   onGenerate,
+  onStart,
   spoilerLock,
   setSpoilerLock,
   onImportCard,
@@ -50,6 +51,8 @@ export function IdeaStep({
   draft: PreferenceDraft;
   setDraft: (update: (draft: PreferenceDraft) => PreferenceDraft) => void;
   onGenerate: () => void;
+  /** 不審大綱，串起生成、建桌、寫劇本，進標題畫面 */
+  onStart: () => void;
   spoilerLock: boolean;
   setSpoilerLock: (locked: boolean) => void;
   onImportCard: (file: File, spoilerLock: boolean) => void;
@@ -173,14 +176,12 @@ export function IdeaStep({
             </div>
           )}
           <div className="gen-generate-row">
-            <button
-              type="button"
-              className={genesis.hasOutline ? "btn" : "btn btn-primary"}
-              disabled={busy}
-              onClick={onGenerate}
-            >
+            <button type="button" className="btn btn-primary" disabled={busy} onClick={onStart}>
+              {t("vnStartNow")}
+            </button>
+            <button type="button" className="btn" disabled={busy} onClick={onGenerate}>
               <SwapLabel
-                labels={[t(genesis.hasOutline ? "vnRewriteOutline" : "genGenerateBtn"), t("genGenerating")]}
+                labels={[t(genesis.hasOutline ? "vnRewriteOutline" : "vnSeeOutline"), t("genGenerating")]}
                 current={genesis.busy === "outline" ? 1 : 0}
               />
             </button>

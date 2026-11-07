@@ -234,6 +234,7 @@ fn prefs(name: &str) -> Preferences {
         length: Some(Length::Short),
         branching: Some(Branching::None),
         name: name.to_owned(),
+        tagline: String::new(),
     }
 }
 

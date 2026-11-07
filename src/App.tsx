@@ -1165,6 +1165,7 @@ function App() {
             title={vnTitle}
             onTitle={setVnTitle}
             replay={worlds.find((w) => w.id === table)?.replay === true}
+            tagline={worlds.find((w) => w.id === table)?.tagline}
             sceneLabels={sceneLabels}
             flagHints={config.preferences["vn_flag_hints"] !== false}
             onFlagHints={(on) => void changePreference("vn_flag_hints", on)}

@@ -22,6 +22,9 @@ pub struct WorldMeta {
     pub replay: bool,
     /// VN 精靈沒走完（停在哪一步）：大廳桌卡標「設定未完成」、點進去回精靈
     pub setup: Option<super::vn::SetupStage>,
+    /// 主角一句話；空的或舊桌沒有就不給
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tagline: Option<String>,
 }
 
 /// 最後活動時間＝transcript 內最新檔案 mtime，退而求其次用世界目錄 mtime
@@ -63,9 +66,12 @@ pub fn list_worlds(root: &Path) -> DataResult<Vec<WorldMeta>> {
             .as_ref()
             .map(|dir| last_active(dir))
             .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-        let setup = match table_kind {
-            TableKind::Vn => super::vn::setup_stage(root, &listed.id),
-            TableKind::Chat => None,
+        let (setup, tagline) = match table_kind {
+            TableKind::Vn => (
+                super::vn::setup_stage(root, &listed.id),
+                super::vn::player_tagline(root, &listed.id),
+            ),
+            TableKind::Chat => (None, None),
         };
         worlds.push((
             activity,
@@ -77,6 +83,7 @@ pub fn list_worlds(root: &Path) -> DataResult<Vec<WorldMeta>> {
                 table_kind,
                 replay,
                 setup,
+                tagline,
             },
         ));
     }
@@ -556,6 +563,7 @@ mod tests {
                 table_kind: TableKind::Chat,
                 replay: false,
                 setup: None,
+                tagline: None,
             }]
         );
     }

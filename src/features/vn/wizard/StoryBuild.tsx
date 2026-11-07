@@ -8,13 +8,27 @@ import { StorySpec } from "./StorySpec";
 
 export type BuildState = "running" | "done" | "failed";
 
-/** 「建立世界 → 撰寫劇本」：world＝展開建桌中、bible＝聖經生成中、done＝都好了 */
-export function BuildProgress({ phase }: { phase: "world" | "bible" | "done" }) {
-  const steps = [
-    ["world", "vnBuildWorld"],
-    ["bible", "vnBuildBible"],
-  ] as const;
-  const at = phase === "world" ? 0 : phase === "bible" ? 1 : 2;
+/** 「建立世界 → 撰寫劇本」：world＝展開建桌中、bible＝聖經生成中、done＝都好了。outline＝一鍵多前面的「生成大綱」 */
+export function BuildProgress({
+  phase,
+  outline = false,
+}: {
+  phase: "outline" | "world" | "bible" | "done";
+  outline?: boolean;
+}) {
+  const steps = (
+    outline
+      ? [
+          ["outline", "vnBuildOutline"],
+          ["world", "vnBuildWorld"],
+          ["bible", "vnBuildBible"],
+        ]
+      : [
+          ["world", "vnBuildWorld"],
+          ["bible", "vnBuildBible"],
+        ]
+  ) as readonly (readonly ["outline" | "world" | "bible", "vnBuildOutline" | "vnBuildWorld" | "vnBuildBible"])[];
+  const at = phase === "done" ? steps.length : steps.findIndex(([id]) => id === phase);
   return (
     <ol className="vn-build-progress" aria-live="polite">
       {steps.map(([id, key], index) => (

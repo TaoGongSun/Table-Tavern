@@ -65,6 +65,9 @@ pub struct Preferences {
     pub branching: Option<Branching>,
     /// 玩家名；空＝GM 以「你」稱呼、不建玩家卡
     pub name: String,
+    /// 主角一句話（大綱 `player.tagline`）。只落檔給標題畫面，不進 `apply` 與提示詞
+    #[serde(default)]
+    pub tagline: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -829,6 +832,13 @@ pub fn start_setup(
 /// 大廳桌卡與進桌路由：VN 桌的設定停在哪一步；讀不到檔或檔壞都當沒有（不連累大廳）。
 pub fn setup_stage(root: &Path, world_id: &str) -> Option<SetupStage> {
     read_vn(root, world_id).ok()?.setup
+}
+
+/// 標題畫面的主角一句話。空的、沒偏好、讀不到檔都不給。
+pub fn player_tagline(root: &Path, world_id: &str) -> Option<String> {
+    let tagline = read_vn(root, world_id).ok()?.preferences?.tagline;
+    let trimmed = tagline.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_owned())
 }
 
 /// 鎖內讀改寫 vn.json（原子寫入）：先重讀最新檔，`edit` 只改這次負責的欄位。
