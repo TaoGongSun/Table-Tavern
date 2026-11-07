@@ -163,7 +163,7 @@ export const zhCN: WebMessages = {
   errGeneric: "发送失败：{detail}",
 
   quotaTitle: "今天的免费次数用完了",
-  quotaBody: "OpenRouter 的免费模型每天有次数上限（UTC 0 点重置）。桌面版可以接你已经有的 Claude、ChatGPT、Gemini 或 Grok 订阅继续玩。",
+  quotaBody: "免费模型每天有次数上限（UTC 0 点重置）。桌面版可以接硅基流动，或你已经有的 Claude、ChatGPT、Gemini 或 Grok 订阅继续玩。",
   quotaWindows: "下载 Windows 版",
   quotaMac: "下载 macOS 版（Apple Silicon）",
   quotaPage: "前往下载页",

@@ -48,7 +48,7 @@ const COPY = {
     errCancelled: "你取消了 OpenRouter 授权。没有修改任何设置；需要时重新连接即可。",
     errNetwork: "已收到授权，但目前无法连接 OpenRouter 交换 key。请检查网络或 VPN 后重试。",
     errExchange: "OpenRouter 没有接受这次授权码。请重新连接一次；如果仍失败，请稍后再试。",
-    errSave: "已取得授权，但无法把 key 写入本机设置。请确认 Table Tavern 对设置目录有写入权限后重试。",
+    errSave: "无法把密钥写入本机设置。请确认 Table Tavern 对设置目录有写入权限后重试。",
     errCrypto: "此系统无法创建安全授权参数。请重启 Table Tavern；如果仍失败，可使用下方手动 key 备用方式。",
     errKeyEmpty: "请粘贴完整的 OpenRouter API key。",
     errUnknown: "连接没有完成。请重新尝试；如果仍失败，可使用下方手动 key 备用方式。",

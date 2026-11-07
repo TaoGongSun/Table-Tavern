@@ -4,6 +4,112 @@
 
 ## [Unreleased]
 
+## [0.5.2] — 2026-11-07
+
+### 這一版有什麼
+多人房間的改進（朋友們的回饋）：
+- **開房有三條路**：挑角色卡開房；「一句話生成世界開房」——AI 只寫世界設定和開場，朋友入座時自己建角色（也可以改成讓 AI 先生好幾個角色給大家選）；或是不選卡，讓 GM 即興。
+- **換幕搬到回合列**：房主在故事頁的回合列就能換幕，不用再進房主頁找；這一幕快滿時會先提醒，滿了「換幕」變成主按鈕。
+- **桌邊聊天**：故事旁多一個「聊天」分頁，大家可以公開閒聊，也可以私訊某一個人；聊天內容不會進故事、GM 也看不到。
+- **桌邊狀態列**：誰入座、誰還在想、誰已經送出，一眼看到；房主點某個人可以「催一下」（對方手機會直接展開輸入框）或交給 AI 代管。有人進房、送出時房主會收到提醒與提示音，可以關。「跳過」改名「交給 GM」。
+- **回合倒數當場開關**：房主在回合列就能開或停倒數，不用進設定。
+- **手機版面改版**：上方合成一列、場景一行、輸入格改成聊天式；打字或往回讀舊劇情時，其他東西自動讓位。
+- **頭像**：房主匯入的角色卡在朋友手機上也看得到頭像（直接用角色圖）；沒有圖的角色顯示名字第一個字。
+
+簡體中文介面：
+- 設定頁的連線方式改成「硅基流动」取代 OpenRouter（命令列工具四家照舊）；第一次開 App 的連線卡也改成申請並貼上硅基流动密钥。其他語言不變。
+
+### 下載
+[![網頁版-點開就玩](https://img.shields.io/badge/網頁版-點開就玩-E8A33D?style=for-the-badge)](https://table-tavern.pages.dev)
+[![下載-Windows](https://img.shields.io/badge/下載-Windows-0078D6?style=for-the-badge&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxyZWN0IHg9IjEiIHk9IjEiIHdpZHRoPSIxMC41IiBoZWlnaHQ9IjEwLjUiLz48cmVjdCB4PSIxMi41IiB5PSIxIiB3aWR0aD0iMTAuNSIgaGVpZ2h0PSIxMC41Ii8+PHJlY3QgeD0iMSIgeT0iMTIuNSIgd2lkdGg9IjEwLjUiIGhlaWdodD0iMTAuNSIvPjxyZWN0IHg9IjEyLjUiIHk9IjEyLjUiIHdpZHRoPSIxMC41IiBoZWlnaHQ9IjEwLjUiLz48L3N2Zz4=)](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.5.2/TableTavern-Windows-Setup.exe)
+[![下載-macOS](https://img.shields.io/badge/下載-macOS-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.5.2/TableTavern-macOS.dmg)
+
+- 網頁版：<https://table-tavern.pages.dev>，點開就玩，不用安裝。
+- [Windows（64 位元）](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.5.2/TableTavern-Windows-Setup.exe)
+- [macOS（僅 Apple Silicon，M 系列晶片；不支援 Intel Mac）](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.5.2/TableTavern-macOS.dmg)
+- 下方其他檔案是 App 內更新用的，不用下載。
+
+### 你的資料去哪裡
+- **存在你電腦**：桌、角色卡、對話紀錄是「文件/TableTavern/」裡的純文字檔。設定與 API 金鑰存在系統的應用程式設定資料夾（未加密的設定檔；macOS 上限本人讀寫）。轉換格式前的桌備份放在「文件/TableTavern/」裡的隱藏資料夾；更新下載的安裝包存在本機 App 資料夾。透過 Codex、Gemini 命令列工具玩時，對話紀錄存在 App 自己的設定資料夾（Grok 本來就是），不混進你在終端機的紀錄；登入沿用你終端機那份。
+- **對話送去哪**：從你的電腦直接送到你選的 AI 服務——OpenRouter、你自己填的 API 網址，或你安裝的官方命令列工具（由那支工具送到該公司）。送出的內容包含角色卡、世界設定、世界書條目、對話紀錄和你的輸入。AI 服務怎麼處理這些資料，以該服務的條款為準。
+- **OpenRouter**：授權在瀏覽器的 openrouter.ai 完成，換到的金鑰只存本機。App 也會向 OpenRouter 查模型清單、排行與金鑰剩餘額度。
+- **矽基流動（簡體中文介面的預設）**：金鑰只存本機；對話直接送到 api.siliconflow.cn。只用它的免費模型清單，不會自動換到付費模型。
+- **生圖**：送到你選的生圖來源（OpenRouter、你自己填的 API 網址，或命令列工具）；回傳網址的圖從該網址下載。
+- **檢查更新**：開 App 時與每 24 小時向 GitHub 查一次新版，下載更新與回退檔也從 GitHub。GitHub 會看到你的 IP。設定裡可以關掉自動檢查。
+- **卡片自帶的介面**：有些卡的介面會從卡作者指定的網站載入字型、圖片或程式（例如 jsDelivr），那些網站會看到你的 IP。卡片介面在隔離框裡執行，裡面的外部腳本讀不到你的金鑰，但讀得到這桌的聊天內容與卡片變數。
+- **一鍵安裝與更新命令列工具**：從該公司官網下載官方安裝腳本。Claude、Codex、Grok 優先裝 App 測過的版本（下載不到就改裝最新版），Gemini 一律裝最新版；App 呼叫時會關掉工具的自動更新（你在終端機用不受影響）。
+- **開房間時**：只有開房間才會用到作者架的房間伺服器（tt-room.pirahus.com）。房間裡的故事、大家的暱稱、公開的角色資料和頭像、每回合的行動、桌邊聊天（公開與私訊，只送給房間成員），會經這台伺服器在房主電腦和朋友手機之間傳送，並保存在上面。角色卡的秘密設定和上傳的原圖只經過、不保存（原圖最多暫留 10 分鐘）。房間 30 天沒人用就會清掉；完整劇情一直都在房主的電腦上。不開房間就不會連到它。
+- **沒有**：使用統計、廣告追蹤。單人遊玩不經過作者的伺服器。
+
+### 安裝時被系統擋下？
+桌面版還沒買程式碼簽章憑證、也還沒送 Apple 公證，所以系統會跳警告。請只從這個 GitHub 發佈頁下載。
+
+**Windows**
+1. 瀏覽器可能說這個檔案「不常下載」：Edge 點「…」→「保留」→「顯示更多」→「仍要保留」；Chrome 點「保留」。
+2. 執行安裝檔，出現「Windows 已保護您的電腦」：點「其他資訊」→「仍要執行」。
+3. 如果出現的是「智慧型應用程式控制已封鎖」而且沒有「仍要執行」：你的電腦開著智慧型應用程式控制，它不允許個別放行未簽章的程式，關掉之後要重灌 Windows 才能再開。不建議為此關閉——請先用網頁版，等之後的簽章版。
+4. 少數 Windows 10 舊電腦沒有 WebView2，安裝檔會自動從微軟下載安裝。
+
+**macOS**
+1. 打開 DMG，把 Table Tavern 拖進「應用程式」。
+2. 雙擊開啟。出現「Apple 無法驗證『Table Tavern』是否包含可能危害 Mac 或侵犯隱私的惡意軟體」：按「完成」（不要按「丟到垃圾桶」）。
+3. 打開「系統設定 → 隱私權與安全性」，捲到最下面「安全性」，按「仍要打開」，用密碼或 Touch ID 確認，再按一次「打開」。這個按鈕要先試開過一次才會出現。
+4. 只要做一次，之後正常雙擊就能開。
+
+---
+
+**English**
+
+### What's new
+Multiplayer room improvements, from friends' feedback:
+- **Three ways to open a room**: pick character cards; "Open from a one-line idea" — the AI writes only the world and the opening, and friends create their own characters when they sit down (or let the AI prepare a few characters for everyone to choose from); or open with no cards and let the GM improvise.
+- **Scene change moved to the round bar**: the host can change scenes right from the story page instead of digging into the host page; the app warns when the current scene is nearly full, and "Change scene" becomes the main button once it is.
+- **Table chat**: a new "Chat" tab next to the story for public banter or a private message to one person; chat never enters the story and the GM never sees it.
+- **Seat status strip**: see at a glance who is seated, who is still thinking and who has sent; the host can tap someone to nudge them (their phone opens the input box) or hand them to AI delegation. The host gets a toast and a sound when someone joins or submits; it can be turned off. "Skip" is now "Leave to the GM".
+- **Round timer on the spot**: the host can start or stop the countdown from the round bar without opening settings.
+- **Phone layout refresh**: the top collapses into one row, the scene line into one line, and the input box works like a chat box; while typing or reading back, everything else gets out of the way.
+- **Portraits**: character cards imported by the host now show their portrait on friends' phones (using the card image); characters without an image show the first letter of their name.
+
+Simplified Chinese interface:
+- The connection list in Settings now offers SiliconFlow in place of OpenRouter (the four command-line tools are unchanged), and the first-launch connection card asks for a SiliconFlow key. Other languages are unchanged.
+
+### Downloads
+[![Play-in your browser](https://img.shields.io/badge/Play-in%20your%20browser-E8A33D?style=for-the-badge)](https://table-tavern.pages.dev)
+[![Download-Windows](https://img.shields.io/badge/Download-Windows-0078D6?style=for-the-badge&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxyZWN0IHg9IjEiIHk9IjEiIHdpZHRoPSIxMC41IiBoZWlnaHQ9IjEwLjUiLz48cmVjdCB4PSIxMi41IiB5PSIxIiB3aWR0aD0iMTAuNSIgaGVpZ2h0PSIxMC41Ii8+PHJlY3QgeD0iMSIgeT0iMTIuNSIgd2lkdGg9IjEwLjUiIGhlaWdodD0iMTAuNSIvPjxyZWN0IHg9IjEyLjUiIHk9IjEyLjUiIHdpZHRoPSIxMC41IiBoZWlnaHQ9IjEwLjUiLz48L3N2Zz4=)](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.5.2/TableTavern-Windows-Setup.exe)
+[![Download-macOS](https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.5.2/TableTavern-macOS.dmg)
+
+- Web version: <https://table-tavern.pages.dev> — play right in your browser, nothing to install.
+- [Windows (64-bit)](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.5.2/TableTavern-Windows-Setup.exe)
+- [macOS (Apple Silicon / M-series only; Intel Macs are not supported)](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.5.2/TableTavern-macOS.dmg)
+- The other files below are used by in-app updates; you don't need them.
+
+### Where your data goes
+- **On your computer**: tables, character cards and chat logs are plain-text files in "Documents/TableTavern/". Settings and API keys live in the system's app settings folder (an unencrypted settings file; on macOS readable only by you). Table backups made before a format conversion are kept in hidden folders inside "Documents/TableTavern/"; downloaded update installers are kept in the app's local data folder. When you play through the Codex or Gemini command-line tool, the app keeps those chat logs in its own settings folder (Grok already worked this way), separate from your terminal history; sign-in is shared with your terminal.
+- **Where chats are sent**: straight from your computer to the AI service you choose: OpenRouter, an API URL you enter yourself, or an official command-line tool you installed (which sends to its own company). What gets sent includes character cards, world settings, lorebook entries, the chat log and your input. How the AI service handles it is governed by that service's terms.
+- **OpenRouter**: authorization happens on openrouter.ai in your browser, and the resulting key is stored only on your computer. The app also asks OpenRouter for the model list, rankings and your key's remaining credit.
+- **SiliconFlow (default for the Simplified Chinese interface)**: the key is stored only on your computer; chats go straight to api.siliconflow.cn. Only its free models are used; the app never switches to a paid one on its own.
+- **Image generation**: requests go to the image source you choose (OpenRouter, an API URL you enter yourself, or a command-line tool); images returned as a URL are downloaded from that URL.
+- **Update checks**: on launch and every 24 hours the app asks GitHub for a new version, and update and rollback files are downloaded from GitHub. GitHub sees your IP address. You can turn automatic checks off in Settings.
+- **Card interfaces**: some cards' interfaces load fonts, images or scripts from sites chosen by the card author (for example jsDelivr), and those sites see your IP address. Card interfaces run in an isolated frame; external scripts inside them cannot read your keys, but they can read this table's chat content and card variables.
+- **One-click CLI install and update**: downloads the official install script from that company's website. For Claude, Codex and Grok the app prefers the version it was tested with (falling back to the latest if that can't be downloaded); Gemini always gets the latest. The app turns off the tool's auto-update when the app runs it (your own terminal use is unaffected).
+- **When you open a room**: the author's room server (tt-room.pirahus.com) is used only when you open a room. The room's story, everyone's nicknames, public character info and portraits, each round's actions and table chat (public and private messages, delivered only to room members) pass through this server between the host's computer and friends' phones, and are kept there. Character cards' secret settings and uploaded original images only pass through and are not kept (originals stay at most 10 minutes). A room nobody has used for 30 days is deleted; the full story always stays on the host's computer. If you never open a room, the app never connects to it.
+- **None of these**: no usage statistics, no ad tracking. Solo play never goes through an author-run server.
+
+### Blocked by your system during install?
+The desktop app isn't code-signed or notarized by Apple yet, so your system will warn you. Only download it from this GitHub release page.
+
+**Windows**
+1. Your browser may say the file "isn't commonly downloaded": in Edge, click "…" → "Keep" → "Show more" → "Keep anyway"; in Chrome, click "Keep".
+2. Run the installer. If you see "Windows protected your PC", click "More info" → "Run anyway".
+3. If instead you see "Smart App Control blocked" with no "Run anyway": Smart App Control is on, and it doesn't allow exceptions for unsigned apps. Once turned off, it can only be turned back on by reinstalling Windows. We don't recommend turning it off for this; use the web version for now and wait for a signed release.
+4. A few older Windows 10 PCs lack WebView2; the installer downloads it from Microsoft automatically.
+
+**macOS**
+1. Open the DMG and drag Table Tavern into Applications.
+2. Double-click to open it. When you see "Apple could not verify 'Table Tavern' is free of malware that may harm your Mac or compromise your privacy", click "Done" (not "Move to Trash").
+3. Open System Settings → Privacy & Security, scroll down to Security, click "Open Anyway", confirm with your password or Touch ID, then click "Open". The button only appears after you've tried to open the app once.
+4. You only need to do this once; after that it opens normally.
+
 ## [0.5.1] — 2026-11-06
 
 ### 這一版有什麼
