@@ -76,6 +76,8 @@ fn narration(text: &str, next: Option<String>, aborted: bool) -> Narration {
         state_updates: String::new(),
         arrived: Vec::new(),
         aborted,
+        truncated: false,
+        state_error: None,
         status: None,
         panel: None,
     }
@@ -140,6 +142,7 @@ impl Engine for Fake {
                 text: text.to_owned(),
                 raw: None,
                 aborted: false,
+                truncated: false,
             })
         })
     }

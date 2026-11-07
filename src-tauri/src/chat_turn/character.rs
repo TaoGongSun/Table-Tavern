@@ -1,7 +1,9 @@
 //! 角色接話回合。
 use super::stream::{prepare_play_lane_call, push_delta, take_abort_or_finish};
 use crate::chat_assembly;
-use crate::transport::dispatch::{ai_call_failure, lane_provider, stream_turn_via_transport};
+use crate::transport::dispatch::{
+    ai_call_failure, lane_provider, stream_turn_reporting_truncation,
+};
 use crate::usage::log as usage_log;
 use crate::{config_root, data, data_root, inflight, lanes, transport, world_scan};
 use serde::Serialize;
@@ -13,6 +15,9 @@ pub(crate) struct ChatReply {
     /// 剝殼前的台詞原文（已剝本輪前綴）；與 text 相同就是 None，前端照樣存進事件裡
     pub(crate) raw: Option<String>,
     pub(crate) aborted: bool,
+    /// 輸出上限截斷。不進單人 IPC（前端仍聽 `ai-response-truncated`）。
+    #[serde(skip)]
+    pub(crate) truncated: bool,
 }
 
 /// 角色回覆收尾的接線層：純函式剝前綴與控制區塊（VN 桌改走 `finish_vn_character_reply`），
@@ -34,6 +39,7 @@ fn character_reply(
         text: finished.text,
         raw: finished.raw,
         aborted: finished.aborted,
+        truncated: false,
     })
 }
 
@@ -253,10 +259,9 @@ pub(crate) async fn chat_with_character(
         }
     };
     world_scan::landing::land(&root, &world_id, scene, &turn_id, &perspective, &scan)?;
-    let spoken = take_abort_or_finish(
-        &mut cancel,
-        &buffer,
-        stream_turn_via_transport(
+    let cut = std::sync::atomic::AtomicBool::new(false);
+    let spoken = take_abort_or_finish(&mut cancel, &buffer, async {
+        let (text, truncated) = stream_turn_reporting_truncation(
             &app,
             &config,
             None,
@@ -273,14 +278,22 @@ pub(crate) async fn chat_with_character(
             },
             false,
             emit,
-        ),
-    )
+        )
+        .await?;
+        cut.store(truncated, std::sync::atomic::Ordering::Relaxed);
+        Ok(text)
+    })
     .await;
     let held = stream.finish();
     if spoken.is_ok() && !held.is_empty() {
         let _ = on_delta.send(held);
     }
-    settle(spoken.and_then(|spoken| character_reply(&spoken.text, &own_prefix, vn, spoken.aborted)))
+    let truncated = cut.load(std::sync::atomic::Ordering::Relaxed);
+    settle(spoken.and_then(|spoken| {
+        let mut reply = character_reply(&spoken.text, &own_prefix, vn, spoken.aborted)?;
+        reply.truncated = !spoken.aborted && truncated;
+        Ok(reply)
+    }))
 }
 
 #[cfg(test)]

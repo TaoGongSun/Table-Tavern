@@ -103,8 +103,11 @@ pub(crate) struct GmNarration {
     pub(super) arrived_persons: Vec<String>,
     /// 玩家按下停止、而且取消贏過完成。true 時上面的寫入欄位都是空的。
     pub(crate) aborted: bool,
+    /// 這一次呼叫被輸出上限截斷。不進單人 IPC（前端仍聽 `ai-response-truncated`）。
+    #[serde(skip)]
+    pub(crate) truncated: bool,
     /// 狀態更新沒寫成（磁碟錯誤等）：正文照常落檔，前端提示這一輪的狀態可能沒更新
-    pub(super) state_error: Option<String>,
+    pub(crate) state_error: Option<String>,
     /// 提交成功後的三鍵快照（平欄）。單人契約不帶這欄；房間 `gen.part.end` 才送
     #[serde(skip)]
     pub(crate) status: Option<Value>,
@@ -543,6 +546,7 @@ pub(crate) async fn gm_narrate(
         arrived_characters,
         arrived_persons,
         aborted: false,
+        truncated,
         state_error,
         status,
         panel,

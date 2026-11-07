@@ -60,7 +60,6 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 
 **0.5.0 後**〔作者裁決 2026-11-04〕：
 - room-host-world-edit — 手機房主改世界書（W1，案別未估） — 下一步：0.5.0 後
-- gm-relay-unify — GM 接力規則單人版（useChatController）與房間版（room/run.rs）兩份實作合一（大案未估） — 下一步：0.5.0 後，方案送 Sol 審〔作者裁決 2026-11-04 改排〕
 
 **未排序**：
 - card-preview-markdown — 手機選角清單的角色簡介直接顯示 Markdown 原文（「### 簡介…」），一般酒館卡常以標題開頭，匯卡的玩家都會看到（小案未估）〔模型判斷·未裁決；常識審查員〕 — 下一步：未排序

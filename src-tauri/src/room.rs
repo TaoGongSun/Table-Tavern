@@ -36,6 +36,10 @@ pub(crate) struct Narration {
     pub(crate) state_updates: String,
     pub(crate) arrived: Vec<String>,
     pub(crate) aborted: bool,
+    /// 輸出上限截斷（停止另看 `aborted`）。落檔時兩者都把事件標成截斷。
+    pub(crate) truncated: bool,
+    /// 狀態沒寫成。房間協定沒有這個欄位，host 收到後丟掉。
+    pub(crate) state_error: Option<String>,
     /// 提交成功後的三鍵快照；沒有＝這段不改房間狀態列
     pub(crate) status: Option<Value>,
     /// 提交成功後的預設狀態欄快照（`chat_turn::scene_panel`）；只有預設桌有
@@ -47,6 +51,7 @@ pub(crate) struct Spoken {
     pub(crate) text: String,
     pub(crate) raw: Option<String>,
     pub(crate) aborted: bool,
+    pub(crate) truncated: bool,
 }
 
 /// 執行端對桌面版既有引擎的需要：模型呼叫、換幕摘要、中止、幕設定覆寫、通知前端。
@@ -826,6 +831,8 @@ impl Engine for AppEngine {
                 next_player: n.next_player,
                 arrived: n.arrived_characters,
                 aborted: n.aborted,
+                truncated: n.truncated,
+                state_error: n.state_error,
                 status: n.status,
                 panel: n.panel,
             })
@@ -855,6 +862,7 @@ impl Engine for AppEngine {
                 text: reply.text,
                 raw: reply.raw,
                 aborted: reply.aborted,
+                truncated: reply.truncated,
             })
         })
     }

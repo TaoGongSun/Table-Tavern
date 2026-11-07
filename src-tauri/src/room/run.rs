@@ -2,6 +2,9 @@
 //! 規則：旁白 → 點到 NPC 就接話 → 直到點到真人玩家、沒點名或達 `max_round_speakers`）→ 每段 `gen.part.*`
 //! → `gen.done`；換幕摘要工作；遠端控制。桌上落檔照前端原本的落法（旁白帶回合鍵、點名列、角色回覆）。
 use super::{seed, Delta, DispatchRun, JobRun, Room, RunState, Step};
+use crate::chat_turn::relay::{
+    self, Halt, Nominee, PartClose, RelayHost, RelayMode, RelayProgress, RelayStep,
+};
 use crate::chat_turn::{self, BatchOutcome, DepartureMode, PartyAction, PartyBatch};
 use crate::data::{self, EventMarker, TranscriptEvent, TranscriptKind};
 use serde_json::{json, Value};
@@ -325,8 +328,8 @@ fn change_run(room: &Room, change: impl FnOnce(&mut DispatchRun)) {
     });
 }
 
-/// 跑到鏈尾：Ok(是否中止)；Err((失敗那段的段號, 錯誤))。房主 GM 鈕（`dispatch.host.mode`）照單人版三顆鈕：
-/// narrate＝旁白一次、不寫點名列（點到的 NPC 記進 `called`）；call＝直接請那張卡接一句（`call` 先寫點名列）；advance＝一般鏈
+/// 跑到鏈尾：Ok(是否中止)；Err((失敗那段的段號, 錯誤))。玩家批次留在這裡；
+/// 旁白與接話交給 `chat_turn::relay`。房主 GM 鈕：narrate＝旁白一次、call＝直接接一句、其餘＝推進到上限。
 async fn steps(room: &Arc<Room>, id: &str) -> Result<bool, (Option<u32>, String)> {
     let world = room.world();
     let (config_root, root) = room.engine.roots();
@@ -338,105 +341,224 @@ async fn steps(room: &Arc<Room>, id: &str) -> Result<bool, (Option<u32>, String)
         let Some(run) = room.saved().dispatch.filter(|run| run.id == id) else {
             return Ok(false);
         };
+        if run.step != Step::Land {
+            break;
+        }
         let host = &run.dispatch["host"];
         let mode = host["mode"].as_str().unwrap_or_default();
-        let part = run.last_ended.map_or(0, |n| n + 1);
-        if room.work().abort && run.step != Step::Land {
-            return Ok(true);
-        }
-        match run.step {
-            Step::Land => {
-                // 同一派工重送：Duplicate 就不重落玩家事件（room.json 遺失時 GM 鏈會重跑，列已知限制）
-                let outcome = land_batch(&config_root, &root, &world, &run.dispatch)
-                    .map_err(|error| (None, error))?;
-                let next = match mode {
-                    "call" => {
-                        let card = text(&host["cardId"]);
-                        if host["call"] == true && !matches!(outcome, BatchOutcome::Duplicate) {
-                            let name = data::read_character(&root, &world, &card)
-                                .map(|card| card.name)
-                                .map_err(|error| (None, error.to_string()))?;
-                            append_call(&root, &world, id, name).map_err(|error| (None, error))?;
-                        }
-                        Step::Reply(card)
-                    }
-                    _ => Step::Narrate,
-                };
-                change_run(room, |run| run.step = next);
-                room.engine.table_changed(&world);
-            }
-            Step::Narrate if run.used >= max => change_run(room, |run| run.step = Step::Done),
-            Step::Narrate => {
-                let turn = begin_turn(room);
-                let io = Part::new(room, id, part, json!({ "kind": "gm" }));
-                let n = room
-                    .engine
-                    .narrate(world.clone(), turn.clone(), id.to_owned(), io.delta())
-                    .await
-                    .map_err(|error| (Some(part), error))?;
-                let only = mode == "narrate";
-                let next = land_narration(&root, &world, id, &turn, &n, !only)
-                    .map_err(|error| (Some(part), error))?;
-                let (next, called) = match next {
-                    Step::Reply(card) if only => (Step::Done, Some(card)),
-                    next => (next, None),
-                };
-                let arrived = n.arrived.clone();
-                let status = n.status.filter(|_| !n.aborted);
-                let panel = n.panel.filter(|_| !n.aborted);
-                io.end(
-                    &n.text,
-                    n.aborted,
-                    status.as_ref(),
-                    panel.as_ref(),
-                    move |run| {
-                        run.used += 1;
-                        run.step = next;
-                        run.arrived.extend(arrived);
-                        run.called = called.or(run.called.take());
-                    },
-                );
-                room.engine.table_changed(&world);
-                if n.aborted {
-                    return Ok(true);
+        // 同一派工重送：Duplicate 就不重落玩家事件（room.json 遺失時 GM 鏈會重跑，列已知限制）
+        let outcome = land_batch(&config_root, &root, &world, &run.dispatch)
+            .map_err(|error| (None, error))?;
+        let next = match mode {
+            "call" => {
+                let card = text(&host["cardId"]);
+                if host["call"] == true && !matches!(outcome, BatchOutcome::Duplicate) {
+                    let name = data::read_character(&root, &world, &card)
+                        .map(|card| card.name)
+                        .map_err(|error| (None, error.to_string()))?;
+                    append_call(&root, &world, id, name).map_err(|error| (None, error))?;
                 }
+                Step::Reply(card)
             }
-            Step::Reply(card) => {
-                let name = data::read_character(&root, &world, &card)
-                    .map(|card| card.name)
-                    .map_err(|error| (Some(part), error.to_string()))?;
-                ensure_in_roster(room, &card);
-                let speaker = json!({ "kind": "npc", "cardId": card, "name": name.chars().take(64).collect::<String>() });
-                let turn = begin_turn(room);
-                let io = Part::new(room, id, part, speaker);
-                let spoken = room
-                    .engine
-                    .reply(
-                        world.clone(),
-                        card.clone(),
-                        turn.clone(),
-                        id.to_owned(),
-                        io.delta(),
-                    )
-                    .await
-                    .map_err(|error| (Some(part), error))?;
-                land_reply(&root, &world, id, &turn, &card, &name, &spoken)
-                    .map_err(|error| (Some(part), error))?;
-                let next = if spoken.aborted || run.used >= max || mode == "call" {
-                    Step::Done
-                } else {
-                    Step::Narrate
-                };
-                io.end(&spoken.text, spoken.aborted, None, None, move |run| {
-                    run.step = next
-                });
-                room.engine.table_changed(&world);
-                if spoken.aborted {
-                    return Ok(true);
-                }
-            }
-            Step::Done => return Ok(false),
+            _ => Step::Narrate,
+        };
+        change_run(room, |run| run.step = next);
+        room.engine.table_changed(&world);
+    }
+    let Some(run) = room.saved().dispatch.filter(|run| run.id == id) else {
+        return Ok(false);
+    };
+    if run.step == Step::Done {
+        return Ok(false);
+    }
+    let host_mode = run.dispatch["host"]["mode"].as_str().unwrap_or_default();
+    let mode = match host_mode {
+        "narrate" => RelayMode::Narrate,
+        "call" => RelayMode::Call {
+            card_id: text(&run.dispatch["host"]["cardId"]),
+            // 點名列在上面的 Land 寫過（重送不重寫）。驅動不要再寫一次。
+            list: relay::CallList::Omit,
+        },
+        _ => RelayMode::Advance,
+    };
+    let request = relay::RelayRequest {
+        mode,
+        max_speakers: max,
+        action_id: id.to_owned(),
+        retry_delay: Duration::from_millis(150),
+        progress: RelayProgress {
+            used: run.used,
+            step: match run.step.clone() {
+                Step::Reply(card) => RelayStep::Reply(card),
+                Step::Done => RelayStep::Done,
+                Step::Land | Step::Narrate => RelayStep::Narrate,
+            },
+            last_part: run.last_ended,
+            arrived: run.arrived.clone(),
+            called: run.called.clone(),
+        },
+    };
+    let mut host = RoomHost {
+        room,
+        id: id.to_owned(),
+        root,
+        world,
+        io: None,
+    };
+    match relay::drive(&mut host, request).await {
+        Ok(done) => Ok(done.aborted),
+        Err(error) => Err((error.part, error.message)),
+    }
+}
+
+/// 房間當接力 host：廣播與 room.json 留在 `Part`，模型呼叫仍走 `Engine`。
+struct RoomHost<'a> {
+    room: &'a Arc<Room>,
+    id: String,
+    root: std::path::PathBuf,
+    world: String,
+    io: Option<Arc<Part>>,
+}
+
+impl RelayHost for RoomHost<'_> {
+    fn halt(&self) -> Halt {
+        if self.room.work().abort {
+            Halt::Interrupt
+        } else {
+            Halt::None
         }
+    }
+
+    fn begin_turn(&mut self) -> String {
+        begin_turn(self.room)
+    }
+
+    fn narrate(
+        &mut self,
+        turn_id: String,
+        part: u32,
+    ) -> relay::HostFut<'_, Result<relay::Piece, String>> {
+        let io = Part::new(self.room, &self.id, part, json!({ "kind": "gm" }));
+        let delta = io.delta();
+        self.io = Some(io);
+        let room = Arc::clone(self.room);
+        let world = self.world.clone();
+        let action = self.id.clone();
+        Box::pin(async move {
+            let n = room.engine.narrate(world, turn_id, action, delta).await?;
+            Ok(relay::Piece {
+                text: n.text,
+                raw: n.raw,
+                next: n.next,
+                next_player: n.next_player,
+                state_updates: n.state_updates,
+                arrived: n.arrived,
+                aborted: n.aborted,
+                truncated: n.truncated,
+                state_error: n.state_error,
+                status: n.status,
+                panel: n.panel,
+            })
+        })
+    }
+
+    fn reply(
+        &mut self,
+        card_id: String,
+        turn_id: String,
+        part: u32,
+    ) -> relay::HostFut<'_, Result<relay::Line, String>> {
+        let name = match data::read_character(&self.root, &self.world, &card_id) {
+            Ok(card) => card.name,
+            Err(error) => {
+                let error = error.to_string();
+                return Box::pin(async move { Err(error) });
+            }
+        };
+        ensure_in_roster(self.room, &card_id);
+        let speaker = json!({
+            "kind": "npc",
+            "cardId": card_id,
+            "name": name.chars().take(64).collect::<String>(),
+        });
+        let io = Part::new(self.room, &self.id, part, speaker);
+        let delta = io.delta();
+        self.io = Some(io);
+        let room = Arc::clone(self.room);
+        let world = self.world.clone();
+        let action = self.id.clone();
+        Box::pin(async move {
+            let spoken = room
+                .engine
+                .reply(world, card_id, turn_id, action, delta)
+                .await?;
+            Ok(relay::Line {
+                text: spoken.text,
+                raw: spoken.raw,
+                aborted: spoken.aborted,
+                truncated: spoken.truncated,
+            })
+        })
+    }
+
+    fn classify(&self, next: &str, next_player: Option<&str>) -> Nominee {
+        if next == crate::transport::PLAYER_SENTINEL {
+            let name = next_player
+                .and_then(|id| data::read_character(&self.root, &self.world, id).ok())
+                .map(|card| card.name)
+                .unwrap_or_default();
+            return Nominee::Player { name };
+        }
+        match data::read_character(&self.root, &self.world, next) {
+            Ok(card) if card.stage => Nominee::Stop,
+            Ok(card) => Nominee::Npc {
+                id: next.to_owned(),
+                name: card.name,
+            },
+            Err(_) => Nominee::Stop,
+        }
+    }
+
+    fn landed(&mut self, _landed: &relay::Landed) {}
+
+    fn note_state_error(&mut self, _message: &str) {}
+
+    fn checkpoint(&mut self, progress: &RelayProgress, close: Option<PartClose>) -> bool {
+        let step = match &progress.step {
+            RelayStep::Reply(card) => Step::Reply(card.clone()),
+            RelayStep::Done | RelayStep::Call(_) => Step::Done,
+            RelayStep::Narrate => Step::Narrate,
+        };
+        let used = progress.used;
+        let arrived = progress.arrived.clone();
+        let called = progress.called.clone();
+        let apply = move |run: &mut DispatchRun| {
+            run.used = used;
+            run.step = step;
+            run.arrived = arrived;
+            run.called = called;
+        };
+        let Some(close) = close else {
+            change_run(self.room, apply);
+            return false;
+        };
+        let Some(io) = self.io.take() else {
+            change_run(self.room, apply);
+            return false;
+        };
+        let consumed = io.end(
+            &close.text,
+            close.interrupted,
+            close.status.as_ref(),
+            close.panel.as_ref(),
+            apply,
+        );
+        self.room.engine.table_changed(&self.world);
+        consumed
+    }
+
+    fn roots(&self) -> (&std::path::Path, &str) {
+        (&self.root, &self.world)
     }
 }
 
@@ -508,6 +630,7 @@ impl Part {
         })
     }
 
+    /// 有送出 `gen.part.end` 才回 true（這段佔掉段號）。一個字都沒有的空白段只改進度。
     fn end(
         &self,
         text: &str,
@@ -515,14 +638,15 @@ impl Part {
         status: Option<&Value>,
         panel: Option<&Value>,
         change: impl FnOnce(&mut DispatchRun),
-    ) {
+    ) -> bool {
         let mut state = self
             .state
             .lock()
             .unwrap_or_else(|poison| poison.into_inner());
         if !state.0 && text.trim().is_empty() {
             drop(state);
-            return change_run(&self.room, change);
+            change_run(&self.room, change);
+            return false;
         }
         self.begin(&mut state.0);
         let n = self.n;
@@ -539,6 +663,7 @@ impl Part {
                 change(run);
             }
         });
+        true
     }
 }
 
@@ -607,68 +732,6 @@ fn land_batch(
     chat_turn::append_party_batch(config_root, root, world, &batch)
 }
 
-/// 旁白正文（回合鍵 main）→ 變動紀錄（state_update）→ 點名列（`call_row`）；回下一步。點到真人玩家只寫點名列就停
-fn land_narration(
-    root: &Path,
-    world: &str,
-    action: &str,
-    turn: &str,
-    n: &super::Narration,
-    call_row: bool,
-) -> Result<Step, String> {
-    let scene = scene_of(root, world)?;
-    let key = |part: &str| data::message_vars::TurnKey {
-        turn_id: turn.to_owned(),
-        part: part.to_owned(),
-    };
-    let append = |event: &TranscriptEvent, part: Option<&str>| {
-        let _permit = data::world_write_permit(world)?;
-        data::append_event(root, world, scene, event, part.map(key).as_ref())
-            .map(|_| ())
-            .map_err(|error| error.to_string())
-    };
-    if !n.text.trim().is_empty() {
-        let mut main = event(TranscriptKind::Narration, ("", "GM"), &n.text, action);
-        main.raw = n.raw.clone();
-        main.truncated = n.aborted;
-        append(&main, Some(data::message_vars::PART_MAIN))?;
-    }
-    if n.aborted {
-        return Ok(Step::Done);
-    }
-    if !n.state_updates.is_empty() {
-        let mut update = event(TranscriptKind::System, ("", "GM"), &n.state_updates, action);
-        update.marker = Some(EventMarker::StateUpdate);
-        append(&update, Some("state_update"))?;
-    }
-    let Some(next) = n.next.as_deref() else {
-        return Ok(Step::Done);
-    };
-    let player = next == crate::transport::PLAYER_SENTINEL;
-    let card = match player {
-        true => n.next_player.as_deref(),
-        false => Some(next),
-    };
-    let card = card.and_then(|id| data::read_character(root, world, id).ok());
-    // 點名後被切成舞台卡：不寫點名列、不接話（同前端）
-    if !player && card.as_ref().is_none_or(|card| card.stage) {
-        return Ok(Step::Done);
-    }
-    if call_row {
-        append_call(
-            root,
-            world,
-            action,
-            card.map(|card| card.name).unwrap_or_default(),
-        )?;
-    }
-    Ok(if player {
-        Step::Done
-    } else {
-        Step::Reply(next.to_owned())
-    })
-}
-
 /// 「GM 請 X 發言」點名列（角色模型靠它知道自己被點）
 fn append_call(root: &Path, world: &str, action: &str, name: String) -> Result<(), String> {
     let mut call = event(TranscriptKind::System, ("", "GM"), "", action);
@@ -676,28 +739,6 @@ fn append_call(root: &Path, world: &str, action: &str, name: String) -> Result<(
     let _permit = data::world_write_permit(world)?;
     let scene = scene_of(root, world)?;
     data::append_event(root, world, scene, &call, None)
-        .map(|_| ())
-        .map_err(|error| error.to_string())
-}
-
-fn land_reply(
-    root: &Path,
-    world: &str,
-    action: &str,
-    turn: &str,
-    card: &str,
-    name: &str,
-    spoken: &super::Spoken,
-) -> Result<(), String> {
-    if spoken.text.trim().is_empty() {
-        return Ok(());
-    }
-    let mut line = event(TranscriptKind::Dialogue, (card, name), &spoken.text, action);
-    line.raw = spoken.raw.clone();
-    line.truncated = spoken.aborted;
-    let _permit = data::world_write_permit(world)?;
-    let scene = scene_of(root, world)?;
-    data::append_character_reply(root, world, scene, &line, turn)
         .map(|_| ())
         .map_err(|error| error.to_string())
 }

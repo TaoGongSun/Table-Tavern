@@ -6,6 +6,7 @@ mod commit;
 mod gm;
 mod gm_reply;
 mod party_batch;
+pub(crate) mod relay;
 mod stream;
 mod vn_ending;
 mod vn_reroll;
