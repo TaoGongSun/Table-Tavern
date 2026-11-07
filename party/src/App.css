@@ -604,13 +604,14 @@
   border-bottom: 1px solid var(--line);
 }
 
-.app .seat-card img {
+.app .seat-card .seat-avatar {
   width: 44px;
   height: 44px;
   border-radius: 50%;
   object-fit: cover;
   /* 玩家卡的頭像就是 2:3 角色圖：對齊上緣保住臉 */
   object-position: top;
+  font-size: 18px;
 }
 
 .app .seat-info {

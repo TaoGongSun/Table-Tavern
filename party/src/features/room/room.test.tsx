@@ -8,6 +8,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { MemoryStorage } from "@web/features/openrouter/memory-storage";
 import { CARDS, Room, STAGE } from "../../../server/core/room-test-kit";
 import { ChatPanel } from "../chat/ChatPanel";
+import { SeatPicker } from "../join/SeatPicker";
 import type { Act } from "./useRoom";
 import type { RoomView } from "./room-state";
 import { receiveUpload } from "../../../server/core/upload";
@@ -1816,5 +1817,36 @@ describe("桌邊聊天", () => {
     expect(sent).toHaveLength(1);
     expect(ime.defaultPrevented).toBe(false);
     expect(shift.defaultPrevented).toBe(false);
+  });
+
+  it("入座名單沒頭像畫角色名首字，有頭像用圖", () => {
+    const el = document.body.appendChild(document.createElement("div"));
+    const root = createRoot(el);
+    mounted.push(root);
+    const card = (name: string, avatar: string | null) => ({
+      cardId: name,
+      name,
+      color: "#3366ff",
+      avatar,
+      blurb: "",
+      playable: true,
+      hidden: false,
+      claimedBy: null,
+    });
+    const view = {
+      cards: [card("莉亞", null), card("老闆", "data:image/jpeg;base64,xx")],
+      room: { settings: { allowCustomCards: false } },
+    } as unknown as RoomView;
+    const actSend: Act = async () => ({ ok: true });
+    act(() =>
+      root.render(<SeatPicker view={view} act={actSend} upload={null} onCreate={() => {}} />),
+    );
+    const rows = [...el.querySelectorAll(".seat-card")];
+    const letter = rows[0].querySelector(".seat-avatar");
+    expect(letter?.tagName).toBe("SPAN");
+    expect(letter?.textContent).toBe("莉");
+    expect(rows[1].querySelector("img.seat-avatar")?.getAttribute("src")).toBe(
+      "data:image/jpeg;base64,xx",
+    );
   });
 });

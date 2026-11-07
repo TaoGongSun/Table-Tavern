@@ -92,3 +92,4 @@
 | [room-phone-gallery](../handoffs/archive/room-phone-gallery.md) 真手機 | iOS Safari、Android Chrome 各一次：編卡「從圖庫選」點縮圖開裁切窗，單指拖動、雙指縮放、滑桿縮放後套用、存檔；上傳相機照片也走一次裁切。通道只用瀏覽器窗格的滑鼠模擬拖動與滑桿 |
 | [room-seat-delegate](../handoffs/archive/room-seat-delegate.md) 其他玩家的全員代管 | 作者實機看：全員代管時，非房主玩家手機回合列寫「全員代管中，等房主處理」（實測只截了房主那一版，玩家版只有 UI 測試） |
 | [room-open-from-idea](../handoffs/room-open-from-idea.md) 開房窗一句話生成世界 | 打包後作者實機：開房窗三顆鈕；「一句話生成世界開房…」預設「朋友自己建角色」生成後直接進房、桌名是生成標題、開場對一群人說話；朋友手機入座只見「建立角色／匯入角色卡」；切「AI 先生好角色給朋友選」生出的角色可入座；大廳一句話開桌行為不變 |
+| [room-roster-avatar](../handoffs/room-roster-avatar.md) 名冊頭像退回角色圖 | 打包後作者實機：桌面版匯入一張有圖的酒館卡開房，朋友手機入座名單（44px）與座位列（22px）看到那張圖的上半部；沒圖的卡是角色名首字加卡色邊框；關掉那張卡的「顯示圖」後重送名冊回到字母圈 |

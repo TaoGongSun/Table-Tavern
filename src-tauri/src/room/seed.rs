@@ -18,11 +18,18 @@ fn clip(text: &str, max: usize) -> String {
     text.chars().take(max).collect()
 }
 
-/// 頭像壓成 96px JPEG 的 data URL；沒有頭像圖、解不開或壓完仍太大就不送
-fn avatar(root: &Path, world: &str, card: &str) -> Option<String> {
-    let path = data::character_path(root, world, card)
-        .ok()?
-        .with_extension("avatar.png");
+/// 頭像壓成 96px JPEG 的 data URL；沒有頭像圖、解不開或壓完仍太大就不送。
+/// 裁過的 `<id>.avatar.png` 優先；沒有才退回角色圖 `<id>.png`，而且只在這張卡開著「顯示圖」時。
+fn avatar(root: &Path, world: &str, card: &str, show_image: bool) -> Option<String> {
+    let base = data::character_path(root, world, card).ok()?;
+    let cropped = base.with_extension("avatar.png");
+    let path = if cropped.is_file() {
+        cropped
+    } else if show_image {
+        base.with_extension("png")
+    } else {
+        return None;
+    };
     let image = image::load_from_memory(&std::fs::read(path).ok()?).ok()?;
     let mut jpeg = Vec::new();
     image
@@ -90,7 +97,8 @@ pub(super) fn roster(root: &Path, world: &str) -> Result<Vec<Value>, String> {
             (!name.is_empty() && !card.archived).then(|| {
                 json!({
                     "cardId": id, "name": name, "color": color,
-                    "avatar": avatar(root, world, &id), "blurb": clip(card.public_md.trim(), 1000),
+                    "avatar": avatar(root, world, &id, card.show_image),
+                    "blurb": clip(card.public_md.trim(), 1000),
                     "playable": !card.stage, "hidden": hidden,
                 })
             })

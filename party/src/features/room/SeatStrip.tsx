@@ -77,7 +77,7 @@ function useNudge(act: Act) {
   return { cooled, go };
 }
 
-function Avatar({ name, card }: { name: string; card: RoomView["cards"][number] | null }) {
+export function Avatar({ name, card }: { name: string; card: RoomView["cards"][number] | null }) {
   const style = card?.color ? { borderColor: card.color, color: card.color } : undefined;
   if (card?.avatar) return <img className="seat-avatar" src={card.avatar} alt="" style={style} />;
   return (

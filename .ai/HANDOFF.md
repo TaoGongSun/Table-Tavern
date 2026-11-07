@@ -9,6 +9,7 @@
 - [card-mvu-shim](handoffs/card-mvu-shim.md) — 卡片介面沙盒墊 MVU 讀寫變數：全部已合併 main，剩實測佇列梯 1 項目（含 iframe 內按鈕實際互動）
 
 ## 等實機驗收（順序見[實測佇列](reference/verification-queue.md)）
+- [room-roster-avatar](handoffs/room-roster-avatar.md) — 名冊頭像沒有 `avatar.png` 時退回角色圖、入座名單沒圖畫字母圈（玩家回饋「網頁端沒有顯示頭像」）：已合併 main（2026-11-07），桌面版打包等作者說
 - [room-open-from-idea](handoffs/room-open-from-idea.md) — 開房窗接「一句話生成世界」、預設朋友自己建角色（房主回饋「世界觀隨機」＝不選卡開空桌）：已合併 main（2026-11-07），桌面版打包等作者說
 - [room-scene-advance-bar](handoffs/room-scene-advance-bar.md) — 換幕鈕搬到回合列（房主回饋「需要換幕」，功能已有但藏在房主頁）：已合併 main（2026-11-06），部署與桌面版打包等作者說
 - [room-scene-capacity](handoffs/room-scene-capacity.md) — 幕容量提醒（執行端報 `capacityHint`、房主回合列先提醒再換幕）：已合併 main（2026-11-06），部署與桌面版打包等作者說

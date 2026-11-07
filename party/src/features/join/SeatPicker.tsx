@@ -4,6 +4,7 @@ import { t } from "../../i18n";
 import type { Upload } from "../my-card/card-upload";
 import { errorText } from "../room/error-text";
 import type { RoomView } from "../room/room-state";
+import { Avatar } from "../room/SeatStrip";
 import { useRun, type Act } from "../room/useRoom";
 
 interface Props {
@@ -47,7 +48,7 @@ export function SeatPicker({
       <h2>{t("seatTitle")}</h2>
       {cards.map((c) => (
         <div key={c.cardId} className="seat-card">
-          {c.avatar && <img src={c.avatar} alt="" />}
+          <Avatar name={c.name} card={c} />
           <div className="seat-info">
             <strong>{c.name}</strong>
             <span className="muted">{c.blurb}</span>

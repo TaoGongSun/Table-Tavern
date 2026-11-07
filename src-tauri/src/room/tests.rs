@@ -1244,6 +1244,67 @@ async fn legacy_credentials_are_dropped_and_rooms_are_per_table() {
     assert!(!has_room(&root, &data::new_id()));
 }
 
+fn roster_avatar(root: &std::path::Path, world: &str, id: &str) -> Value {
+    seed::roster(root, world)
+        .unwrap()
+        .into_iter()
+        .find(|card| card["cardId"] == id)
+        .unwrap()["avatar"]
+        .clone()
+}
+
+fn write_png(root: &std::path::Path, world: &str, id: &str, ext: &str, w: u32, h: u32) {
+    let path = data::character_path(root, world, id)
+        .unwrap()
+        .with_extension(ext);
+    std::fs::write(path, crate::import::png_image::test_png::real_png(w, h)).unwrap();
+}
+
+fn jpeg_size(url: &str) -> (u32, u32) {
+    use base64::Engine as _;
+    let encoded = url.strip_prefix("data:image/jpeg;base64,").unwrap();
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .unwrap();
+    let image = image::load_from_memory(&bytes).unwrap();
+    (image.width(), image.height())
+}
+
+/// 名冊頭像：沒有裁過的圓圖就退回角色圖；關掉「顯示圖」就不送角色圖；兩張都有用圓圖
+#[test]
+fn roster_avatar_falls_back_to_character_png() {
+    let (root, world, tao, boss) = table("roster-avatar");
+    assert!(roster_avatar(&root, &world, &tao).is_null(), "都沒有");
+
+    write_png(&root, &world, &tao, "png", 192, 288);
+    let portrait = roster_avatar(&root, &world, &tao);
+    let portrait = portrait.as_str().unwrap();
+    assert!(portrait.starts_with("data:image/jpeg;base64,"));
+    assert_eq!(jpeg_size(portrait), (64, 96), "2:3 角色圖縮成 64×96");
+
+    write_png(&root, &world, &tao, "avatar.png", 200, 200);
+    let cropped = roster_avatar(&root, &world, &tao);
+    assert_eq!(jpeg_size(cropped.as_str().unwrap()), (96, 96), "圓圖優先");
+
+    let mut card = data::read_character(&root, &world, &tao).unwrap();
+    card.show_image = false;
+    data::write_character(&root, &world, &card).unwrap();
+    assert_eq!(
+        jpeg_size(roster_avatar(&root, &world, &tao).as_str().unwrap()),
+        (96, 96),
+        "圓圖不受顯示圖開關影響"
+    );
+
+    let mut card = data::read_character(&root, &world, &boss).unwrap();
+    card.show_image = false;
+    data::write_character(&root, &world, &card).unwrap();
+    write_png(&root, &world, &boss, "png", 192, 288);
+    assert!(
+        roster_avatar(&root, &world, &boss).is_null(),
+        "關掉顯示圖就不送角色圖"
+    );
+}
+
 /// 名冊重送要含玩家卡：單人時期的玩家卡（房主認領用）與入座後的真人玩家卡（不然一重送座位就沒了）
 #[test]
 fn roster_keeps_player_cards() {
