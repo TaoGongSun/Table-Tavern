@@ -31,6 +31,7 @@ import {
   cleanHistory,
   cleanQuota,
   cleanSceneState,
+  cleanScenePanel,
   cleanSpeaker,
   cleanSyncItems,
   ID64,
@@ -367,6 +368,7 @@ export const EXECUTOR: Record<string, (tx: Tx, p: any) => ReturnType<Handler>> =
     need(p.part === r.partsEnded && r.speaker, "E_STATE_CONFLICT");
     need(p.text.length <= 64000, "E_TEXT_INVALID");
     const state = cleanSceneState(p.state);
+    const panel = cleanScenePanel(p.panel);
     tx.emit("story.part", {
       round: r.round,
       part: p.part,
@@ -375,6 +377,7 @@ export const EXECUTOR: Record<string, (tx: Tx, p: any) => ReturnType<Handler>> =
       interrupted: p.interrupted,
       at: tx.now,
       ...(state ? { state } : {}),
+      ...(panel ? { panel } : {}),
     });
     Object.assign(r, { partsEnded: r.partsEnded + 1, speaker: null });
     tx.ctx.live.stream = null;

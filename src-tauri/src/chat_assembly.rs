@@ -7,6 +7,8 @@ use crate::{data, import, mechanism, transport};
 
 pub(crate) mod greeting;
 #[cfg(test)]
+mod panel_tests;
+#[cfg(test)]
 mod stage_tests;
 
 /// GM 上下文素材＝world.md＋世界書＋全部角色卡（含私有）＋公開 transcript（NewPlan §7.0）。

@@ -14,6 +14,8 @@ const OPENING: &str = "<maintext>\n林遠走進驛站。\n</maintext>\n<Status_b
 
 fn rule(kind: FieldKind, update: UpdateMode) -> FieldRule {
     FieldRule {
+        max_chars: None,
+        max_items: None,
         kind,
         min: None,
         max: None,

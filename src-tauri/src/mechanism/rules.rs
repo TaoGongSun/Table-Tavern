@@ -42,12 +42,36 @@ pub(super) fn rule_for(mechanism: &Mechanism, path: &[String], current: Option<&
     if let Some(rule) = wildcard_rule(mechanism, path) {
         return rule.clone();
     }
+    if let Some(rule) = panel_list_parent(mechanism, path) {
+        return rule.clone();
+    }
     let kind = match current {
         Some(value) if split_pair(value).is_some() => FieldKind::Pair,
         Some(value) if value.trim().parse::<f64>().is_ok() => FieldKind::Number,
         _ => FieldKind::Text,
     };
     FieldRule::for_kind(kind)
+}
+
+/// 預設狀態欄桌（`default_panel`）的清單項目：路徑恰為「有 list 規則的父路徑＋一段純數字索引」時沿用父規則，
+/// 項目才跟清單同一個注入層級（turn，非對齊回合 GM 也看得到）。只在預設桌生效，卡格式桌的推定一字不變；
+/// 寫入資格不靠這裡（`has_rule` 不繼承，模型只能 replace 父路徑整串）。
+pub(super) fn panel_list_parent<'a>(
+    mechanism: &'a Mechanism,
+    path: &[String],
+) -> Option<&'a FieldRule> {
+    if !mechanism.default_panel {
+        return None;
+    }
+    let (last, parent) = path.split_last()?;
+    if parent.is_empty() || last.is_empty() || !last.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    mechanism
+        .rules
+        .get(&parent.join("."))
+        .or_else(|| wildcard_rule(mechanism, parent))
+        .filter(|rule| rule.kind == FieldKind::List)
 }
 
 /// 這條路徑有沒有明寫的規則（精確或萬用），不含依現值推定的預設。

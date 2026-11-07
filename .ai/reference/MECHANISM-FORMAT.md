@@ -42,6 +42,7 @@
 | `update` | 怎麼收更新：`delta`（只收增減量）／`replace`（照收新值）／`local`（app 自己算，模型唯讀）／`reject`（全拒） |
 | `inject` | 何時進模型上下文：`turn`（動態數值，每輪回合尾）／`snapshot`（長文字欄，變動才送）／`rare`（純記錄，不送）。細節見下「注入策略」 |
 | `branch` | 分支歸屬（樹的第一層節點名）。角色卡匯出只帶走自己那支 |
+| `max_chars`／`max_items` | 硬預算：葉子（清單則每一項）最多幾字、清單最多幾項；超過靜默截斷、記 `trimmed`（目前只有預設狀態欄用） |
 | `allowed` | 合法值清單（VN 旗標與揭露）：非空時只收 `replace` 且新值須在清單內，其餘拒收並回饋「可用值：…」；面板手改與一次性旗標同一道檢查 |
 
 `mechanism.locked_roots`（VN 桌的 `flags`／`revealed`／`chapter`）：底下只收表內欄位逐葉更新，整支替換、刪除、搬移與新增表外鍵一律拒收。
@@ -182,7 +183,7 @@ session，放一般段會讓下一個被點的角色看到別人的數值。角�
 ## 記帳落檔
 
 每桌一份 `worlds/<world_id>/mechanism-log.jsonl`，每筆更新記帳落一行 JSON：
-`ts`（本機時間）、`scene`（場景號）、`kind`、`path`、`detail`。`kind` 六種：
+`ts`（本機時間）、`scene`（場景號）、`kind`、`path`、`detail`。`kind` 七種：
 
 | `kind` | 意義 |
 |---|---|
@@ -192,12 +193,45 @@ session，放一般段會讓下一個被點的角色看到別人的數值。角�
 | `absorbed` | 機制鷹架條目被接管、不再送模型（見上「機制條目收編」）；一次性事件觸發後釘旗標也記在這 |
 | `skipped` | 卡片腳本認不出來、沒轉成觸發表，預設也不送模型（見下「固定型 EJS 的資料抽取」） |
 | `jump` | 全量桌某欄一輪內跳動幅度超過門檻（見上「全量快照型的跳動標記」） |
+| `trimmed` | 值超過 `max_chars`／`max_items` 被截斷，只收前面的；靜默，不進自癒回饋（面板併入夾邊界次數） |
 
 寫檔失敗一律吞掉——記帳設施不該反過來中斷遊戲。
 
 **帳本入口**：世界書分頁的「機制帳本」折疊區塊（只在真的有東西可看時出現）。`absorbed`／`skipped`
 兩類以標題對回現有世界書條目，逐條附一個「照原文送模型」開關（就是那條目的啟用開關）；
 其餘四類只顯示次數。對不上任何條目的記錄（例如一次性事件旗標）不列——那沒有開關可切。
+
+## 預設狀態欄
+
+沒有卡格式的桌（聊天桌、非重播、非介面接管、沒宣告狀態欄、機制與樹全空）在 GM 回合取材料前由 app 種一次
+（`data::default_panel::ensure`），之後 `mechanism.default_panel` 恆為真，匯入帶格式的卡也不切換：
+
+```json
+{ "characters": { "<卡名>": { "status": "", "items": [] } },
+  "tracking":   { "goals": [], "promises": [], "clues": [] } }
+```
+
+- 鍵固定英文，GM 看到的顯示名在地化（角色／狀態／持有／追蹤中／目標／承諾／線索）；模型回報的路徑不隨語言變。
+- 角色格：玩家卡優先、其餘非封存非舞台卡，最多 12 格；格鍵＝卡名、同名第二張起加「（2）」，歸屬記在
+  `mechanism.panel_cells`（卡 id → 格鍵）並寫進 `branch_bindings`。每回合對照：改名整格搬新鍵（資料與自訂欄留著）、
+  卡刪除才刪格（封存、轉舞台留舊格）、缺的 `status`／`items`／三條追蹤清單補回空值。沒有變動不寫檔。
+- 規則（`incremental` 一併開，數字策略恆為 DeltaOnly、不算 MVU 來源）：
+
+| 路徑 | kind | update | inject | 預算 |
+|---|---|---|---|---|
+| `characters.*.status` | text | replace | turn | ≤ 60 字 |
+| `characters.*.items` | list | replace | turn | ≤ 8 項，每項 ≤ 24 字 |
+| `tracking.goals`／`promises`／`clues` | list | replace | turn | ≤ 6 項，每項 ≤ 48 字 |
+| 面板「＋欄位」加的 `<父>.<欄名>` | text | replace | turn | ≤ 60 字 |
+
+- **清單報法**：只收父路徑 `replace` 一整串**字串陣列**（加一項也重寫整串）；逐項路徑（`…/clues/0`、`…/-`）、insert、
+  remove、delta 拒收並回饋。值不是字串陣列（物件、巢狀、非字串項）整筆丟、回饋。清單項目只在預設桌繼承父規則的
+  `inject`（非對齊回合 GM 也看得到），寫入資格不繼承。
+- **預算**：補丁與 ```state 圍欄的巢狀欄位兩個入口共用一套夾法——超項只留前 N 項、超長截前 N 字，記 `trimmed`。
+- **守門**（只管模型的兩個入口，面板手改照 `write_refusal`）：`characters`／`tracking` 底下只收有規則的路徑；
+  新格、表外鍵、整支替換兩根或整格、刪除、搬移一律拒收並回饋。開格是 app 的事。
+- 提示詞：通用協定後附靜態「本桌狀態欄」指引與固定範例（`replace /characters/<第一格>/status`、
+  `replace /tracking/clues` 整串陣列），不附多行字串清單句與介面歸屬聲明；```state 圍欄三鍵照舊。
 
 ## 觸發表
 

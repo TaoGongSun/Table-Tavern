@@ -28,6 +28,10 @@ pub enum UiMsg {
     WorldBusy,
     /// GM 回合生成中或剛提交、正文還沒落檔：卡片變數模式的面板手改先擋（回合結果會蓋掉它）。
     StateEditDuringTurn,
+    /// 預設狀態欄的「＋欄位」／刪欄位被拒：欄名空白、太長、是系統欄名、已有同名欄位，或這格不收手動欄位。
+    PanelFieldRefused {
+        name: String,
+    },
     /// GM 回合生成中或正文還沒落檔：換幕、分岔、退幕先擋，回合不會套到別的幕。
     SceneChangeDuringTurn,
     /// zod 卡的變數引擎名額滿：全機同時最多兩個變數更新請求（含卡住待回收的）；這一輪變數沒更新、正文照落。

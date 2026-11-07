@@ -137,6 +137,8 @@ mod tests {
         let mechanism = mechanism_with(&[(
             "World.Roll100",
             FieldRule {
+                max_chars: None,
+                max_items: None,
                 kind: FieldKind::Roll,
                 min: Some(1.0),
                 max: Some(6.0),

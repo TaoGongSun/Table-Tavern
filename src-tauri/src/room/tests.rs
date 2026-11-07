@@ -77,6 +77,7 @@ fn narration(text: &str, next: Option<String>, aborted: bool) -> Narration {
         arrived: Vec::new(),
         aborted,
         status: None,
+        panel: None,
     }
 }
 

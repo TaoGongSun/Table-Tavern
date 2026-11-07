@@ -10,6 +10,8 @@ use std::path::Path;
 
 pub(super) fn rule(kind: FieldKind) -> FieldRule {
     FieldRule {
+        max_chars: None,
+        max_items: None,
         kind,
         min: None,
         max: None,
@@ -577,6 +579,7 @@ fn fence_tables_only_migrate_what_the_fence_can_reach() {
     assert_eq!(moved, vec!["心态", "驻守天数"]);
     assert_eq!(table_keys(&state), vec!["体力", "剧情阶段/要塞事件"]);
     let fence = crate::transport::StateBlock {
+        gapped: Vec::new(),
         fields: vec![
             (key("心态"), "放松".to_owned()),
             (key("驻守天数"), "第 2 天".to_owned()),

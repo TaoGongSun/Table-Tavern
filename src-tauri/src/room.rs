@@ -38,6 +38,8 @@ pub(crate) struct Narration {
     pub(crate) aborted: bool,
     /// 提交成功後的三鍵快照；沒有＝這段不改房間狀態列
     pub(crate) status: Option<Value>,
+    /// 提交成功後的預設狀態欄快照（`chat_turn::scene_panel`）；只有預設桌有
+    pub(crate) panel: Option<Value>,
 }
 
 /// `chat_with_character` 回傳的執行端投影
@@ -825,6 +827,7 @@ impl Engine for AppEngine {
                 arrived: n.arrived_characters,
                 aborted: n.aborted,
                 status: n.status,
+                panel: n.panel,
             })
         })
     }

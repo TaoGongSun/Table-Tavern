@@ -407,6 +407,8 @@ pub struct StateBlock {
     pub lists: Vec<Vec<String>>,
     /// 具名容器路徑：樹上該處若是清單出身的索引分支，套用時先整支移除再寫
     pub maps: Vec<Vec<String>>,
+    /// 有項目被略過的清單路徑（`state_yaml::ParsedFields::gapped`）
+    pub gapped: Vec<Vec<String>>,
     /// 回覆裡有卡片自帶狀態區塊時，只由 ```state 圍欄收到的欄位（`None`＝沒有卡片狀態區塊，全部欄位都來自圍欄）。
     /// 卡片狀態欄退場的桌只套這份（`mechanism::BlockScope::RetiredCardBlocks`）。
     pub fenced: Option<BlockFields>,
@@ -418,6 +420,7 @@ pub struct BlockFields {
     pub fields: Vec<(Vec<String>, String)>,
     pub lists: Vec<Vec<String>>,
     pub maps: Vec<Vec<String>>,
+    pub gapped: Vec<Vec<String>>,
 }
 
 /// 從 GM 回覆剝出狀態區塊。
@@ -580,6 +583,7 @@ pub fn extract_state_block(reply: &str) -> StateBlock {
         display: display.trim_end().to_owned(),
         lists: merged.lists,
         maps: merged.maps,
+        gapped: merged.gapped,
         fenced: has_card_blocks.then(|| merge_blocks(fence_blocks)),
     }
 }
@@ -603,15 +607,18 @@ fn merge_blocks(mut blocks: Vec<(usize, String)>) -> BlockFields {
             parsed.fields.retain(|(path, _)| !path.starts_with(list));
             parsed.lists.retain(|path| !path.starts_with(list));
             parsed.maps.retain(|path| !path.starts_with(list));
+            parsed.gapped.retain(|path| !path.starts_with(list));
         }
         parsed.fields.extend(next.fields);
         parsed.lists.extend(next.lists);
         parsed.maps.extend(next.maps);
+        parsed.gapped.extend(next.gapped);
     }
     let ParsedFields {
         mut fields,
         mut lists,
         maps,
+        gapped,
     } = parsed;
     for (path, _) in &mut fields {
         if path.len() == 1 {
@@ -661,6 +668,7 @@ fn merge_blocks(mut blocks: Vec<(usize, String)>) -> BlockFields {
         fields,
         lists,
         maps,
+        gapped,
     }
 }
 

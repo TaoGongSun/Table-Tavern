@@ -140,6 +140,7 @@ export const BACKEND_MSG_PARAMS: Record<string, Record<string, BackendParamType>
   io_failed: { error: "string" },
   world_busy: {},
   state_edit_during_turn: {},
+  panel_field_refused: { name: "string" },
   scene_change_during_turn: {},
   mvu_engine_busy: {},
   mvu_update_failed_timeout: {},

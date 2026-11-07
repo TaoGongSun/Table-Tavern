@@ -22,6 +22,8 @@ pub struct ParsedFields {
     pub lists: Vec<Vec<String>>,
     /// 具名容器路徑（值空或 `{}` 的鍵、底下是具名鍵的分支）
     pub maps: Vec<Vec<String>>,
+    /// 有項目被略過（空純量項、`- {}`，不佔索引）的清單路徑：一般桌照舊略過，預設狀態欄靠它認出整欄形狀不對
+    pub gapped: Vec<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,7 +48,8 @@ enum Node {
     /// initvar 清單模式：只有 `-` 的清單項
     Null,
     Map(Vec<(String, Node)>),
-    List(Vec<Node>),
+    /// 項目；bool＝有項目被略過（只有狀態區塊會有）
+    List(Vec<Node>, bool),
 }
 
 enum Entry {
@@ -353,7 +356,7 @@ impl Parser {
                     } else if value.is_empty() || is_empty_map(value) {
                         self.build(Accept::DeeperOrDashAt(indent))
                     } else if is_empty_list(value) {
-                        Node::List(Vec::new())
+                        Node::List(Vec::new(), false)
                     } else if BLOCK_SCALARS.contains(&value) {
                         // 底下沒有續行就當沒寫值，不誤刪既有值
                         let Some(text) = self.block_scalar(indent) else {
@@ -382,7 +385,7 @@ impl Parser {
                             node => node,
                         }
                     } else if is_empty_list(&value) {
-                        Node::List(Vec::new())
+                        Node::List(Vec::new(), false)
                     } else if BLOCK_SCALARS.contains(&value.as_str()) {
                         let text = self.block_scalar(indent).unwrap_or_default();
                         Node::Scalar(text, Style::Block)
@@ -448,7 +451,7 @@ impl Parser {
                     (Mode::State, _) if value.is_empty() || (!quoted && is_empty_map(&value)) => {
                         None
                     }
-                    (_, false) if is_empty_list(&value) => Some(Node::List(Vec::new())),
+                    (_, false) if is_empty_list(&value) => Some(Node::List(Vec::new(), false)),
                     (_, quoted) => Some(Node::Scalar(
                         value,
                         if quoted { Style::Quoted } else { Style::Plain },
@@ -483,6 +486,9 @@ fn build(entries: Vec<Entry>, mode: Mode) -> Node {
     if !entries.iter().all(|entry| matches!(entry, Entry::Item(_))) {
         return Node::Map(flatten(entries));
     }
+    let gapped = entries
+        .iter()
+        .any(|entry| matches!(entry, Entry::Item(None)));
     let items: Vec<Node> = entries
         .into_iter()
         .filter_map(|entry| match entry {
@@ -512,7 +518,7 @@ fn build(entries: Vec<Entry>, mode: Mode) -> Node {
                 .collect(),
         );
     }
-    Node::List(items)
+    Node::List(items, gapped)
 }
 
 /// 攤平成具名鍵：鍵照收，清單項是具名分支就把它的鍵併進來，純量項與巢狀清單丟掉。
@@ -547,8 +553,11 @@ fn emit(node: Node, path: Vec<String>, out: &mut ParsedFields) {
                 emit(child, child_path, out);
             }
         }
-        Node::List(items) => {
+        Node::List(items, gapped) => {
             out.lists.push(path.clone());
+            if gapped {
+                out.gapped.push(path.clone());
+            }
             for (index, item) in items.into_iter().enumerate() {
                 let mut child_path = path.clone();
                 child_path.push(index.to_string());

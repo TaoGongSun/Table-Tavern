@@ -5,6 +5,13 @@ import type { PartyMessages } from "./zh-TW";
 export const ko: PartyMessages = {
   ...en,
   guideLink: "플레이 방법",
+  statusPanel: "상태 패널",
+  statusClose: "닫기",
+  statusItems: "소지품",
+  statusTracking: "추적 중",
+  statusGoals: "목표",
+  statusPromises: "약속",
+  statusClues: "단서",
   statusTime: "시간",
   statusPlace: "장소",
   statusPresent: "등장",

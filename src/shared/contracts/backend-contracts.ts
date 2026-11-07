@@ -98,6 +98,9 @@ export interface WorldState {
     display_prefixes?: Record<string, string>;
     // 集合形狀；present_scoped＝在場名單集合（狀態列只列 present 裡的人）
     collections?: Record<string, { present_scoped?: boolean }>;
+    // 預設狀態欄桌（沒有卡格式時 app 種的角色格＋追蹤三欄）；panel_cells＝卡 id → characters 底下的格鍵
+    default_panel?: boolean;
+    panel_cells?: Record<string, string>;
   };
 }
 

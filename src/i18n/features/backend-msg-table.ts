@@ -5,6 +5,7 @@ const COPY = {
   "zh-TW": {
     be_world_busy: "這張桌正在處理中，請稍候再試",
     be_state_edit_during_turn: "GM 正在回覆，等這一輪落定再改狀態",
+    be_panel_field_refused: "欄位名「{name}」不能用：空白、太長、跟既有欄位重名或是系統欄名",
     be_scene_change_during_turn: "GM 正在回覆，等這一輪落定再換幕",
     be_mvu_engine_busy: "變數引擎忙碌中：全機同時最多處理兩個變數更新（含卡住待回收的）。這一輪變數沒有更新，可稍後重 Roll",
     be_mvu_update_failed_timeout: "變數更新失敗，這一輪變數沒有更新，可能需要重 Roll（處理逾時）",
@@ -133,6 +134,7 @@ const COPY = {
   "zh-CN": {
     be_world_busy: "这张桌正在处理中，请稍后再试",
     be_state_edit_during_turn: "GM 正在回复，等这一轮落定再改状态",
+    be_panel_field_refused: "字段名「{name}」不能用：空白、太长、与现有字段重名或是系统字段名",
     be_scene_change_during_turn: "GM 正在回复，等这一轮落定再换幕",
     be_mvu_engine_busy: "变量引擎忙碌中：全机同时最多处理两个变量更新（含卡住待回收的）。这一轮变量没有更新，可稍后重 Roll",
     be_mvu_update_failed_timeout: "变量更新失败，这一轮变量没有更新，可能需要重 Roll（处理超时）",
@@ -261,6 +263,7 @@ const COPY = {
   en: {
     be_world_busy: "This table is busy. Try again in a moment.",
     be_state_edit_during_turn: "The GM is still replying. Edit the state once this turn lands.",
+    be_panel_field_refused: "The field name \"{name}\" can't be used: it's blank, too long, already taken, or reserved by the system.",
     be_scene_change_during_turn: "The GM is still replying. Change scenes once this turn lands.",
     be_mvu_engine_busy: "The variable engine is busy: this computer handles at most two variable updates at once (including stuck ones waiting to be cleaned up). Variables weren't updated this turn; try rerolling later.",
     be_mvu_update_failed_timeout: "Variable update failed, so variables weren't updated this turn. You may need to reroll (it took too long).",
@@ -400,6 +403,7 @@ const COPY = {
   ja: {
     be_world_busy: "この卓は処理中です。少し待ってからもう一度試してください。",
     be_state_edit_during_turn: "GM が返信中です。このターンが確定してから状態を変更してください。",
+    be_panel_field_refused: "項目名「{name}」は使えません：空欄、長すぎる、既存の項目と重複、またはシステム予約名です。",
     be_scene_change_during_turn: "GM が返信中です。このターンが確定してから場面を切り替えてください。",
     be_mvu_engine_busy: "変数エンジンが混雑しています。この端末で同時に処理できる変数更新は最大 2 件です（回収待ちの停止分を含む）。このターンの変数は更新されていません。しばらくしてからリロールしてください。",
     be_mvu_update_failed_timeout: "変数の更新に失敗したため、このターンの変数は更新されていません。リロールが必要かもしれません（処理がタイムアウトしました）。",
@@ -530,6 +534,7 @@ const COPY = {
   ko: {
     be_world_busy: "이 테이블은 처리 중입니다. 잠시 후 다시 시도하세요.",
     be_state_edit_during_turn: "GM이 답하는 중입니다. 이번 턴이 끝난 뒤 상태를 수정하세요.",
+    be_panel_field_refused: "필드 이름 \"{name}\"은(는) 쓸 수 없습니다: 비어 있거나, 너무 길거나, 이미 있거나, 시스템 예약 이름입니다.",
     be_scene_change_during_turn: "GM이 답하는 중입니다. 이번 턴이 끝난 뒤 장면을 바꾸세요.",
     be_mvu_engine_busy: "변수 엔진이 바쁩니다. 이 기기에서는 변수 업데이트를 동시에 최대 두 개까지 처리합니다(회수 대기 중인 멈춘 작업 포함). 이번 턴 변수는 업데이트되지 않았으니 잠시 후 다시 생성하세요.",
     be_mvu_update_failed_timeout: "변수 업데이트에 실패해 이번 턴 변수가 업데이트되지 않았습니다. 다시 생성해야 할 수 있습니다(처리 시간 초과).",
@@ -660,6 +665,7 @@ const COPY = {
   es: {
     be_world_busy: "Esta mesa está ocupada. Prueba de nuevo en un momento.",
     be_state_edit_during_turn: "El GM aún está respondiendo. Edita el estado cuando termine este turno.",
+    be_panel_field_refused: "No se puede usar el nombre de campo «{name}»: está vacío, es demasiado largo, ya existe o lo reserva el sistema.",
     be_scene_change_during_turn: "El GM aún está respondiendo. Cambia de escena cuando termine este turno.",
     be_mvu_engine_busy: "El motor de variables está ocupado: este equipo procesa como máximo dos actualizaciones de variables a la vez (incluidas las bloqueadas pendientes de limpiar). Las variables no se actualizaron en este turno; vuelve a generar más tarde.",
     be_mvu_update_failed_timeout: "No se pudieron actualizar las variables en este turno. Quizá debas volver a generar (tardó demasiado).",
@@ -802,6 +808,7 @@ const COPY = {
   "pt-BR": {
     be_world_busy: "Esta mesa está ocupada. Tente de novo daqui a pouco.",
     be_state_edit_during_turn: "O GM ainda está respondendo. Edite o estado quando este turno terminar.",
+    be_panel_field_refused: "O nome de campo \"{name}\" não pode ser usado: está vazio, é longo demais, já existe ou é reservado pelo sistema.",
     be_scene_change_during_turn: "O GM ainda está respondendo. Mude de cena quando este turno terminar.",
     be_mvu_engine_busy: "O motor de variáveis está ocupado: este computador processa no máximo duas atualizações de variáveis ao mesmo tempo (incluindo as travadas aguardando limpeza). As variáveis não foram atualizadas neste turno; gere de novo mais tarde.",
     be_mvu_update_failed_timeout: "Não foi possível atualizar as variáveis neste turno. Talvez seja preciso gerar de novo (demorou demais).",
@@ -941,6 +948,7 @@ const COPY = {
   de: {
     be_world_busy: "Dieser Tisch ist beschäftigt. Gleich noch einmal versuchen.",
     be_state_edit_during_turn: "Der GM antwortet noch. Ändere den Status, wenn dieser Zug fertig ist.",
+    be_panel_field_refused: "Der Feldname „{name}“ geht nicht: leer, zu lang, schon vergeben oder vom System reserviert.",
     be_scene_change_during_turn: "Der GM antwortet noch. Wechsle die Szene, wenn dieser Zug fertig ist.",
     be_mvu_engine_busy: "Die Variablen-Engine ist ausgelastet: Dieser Rechner verarbeitet höchstens zwei Variablen-Updates gleichzeitig (einschließlich hängender, die noch aufgeräumt werden). Die Variablen wurden in diesem Zug nicht aktualisiert; generiere später neu.",
     be_mvu_update_failed_timeout: "Die Variablen konnten in diesem Zug nicht aktualisiert werden. Eventuell musst du neu generieren (Zeitüberschreitung).",
@@ -1087,6 +1095,7 @@ const COPY = {
   fr: {
     be_world_busy: "Cette table est occupée. Réessaie dans un instant.",
     be_state_edit_during_turn: "Le MJ répond encore. Modifie l'état une fois ce tour terminé.",
+    be_panel_field_refused: "Le nom de champ « {name} » n'est pas utilisable : vide, trop long, déjà pris ou réservé par le système.",
     be_scene_change_during_turn: "Le MJ répond encore. Change de scène une fois ce tour terminé.",
     be_mvu_engine_busy: "Le moteur de variables est occupé : cet ordinateur traite au plus deux mises à jour de variables à la fois (y compris celles bloquées en attente de nettoyage). Les variables n'ont pas été mises à jour ce tour-ci ; régénère plus tard.",
     be_mvu_update_failed_timeout: "La mise à jour des variables a échoué, elles n'ont pas changé ce tour-ci. Il faudra peut-être régénérer (délai dépassé).",
@@ -1229,6 +1238,7 @@ const COPY = {
   ru: {
     be_world_busy: "Этот стол занят. Попробуй чуть позже.",
     be_state_edit_during_turn: "Мастер ещё отвечает. Измени состояние, когда этот ход завершится.",
+    be_panel_field_refused: "Название поля «{name}» нельзя использовать: оно пустое, слишком длинное, уже занято или зарезервировано системой.",
     be_scene_change_during_turn: "Мастер ещё отвечает. Смени сцену, когда этот ход завершится.",
     be_mvu_engine_busy: "Движок переменных занят: этот компьютер обрабатывает не больше двух обновлений переменных одновременно (включая зависшие, ожидающие очистки). Переменные в этом ходе не обновлены; сгенерируй заново позже.",
     be_mvu_update_failed_timeout: "Не удалось обновить переменные в этом ходе. Возможно, нужно сгенерировать заново (превышено время обработки).",

@@ -12,7 +12,10 @@ pub fn resolve_numeric_update(
     world_id: &str,
     state: &data::WorldState,
 ) -> NumericUpdate {
-    if crate::refactor::refactored(root, world_id, state).unwrap_or(true) {
+    // 預設狀態欄桌的 incremental 是 app 種的，不是 MVU 鷹架：一律本 app 協定
+    if state.mechanism.default_panel
+        || crate::refactor::refactored(root, world_id, state).unwrap_or(true)
+    {
         return NumericUpdate::DeltaOnly;
     }
     let mvu_source = state.mechanism.incremental
@@ -29,6 +32,10 @@ pub fn resolve_numeric_update(
 /// 一致，樹才真的是 MVU 變數）。不是 MVU 來源的桌，樹只是從原卡渲染出來的狀態區塊解析來的。讀卡失敗回錯。
 /// 數字欄更新策略（`resolve_numeric_update`）另有自己的判定，不共用這個。
 pub fn mvu_source(root: &Path, world_id: &str, state: &data::WorldState) -> data::DataResult<bool> {
+    // 預設狀態欄是 app 種的樹，不是 MVU 變數
+    if state.mechanism.default_panel {
+        return Ok(false);
+    }
     // 重構為了收編規則才開的增量不算 MVU 鷹架：那棵樹只是開場狀態
     if state.mechanism.incremental && !state.mechanism.incremental_by_refactor {
         return Ok(true);

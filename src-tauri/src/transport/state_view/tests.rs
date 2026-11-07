@@ -137,6 +137,8 @@ fn trigger_with_scope(id: &str, scope: &[&str]) -> data::Trigger {
 #[test]
 fn gm_dynamic_block_prints_trigger_hits_after_current_state() {
     let mechanism = Mechanism {
+        default_panel: false,
+        panel_cells: Default::default(),
         locked_roots: Vec::new(),
         collections: Default::default(),
         value_types: Default::default(),
@@ -177,6 +179,8 @@ fn gm_dynamic_block_prints_trigger_hits_after_current_state() {
 #[test]
 fn gm_dynamic_block_hides_trigger_section_when_state_triggers_is_empty() {
     let mechanism = Mechanism {
+        default_panel: false,
+        panel_cells: Default::default(),
         locked_roots: Vec::new(),
         collections: Default::default(),
         value_types: Default::default(),
@@ -216,6 +220,8 @@ fn gm_dynamic_block_hides_trigger_section_when_state_triggers_is_empty() {
 #[test]
 fn gm_dynamic_block_hides_trigger_scoped_to_a_hidden_branch_but_prints_when_aligned() {
     let mechanism = Mechanism {
+        default_panel: false,
+        panel_cells: Default::default(),
         locked_roots: Vec::new(),
         collections: Default::default(),
         value_types: Default::default(),
@@ -266,6 +272,8 @@ fn gm_dynamic_block_hides_trigger_scoped_to_a_hidden_branch_but_prints_when_alig
 #[test]
 fn gm_dynamic_block_hides_trigger_scoped_to_a_descendant_of_a_hidden_branch() {
     let mechanism = Mechanism {
+        default_panel: false,
+        panel_cells: Default::default(),
         locked_roots: Vec::new(),
         collections: Default::default(),
         value_types: Default::default(),
@@ -303,6 +311,8 @@ fn gm_dynamic_block_hides_trigger_scoped_to_a_descendant_of_a_hidden_branch() {
 #[test]
 fn gm_dynamic_block_orders_triggers_by_mechanism_list_not_by_map_key() {
     let mechanism = Mechanism {
+        default_panel: false,
+        panel_cells: Default::default(),
         locked_roots: Vec::new(),
         collections: Default::default(),
         value_types: Default::default(),

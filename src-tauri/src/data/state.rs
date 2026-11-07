@@ -89,6 +89,12 @@ pub struct FieldRule {
     /// 合法值清單（vn-mode 包 4 §2.3）：非空時這欄只收 `replace` 且新值須在清單內，其餘一律拒收並回饋可用值。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub allowed: Vec<String>,
+    /// 硬預算（table-status-panel §2.3）：葉子值（清單則每一項）最多幾個字（`chars().count()`），超過靜默截斷。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_chars: Option<u32>,
+    /// 硬預算：清單最多幾項，超過只留前面的。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_items: Option<u32>,
 }
 
 impl FieldRule {
@@ -112,6 +118,8 @@ impl FieldRule {
             formula: None,
             same_as: None,
             allowed: Vec::new(),
+            max_chars: None,
+            max_items: None,
         }
     }
 }
@@ -237,6 +245,14 @@ pub struct Mechanism {
     /// 刪除、搬移或新增表外鍵（`mechanism::write_refusal`）。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub locked_roots: Vec<String>,
+    /// 沒有卡格式的桌由 app 種的預設狀態欄（`data::default_panel`）：角色格＋追蹤三欄。種過就恆為真，
+    /// 之後匯入帶格式的卡也不切換（玩到一半換格式會把資料弄亂）。
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub default_panel: bool,
+    /// 預設狀態欄的角色格歸屬：卡 id → `characters` 底下的格鍵。格鍵是卡名（模型要讀得懂路徑），
+    /// 歸屬以 id 記，卡改名時整格搬到新鍵、資料留著。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub panel_cells: BTreeMap<String, String>,
 }
 
 /// 退場桌開場格子補齊的附帶資料。
@@ -338,6 +354,8 @@ impl Default for Mechanism {
             numeric_update: NumericUpdate::default(),
             mirrors: BTreeMap::new(),
             locked_roots: Vec::new(),
+            default_panel: false,
+            panel_cells: BTreeMap::new(),
         }
     }
 }
@@ -353,6 +371,8 @@ impl Mechanism {
             && self.collections.is_empty()
             && self.mirrors.is_empty()
             && self.locked_roots.is_empty()
+            && !self.default_panel
+            && self.panel_cells.is_empty()
     }
 }
 
@@ -418,6 +438,22 @@ pub fn node_at<'a>(
     }
     match node {
         StateNode::Branch(children) => node_at(children, rest),
+        StateNode::Leaf(_) => None,
+    }
+}
+
+/// `node_at` 的可寫版。
+pub(crate) fn node_at_mut<'a>(
+    tree: &'a mut BTreeMap<String, StateNode>,
+    path: &[String],
+) -> Option<&'a mut StateNode> {
+    let (first, rest) = path.split_first()?;
+    let node = tree.get_mut(first)?;
+    if rest.is_empty() {
+        return Some(node);
+    }
+    match node {
+        StateNode::Branch(children) => node_at_mut(children, rest),
         StateNode::Leaf(_) => None,
     }
 }

@@ -7,6 +7,7 @@ import type {
   QuotaReport,
   Capabilities,
   SceneStatus,
+  ScenePanel,
   Speaker,
   StoryPart,
   SyncItem,
@@ -272,6 +273,57 @@ export function cleanSceneState(v: unknown): SceneStatus | null {
   return Object.keys(out).length ? out : null;
 }
 
+const PANEL_LIMITS = {
+  characters: 12,
+  name: 64,
+  status: 60,
+  items: 8,
+  item: 24,
+  tracking: 6,
+  entry: 48,
+};
+const clip = (v: string, max: number) => [...v].slice(0, max).join("");
+const panelList = (v: unknown, count: number, length: number): string[] | undefined =>
+  Array.isArray(v) && v.every((item) => typeof item === "string")
+    ? v.slice(0, count).map((item) => clip(item, length))
+    : undefined;
+
+/** 整份快照；錯型只丟該欄。空清單仍有效，讓房主能清空已解決的事。 */
+export function cleanScenePanel(v: unknown): ScenePanel | null {
+  if (!isObj(v)) return null;
+  const out: ScenePanel = {};
+  const b = PANEL_LIMITS;
+  if (isObj(v.characters)) {
+    const cells = Object.entries(v.characters).flatMap(([name, cell]) => {
+      if (!name || chars(name) > b.name || !isObj(cell)) return [];
+      const status = typeof cell.status === "string" ? clip(cell.status, b.status) : undefined;
+      const items = panelList(cell.items, b.items, b.item);
+      return status === undefined && items === undefined
+        ? []
+        : [
+            [
+              name,
+              {
+                ...(status !== undefined ? { status } : {}),
+                ...(items ? { items } : {}),
+              },
+            ] as const,
+          ];
+    });
+    if (cells.length || !Object.keys(v.characters).length)
+      out.characters = Object.fromEntries(cells.slice(0, b.characters));
+  }
+  if (isObj(v.tracking)) {
+    const tracking: NonNullable<ScenePanel["tracking"]> = {};
+    for (const key of ["goals", "promises", "clues"] as const) {
+      const list = panelList(v.tracking[key], b.tracking, b.entry);
+      if (list) tracking[key] = list;
+    }
+    if (Object.keys(tracking).length) out.tracking = tracking;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 export function cleanHistory(list: unknown, cards: PublicCard[]): StoryPart[] | null {
   if (!Array.isArray(list)) return null;
   const out: StoryPart[] = [];
@@ -282,6 +334,7 @@ export function cleanHistory(list: unknown, cards: PublicCard[]): StoryPart[] | 
         : null;
     if (!speaker) return null;
     const state = cleanSceneState(h.state);
+    const panel = cleanScenePanel(h.panel);
     out.push({
       round: 0,
       part: out.length,
@@ -290,6 +343,7 @@ export function cleanHistory(list: unknown, cards: PublicCard[]): StoryPart[] | 
       interrupted: h.interrupted,
       at: h.at,
       ...(state ? { state } : {}),
+      ...(panel ? { panel } : {}),
     });
   }
   return out;

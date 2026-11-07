@@ -381,6 +381,8 @@ fn unrelated_mechanism_values_survive_shell_cleanup() {
     state.mechanism.rules.insert(
         "別處.金幣".to_owned(),
         FieldRule {
+            max_chars: None,
+            max_items: None,
             kind: FieldKind::Number,
             min: Some(0.0),
             max: None,
@@ -427,6 +429,8 @@ fn stale_rules_survive_rerun_and_insert_regrows_retired_field() {
     first.rules.insert(
         "舊區.HP".to_owned(),
         FieldRule {
+            max_chars: None,
+            max_items: None,
             kind: FieldKind::Number,
             min: Some(0.0),
             max: Some(100.0),

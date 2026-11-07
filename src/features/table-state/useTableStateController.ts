@@ -16,6 +16,28 @@ export function treeValueAt(tree: Record<string, StateNode>, path: string[]): st
   return typeof node === "string" ? node : "";
 }
 
+function isPanelListItem(path: string[]): boolean {
+  return /^\d+$/.test(path[path.length - 1] ?? "") && (
+    (path.length === 4 && path[0] === "characters" && path[2] === "items") ||
+    (path.length === 3 && path[0] === "tracking" && ["goals", "promises", "clues"].includes(path[1]))
+  );
+}
+
+// 索引只用來定位畫面上的項目；後端一律接收清單父路徑與整串字串陣列。
+function panelListAfterEdit(tree: Record<string, StateNode>, path: string[], value: string): string[] {
+  let node: StateNode = tree;
+  for (const key of path.slice(0, -1)) {
+    if (typeof node === "string") return [];
+    node = node[key] ?? {};
+  }
+  if (typeof node === "string") return [];
+  return Object.entries(node).sort(([a], [b]) => Number(a) - Number(b))
+    .flatMap(([key, item]) => {
+      if (key === path[path.length - 1]) return value === "" ? [] : [value];
+      return typeof item === "string" ? [item] : [];
+    });
+}
+
 // 綁定清單載入失敗就當空陣列——面板本來就能在沒有綁定資料時正常運作，不因此整個掛掉
 export async function loadBranchBindings(worldId: string): Promise<BranchBinding[]> {
   try {
@@ -35,6 +57,10 @@ export interface EditingStateField {
 export interface TableStateController {
   /** 平欄（time／place／present 與卡自訂欄） */
   fields: Record<string, string>;
+  defaultPanel: boolean;
+  addPanelField: (parentPath: string[], name: string) => Promise<void>;
+  removePanelField: (path: string[]) => Promise<void>;
+  removePanelItem: (path: string[]) => Promise<void>;
   tree: Record<string, StateNode>;
   /** 全量桌的跳動警示：路徑（點分）→ 顯示標記 */
   jumps: Record<string, string>;
@@ -57,6 +83,7 @@ export interface TableStateController {
     mirrors?: Record<string, string>,
     displayPrefixes?: Record<string, string>,
     collections?: MechanismCollections,
+    defaultPanel?: boolean,
   ) => void;
   /** 重讀這桌的狀態與綁定 */
   refresh: () => Promise<void>;
@@ -90,6 +117,7 @@ export function useTableStateController(input: {
   const { worldId, onError } = input;
   const onEditedRef = useRef(input.onEdited);
   onEditedRef.current = input.onEdited;
+  const [defaultPanel, setDefaultPanel] = useState(false);
   const [tableState, setTableState] = useState<Record<string, string>>({});
   const [tableTree, setTableTree] = useState<Record<string, StateNode>>({});
   const [tableJumps, setTableJumps] = useState<Record<string, string>>({});
@@ -114,8 +142,10 @@ export function useTableStateController(input: {
       mirrorPaths?: Record<string, string>,
       prefixes?: Record<string, string>,
       collections?: MechanismCollections,
+      panel = false,
     ) => {
       readGeneration.current += 1;
+      setDefaultPanel(panel);
       setTableState(state?.table ?? {});
       setTableTree(state?.tree ?? {});
       setTableJumps(state?.jumps ?? {});
@@ -152,6 +182,7 @@ export function useTableStateController(input: {
           const state = await invoke<WorldState>("read_state", { worldId });
           const bindings = await loadBranchBindings(worldId);
           if (!current()) return;
+          setDefaultPanel(state.mechanism?.default_panel ?? false);
           setTableState(state.state?.table ?? {});
           setTableTree(state.state?.tree ?? {});
           setTableJumps(state.state?.jumps ?? {});
@@ -190,16 +221,20 @@ export function useTableStateController(input: {
   const save = useCallback(
     async (path: string[], tree: boolean, input: string) => {
       if (stateFieldSaveBusy.current || stateFieldEditCancelled.current) return;
+      const panelItem = defaultPanel && tree && isPanelListItem(path);
       // 先剝前綴、再照數字模板解析（顯示時反過來：先套模板、再接前綴）
-      const value = tree
+      const value = tree && !panelItem
         ? parseWithFormat(stripPrefix(input, prefixFor(displayPrefixes, path)), displayFormats[path.join(".")])
         : input;
       setEditingStateField(null);
-      if (value === (tree ? treeValueAt(tableTree, path) : (tableState[path[0]] ?? ""))) return;
+      if (!(panelItem && value === "") && value === (tree ? treeValueAt(tableTree, path) : (tableState[path[0]] ?? ""))) return;
       stateFieldSaveBusy.current = true;
       onError("");
       try {
-        if (tree) await invoke("set_state_path", { worldId, path, value });
+        if (panelItem) await invoke("set_panel_list", {
+          worldId, path: path.slice(0, -1), items: panelListAfterEdit(tableTree, path, value),
+        });
+        else if (tree) await invoke("set_state_path", { worldId, path, value });
         else await invoke("set_table_state", { worldId, fields: { [path[0]]: value } });
         await refresh();
         onEditedRef.current?.();
@@ -209,7 +244,38 @@ export function useTableStateController(input: {
         stateFieldSaveBusy.current = false;
       }
     },
-    [tableTree, tableState, displayFormats, displayPrefixes, worldId, onError, refresh],
+    [defaultPanel, tableTree, tableState, displayFormats, displayPrefixes, worldId, onError, refresh],
+  );
+
+  const removePanelItem = useCallback(async (path: string[]) => {
+    stateFieldEditCancelled.current = false;
+    await save(path, true, "");
+  }, [save]);
+
+  const panelField = useCallback(
+    async (command: string, args: Record<string, unknown>) => {
+      onError("");
+      try {
+        await invoke(command, { worldId, ...args });
+        await refresh();
+        onEditedRef.current?.();
+      } catch (reason) {
+        onError(String(reason));
+        throw reason;
+      }
+    },
+    [worldId, onError, refresh],
+  );
+  const addPanelField = useCallback(
+    (parentPath: string[], name: string) =>
+      panelField("add_panel_field", { parentPath, name }),
+    [panelField],
+  );
+  const removePanelField = useCallback(
+    (path: string[]) => panelField("remove_panel_field", {
+      parentPath: path.slice(0, -1), name: path[path.length - 1],
+    }),
+    [panelField],
   );
 
   // 玩家點跳動記號：把該欄永久標成計數器，之後全量桌跳動比對不再對它示警
@@ -257,6 +323,10 @@ export function useTableStateController(input: {
 
   return useMemo(
     () => ({
+      defaultPanel,
+      addPanelField,
+      removePanelField,
+      removePanelItem,
       fields: tableState,
       tree: tableTree,
       jumps: tableJumps,
@@ -277,6 +347,10 @@ export function useTableStateController(input: {
       clearEdit,
     }),
     [
+      defaultPanel,
+      addPanelField,
+      removePanelField,
+      removePanelItem,
       tableState,
       tableTree,
       tableJumps,

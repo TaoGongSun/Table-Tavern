@@ -121,6 +121,7 @@ fn time_cells_skip_countdowns_deadlines_and_person_fields() {
 
 fn fence_and_patch(state: &mut data::WorldState, time: Option<&str>, patch: Option<&str>) {
     let block = StateBlock {
+        gapped: Vec::new(),
         fields: time
             .map(|time| vec![(vec!["time".to_owned()], time.to_owned())])
             .unwrap_or_default(),

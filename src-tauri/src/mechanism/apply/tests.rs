@@ -338,6 +338,8 @@ fn notes_are_deduped_and_capped_at_five() {
     let mechanism = mechanism_with(&[(
         "World.Roll100",
         FieldRule {
+            max_chars: None,
+            max_items: None,
             kind: FieldKind::Roll,
             min: Some(1.0),
             max: Some(100.0),

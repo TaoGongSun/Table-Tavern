@@ -383,12 +383,19 @@ async fn steps(room: &Arc<Room>, id: &str) -> Result<bool, (Option<u32>, String)
                 };
                 let arrived = n.arrived.clone();
                 let status = n.status.filter(|_| !n.aborted);
-                io.end(&n.text, n.aborted, status.as_ref(), move |run| {
-                    run.used += 1;
-                    run.step = next;
-                    run.arrived.extend(arrived);
-                    run.called = called.or(run.called.take());
-                });
+                let panel = n.panel.filter(|_| !n.aborted);
+                io.end(
+                    &n.text,
+                    n.aborted,
+                    status.as_ref(),
+                    panel.as_ref(),
+                    move |run| {
+                        run.used += 1;
+                        run.step = next;
+                        run.arrived.extend(arrived);
+                        run.called = called.or(run.called.take());
+                    },
+                );
                 room.engine.table_changed(&world);
                 if n.aborted {
                     return Ok(true);
@@ -420,7 +427,7 @@ async fn steps(room: &Arc<Room>, id: &str) -> Result<bool, (Option<u32>, String)
                 } else {
                     Step::Narrate
                 };
-                io.end(&spoken.text, spoken.aborted, None, move |run| {
+                io.end(&spoken.text, spoken.aborted, None, None, move |run| {
                     run.step = next
                 });
                 room.engine.table_changed(&world);
@@ -506,6 +513,7 @@ impl Part {
         text: &str,
         interrupted: bool,
         status: Option<&Value>,
+        panel: Option<&Value>,
         change: impl FnOnce(&mut DispatchRun),
     ) {
         let mut state = self
@@ -521,6 +529,9 @@ impl Part {
         let mut p = json!({ "dispatchId": self.dispatch, "part": n, "text": text, "interrupted": interrupted });
         if let Some(status) = status {
             p["state"] = status.clone();
+        }
+        if let Some(panel) = panel {
+            p["panel"] = panel.clone();
         }
         self.room.durable("gen.part.end", p, |saved| {
             if let Some(run) = saved.dispatch.as_mut() {

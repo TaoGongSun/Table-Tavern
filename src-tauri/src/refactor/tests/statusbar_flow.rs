@@ -11,6 +11,8 @@ const SHELL: &str = "<Status_block>\n状态栏:\n  地点: \"📍 {{状态栏.�
 
 fn rule(kind: FieldKind, update: UpdateMode) -> FieldRule {
     FieldRule {
+        max_chars: None,
+        max_items: None,
         kind,
         min: None,
         max: None,

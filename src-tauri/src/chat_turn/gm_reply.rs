@@ -72,6 +72,7 @@ pub(super) fn aborted_narration(reply: &str) -> GmNarration {
         aborted: true,
         state_error: None,
         status: None,
+        panel: None,
     }
 }
 

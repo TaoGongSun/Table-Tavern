@@ -4,6 +4,7 @@
 
 mod apply;
 mod block_paths;
+mod budget;
 mod collection;
 mod derive;
 pub mod engine_records;
@@ -40,6 +41,8 @@ mod object_key_glyph_tests;
 #[cfg(test)]
 mod once_flag_tests;
 #[cfg(test)]
+mod panel_tests;
+#[cfg(test)]
 mod parse_feedback_tests;
 #[cfg(test)]
 mod slash_key_tests;
@@ -48,6 +51,7 @@ mod test_support;
 #[cfg(test)]
 mod write_guard_tests;
 
+pub use budget::{panel_hand_value, panel_list};
 #[cfg(test)]
 pub use ledger::apply_block;
 pub use ledger::{append_log, apply_block_typed, read_ledger, BlockScope, Ledger};

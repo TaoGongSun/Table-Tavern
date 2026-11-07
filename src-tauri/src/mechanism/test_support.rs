@@ -13,6 +13,7 @@ pub(super) fn tree_from(pairs: &[(&str, &str)]) -> BTreeMap<String, StateNode> {
 /// 狀態圍欄的單段欄位（每個鍵一段路徑）。
 pub(super) fn fence(fields: &[(&str, &str)]) -> crate::transport::StateBlock {
     crate::transport::StateBlock {
+        gapped: Vec::new(),
         fields: fields
             .iter()
             .map(|(key, value)| (vec![(*key).to_owned()], (*value).to_owned()))
@@ -34,6 +35,8 @@ pub(super) fn rule(kind: FieldKind, min: Option<f64>, max: Option<f64>) -> Field
 
 pub(super) fn mechanism_with(rules: &[(&str, FieldRule)]) -> Mechanism {
     Mechanism {
+        default_panel: false,
+        panel_cells: Default::default(),
         locked_roots: Vec::new(),
         collections: Default::default(),
         value_types: Default::default(),
@@ -117,6 +120,8 @@ pub(super) fn else_case(text: &str) -> data::TriggerCase {
 
 pub(super) fn once_mechanism() -> Mechanism {
     Mechanism {
+        default_panel: false,
+        panel_cells: Default::default(),
         locked_roots: Vec::new(),
         collections: Default::default(),
         value_types: Default::default(),

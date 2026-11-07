@@ -5,6 +5,13 @@ import type { PartyMessages } from "./zh-TW";
 export const ru: PartyMessages = {
   ...en,
   guideLink: "Как играть",
+  statusPanel: "Панель состояния",
+  statusClose: "Закрыть",
+  statusItems: "Предметы",
+  statusTracking: "Отслеживание",
+  statusGoals: "Цели",
+  statusPromises: "Обещания",
+  statusClues: "Зацепки",
   statusTime: "Время",
   statusPlace: "Место",
   statusPresent: "Присутствуют",

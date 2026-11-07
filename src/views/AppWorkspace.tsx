@@ -332,12 +332,19 @@ export function AppWorkspace({
                 onUseBackup={onUseBackup}
               />
             )}
+            <div className="table-state-layout">
             {/* 介面由 App 接管的桌不顯示頂部狀態欄：狀態在卡片畫面裡，模型也不再寫 state 圍欄 */}
             {gate === "play" &&
               mainView === null &&
               !cardInterface.interfaceTakeover &&
               (hasStateBar || Object.keys(tableState.tree).length > 0) && (
               <StateBar
+                // 換桌時清掉尚未送出的自訂欄名，避免把上一桌草稿帶到新桌。
+                key={table}
+                defaultPanel={tableState.defaultPanel}
+                onAddPanelField={tableState.addPanelField}
+                onRemovePanelField={tableState.removePanelField}
+                onRemovePanelItem={tableState.removePanelItem}
                 fields={tableState.fields}
                 tree={tableState.tree}
                 jumps={tableState.jumps}
@@ -488,6 +495,7 @@ export function AppWorkspace({
                 )
               }
             />
+            </div>
           </>
         )}
         {!errorInComposer && errorNote && <div className="main-error">{errorNote}</div>}

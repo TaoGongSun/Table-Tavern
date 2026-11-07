@@ -185,6 +185,26 @@ describe("lobby and table navigation", () => {
     expect(cover("Sample")).not.toBeNull();
   });
 
+  it("mounts the default panel without a card-defined state bar and keeps blank tables collapsed away", async () => {
+    install({ worlds: [world("w1", "Panel"), world("w2", "Blank")], open: {}, characters: [] });
+    backend.handlers.read_state = ({ worldId }) => ({
+      current_scene: 0, scene_titles: {}, scene_labels: {}, player_card_id: null,
+      mechanism: { default_panel: worldId === "w1" },
+      state: { table: {}, tree: worldId === "w1" ? {
+        characters: { 小林: { status: "休息", items: {} } },
+        tracking: { goals: {}, promises: {}, clues: {} },
+      } : {} },
+    });
+    await boot();
+    await click(cover("Panel"));
+    expect(calls("world_has_state_bar").length).toBeGreaterThan(0);
+    expect(document.querySelector(".state-default-panel")?.textContent).toContain("休息");
+    expect(document.querySelector("details.state-bar")?.hasAttribute("open")).toBe(false);
+    await click(homeButton()!);
+    await click(cover("Blank"));
+    expect(document.querySelector(".state-bar")).toBeNull();
+  });
+
   it("goes back to the lobby even when reclaiming the empty table fails", async () => {
     const auto = t("newTableName");
     install({ worlds: [world("w1", auto)], open: {}, characters: [] });

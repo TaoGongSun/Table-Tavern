@@ -108,6 +108,67 @@ pub(crate) struct GmNarration {
     /// 提交成功後的三鍵快照（平欄）。單人契約不帶這欄；房間 `gen.part.end` 才送
     #[serde(skip)]
     pub(crate) status: Option<Value>,
+    /// 提交成功後的預設狀態欄快照（`scene_panel`）；只在預設桌有，房間 `gen.part.end` 的 `panel` 才送
+    #[serde(skip)]
+    pub(crate) panel: Option<Value>,
+}
+
+/// 房間廣播的預設狀態欄快照（table-status-panel §4）：只在預設桌回 Some。白名單取欄位、不整棵序列化——
+/// 每格帶 `status`、`items`（索引分支轉字串陣列）與手動加的文字欄；追蹤只帶三條清單。底線開頭的鍵不送。
+pub(crate) fn scene_panel(state: &data::WorldState) -> Option<Value> {
+    use data::default_panel::{CHARACTERS, ITEMS, STATUS, TRACKING, TRACKING_LISTS};
+    use data::StateNode;
+    if !state.mechanism.default_panel {
+        return None;
+    }
+    fn children(
+        node: Option<&StateNode>,
+    ) -> Option<&std::collections::BTreeMap<String, StateNode>> {
+        match node {
+            Some(StateNode::Branch(children)) => Some(children),
+            _ => None,
+        }
+    }
+    let list = |node: Option<&StateNode>| -> Value {
+        let mut items: Vec<(usize, &str)> = children(node)
+            .into_iter()
+            .flatten()
+            .filter_map(|(key, item)| match (key.parse::<usize>(), item) {
+                (Ok(index), StateNode::Leaf(text)) => Some((index, text.as_str())),
+                _ => None,
+            })
+            .collect();
+        items.sort_by_key(|(index, _)| *index);
+        json!(items.into_iter().map(|(_, text)| text).collect::<Vec<_>>())
+    };
+    let tree = &state.state.tree;
+    let mut characters = serde_json::Map::new();
+    for (key, cell) in children(tree.get(CHARACTERS)).into_iter().flatten() {
+        let Some(fields) = children(Some(cell)) else {
+            continue;
+        };
+        let mut out = serde_json::Map::new();
+        for (name, node) in fields {
+            match (name.as_str(), node) {
+                (ITEMS, _) => {
+                    out.insert(name.clone(), list(Some(node)));
+                }
+                (_, StateNode::Leaf(text)) if !name.starts_with('_') => {
+                    out.insert(name.clone(), json!(text));
+                }
+                _ => {}
+            }
+        }
+        out.entry(STATUS).or_insert_with(|| json!(""));
+        out.entry(ITEMS).or_insert_with(|| json!([]));
+        characters.insert(key.clone(), Value::Object(out));
+    }
+    let tracking = children(tree.get(TRACKING));
+    let tracking: serde_json::Map<String, Value> = TRACKING_LISTS
+        .iter()
+        .map(|key| ((*key).to_owned(), list(tracking.and_then(|t| t.get(*key)))))
+        .collect();
+    Some(json!({ "characters": characters, "tracking": tracking }))
 }
 
 /// 房間狀態列：提交後的平欄三鍵。沒有的鍵送空字串（清空）。
@@ -149,6 +210,10 @@ pub(crate) async fn gm_narrate(
         action_id.as_deref(),
         "",
     )?;
+    // 預設狀態欄（table-status-panel §2.1）：沒卡格式的桌種預設欄位、對照角色格；出錯只記，不擋回合
+    if let Err(error) = data::default_panel::ensure(&root, &world_id) {
+        log::warn!("預設狀態欄種入失敗：{error}");
+    }
     // 回合開始（鎖內）：記回合紀錄與固定輸入；中止、出錯時 TurnGuard 把它改成已中止（計畫 8.3）
     let turn = TurnGuard::begin(&root, &world_id, &turn_id, &lang)?;
     let mut materials = gm_materials(&root, &world_id)?;
@@ -363,10 +428,12 @@ pub(crate) async fn gm_narrate(
     let mut state_error = None;
     let mut verdict = None;
     let mut status = None;
+    let mut panel = None;
     let committed = match committed {
         Ok(Some(commit)) => {
             if commit.error.is_none() {
                 status = Some(scene_status(&commit.state.state.table));
+                panel = scene_panel(&commit.state);
             }
             state_error = commit.error;
             verdict = commit.result.1;
@@ -478,6 +545,7 @@ pub(crate) async fn gm_narrate(
         aborted: false,
         state_error,
         status,
+        panel,
     })
 }
 
@@ -505,3 +573,7 @@ pub(super) fn vn_chapter_max(frozen: Option<&data::vn::Frozen>) -> u32 {
 #[cfg(test)]
 #[path = "gm_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "gm_panel_tests.rs"]
+mod gm_panel_tests;

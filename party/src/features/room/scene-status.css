@@ -1,0 +1,59 @@
+.app button.scene-status {
+  min-height: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  font-family: inherit;
+  width: 100%;
+  border-radius: 0;
+  cursor: pointer;
+}
+
+/* 抽屜佔版面：縮短故事區，不蓋住對話；桌面嵌入也共用。 */
+.app .panel.scene-status-sheet {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 45%;
+  overflow: auto;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  margin: 0;
+  border-radius: 14px 14px 0 0;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  overflow-wrap: anywhere;
+}
+.app .scene-status-sheet dl > div {
+  display: flex;
+  gap: 12px;
+}
+.app .scene-status-sheet dt {
+  color: var(--muted);
+  flex: none;
+}
+.app .scene-status-sheet dd {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.app .scene-panel-characters,
+.app .scene-panel-tracking {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.app .scene-panel-characters {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+.app .scene-status-sheet ul {
+  padding-inline-start: 18px;
+}
+
+/* 一行狀態列看起來像純文字，右端加個小箭頭標示可點開 */
+.app button.scene-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.app .scene-status-caret {
+  margin-left: auto;
+  color: var(--muted);
+  flex: none;
+}

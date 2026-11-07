@@ -31,6 +31,7 @@ fn day_key() -> Vec<String> {
 
 fn delta_days(state: &mut data::WorldState, delta: i64) -> crate::mechanism::Outcome {
     let block = StateBlock {
+        gapped: Vec::new(),
         fields: Vec::new(),
         updates: vec![format!(
             r#"<JSONPatch>[{{"op":"delta","path":"/{DAYS}","value":{delta}}}]</JSONPatch>"#

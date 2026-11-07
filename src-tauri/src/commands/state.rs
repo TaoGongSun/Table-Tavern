@@ -87,6 +87,8 @@ pub(crate) async fn set_state_path(
         if let Some(detail) = mechanism::write_refusal(&mechanism, &path, write) {
             return Err(detail.into());
         }
+        // 預設狀態欄的硬預算手改也算（與模型同一份上限）
+        let value = mechanism::panel_hand_value(&mechanism, &path, &value)?;
         let edited = data::message_vars::edit_effective_tree(tx, true, false, |tree| {
             data::set_tree_value(tree, &path, &value)
         })?;
@@ -94,7 +96,11 @@ pub(crate) async fn set_state_path(
             return Ok(());
         }
         let changed = data::update_state(&root, &world_id, |state| {
-            Ok(data::set_tree_value(&mut state.state.tree, &path, &value).then(|| state.clone()))
+            let changed = match data::default_panel::clear_field(state, &path, &value) {
+                Some(changed) => changed,
+                None => data::set_tree_value(&mut state.state.tree, &path, &value),
+            };
+            Ok(changed.then(|| state.clone()))
         })?;
         match changed {
             Some(state) => {
@@ -103,6 +109,87 @@ pub(crate) async fn set_state_path(
             }
             None => Ok(()),
         }
+    })
+    .map_err(|error| error.to_string())
+}
+
+/// 預設狀態欄面板改清單欄（持有物、目標／承諾／線索）：整串字串陣列寫到父路徑，刪一項、改一項都重寫整串。
+/// 與模型同一道守門與硬預算（`mechanism::panel_list`），寫完同步最後一則快照。
+#[tauri::command]
+pub(crate) async fn set_panel_list(
+    app: tauri::AppHandle,
+    world_id: String,
+    path: Vec<String>,
+    items: Vec<String>,
+) -> Result<(), String> {
+    let _permit = data::world_write_permit_async(&world_id).await?;
+    let root = data_root(&app)?;
+    data::state_commit::with_commit(&root, &world_id, |_| {
+        let changed = data::update_state(&root, &world_id, |state| {
+            let items = mechanism::panel_list(&state.mechanism, &path, items)?;
+            Ok(data::default_panel::write_list(state, &path, &items).then(|| state.clone()))
+        })?;
+        match changed {
+            Some(state) => {
+                data::set_last_transcript_state(&root, &world_id, state.current_scene, &state.state)
+                    .map(|_| ())
+            }
+            None => Ok(()),
+        }
+    })
+    .map_err(|error| error.to_string())
+}
+
+/// 預設狀態欄面板的「＋欄位」（table-status-panel §2.5）：一次原子寫入規則與空字串葉子（不走 `set_state_path`：
+/// 它先過守門、而且空值＝刪除）。`parent_path`＝某一角色格或 `tracking`。
+#[tauri::command]
+pub(crate) async fn add_panel_field(
+    app: tauri::AppHandle,
+    world_id: String,
+    parent_path: Vec<String>,
+    name: String,
+) -> Result<(), String> {
+    edit_panel_field(&app, &world_id, &name, |state| {
+        data::default_panel::add_field(state, &parent_path, &name)
+    })
+    .await
+}
+
+/// `add_panel_field` 的反向：刪規則與葉子，只刪手動加的欄位。
+#[tauri::command]
+pub(crate) async fn remove_panel_field(
+    app: tauri::AppHandle,
+    world_id: String,
+    parent_path: Vec<String>,
+    name: String,
+) -> Result<(), String> {
+    edit_panel_field(&app, &world_id, &name, |state| {
+        data::default_panel::remove_field(state, &parent_path, &name)
+    })
+    .await
+}
+
+/// 改 state.json 與最後一則快照在同一把短提交鎖內（同 `set_state_path`）；`edit` 回 false＝拒收。
+async fn edit_panel_field(
+    app: &tauri::AppHandle,
+    world_id: &str,
+    name: &str,
+    edit: impl FnOnce(&mut WorldState) -> bool,
+) -> Result<(), String> {
+    let _permit = data::world_write_permit_async(world_id).await?;
+    let root = data_root(app)?;
+    data::state_commit::with_commit(&root, world_id, |_| {
+        let state = data::update_state(&root, world_id, |state| {
+            Ok(edit(state).then(|| state.clone()))
+        })?
+        .ok_or_else(|| {
+            crate::ui_msg::UiMsg::PanelFieldRefused {
+                name: name.to_owned(),
+            }
+            .into_error()
+        })?;
+        data::set_last_transcript_state(&root, world_id, state.current_scene, &state.state)
+            .map(|_| ())
     })
     .map_err(|error| error.to_string())
 }

@@ -5,6 +5,13 @@ import type { PartyMessages } from "./zh-TW";
 export const ptBR: PartyMessages = {
   ...en,
   guideLink: "Como jogar",
+  statusPanel: "Painel de estado",
+  statusClose: "Fechar",
+  statusItems: "Itens",
+  statusTracking: "Acompanhamento",
+  statusGoals: "Objetivos",
+  statusPromises: "Promessas",
+  statusClues: "Pistas",
   statusTime: "Tempo",
   statusPlace: "Local",
   statusPresent: "Presentes",

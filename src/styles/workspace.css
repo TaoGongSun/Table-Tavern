@@ -124,9 +124,7 @@ button.scene-chip,
   font: 700 var(--fs-title) / 1.3 var(--font-ui);
 }
 
-/* 狀態列：工具列下方鋪滿整欄的一條，故事捲動時仍留在原位，方便隨時核對眼前局勢。
-   展開後自己捲（上限約 40vh），故事區的最低高度（.chat-body）會再把它往下壓，
-   摘要那一行黏在頂端，捲到哪都收得起來 */
+/* 狀態列固定在故事上方；窄視窗在列下展開、自行捲動，寬視窗改用右欄。 */
 .state-bar {
   flex: 0 1 auto;
   min-height: calc(var(--control-h) + 1px);
@@ -604,5 +602,114 @@ button.scene-chip,
   .typing i {
     animation: none;
     opacity: 0.7;
+  }
+}
+
+/* 對話與面板共用剩餘高度；寬視窗預留右欄，因此側欄不蓋住故事。 */
+.table-state-layout {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.state-default-panel {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+.state-default-panel h3,
+.state-default-panel h4,
+.state-default-panel h5 {
+  margin: 0 0 0.4rem;
+}
+.state-panel-cell {
+  overflow-wrap: anywhere;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  padding: 0.6rem;
+  margin-bottom: 0.5rem;
+  min-width: 0;
+}
+.state-panel-list {
+  min-width: 0;
+  margin: 0.5rem 0;
+}
+.state-panel-list h5 {
+  overflow-wrap: anywhere;
+}
+.state-panel-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+.state-panel-chip {
+  display: flex;
+  align-items: start;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  padding: 0.2rem;
+}
+.state-panel-chip > button {
+  height: auto;
+  padding: 0 0.25rem;
+}
+.state-panel-chip .state-bar-field {
+  display: block;
+  min-width: 0;
+}
+.state-panel-chip .state-bar-label {
+  display: none;
+}
+.state-panel-chip .state-bar-value {
+  overflow-wrap: anywhere;
+}
+/* 側欄只有約 300px，三欄並排 chip 會折成兩行；直排一欄一欄看 */
+.state-panel-tracking {
+  display: grid;
+  gap: 0.4rem;
+}
+.state-panel-custom {
+  display: flex;
+  align-items: start;
+  gap: 0.25rem;
+}
+.state-panel-custom > .state-bar-field {
+  flex: 1;
+  min-width: 0;
+}
+.state-panel-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.state-panel-add input {
+  width: 100%;
+  min-width: 0;
+}
+
+@media (min-width: 960px) {
+  .table-state-layout:has(> .state-bar[open]) {
+    padding-right: 300px;
+  }
+  .table-state-layout > .state-bar {
+    flex: none;
+    max-height: none;
+    overflow: visible;
+  }
+  .table-state-layout > .state-bar > .state-bar-fields {
+    position: absolute;
+    top: 0;
+    right: -2rem;
+    bottom: 0;
+    width: 300px;
+    box-sizing: border-box;
+    overflow-y: auto;
+    align-content: start;
+    padding: 0.75rem;
+    border-left: 1px solid var(--line);
+    background: var(--surface-0);
   }
 }

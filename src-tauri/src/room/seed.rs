@@ -256,6 +256,9 @@ fn history(root: &Path, world: &str, cards: &[Value], budget: usize) -> Vec<Valu
     // 最後一段帶當下三鍵：重開房間才看得到狀態行。沒有公開段落就沒處掛（已知限制）
     if let Some(last) = out.last_mut() {
         last["state"] = chat_turn::scene_status(&state.state.table);
+        if let Some(panel) = chat_turn::scene_panel(&state) {
+            last["panel"] = panel;
+        }
     }
     out
 }

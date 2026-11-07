@@ -1,7 +1,7 @@
 # Task
 Task-ID: table-status-panel
 Title: 通用狀態欄：沒有卡格式的桌也有狀態欄（app 預設欄位、模型只報變動、硬預算、一行摘要、多人廣播）
-Status: todo
+Status: done（2026-11-07 合 main，等作者實機驗收）
 Created: 2026-11-07
 案別：大案（核心估 >300：預設 schema 與種入、增量套用與預算截斷、一行摘要與面板兩種版面、房間協定廣播與可見性）；方案與驗收都送審。碰到多人協定與模型輸出這條信任邊界輸入，不論案別都做方案送審。
 
@@ -16,14 +16,13 @@ Created: 2026-11-07
 - **多人房間**：房主端為權威、廣播給所有人；預留「角色本人可見自己角色區的公開欄位」（二期已留掛點）。
 - **卡自帶格式照舊**：有卡格式的桌仍照卡，本案只補無格式桌；兩者共用同一個面板容器。
 
-## 現況地基（開工重讀）
-- 一期 st-ecosystem 第四項（已結案）：`TableState { table, characters }`、`extract_state_block`、面板、快照回滾。
-- 二期 state-values-mvu（已結案）：本地權威數值、增量 patch。
-- 房間：room-status-strip 是連線與回合狀態列，不是遊戲數值；房間 GM 迴圈 room/run.rs 與單人版 useChatController 兩份（gm-relay-unify 未做），方案要寫明接哪一份或先合。
+## 現況（2026-11-07 開工重讀，細節在 [plans/table-status-panel.md](../plans/table-status-panel.md) §0）
+- 三鍵（time／place／present）每桌本來就在收與快照，單人桌只是前端沒掛面板；房間端三鍵已在手機故事頁。本案只補角色格、追蹤欄、預算、側欄／抽屜、房間 `panel` 廣播。
+- 一期的 `TableState.characters` 佔位已被二期 `tree` 取代；只報變動的機制（incremental 協定、JSONPatch 套用、裁分支）全在。
+- 房間 run.rs 與單人 useChatController 共用後端 `chat_turn::gm_narrate`，狀態處理只寫後端一份；gm-relay-unify 不在本案。
 
-## 與相鄰案的邊界
-- 本案＝容器與預設內容；[ttrpg-rules-system](ttrpg-rules-system.md)＝內容來源之一（規則書、骰子、角色紙初始宣告）；[ttrpg-combat-tracker](ttrpg-combat-tracker.md)＝規則桌才長出的一層（先攻、HP 加減），依賴本案。
-
-## 分期建議〔模型判斷·未裁決〕
-- v1 單人桌：預設 schema、增量套用、硬預算、一行摘要＋面板。
-- v2 多人房間：協定廣播、手機抽屜、可見性。
+## 狀態（2026-11-07 結案）
+- 三包全部合進 main：包 1 後端（種入／補格／改名搬格、硬預算兩入口、表外守門、清單只收整串陣列、DeltaOnly 策略、指引與固定範例、`add/remove_panel_field`、`set_panel_list`、`scene_panel` 房間廣播）、包 2 桌面側欄（收合一行、寬視窗右側欄、窄視窗列下方、角色格與追蹤三欄、＋欄位）、包 3 房間（`gen.part.end`／seed／sync 附 `panel`、伺服器 `cleanScenePanel`、手機底部抽屜）。
+- 審查：Sol 方案審 2 輪、Sol 驗收包 1 兩輪、opus-review 驗收包 2／3 各 1 輪，必改全修；測試通道截圖主線親看後小修兩處（追蹤欄直排、手機狀態列箭頭）。
+- 等作者實機：空桌／一句話開桌跑一輪真旁白看狀態欄長出來、側欄改值與＋欄位、房間手機抽屜（排實測佇列）。
+- 已知限制見 [plans/table-status-panel.md](../plans/table-status-panel.md) §6；v2 候補：角色本人可見自己格的私有欄（掛點已留）。

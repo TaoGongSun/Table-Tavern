@@ -273,6 +273,8 @@ fn apply_characters_mode_skips_interface_and_keeps_sources() {
             rules: BTreeMap::from([(
                 "世界.時間".to_owned(),
                 FieldRule {
+                    max_chars: None,
+                    max_items: None,
                     kind: FieldKind::Text,
                     min: None,
                     max: None,
@@ -330,6 +332,8 @@ fn apply_characters_mode_skips_interface_and_keeps_sources() {
 #[test]
 fn normalize_collapses_mirror_branch_with_shell_deciding_canon() {
     let rule = |kind: FieldKind| FieldRule {
+        max_chars: None,
+        max_items: None,
         kind,
         min: None,
         max: None,

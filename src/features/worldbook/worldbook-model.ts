@@ -149,7 +149,8 @@ export type RecordKind =
   | "absorbed"
   | "skipped"
   | "jump"
-  | "ignored";
+  | "ignored"
+  | "trimmed";
 
 export interface LedgerEntry {
   uid: number;

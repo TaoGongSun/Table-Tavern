@@ -214,6 +214,8 @@ fn render_state_tree(
         path.push(key.clone());
         let indent = "  ".repeat(path.len() - 1 - render.base);
         let branch_hidden = incremental && !render.align && render.hidden.iter().any(|h| h == path);
+        let label = panel_label(render, path);
+        let key: &str = label.as_deref().unwrap_or(key);
         if !branch_hidden {
             match node {
                 StateNode::Leaf(value) => {
@@ -249,6 +251,25 @@ fn render_state_tree(
                     if !incremental && (children.is_empty() || data::is_index_branch(children)) =>
                 {
                     render_list(output, &indent, key, children, render, path);
+                }
+                // 預設狀態欄的清單欄照 YAML 清單印（空的也印 `[]`，GM 才知道這欄在），變動標記接在鍵後
+                StateNode::Branch(children) if panel_list(render.mechanism, path) => {
+                    let mark = render
+                        .changes
+                        .get(&path.join("."))
+                        .map(|mark| match render.en {
+                            true => format!(" ({mark})"),
+                            false => format!("（{mark}）"),
+                        })
+                        .unwrap_or_default();
+                    render_list(
+                        output,
+                        &indent,
+                        &format!("{key}{mark}"),
+                        children,
+                        render,
+                        path,
+                    );
                 }
                 StateNode::Branch(children) => {
                     let header = match render.en {
@@ -311,6 +332,26 @@ fn render_missing_collections(
         }
         path.pop();
     }
+}
+
+/// 預設狀態欄桌的顯示名（characters→角色（characters） 等）；其餘桌與其餘鍵回 None。
+/// 顯示成「在地名（英文鍵）」：GM 要寫的路徑是英文鍵，只給在地名低階模型會照它寫路徑。
+fn panel_label(render: &TreeRender, path: &[String]) -> Option<String> {
+    if !render.mechanism.default_panel {
+        return None;
+    }
+    let name = data::default_panel::label(path, render.en)?;
+    let key = path.last()?;
+    Some(match render.en {
+        true => format!("{name} ({key})"),
+        false => format!("{name}（{key}）"),
+    })
+}
+
+fn panel_list(mechanism: &Mechanism, path: &[String]) -> bool {
+    mechanism.default_panel
+        && mechanism::has_rule(mechanism, path)
+        && mechanism::rule_for_path(mechanism, path, None).kind == data::FieldKind::List
 }
 
 fn is_collection(mechanism: &Mechanism, path: &[String]) -> bool {
@@ -695,5 +736,7 @@ mod absent_tests;
 mod collection_tests;
 #[cfg(test)]
 mod list_render_tests;
+#[cfg(test)]
+mod panel_tests;
 #[cfg(test)]
 mod tests;

@@ -63,11 +63,11 @@
   padding-bottom: 4px;
 }
 
-/* 場景列平時一行，點一下展開到三行 */
+/* 場景列維持一行，點擊開底部面板 */
 .app.party-phone .scene-status {
   cursor: pointer;
 }
-.app.party-phone .scene-status:not(.open) .scene-status-text {
+.app.party-phone .scene-status .scene-status-text {
   -webkit-line-clamp: 1;
   line-clamp: 1;
 }

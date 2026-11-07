@@ -12,6 +12,7 @@ mod gm_opening;
 mod list_protocol;
 mod messages;
 mod own_prefix;
+mod panel_prompt;
 mod prompt_regex;
 mod reply_cleanup;
 mod response;

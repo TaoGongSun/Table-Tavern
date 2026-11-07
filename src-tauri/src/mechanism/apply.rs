@@ -50,13 +50,21 @@ pub(super) fn apply_updates_typed(
                 continue;
             }
         };
-        let canonical = match canonicalize(tree, mechanism, patch) {
+        let mut canonical = match canonicalize(tree, mechanism, patch) {
             Ok(canonical) => canonical,
             Err(record) => {
                 records.push(record);
                 continue;
             }
         };
+        // 預設狀態欄：表外守門與硬預算（夾好的值寫回 canonical）
+        match super::budget::patch(mechanism, &mut canonical) {
+            Ok(trimmed) => records.extend(trimmed),
+            Err(record) => {
+                records.push(record);
+                continue;
+            }
+        }
         let patch = &canonical;
         if !view.is_active() {
             apply_one(tree, mechanism, patch, view, &mut records, &mut changes);

@@ -8,6 +8,7 @@ import { EditingStateField, treeValueAt } from "./useTableStateController";
 import { IconExpand } from "../../shared/ui/icons";
 import { displayWithFormat, prefixFor, withPrefix } from "./state-format";
 import { presentItems, useGlyphFold, usePresentDisplay } from "./present-glyphs";
+import { DefaultStatePanel } from "./DefaultStatePanel";
 import { ORDER_KEY, orderedItemKeys } from "../refactor/refactor-shell-sections";
 
 const STATE_BAR_OPEN_KEY = "state_bar_open";
@@ -40,6 +41,10 @@ function displayUserMacro(value: string, playerName: string): string {
 }
 
 interface StateBarProps {
+  defaultPanel?: boolean;
+  onAddPanelField?: (parentPath: string[], name: string) => Promise<void>;
+  onRemovePanelField?: (path: string[]) => Promise<void>;
+  onRemovePanelItem?: (path: string[]) => Promise<void>;
   /** 平欄（time／place／present 與卡自訂欄） */
   fields: Record<string, string>;
   tree: Record<string, StateNode>;
@@ -73,6 +78,10 @@ interface StateBarProps {
 
 /** 主欄的狀態列：平欄摘要＋可折疊的狀態樹，每一格點著就能改 */
 export function StateBar({
+  defaultPanel = false,
+  onAddPanelField,
+  onRemovePanelField,
+  onRemovePanelItem,
   fields,
   tree,
   jumps,
@@ -327,7 +336,15 @@ export function StateBar({
       </summary>
       <div className="state-bar-fields">
         {stateFields.map(({ key, label }) => stateLeafRow([key], false, label))}
-        {stateTreeNodes(tree, [], 0)}
+        {defaultPanel ? (
+          <DefaultStatePanel
+            tree={tree}
+            renderLeaf={(path, label) => stateLeafRow(path, true, label)}
+            onAdd={onAddPanelField}
+            onRemove={onRemovePanelField}
+            onRemoveItem={onRemovePanelItem}
+          />
+        ) : stateTreeNodes(tree, [], 0)}
       </div>
     </details>
   );

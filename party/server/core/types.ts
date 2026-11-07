@@ -75,6 +75,10 @@ export interface SceneStatus {
   place?: string;
   present?: string;
 }
+export interface ScenePanel {
+  characters?: Record<string, { status?: string; items?: string[] }>;
+  tracking?: Partial<Record<"goals" | "promises" | "clues", string[]>>;
+}
 export interface StoryPart {
   round: number;
   part: number;
@@ -83,6 +87,7 @@ export interface StoryPart {
   interrupted: boolean;
   at: number;
   state?: SceneStatus;
+  panel?: ScenePanel;
   /** 玩家把這回合交給 GM（`watchReason: "skipped"`）：沒有原文，客戶端照語系寫一行 */
   handed?: true;
 }

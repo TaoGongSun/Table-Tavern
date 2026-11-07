@@ -138,6 +138,9 @@ fn plan(
         .find(|item| item.get("part").is_some())
     {
         item["part"]["state"] = chat_turn::scene_status(&state.state.table);
+        if let Some(panel) = chat_turn::scene_panel(&state) {
+            item["part"]["panel"] = panel;
+        }
     }
     Ok((keep, items))
 }

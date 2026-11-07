@@ -4,6 +4,7 @@ use std::error::Error;
 pub mod card_vars;
 mod character;
 mod config;
+pub mod default_panel;
 mod format;
 pub mod message_vars;
 mod paths;

@@ -147,6 +147,7 @@ pub(super) fn gm_update(
     patch_json: &str,
 ) -> crate::mechanism::Outcome {
     let block = StateBlock {
+        gapped: Vec::new(),
         fields: Vec::new(),
         updates: vec![format!("<JSONPatch>{patch_json}</JSONPatch>")],
         display: String::new(),
@@ -159,6 +160,7 @@ pub(super) fn gm_update(
 
 pub(super) fn fence(state: &mut data::WorldState, fields: &[(&str, &str)]) {
     let block = StateBlock {
+        gapped: Vec::new(),
         fields: fields
             .iter()
             .map(|(key, value)| (vec![(*key).to_owned()], (*value).to_owned()))

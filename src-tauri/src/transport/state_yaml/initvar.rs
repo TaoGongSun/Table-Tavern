@@ -42,7 +42,7 @@ fn to_state(node: Node) -> StateNode {
             StateNode::Branch(children)
         }
         Node::Empty | Node::Null => StateNode::Branch(BTreeMap::new()),
-        Node::List(items) => {
+        Node::List(items, _) => {
             let array = Json::Array(items.into_iter().map(to_json).collect());
             StateNode::Leaf(clean(&array, None).to_text())
         }
@@ -75,7 +75,7 @@ fn to_json(node: Node) -> Json {
             }
             object
         }
-        Node::List(items) => Json::Array(items.into_iter().map(to_json).collect()),
+        Node::List(items, _) => Json::Array(items.into_iter().map(to_json).collect()),
     }
 }
 

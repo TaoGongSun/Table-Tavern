@@ -916,6 +916,8 @@ fn mechanism_protocol_only_appears_when_table_is_incremental() {
     // 有欄位規則的接管桌：guide 後面附本桌真實路徑的更新範例（delta／replace 各一筆），排在介面歸屬前；
     // 通用協定原文不變
     let rule = |kind, update| crate::data::FieldRule {
+        max_chars: None,
+        max_items: None,
         kind,
         min: None,
         max: None,

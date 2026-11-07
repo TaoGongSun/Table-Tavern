@@ -5,6 +5,13 @@ import type { PartyMessages } from "./zh-TW";
 export const ja: PartyMessages = {
   ...en,
   guideLink: "遊び方",
+  statusPanel: "状況パネル",
+  statusClose: "閉じる",
+  statusItems: "所持品",
+  statusTracking: "追跡中",
+  statusGoals: "目標",
+  statusPromises: "約束",
+  statusClues: "手がかり",
   statusTime: "時間",
   statusPlace: "場所",
   statusPresent: "登場",

@@ -8,6 +8,7 @@ use crate::transport::StateBlock;
 
 fn gm_update(state: &mut data::WorldState, patch_json: &str) -> crate::mechanism::Outcome {
     let block = StateBlock {
+        gapped: Vec::new(),
         fields: Vec::new(),
         updates: vec![format!("<JSONPatch>{patch_json}</JSONPatch>")],
         display: String::new(),
@@ -153,6 +154,7 @@ fn every_flat_field_moves_into_the_tree_and_updates_without_duplicates() {
     );
 
     let fence = StateBlock {
+        gapped: Vec::new(),
         fields: vec![
             (key("当前环境"), "北坡".to_owned()),
             (key("place"), "北坡".to_owned()),

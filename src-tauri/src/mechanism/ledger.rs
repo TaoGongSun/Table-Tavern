@@ -302,7 +302,14 @@ pub fn apply_block_typed(
     let (scoped, scope_record) = scoped_block(world, block, scope);
     // 換字形寫既有欄位時先對回原鍵：舊值、清單替換、寫入、跳動記號都用對齊後的路徑
     let mut aligned = block_paths::align(world, &scoped);
-    let guard_records = super::write_guard::guard_fence(&world.mechanism, &mut aligned);
+    let mut guard_records = super::write_guard::guard_fence(&world.mechanism, &mut aligned);
+    if world.mechanism.default_panel {
+        guard_records.extend(super::write_guard::panel_fence(
+            &world.mechanism,
+            &mut aligned,
+        ));
+        guard_records.extend(super::budget::fence(&world.mechanism, &mut aligned));
+    }
     let block = &aligned.block;
     let jump_check = !world.mechanism.incremental;
     // 清單整支替換：底下的舊值當作沒有，不拿來比跳動
@@ -542,7 +549,7 @@ pub fn read_ledger(root: &Path, world_id: &str) -> Ledger {
                 absorbed_or_skipped.insert(record.path.trim().to_owned(), record);
             }
             RecordKind::Rejected => ledger.rejected += 1,
-            RecordKind::Clamped => ledger.clamped += 1,
+            RecordKind::Clamped | RecordKind::Trimmed => ledger.clamped += 1,
             RecordKind::Error => ledger.errors += 1,
             RecordKind::Jump => ledger.jumps += 1,
             RecordKind::Ignored => {}

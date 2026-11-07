@@ -36,7 +36,7 @@ import type { RoomView } from "./room-state";
 import { useHostAlerts } from "./host-alerts";
 import { useHostSound } from "./host-sound";
 import { RoundBar } from "./RoundBar";
-import { SceneStatusLine } from "./scene-status";
+import { SceneStatusLine, SceneStatusSheet } from "./scene-status";
 import { SeatStrip } from "./SeatStrip";
 import { StoryView } from "./StoryView";
 import { Toasts } from "./Toasts";
@@ -279,6 +279,10 @@ export function RoomScreen({ view, c: controls }: { view: RoomView; c: RoomContr
   // 遊戲中沒座位的房主多半只當主持：選角收成一行，要入座再展開
   const [picking, setPicking] = useState(false);
   const folded = isHost && view.room.status === "playing" && !picking;
+  const [statusOpen, setStatusOpen] = useState(false);
+  useEffect(() => {
+    if (tab !== "story") setStatusOpen(false);
+  }, [tab]);
   const [sheet, setSheet] = useState<"create" | "edit" | null>(null);
   const [imported, setImported] = useState(false); // 剛匯入卡：提示只帶入了哪些，開編卡畫面就收起
   const open = view.room.status !== "closed";
@@ -406,7 +410,11 @@ export function RoomScreen({ view, c: controls }: { view: RoomView; c: RoomContr
         <>
           {open && <SeatStrip view={view} act={c.act} />}
           {isHost && open && <Toasts toasts={alerts.toasts} dismiss={alerts.dismiss} />}
-          <SceneStatusLine parts={view.story} />
+          <SceneStatusLine
+            parts={view.story}
+            open={statusOpen}
+            onOpen={() => setStatusOpen((o) => !o)}
+          />
           <StoryView
             view={view}
             loadOlder={c.loadOlder}
@@ -416,6 +424,9 @@ export function RoomScreen({ view, c: controls }: { view: RoomView; c: RoomContr
             jump={jump}
             folded={folding}
           />
+          {statusOpen && (
+            <SceneStatusSheet parts={view.story} onClose={() => setStatusOpen(false)} />
+          )}
           {/* 故事區下方整塊：桌面版高度有上限、自己捲（room-desktop-layout §2-9）；手機是 display: contents，版面照舊 */}
           <div className="room-dock">
             {hostPlaying && !seated && (

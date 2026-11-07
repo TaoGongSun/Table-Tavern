@@ -122,12 +122,19 @@ pub(super) fn align(world: &data::WorldState, block: &StateBlock) -> Aligned {
     let mut rejected = Vec::new();
     let mut dropped: Vec<&Vec<String>> = Vec::new();
     let mut resolved_containers: Vec<(bool, Vec<String>)> = Vec::new();
+    // 有項目被略過的清單跟著它的清單對齊，守門才比得到同一條路徑
+    let mut gapped: Vec<Vec<String>> = Vec::new();
     for (path, is_list) in &containers {
         if dropped.iter().any(|bad| path.starts_with(bad)) {
             continue;
         }
         match aligned_path(tree, &containers, path) {
-            Ok(target) => resolved_containers.push((*is_list, target)),
+            Ok(target) => {
+                if *is_list && block.gapped.contains(path) {
+                    gapped.push(target.clone());
+                }
+                resolved_containers.push((*is_list, target));
+            }
             Err(keys) => {
                 rejected.push(ambiguous(path, &keys));
                 dropped.push(path);
@@ -136,6 +143,7 @@ pub(super) fn align(world: &data::WorldState, block: &StateBlock) -> Aligned {
     }
     let mut out = block.clone();
     out.lists.clear();
+    out.gapped = gapped;
     out.maps.clear();
     for (is_list, path) in resolved_containers {
         if is_list {
