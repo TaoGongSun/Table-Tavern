@@ -702,7 +702,11 @@ async fn remote_control_replies_first_then_acts() {
         json!({ "ctlId": "c2", "by": "m1", "cmd": { "kind": "switch_model", "model": "m9" } }),
     )
     .await;
-    let after = conn.recv().await;
+    // 容量量完的狀態回報是非同步的，可能晚到：略過它，其他訊框都不得排在結果之前
+    let mut after = conn.recv().await;
+    while after["t"] == "status" {
+        after = conn.recv().await;
+    }
     assert_eq!(
         (after["t"].as_str(), after["p"]["ok"].as_bool()),
         (Some("ctl.result"), Some(true)),
@@ -1351,7 +1355,7 @@ mod sync;
 fn room_seed_keeps_solo_public_dice_results() {
     let root = crate::smart_free::test_root("dice-room-history");
     let world = data::create_world(&root, "沃恩的骰桌").unwrap();
-    crate::dice::set_enabled(&root, &world, true, "en", false).unwrap();
+    crate::dice::set_enabled(&root, &world, true, "en").unwrap();
     let roll = crate::dice::roll(&root, &world, 0, "1d20").unwrap();
     let scene = seed::scene(&root, &world, 0, &[], &Default::default());
     assert_eq!(scene.lines.len(), 1);

@@ -100,6 +100,15 @@ export interface StoryPart {
   handed?: true;
   /** 沒送出就被結算（`watchReason: "timeout" | "host_resolved"`）：沒有原文，客戶端照語系寫一行 */
   watched?: true;
+  /** 玩家自己擲的骰（`action.rolled`）：擲的人。這種列不隨收回消失 */
+  rollBy?: string;
+}
+/** 已公開、還沒進 GM 的擲果（段號 ≤ -100，與行動、GM、摘要都不撞） */
+export interface PendingRoll {
+  memberId: string;
+  round: number;
+  part: number;
+  text: string;
 }
 export interface ActionItem {
   memberId: string;
@@ -172,6 +181,8 @@ export interface Dispatch {
   /** 本回合從 AI 代管接回的卡（arrivals 的子集）：執行端寫「玩家回來」而不是「玩家登場」 */
   returns: string[];
   host?: HostTurn;
+  /** 這次帶走的擲果，舊派工沒有這欄；桌面依序落在行動之前 */
+  rolls?: PendingRoll[];
 }
 /** 離席處置；delegate＝暫時交給 AI 代管（座位保留，執行端照 npc 演、標記寫暫離） */
 export type Departure = { cardId: string; mode: "npc" | "absent" | "delegate" };
@@ -212,6 +223,8 @@ export interface ExecutorView {
   modelLabel: string | null;
   /** 這一幕到了換幕提醒門檻。沒報過、或幕號已經換掉而執行端還沒重報＝false */
   capacityHint: boolean;
+  /** 這桌開了擲骰（VN 與回放桌不算）；舊版執行端沒報＝false */
+  diceEnabled: boolean;
 }
 
 export type ErrorCode =
@@ -297,6 +310,7 @@ export interface RoundState extends RoundView {
   arrivals: string[];
   host?: HostTurn;
   dispatch: Dispatch | null;
+  rollNo?: number; // 本回合擲過幾次，配段號用；舊狀態沒有這欄
   partsEnded: number; // 已落地的段數；part 依序，第 n 段 end 後為 n+1
   speaker: Speaker | null; // 進行中那一段的說話者（gen.part.end 不帶 speaker）
   genAt: number; // 最後一則 gen.* 的時間，15 分鐘無進度轉 held
@@ -340,6 +354,7 @@ export interface RoomState {
     sync?: "needed" | null;
     imageGen?: boolean;
     imageGenRoute?: boolean;
+    diceEnabled?: boolean;
     /** 執行端上次報的提醒，蓋上當時的房間幕號。舊狀態沒有這欄＝沒有 */
     capacity?: { scene: number; hint: boolean } | null;
     caps: Capabilities | null;
@@ -382,6 +397,8 @@ export interface RoomState {
   chatNo?: number;
   /** 房主 GM 鈕保留下來的已送出行動（submitted／skipped）：下一次開 play 回合時恢復，對不上的原文走 returned */
   carry?: RosterEntry[] | null;
+  /** 待落的擲果：下一次派工整批帶走，換幕清空；舊房間沒有這欄 */
+  pendingRolls?: PendingRoll[];
   lastError?: { round: number; error: ExecutorError } | null; // 最近一筆錯誤細節，只給出額度者（重連後還看得到）；舊房間沒有這欄
   ctls: Record<
     string,

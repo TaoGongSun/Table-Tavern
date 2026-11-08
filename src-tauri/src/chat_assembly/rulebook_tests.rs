@@ -146,7 +146,6 @@ fn request(
         instruction.content.push('\n');
         instruction.content.push_str(&crate::dice::instruction(
             &crate::dice::measured_pool(),
-            false,
             "zh-TW",
         ));
     }

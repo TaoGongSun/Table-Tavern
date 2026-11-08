@@ -65,6 +65,15 @@ export const de: PartyMessages = {
   storySize_xl: "XL",
   pairFold: "GM mit meinem Kontingent",
   actionFold: "▾ Einklappen",
+  rollOff: "Der Host hat das Würfeln nicht aktiviert",
+  rollOffHost: "Würfel sind an diesem Tisch aus (Tischeinstellungen)",
+  rollNotOnRoster: "Du bist in dieser Runde nicht dabei; würfle in der nächsten",
+  rollWaitGm: "Warte, bis die SL fertig ist",
+  rollSubmitted: "Schon gesendet; nimm es zurück, um erneut zu würfeln",
+  rollLimit: "Zu viele Würfe in dieser Runde; warte auf die SL",
+  rollKeptNote:
+    "Dein Wurf ist öffentlich und nicht wiederholbar; er geht mit dieser Runde an die SL",
+  rollRejected: "Der Wurf ging nicht durch; bitte versuch es noch einmal",
   actionWrite: "✎ Aktion schreiben",
   actionDraft: "✎ Entwurf",
 };

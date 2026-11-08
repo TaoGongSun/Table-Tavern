@@ -157,6 +157,68 @@ async fn reopen_sends_solo_play_after_the_common_prefix() {
     running.stop().await;
 }
 
+/// 擲果：已落地的列參與比對（兩邊比對鍵一致，擲後關房重開不誤判分歧）；骰面對不上才截。開關跟著狀態上報
+#[tokio::test]
+async fn landed_rolls_join_the_comparison() {
+    let (root, world, tao, _) = table("sync-rolls");
+    use TranscriptKind::*;
+    let mut roll = line(System, ("", ""), "沃恩 1d20: [7] = 7");
+    roll.marker = Some(EventMarker::DiceRoll);
+    append(
+        &root,
+        &world,
+        &[
+            line(Narration, ("", "GM"), "開場"),
+            roll,
+            line(Narration, ("", "GM"), "門開了"),
+        ],
+    );
+    let dice = json!({ "kind": "system", "marker": "dice_roll" });
+    for (face, keep, sent) in [
+        (
+            "沃恩 1d20: [7] = 7",
+            json!({ "round": 3, "part": 0 }),
+            vec![],
+        ),
+        (
+            "沃恩 1d20: [8] = 8",
+            json!({ "round": 1, "part": 0 }),
+            vec![
+                "[solo_paused]",
+                "[dice_roll]",
+                "gm:門開了",
+                "[room_reopened]",
+            ],
+        ),
+    ] {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let server = format!("http://{}", listener.local_addr().unwrap());
+        let mut first = saved(&server, &world);
+        first.seeded = true;
+        first.paused = true;
+        let running = start(Fake::new(&root, Vec::new()), first, FAST, false).await;
+        let mut conn = accept(&listener).await;
+        let story = vec![
+            part(1, 0, json!({ "kind": "gm" }), "開場"),
+            part(2, -100, dice.clone(), face),
+            part(3, 0, json!({ "kind": "gm" }), "門開了"),
+        ];
+        let parts = reopen(&mut conn, story, &tao).await;
+        assert_eq!(parts[0]["p"]["keepThrough"], keep);
+        assert_eq!(texts(&parts), sent);
+        assert_eq!(
+            crate::room::run::status_frame(&running.room)["p"]["diceEnabled"],
+            false
+        );
+        crate::dice::set_enabled(&root, &world, true, "en").unwrap();
+        assert_eq!(
+            crate::room::run::status_frame(&running.room)["p"]["diceEnabled"],
+            true
+        );
+        crate::dice::set_enabled(&root, &world, false, "en").unwrap();
+    }
+}
+
 #[tokio::test]
 async fn reopen_cuts_what_solo_undo_removed_and_bridges_scenes_without_repeating_summaries() {
     let (root, world, tao, _) = table("sync-scenes");

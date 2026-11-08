@@ -7,7 +7,6 @@ import { RuleBookList } from "./rules/RuleBookRow";
 export function DiceSettings({
   worldId,
   diceEnabled,
-  room = false,
   entries = [],
   onAddRulesBook,
   onRemoveEntries,
@@ -16,7 +15,6 @@ export function DiceSettings({
 }: {
   worldId: string;
   diceEnabled: boolean;
-  room?: boolean;
   /** 這桌世界書條目：判斷內建書加過沒 */
   entries?: readonly { uid: number; title: string; content: string }[];
   onAddRulesBook?: (bookJson: string, label: string) => Promise<void>;
@@ -62,7 +60,7 @@ export function DiceSettings({
         />
         {c.roll}
       </label>
-      <RulesGuide room={room} entries={entries} onAddRulesBook={onAddRulesBook} onRemoveEntries={onRemoveEntries} />
+      <RulesGuide entries={entries} onAddRulesBook={onAddRulesBook} onRemoveEntries={onRemoveEntries} />
       {error && <p role="alert">{error}</p>}
       {onAddRulesBook && <RuleBookList entries={entries} onAddRulesBook={onAddRulesBook} onRemoveEntries={onRemoveEntries} />}
     </section>

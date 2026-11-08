@@ -85,7 +85,7 @@ export function keptCount(
   return i >= 0 ? i + 1 : Math.min(from, keys.length);
 }
 
-/** 段號約定：玩家行動用負數（-1 起，依批次順序），幕摘要用 32、收回提示用 33（GM 段號 0–31 之外），不與生成段撞號 */
+/** 段號約定：玩家行動用負數（-1 起，依批次順序），擲果 -100 起，幕摘要用 32、收回提示用 33（GM 段號 0–31 之外），不與生成段撞號 */
 export function storyOf(events: StoredEvent[]): StoryPart[] {
   let story: StoryPart[] = [];
   let from = 0; // 本幕第一段在 story 裡的位置（上一幕摘要之後）
@@ -106,6 +106,16 @@ export function storyOf(events: StoredEvent[]): StoryPart[] {
     if (undone.has(p.round as number) && (type === "story.part" || type === "round.resolved"))
       continue;
     if (type === "story.part") story.push(p as unknown as StoryPart);
+    if (type === "action.rolled")
+      story.push({
+        round: p.round as number,
+        part: p.part as number,
+        speaker: { kind: "system", marker: "dice_roll" },
+        text: p.text as string,
+        interrupted: false,
+        at,
+        rollBy: p.memberId as string,
+      });
     if (type === "scene.summary") {
       story.push({
         round: p.round as number,
@@ -119,6 +129,7 @@ export function storyOf(events: StoredEvent[]): StoryPart[] {
     }
     if (type !== "round.resolved") continue;
     (p.batch as ActionItem[]).forEach((a, i) => {
+      if (a.kind === "act" && !a.text) return; // 只擲骰、沒寫字
       if (a.kind === "act")
         story.push({
           round: p.round as number,
@@ -143,6 +154,9 @@ export function storyOf(events: StoredEvent[]): StoryPart[] {
   return story.filter((p, i) => !(isUndoneNote(p) && story[i + 1] && isUndoneNote(story[i + 1]))); // 連續收回只留一行提示
 }
 const isUndoneNote = (p: StoryPart) => p.part === 33;
+
+export const isPendingRoll = (s: RoomState, p: { round: number; part: number }) =>
+  (s.pendingRolls ?? []).some((x) => x.round === p.round && x.part === p.part);
 
 /** 這位成員看得到的聊天。viewer 不是成員（執行端 welcome 也走這裡）連公開訊息都不給 */
 export function visibleChat(s: RoomState, viewer: string): ChatMsg[] {
@@ -235,8 +249,11 @@ export function buildSnapshot(
       called: viewer === s.hostId ? (r.called ?? null) : null,
       ...carryOf(s, r.kind),
     },
-    // 觀望行是給玩家看的投影：執行端的桌上沒有這段，拿去比對會誤判分歧（只濾顯示，段號不動）
-    story: viewer === "exec" ? storyOf(events).filter((p) => !p.watched) : storyOf(events),
+    // 觀望行與待落的擲果，執行端的桌上都還沒有：拿去比對會誤判分歧（只濾顯示，段號不動）
+    story:
+      viewer === "exec"
+        ? storyOf(events).filter((p) => !p.watched && !isPendingRoll(s, p))
+        : storyOf(events),
     streaming,
     quota,
     chat: visibleChat(s, viewer),

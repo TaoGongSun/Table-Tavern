@@ -56,6 +56,7 @@ const MEMBER_FRAMES: Record<string, string> = {
   "action.submit": "round:i text:s",
   "action.skip": "round:i",
   "action.retract": "round:i",
+  "action.roll": "round:i formula:s submit?:b",
   "round.resolve": "round:i",
   "round.timer": "round:i action:s sec?:i",
   "round.continue": "round:i",
@@ -108,7 +109,8 @@ const EXECUTOR_FRAMES: Record<string, string> = {
   "job.result": "jobId:s ok:b result?:o error?:o",
   "pair.create": "grantHost:b",
   "pair.revoke": "",
-  status: "keepAwake:b~ busy:b paused?:b imageGen?:b imageGenRoute?:b capacityHint?:b",
+  status:
+    "keepAwake:b~ busy:b paused?:b imageGen?:b imageGenRoute?:b capacityHint?:b diceEnabled?:b",
   quota:
     "route:s routeLabel:s window:s state:s usedRatio:n~ resetsAt:i~ creditsLeft:s~ observedAt:i",
   "ctl.result": "ctlId:s ok:b error?:o",

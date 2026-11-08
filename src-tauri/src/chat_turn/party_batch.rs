@@ -1,6 +1,7 @@
 //! 多人房間的行動批次落檔（multiplayer-room 包 3）：派工（協定 §6.4）的 departures／arrivals／actions 依序落成
 //! 在場標記與玩家事件，`action_id = dispatch_id` 去重。包 2 的房間模組接到派工先呼叫這裡，之後照舊跑 GM 鏈。
 use crate::data::{self, EventMarker, TranscriptEvent, TranscriptKind};
+use serde_json::Value;
 use std::path::Path;
 
 /// 協定 `ActionItem` 的執行端投影：名字一律取本機卡名，不收派工帶來的 `name`。
@@ -34,6 +35,52 @@ pub(crate) struct PartyBatch {
     pub departures: Vec<(String, DepartureMode)>,
     /// 本回合從 AI 代管接回的卡（arrivals 的子集）：寫「玩家回來」，不寫「玩家登場」
     pub returns: Vec<String>,
+    /// 玩家公開擲果的文字（伺服器擲、伺服器組），依序落在所有行動之前，順序同故事串
+    pub rolls: Vec<String>,
+}
+
+/// 派工（協定 `Dispatch` JSON）→ 批次 → 落檔；舊派工沒有 `rolls` 欄就是沒有擲果
+pub(crate) fn land_dispatch(
+    config_root: &Path,
+    root: &Path,
+    world: &str,
+    d: &Value,
+) -> Result<BatchOutcome, String> {
+    let list = |key: &str| d[key].as_array().cloned().unwrap_or_default();
+    let text = |value: &Value| value.as_str().unwrap_or_default().to_owned();
+    let batch = PartyBatch {
+        dispatch_id: text(&d["dispatchId"]),
+        actions: list("actions")
+            .iter()
+            .map(|a| match a["kind"] == "act" {
+                true => PartyAction::Act {
+                    card_id: text(&a["cardId"]),
+                    text: text(&a["text"]),
+                },
+                false => PartyAction::Watch {
+                    card_id: text(&a["cardId"]),
+                    to_gm: a["watchReason"] == "skipped",
+                },
+            })
+            .collect(),
+        players: list("players").iter().map(|p| text(&p["cardId"])).collect(),
+        arrivals: list("arrivals").iter().map(text).collect(),
+        returns: list("returns").iter().map(text).collect(),
+        rolls: list("rolls").iter().map(|r| text(&r["text"])).collect(),
+        departures: list("departures")
+            .iter()
+            .map(|x| {
+                let mode = match x["mode"].as_str() {
+                    Some("npc") => DepartureMode::Npc,
+                    Some("delegate") => DepartureMode::Delegate,
+                    _ => DepartureMode::Absent,
+                };
+                (text(&x["cardId"]), mode)
+            })
+            .collect(),
+    };
+    let _permit = data::world_write_permit(world)?;
+    append_party_batch(config_root, root, world, &batch)
 }
 
 /// `Duplicate`＝本幕已有 `action_id == dispatch_id` 的事件，整批跳過、什麼都沒寫；`Appended` 帶寫了幾則。
@@ -45,6 +92,8 @@ pub(crate) enum BatchOutcome {
 
 /// 行動文字上限（協定 §10：送出時 1–2000 字元）。
 const ACTION_MAX_CHARS: usize = 2000;
+/// 擲果文字上限：卡名 64 字＋100 顆骰的面值，遠小於這個數
+const ROLL_MAX_CHARS: usize = 2000;
 
 /// 落一批：去重 → 驗卡與文字 → 換幕容量鎖（整批文字當一句草稿，同 `append_player_event`）→ 換上在場玩家 →
 /// 依序寫離席、登場、行動（觀望寫標記）。驗證或容量不過就回錯、什麼都不寫。
@@ -60,12 +109,13 @@ pub(crate) fn append_party_batch(
     }
     let events = batch_events(root, world_id, batch)?;
     let draft: Vec<&str> = batch
-        .actions
+        .rolls
         .iter()
-        .filter_map(|action| match action {
+        .map(String::as_str)
+        .chain(batch.actions.iter().filter_map(|action| match action {
             PartyAction::Act { text, .. } => Some(text.trim()),
             PartyAction::Watch { .. } => None,
-        })
+        }))
         .collect();
     crate::scene_budget::check_capacity(
         config_root,
@@ -181,6 +231,18 @@ fn batch_events(
             false => EventMarker::PlayerArrival { name },
         }));
     }
+    for text in &batch.rolls {
+        let count = text.chars().count();
+        if text.trim().is_empty() || count > ROLL_MAX_CHARS {
+            return Err(format!("擲果文字長度不合（{count} 字元）"));
+        }
+        events.push(event(
+            TranscriptKind::System,
+            String::new(),
+            text.clone(),
+            Some(EventMarker::DiceRoll),
+        ));
+    }
     for action in &batch.actions {
         let (PartyAction::Act { card_id, .. } | PartyAction::Watch { card_id, .. }) = action;
         if !batch.players.contains(card_id) {
@@ -196,7 +258,11 @@ fn batch_events(
                 // 同前端單人送出：去頭尾空白後才驗、才落檔
                 let text = text.trim();
                 let count = text.chars().count();
-                if text.is_empty() || count > ACTION_MAX_CHARS {
+                // 只擲骰、沒寫字（協定 `action.roll` 的 submit）：不落玩家句，也不是錯誤
+                if text.is_empty() {
+                    continue;
+                }
+                if count > ACTION_MAX_CHARS {
                     return Err(format!("{name} 的行動文字長度不合（{count} 字元）"));
                 }
                 event(TranscriptKind::Player, name, text.to_owned(), None)

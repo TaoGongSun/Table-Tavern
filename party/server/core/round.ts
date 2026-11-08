@@ -43,6 +43,7 @@ export const execView = (s: RoomState): ExecutorView => ({
   modelLabel: (s.nextSettings ?? s.sceneSettings ?? s.exec.caps?.current)?.modelLabel ?? null,
   // 幕號對不上（已換幕、執行端還沒重報）或舊版從不報：不當成到門檻
   capacityHint: !!s.exec.capacity && s.exec.capacity.scene === s.scene && s.exec.capacity.hint,
+  diceEnabled: s.exec.diceEnabled === true,
 });
 /** 給某位成員看的執行端狀態：出額度者另帶路線與模型清單（遠端控制要選） */
 export const execViewFor = (s: RoomState, who: string | null) => ({
@@ -201,7 +202,9 @@ export function ensureDispatch(tx: Tx, from?: Dispatch): Dispatch {
     scene: r.scene,
     settings: s.sceneSettings!,
     actions: r.batch,
+    rolls: s.pendingRolls ?? [],
   };
+  s.pendingRolls = [];
   if (from) r.dispatch = { ...from, ...ids };
   else {
     const players = activeMembers(s)

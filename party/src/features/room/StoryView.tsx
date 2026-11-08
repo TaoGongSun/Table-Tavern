@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import markerCopy from "@desktop/shared/contracts/transcript-marker.json";
 import { DicePoolView } from "@desktop/features/dice/DicePoolView";
+import { DiceRollText } from "@desktop/features/dice/DiceRollText";
 import { streamDisplayText } from "@desktop/features/play/stream-display";
 import type { Speaker } from "../../../server/core/types";
 import { t, currentLang, type MsgKey } from "../../i18n";
@@ -42,10 +43,14 @@ function Part({
         : speaker.name;
   const color =
     "cardId" in speaker ? view.cards.find((c) => c.cardId === speaker.cardId)?.color : null;
+  const dice = speaker.kind === "system" && speaker.marker === "dice_roll";
   return (
-    <div className={`part part-${speaker.kind}`} style={color ? { borderColor: color } : undefined}>
+    <div
+      className={`part part-${speaker.kind}${dice ? " part-dice" : ""}`}
+      style={color ? { borderColor: color } : undefined}
+    >
       <div className="part-name">{name}</div>
-      <div className="part-text">{text}</div>
+      <div className="part-text">{dice ? <DiceRollText text={text} /> : text}</div>
       {speaker.kind === "gm" && (
         <DicePoolView pool={dicePool} text={text} language={currentLang()} />
       )}
@@ -115,7 +120,7 @@ export function StoryView({
   // 房主 GM 回合期間，之前已送出的行動留在 carry，照樣列著（GM 說完放回名單）
   const pending = (
     view.round?.phase === "acting" ? view.round.roster : (view.round?.carry ?? [])
-  ).filter((e) => e.status === "submitted");
+  ).filter((e) => e.status === "submitted" && e.text); // 只擲骰沒寫字：擲果已在故事串
   return (
     <div
       className="story"

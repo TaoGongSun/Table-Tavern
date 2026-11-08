@@ -58,20 +58,15 @@ pub(crate) fn measured_pool() -> String {
     format_pool(Ok).expect("固定骰型必可格式化")
 }
 
-pub(crate) fn instruction(pool: &str, room: bool, lang: &str) -> String {
-    let (common, solo, party) = if lang.starts_with("zh") {
+pub(crate) fn instruction(pool: &str, lang: &str) -> String {
+    let (common, players) = if lang.starts_with("zh") {
         ("本輪骰池：各骰型依序取，每顆一次；以(d20#2=19)標原面值，多顆逐一標號，加值／合計寫括號外。先攻、命中、豁免、傷害，凡從池取的骰都要在旁白標號，更新區塊的 dice 不能代替。用罄或缺型就停在下一個行動開始前，不寫半截結果，明說骰子用完、請玩家說一聲就接著跑；禁自報、挑號、重用或用舊池。",
-         "直接採用玩家公開擲果，只引數字，不加骰號括號；骰號僅用於本輪池。請玩家擲骰須寫完整式，如1d20+3。",
-         "玩家不能擲骰，所有骰由你從池取用。")
+         "直接採用玩家公開擲果，只引數字，不加骰號括號；骰號僅用於本輪池。同一玩家同算式多筆以第一筆為準，除非你要求多次。要求多人擲時，已擲者採用擲果，未擲者與 AI 代管角色從池取；NPC 一律從池取。請玩家擲骰須寫完整式，如1d20+3。")
     } else {
         ("Current dice pool: consume each die type in order, once per die. Cite (d20#2=19); full-width parentheses and whitespace are allowed. Cite each die separately; put modifiers and totals outside parentheses. Every die taken from the pool (initiative, attacks, saves, damage) must be cited in the narration; `dice` in the update block does not replace that. If exhausted or missing, stop before the next action, never leave one half-resolved, and tell the player the dice ran out and to say anything to continue. Never invent faces, skip, reuse, or use an older pool.",
-         "Use public player rolls as given. Quote their numbers without dice-reference parentheses: dice references are only for this pool. Ask players with a complete formula such as 1d20+3.",
-         "Players cannot roll dice here. Take every roll from this pool yourself.")
+         "Use public player rolls as given. Quote their numbers without dice-reference parentheses: dice references are only for this pool. If one player has several rolls of the same formula, the first counts unless you asked for several. When several players must roll, use the rolls already made and take the rest, and AI-delegated characters, from the pool; NPCs always use the pool. Ask players with a complete formula such as 1d20+3.")
     };
-    format!(
-        "{OPEN}{common}\n{}\n{pool}{CLOSE}",
-        if room { party } else { solo }
-    )
+    format!("{OPEN}{common}\n{players}\n{pool}{CLOSE}")
 }
 
 /// 只供 TailStale 計帳，不把這段再注入一次。
@@ -81,13 +76,7 @@ pub(crate) fn retained(instruction: &str) -> Option<&str> {
     Some(&instruction[start..end])
 }
 
-pub(crate) fn set_enabled(
-    root: &Path,
-    world: &str,
-    on: bool,
-    lang: &str,
-    room: bool,
-) -> Result<(), String> {
+pub(crate) fn set_enabled(root: &Path, world: &str, on: bool, lang: &str) -> Result<(), String> {
     with_commit(root, world, |tx| {
         message_vars::refuse_during_turn(tx).map_err(|e| e.to_string())?;
         let mut state = data::read_state(root, world).map_err(|e| e.to_string())?;
@@ -102,10 +91,9 @@ pub(crate) fn set_enabled(
             let copy: serde_json::Value =
                 serde_json::from_str(include_str!("../../src/features/dice/dice-copy.json"))
                     .expect("骰子字典為有效 JSON");
-            let text = copy.get(lang).unwrap_or(&copy["en"])
-                [if room { "enabledRoom" } else { "enabledSolo" }]
-            .as_str()
-            .expect("骰子通知字串");
+            let text = copy.get(lang).unwrap_or(&copy["en"])["enabledSolo"]
+                .as_str()
+                .expect("骰子通知字串");
             let event = serde_json::from_value(serde_json::json!({
                 "ts": data::local_timestamp().unwrap_or_default(), "speaker_id": "", "speaker_name": "",
                 "kind": "system", "text": text
@@ -176,7 +164,8 @@ fn parse_formula(text: &str) -> Option<Formula> {
     let c = formula_regex().captures(text)?;
     (c.get(0)?.as_str() == text).then(|| captured(&c)).flatten()
 }
-pub(crate) fn suggestions(text: &str) -> Vec<String> {
+/// 文字裡有沒有玩家能擲的算式（匯入世界書時偵測這桌要不要開擲骰）。掃描規則同前端 `dice-suggestions.ts`
+pub(crate) fn mentions_formula(text: &str) -> bool {
     // 模型常寫全形加減號
     let text: String = text
         .chars()
@@ -187,8 +176,7 @@ pub(crate) fn suggestions(text: &str) -> Vec<String> {
             other => other,
         })
         .collect();
-    let mut result = Vec::new();
-    for c in formula_regex().captures_iter(&text) {
+    formula_regex().captures_iter(&text).any(|c| {
         let m = c.get(0).unwrap();
         let word = |ch: char| ch.is_ascii_alphanumeric() || ch == '_';
         let operator = |ch: char| "+-*/!".contains(ch);
@@ -203,25 +191,13 @@ pub(crate) fn suggestions(text: &str) -> Vec<String> {
             .strip_prefix("**")
             .filter(|r| !r.starts_with(word))
             .unwrap_or(right);
-        if left.chars().next_back().is_some_and(word)
+        !(left.chars().next_back().is_some_and(word)
             || right.chars().next().is_some_and(word)
             || left.trim_end().chars().next_back().is_some_and(operator)
             || right.trim_start().chars().next().is_some_and(operator)
-            || right.trim_start().starts_with('#')
-        {
-            continue;
-        }
-        if let Some(formula) = captured(&c) {
-            let value = formula.canonical();
-            if !result.contains(&value) {
-                result.push(value);
-            }
-            if result.len() == 8 {
-                break;
-            }
-        }
-    }
-    result
+            || right.trim_start().starts_with('#'))
+            && captured(&c).is_some()
+    })
 }
 
 pub(crate) fn roll(

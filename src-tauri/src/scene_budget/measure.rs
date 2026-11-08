@@ -199,11 +199,7 @@ fn gm_request(
     if crate::dice::enabled(&m.state) {
         instruction.content.push_str(&format!(
             "\n{}",
-            crate::dice::instruction(
-                &crate::dice::measured_pool(),
-                !m.party.present.is_empty(),
-                lang
-            )
+            crate::dice::instruction(&crate::dice::measured_pool(), lang)
         ));
     }
     match provider {

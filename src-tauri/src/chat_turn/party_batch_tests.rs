@@ -43,6 +43,7 @@ fn batch(dispatch_id: &str, players: &[&String], actions: Vec<PartyAction>) -> P
         dispatch_id: dispatch_id.to_owned(),
         actions,
         players: players.iter().map(|id| (*id).clone()).collect(),
+        rolls: Vec::new(),
         arrivals: Vec::new(),
         departures: Vec::new(),
         returns: Vec::new(),
@@ -74,6 +75,56 @@ fn first_round(root: &std::path::Path, world_id: &str, ids: &[String; 5]) -> Par
     );
     assert_eq!(land(root, world_id, &first), BatchOutcome::Appended(3));
     first
+}
+
+/// 派工 JSON 落檔：擲果在所有行動之前、依序，文字照收；空文字的 act 不落玩家句也不報錯；重送不重落；舊派工沒有 rolls 照常
+#[test]
+fn rolls_land_before_actions_and_empty_act_writes_no_line() {
+    let (root, world_id, ids) = table("party-rolls");
+    let [tao, yu, ..] = &ids;
+    let dispatch = serde_json::json!({
+        "dispatchId": "r1",
+        "actions": [
+            { "kind": "act", "cardId": tao, "text": "" },
+            { "kind": "act", "cardId": yu, "text": "我推門" },
+        ],
+        "players": [{ "cardId": tao }, { "cardId": yu }],
+        "arrivals": [tao],
+        "rolls": [
+            { "memberId": "m1", "round": 2, "part": -100, "text": "沃恩 1d20: [7] = 7" },
+            { "memberId": "m2", "round": 2, "part": -101, "text": "雷克 1d6: [2] = 2" },
+        ],
+    });
+    let outcome = land_dispatch(&root, &root, &world_id, &dispatch).unwrap();
+    assert_eq!(outcome, BatchOutcome::Appended(4));
+    let events = transcript(&root, &world_id);
+    assert!(matches!(
+        events[0].marker,
+        Some(EventMarker::PlayerArrival { .. })
+    ));
+    assert_eq!(
+        events[1..]
+            .iter()
+            .map(|e| e.text.as_str())
+            .collect::<Vec<_>>(),
+        ["沃恩 1d20: [7] = 7", "雷克 1d6: [2] = 2", "我推門"]
+    );
+    assert!(matches!(events[1].marker, Some(EventMarker::DiceRoll)));
+    assert_eq!(events[1].kind, data::TranscriptKind::System);
+    assert_eq!(events[2].action_id.as_deref(), Some("r1")); // 收回跟著派工刪
+    assert_eq!(
+        land_dispatch(&root, &root, &world_id, &dispatch).unwrap(),
+        BatchOutcome::Duplicate
+    );
+    let old =
+        serde_json::json!({ "dispatchId": "r2", "actions": [], "players": [{ "cardId": tao }] });
+    assert_eq!(
+        land_dispatch(&root, &root, &world_id, &old).unwrap(),
+        BatchOutcome::Appended(0)
+    );
+    let bad = serde_json::json!({ "dispatchId": "r3", "rolls": [{ "text": " " }] });
+    assert!(land_dispatch(&root, &root, &world_id, &bad).is_err());
+    std::fs::remove_dir_all(root).unwrap();
 }
 
 /// 依序落成玩家句與觀望標記、全帶 action_id；在場玩家換上、主玩家＝第一張；重送同一批什麼都不寫
@@ -345,7 +396,7 @@ fn first_event(name: &str) -> data::TranscriptEvent {
     }
 }
 
-/// 驗證不過（卡不在桌上、行動者不在場、文字過長或空白）與換幕容量鎖擋下：回錯、逐字稿與在場名單都不動
+/// 驗證不過（卡不在桌上、行動者不在場、文字過長）與換幕容量鎖擋下：回錯、逐字稿與在場名單都不動
 #[test]
 fn rejected_batch_writes_nothing() {
     let (root, world_id, ids) = table("party-reject");
@@ -355,7 +406,6 @@ fn rejected_batch_writes_nothing() {
         batch("x1", &[tao, &ghost], Vec::new()),
         batch("x2", &[tao], vec![act(yu, "我不在場。")]),
         batch("x3", &[tao], vec![act(tao, &"長".repeat(2001))]),
-        batch("x4", &[tao], vec![act(tao, "   ")]),
         batch("x6", &[tao, tao], Vec::new()),
     ];
     for case in &cases {

@@ -112,7 +112,6 @@ pub fn run() {
             commands::world::write_world_md,
             commands::world::set_dice_enabled,
             commands::world::roll_dice,
-            commands::world::dice_suggestions,
             commands::world::read_worldbook,
             commands::world::upsert_worldbook_entry,
             commands::world::reorder_worldbook_entries,
@@ -545,7 +544,6 @@ mod command_classification {
     ];
 
     const NOT_WORLD: &[&str] = &[
-        "dice_suggestions",
         "harness_probe",
         "harness_probe_count",
         "chat_abort",

@@ -72,4 +72,16 @@ describe("匯出成網頁存檔", () => {
       "char",
     ]);
   });
+
+  it("帶擲果的存檔兩端解析都收", async () => {
+    const room = await playing();
+    await room.send("x1", "status", { keepAwake: null, busy: false, diceEnabled: true });
+    await room.send("b", "action.roll", { round: 2, formula: "1d20" });
+    const out = await room.run({ kind: "http", route: "export", deviceId: room.deviceId("a") });
+    const text = JSON.stringify(out!.http!.body);
+    expect(text).toContain("r2p-100");
+    expect(parseWebSave(text).ok).toBe(true);
+    const restored = restoreWebSaveText(text);
+    expect(restored.ok && restored.game.entries.at(-1)?.role).toBe("char");
+  });
 });

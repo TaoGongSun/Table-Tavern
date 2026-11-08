@@ -29,7 +29,6 @@ const SIDEBAR_KEY_STEP = 16;
 
 interface CastRailProps {
   diceEnabled?: boolean;
-  roomMode?: boolean;
   /** 發言對象是 GM 時的代號（App 持有 speaker，這裡只拿它比對） */
   gmId: string;
   /** 目前的發言對象；空字串＝還沒選。描邊與 aria-pressed 一律看它 */
@@ -293,7 +292,7 @@ export function CastRail(props: CastRailProps) {
               items={addItems}
             />
           )}
-          {props.diceEnabled && <RulesGuide compact={narrow} room={props.roomMode} />}
+          {props.diceEnabled && <RulesGuide compact={narrow} />}
           <input
             ref={importInputRef}
             type="file"

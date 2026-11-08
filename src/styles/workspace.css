@@ -547,6 +547,13 @@ button.scene-chip,
   color: var(--ink-3);
 }
 
+/* 擲果：字重同玩家發言，不跟系統行一起灰掉 */
+.message-dice-name {
+  font-family: var(--font-ui);
+  font-size: var(--fs-meta);
+  color: var(--ink-3);
+}
+
 /* 「讓 X 接話」：掛在點名那則旁白正下方 */
 .next-call {
   display: flex;

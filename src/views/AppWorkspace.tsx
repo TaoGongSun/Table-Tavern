@@ -267,7 +267,6 @@ export function AppWorkspace({
     <>
       <CastRail
         diceEnabled={tableState.diceEnabled}
-        roomMode={roomMode}
         gmId={GM_TARGET}
         speaker={speaker}
         cardsTargetable={!gmOnly}
@@ -454,7 +453,7 @@ export function AppWorkspace({
                       <Onboarding config={config} onSaved={onConfigSaved} />
                     </>
                   }
-                  diceControls={(onExpand) => <DiceControls onExpand={onExpand} worldId={table} events={chat.events} diceEnabled={tableState.diceEnabled} busy={chat.busy || tableOpBusy} locked={gate === "readonly"} room={roomMode} hasTarget={gmTargeted || Boolean(speaker)} playerName={characters.player?.name} onRoll={chat.rollDice} />}
+                  diceControls={(onExpand) => <DiceControls onExpand={onExpand} events={chat.events} diceEnabled={tableState.diceEnabled} busy={chat.busy || tableOpBusy} locked={gate === "readonly"} room={roomMode} hasTarget={gmTargeted || Boolean(speaker)} playerName={characters.player?.name} onRoll={chat.rollDice} />}
                   sceneLabel={sceneDisplayLabel(scene)}
                   storyKey={`${table}\u0000${scene}`}
                   events={chat.events}

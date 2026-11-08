@@ -47,6 +47,14 @@ export function toWebSave(s: RoomState, events: StoredEvent[], now: number) {
     speakers[id] = speaker;
     scenes[scenes.length - 1].firstMessageId ??= id;
   };
+  // 公開擲果：玩家自己擲的（action.rolled）與單人時擲、補送進來的（story.part）一樣輸出
+  const pushRoll = (p: Record<string, unknown>, at: number) => {
+    push(`r${p.round}p${p.part}`, "char", p.text as string, at, {
+      kind: "system",
+      marker: "dice_roll",
+    });
+    mark(p.round as number, p.part as number);
+  };
   const undone = undoneRounds(events); // 房主收回的回合不輸出
   for (const { type, at, payload: p } of events) {
     if (undone.has(p.round as number) && (type === "story.part" || type === "round.resolved"))
@@ -54,7 +62,7 @@ export function toWebSave(s: RoomState, events: StoredEvent[], now: number) {
     if (type === "round.resolved") {
       (p.batch as ActionItem[]).forEach((a, i) => {
         players.add(a.cardId);
-        if (a.kind !== "act") return;
+        if (a.kind !== "act" || !a.text) return;
         push(`r${p.round}a${i}`, "user", `${a.name}：${a.text}`, at, {
           kind: "player",
           cardId: a.cardId,
@@ -62,11 +70,14 @@ export function toWebSave(s: RoomState, events: StoredEvent[], now: number) {
         });
         mark(p.round as number, -1 - i);
       });
+    } else if (type === "action.rolled") {
+      pushRoll(p, at);
     } else if (type === "story.part") {
       const sp = p.speaker as Speaker;
       if (sp.kind === "system") {
-        mark(p.round as number, p.part as number);
-        continue; // 觀望與系統段不輸出
+        if (sp.marker === "dice_roll") pushRoll(p, at);
+        else mark(p.round as number, p.part as number); // 觀望與其他系統段不輸出
+        continue;
       }
       if (sp.kind === "gm") firstGm ??= (p.text as string) || null;
       const pubSpeaker =

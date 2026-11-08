@@ -4,7 +4,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { diceCopy } from "../dice/dice-ui";
-import { readRoomStatus } from "../room/room-status";
 import { message as showMessage, confirm } from "@tauri-apps/plugin-dialog";
 import { Lang, t } from "../../i18n";
 import { decideImportRoute, type ImportReceiptKind, type ImportRouteAnswer } from "./import-routing";
@@ -410,10 +409,8 @@ export function useImportController(input: {
     if (!book.dice_detected) return;
     const state = await invoke<WorldState>("read_state", { worldId });
     if (state.dice_enabled || state.table_kind !== "chat" || state.replay) return;
-    const status = await readRoomStatus(worldId);
-    const room = status.active && status.worldId === worldId;
     const c = diceCopy();
-    if (await confirm(room ? c.roomPrompt : c.prompt, { title: c.roll, kind: "info" })) {
+    if (await confirm(c.prompt, { title: c.roll, kind: "info" })) {
       await turnBackend(() => invoke("set_dice_enabled", { worldId, enabled: true }));
     }
   }, [turnBackend]);

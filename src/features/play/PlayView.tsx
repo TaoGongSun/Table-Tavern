@@ -3,12 +3,13 @@
 import { Fragment, FormEvent, ReactNode, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { t, currentLang } from "../../i18n";
 import { DicePoolView } from "../dice/DicePoolView";
+import { DiceRollText } from "../dice/DiceRollText";
 import { TranscriptEvent } from "../../shared/contracts/backend-contracts";
 import type { ChatNotice } from "./chat/useSmartFreeNotices";
 import { CharacterMeta } from "../characters/card-model";
 import { noticeText } from "../ai-connection/smart-free-events";
 import { StoryText } from "../../shared/ui/atoms";
-import { eventDisplayText, speakerDisplayName } from "../../shared/ui/event-text";
+import { eventDisplayText, markerHeading, parseMarker, speakerDisplayName } from "../../shared/ui/event-text";
 import gmBook from "../../assets/gm-book.png";
 import { IconSend, IconStop } from "../../shared/ui/icons";
 import { callableAt, type NominatedCall } from "./next-speaker-call";
@@ -232,6 +233,14 @@ export function PlayView({
         </div>
       );
     }
+    const marker = parseMarker(event.marker);
+    if (marker?.type === "dice_roll")
+      return (
+        <div key={index} className="message message-dice">
+          <div className="message-dice-name">{markerHeading(marker)}</div>
+          <DiceRollText text={event.text} />
+        </div>
+      );
     return (
       <div key={index} className={`message message-${event.kind}`}>
         <StoryText text={eventDisplayText(event)} />

@@ -202,7 +202,6 @@ export function MainView({
           onDiceChanged={onDiceChanged}
           onAddRulesBook={onAddRulesBook}
           diceEnabled={diceEnabled}
-          roomMode={roomMode}
           onRefactorApplied={onRefactorApplied}
           onRefreshReceipts={onRefreshReceipts}
           pendingRefactorCard={pendingRefactorCard}

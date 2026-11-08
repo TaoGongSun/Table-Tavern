@@ -100,6 +100,7 @@
   min-height: 42px;
 }
 .app.party-phone .action-minor {
+  align-items: stretch;
   justify-content: flex-start;
   margin-top: 6px;
 }
@@ -143,9 +144,24 @@
   font-size: 12px;
   font-weight: 400;
 }
-/* 沒有 GM 鈕時，收合後的細列直接當底部那顆（跟回到最新同一個位子） */
-.app.party-phone .action-box:has(.action-untuck):not(:has(.action-leading)) {
-  display: contents;
+.app.party-phone .action-dice,
+.app.party-phone .action-dice .dice-controls,
+.app.party-phone .action-dice .dice-main {
+  display: flex;
+  align-items: stretch;
+}
+.app.party-phone .action-dice .dice-controls {
+  flex-wrap: wrap;
+}
+.app.party-phone .action-dice small {
+  align-self: center;
+}
+.app.party-phone .action-dice:has(.dice-options) {
+  flex-basis: 100%;
+}
+.app.party-phone .dice-custom input {
+  width: 4.5rem;
+  font-size: 16px; /* iOS 低於 16px 聚焦會放大 */
 }
 
 /* 往回捲讀舊劇情：上方只剩一行摘要（能按的鈕照留），場景列收起，輸入列換成「回到最新」。
@@ -161,6 +177,7 @@
 }
 .app.party-phone .reading .action-row,
 .app.party-phone .reading .action-skip,
+.app.party-phone .reading .action-dice,
 .app.party-phone .reading .action-untuck,
 .app.party-phone .reading .action-hint,
 .app.party-phone .reading .action-status,

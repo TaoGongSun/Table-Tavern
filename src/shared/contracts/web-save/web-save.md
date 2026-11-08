@@ -76,7 +76,7 @@
 - 桌面版把 ST 聊天變數落進 chat 層檔案；沒有 MVU 種子就不進變數模式。桌面版巨集只換 `{{user}}`／`{{char}}`，`{{getvar}}` 與酒館助手類巨集不讀變數（桌面版既有限制）。
 
 ## 多人房間匯出（有損）
-多人房間伺服器（`party/server/core/export.ts`）把一間房的公開紀錄匯成這份契約，房主帶走、桌面版照一般網頁存檔匯入。契約是一桌一張卡、沒有幕，所以只帶文字：`card` 是合成的最小卡殼（形狀同 `minimal.json`，`data.name`＝`"GM"`、`first_mes`＝第一段 GM 正文），`import_route`＝`"character"`、`mvu`＝`null`、世界書狀態全空、不帶 `card_png`；玩家行動成 `user`（`<卡名>：<行動>`），GM、NPC（`<卡名>：<正文>`）與幕摘要成 `char`，觀望與系統段不輸出。多人資訊放頂層 `extensions.table_tavern_room`（照「不認得的頂層鍵略過」，現行兩端都忽略它）：
+多人房間伺服器（`party/server/core/export.ts`）把一間房的公開紀錄匯成這份契約，房主帶走、桌面版照一般網頁存檔匯入。契約是一桌一張卡、沒有幕，所以只帶文字：`card` 是合成的最小卡殼（形狀同 `minimal.json`，`data.name`＝`"GM"`、`first_mes`＝第一段 GM 正文），`import_route`＝`"character"`、`mvu`＝`null`、世界書狀態全空、不帶 `card_png`；玩家行動成 `user`（`<卡名>：<行動>`），GM、NPC（`<卡名>：<正文>`）、幕摘要與公開擲果成 `char`，觀望與其他系統段不輸出。多人資訊放頂層 `extensions.table_tavern_room`（照「不認得的頂層鍵略過」，現行兩端都忽略它）：
 - `version`：`1`。
 - `scenes`：`[{ scene, summaryMessageId, firstMessageId }]`，各幕第一則與結束該幕的摘要那則的 `id`（沒有就是 `null`）。
 - `speakers`：`{ <訊息 id>: 說話者 }`，形狀同房間協定的 Speaker 但不含成員 id（`{kind:"gm"}`、`{kind:"npc"|"player", cardId, name}`、`{kind:"system", marker}`）。

@@ -17,9 +17,7 @@ pub(crate) use character::chat_with_character;
 #[cfg(test)]
 pub(crate) use commit::gm_commit_apply;
 pub(crate) use gm::{gm_narrate, scene_panel, scene_status};
-pub(crate) use party_batch::{
-    append_party_batch, BatchOutcome, DepartureMode, PartyAction, PartyBatch,
-};
+pub(crate) use party_batch::{land_dispatch, BatchOutcome};
 pub(crate) use solo_relay::{
     active as solo_relay_active, chat_relay, interrupt as interrupt_relay,
     release as release_relay, RelayReport,

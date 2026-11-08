@@ -5,7 +5,7 @@ use super::{seed, Delta, DispatchRun, JobRun, Room, RunState, Step};
 use crate::chat_turn::relay::{
     self, Halt, Nominee, PartClose, RelayHost, RelayMode, RelayProgress, RelayStep,
 };
-use crate::chat_turn::{self, BatchOutcome, DepartureMode, PartyAction, PartyBatch};
+use crate::chat_turn::{self, BatchOutcome};
 use crate::data::{self, EventMarker, TranscriptEvent, TranscriptKind};
 use serde_json::{json, Value};
 use std::path::Path;
@@ -36,12 +36,16 @@ pub(super) fn status_frame(room: &Room) -> Value {
     };
     let route = super::cards::gen_route(room);
     let image_gen = route && !room.saved().image_gen_off;
+    let (_, root) = room.engine.roots();
+    let dice =
+        data::read_state(&root, &room.world()).is_ok_and(|state| crate::dice::enabled(&state));
     let status = room.status();
     let mut p = json!({
         "keepAwake": status.keep_awake,
         "busy": busy,
         "imageGen": image_gen,
         "imageGenRoute": route,
+        "diceEnabled": dice,
     });
     // 沒量過不帶欄位：伺服器收到缺欄位不會清掉上次的值
     if let Some(hint) = status.capacity_hint {
@@ -347,7 +351,7 @@ async fn steps(room: &Arc<Room>, id: &str) -> Result<bool, (Option<u32>, String)
         let host = &run.dispatch["host"];
         let mode = host["mode"].as_str().unwrap_or_default();
         // 同一派工重送：Duplicate 就不重落玩家事件（room.json 遺失時 GM 鏈會重跑，列已知限制）
-        let outcome = land_batch(&config_root, &root, &world, &run.dispatch)
+        let outcome = chat_turn::land_dispatch(&config_root, &root, &world, &run.dispatch)
             .map_err(|error| (None, error))?;
         let next = match mode {
             "call" => {
@@ -695,47 +699,6 @@ fn event(kind: TranscriptKind, speaker: (&str, &str), body: &str, action: &str) 
         turn_key: None,
         action_id: Some(action.to_owned()),
     }
-}
-
-fn land_batch(
-    config_root: &Path,
-    root: &Path,
-    world: &str,
-    d: &Value,
-) -> Result<BatchOutcome, String> {
-    let list = |key: &str| d[key].as_array().cloned().unwrap_or_default();
-    let batch = PartyBatch {
-        dispatch_id: text(&d["dispatchId"]),
-        actions: list("actions")
-            .iter()
-            .map(|a| match a["kind"] == "act" {
-                true => PartyAction::Act {
-                    card_id: text(&a["cardId"]),
-                    text: text(&a["text"]),
-                },
-                false => PartyAction::Watch {
-                    card_id: text(&a["cardId"]),
-                    to_gm: a["watchReason"] == "skipped",
-                },
-            })
-            .collect(),
-        players: list("players").iter().map(|p| text(&p["cardId"])).collect(),
-        arrivals: list("arrivals").iter().map(text).collect(),
-        returns: list("returns").iter().map(text).collect(),
-        departures: list("departures")
-            .iter()
-            .map(|x| {
-                let mode = match x["mode"].as_str() {
-                    Some("npc") => DepartureMode::Npc,
-                    Some("delegate") => DepartureMode::Delegate,
-                    _ => DepartureMode::Absent,
-                };
-                (text(&x["cardId"]), mode)
-            })
-            .collect(),
-    };
-    let _permit = data::world_write_permit(world)?;
-    chat_turn::append_party_batch(config_root, root, world, &batch)
 }
 
 /// 「GM 請 X 發言」點名列（角色模型靠它知道自己被點）

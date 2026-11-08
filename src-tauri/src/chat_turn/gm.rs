@@ -221,7 +221,6 @@ pub(crate) async fn gm_narrate(
     turn_id: String,
     on_delta: tauri::ipc::Channel<String>,
     action_id: Option<String>,
-    room: bool,
 ) -> Result<GmNarration, String> {
     let _permit = data::world_write_permit_async(&world_id).await?;
     let (_guard, mut cancel) = inflight::register_turn(&world_id, &turn_id);
@@ -290,10 +289,9 @@ pub(crate) async fn gm_narrate(
     let (mut instruction_message, closing) =
         chat_assembly::gm_instruction(&root, &world_id, &materials, &scan, &lang);
     if let Some(pool) = dice_pool {
-        instruction_message.content.push_str(&format!(
-            "\n{}",
-            crate::dice::instruction(&pool, room, &lang)
-        ));
+        instruction_message
+            .content
+            .push_str(&format!("\n{}", crate::dice::instruction(&pool, &lang)));
     }
     let emit = |delta: &str| push_delta(&buffer, &on_delta, delta);
     // 這一次 GM 呼叫的回覆有沒有被供應商截斷（只認這次呼叫自己回報的，同桌別的呼叫碰不到）

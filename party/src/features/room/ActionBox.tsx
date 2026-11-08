@@ -1,11 +1,25 @@
 // 行動格（協定 §3.3）：草稿節流上傳（不公開）、送出即公開、收回成草稿、交給 GM（協定的 skip）。GM 生成中可打字不可送；
 // 被拒（回合已往下走、GM 還在說）時草稿原樣保留。交給 AI 代管中照樣能打字存草稿，只是送不出（不在名單上）。
 // 房主當場開的倒數在輸入框上方出一條橫條（房間設定一開始就有的倒數不出）；送出、交給 GM 或停下就收。
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { flushSync } from "react-dom";
-import { t, type MsgKey } from "../../i18n";
+import { DicePicker } from "@desktop/features/dice/DicePicker";
+import diceCopy from "@desktop/features/dice/dice-copy.json";
+import { rankSuggestions } from "@desktop/features/dice/dice-suggestions";
+import { currentLang, t, type MsgKey } from "../../i18n";
+import { errorText } from "./error-text";
 import type { RoomView } from "./room-state";
 import { useRun, type Act } from "./useRoom";
+
+const ROLLED_FORMULA = / (\d+d\d+(?:[+-]\d+)?): \[[^\]]*\](?: [+-]\d+)? = -?\d+$/;
 
 const STATUS: Record<string, MsgKey> = {
   pending: "statusPending",
@@ -55,6 +69,8 @@ export function ActionBox({
   const [tooLong, setTooLong] = useState(false);
   const [stuck, setStuck] = useState(false); // 自動放回沒存成：原文照留在下面那格
   const { run: send, error } = useRun(act);
+  const [rollError, setRollError] = useState<string | null>(null);
+  const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (view.me.draft !== null) setText(view.me.draft); // 收回、換幕退回的原文
   }, [view.me.draft]);
@@ -101,6 +117,63 @@ export function ActionBox({
     return Math.round(ms / 60_000);
   })();
   const live = view.room.status === "playing" || view.room.status === "transition";
+  const dice = diceCopy[currentLang()];
+  const myName = view.cards.find((c) => c.cardId === view.me.cardId)?.name;
+  const gmText = [...view.story].reverse().find((p) => p.speaker.kind === "gm")?.text ?? "";
+  const castNames = view.cards.map((c) => c.name).join("\n");
+  const ranked = useMemo(
+    () => rankSuggestions(gmText, myName, castNames.split("\n")),
+    [gmText, myName, castNames],
+  );
+  const myRolls = view.story.filter((p) => p.rollBy === view.me.memberId && p.round === r?.round);
+  const rolled = myRolls.flatMap((p) => ROLLED_FORMULA.exec(p.text)?.[1] ?? []);
+  // 擲過的換下一個；自己的擲完就退回通用「擲骰」，不落到別人的算式
+  const primary = ranked.find((x) => !x.other && !rolled.includes(x.value))?.value ?? null;
+  const rollReason = !view.executor.diceEnabled
+    ? t(view.room.hostId === view.me.memberId ? "rollOffHost" : "rollOff")
+    : r?.phase !== "acting"
+      ? t("rollWaitGm")
+      : !entry
+        ? t("rollNotOnRoster")
+        : done
+          ? t("rollSubmitted")
+          : myRolls.length >= 8
+            ? t("rollLimit")
+            : "";
+  /** 輸入框空著就一起送出（比照單人：空框擲骰接著跑 GM）；有字不送。被拒一律講出來，不靜默 */
+  const rollDice = async (formula: string) => {
+    const submit = !text.trim();
+    if (submit) cancelDraft();
+    const reply = await act("action.roll", {
+      round: r?.round ?? 0,
+      formula,
+      ...(submit ? { submit } : {}),
+    });
+    setRollError(
+      reply.ok
+        ? null
+        : reply.code === "E_TEXT_INVALID"
+          ? dice.badFormula
+          : (errorText(reply.code, reply.retryAfterMs) ?? t("rollRejected")),
+    );
+  };
+  // 展開區要看得到：手機鍵盤彈起時故事區變矮，把整格捲回視窗內
+  const onRollExpand = useCallback(() => box.current?.scrollIntoView?.({ block: "end" }), []);
+  const diceButton = (
+    <span className="action-dice">
+      <DicePicker
+        copy={dice}
+        options={ranked.map((x) => x.value)}
+        primary={primary}
+        rolled={rolled}
+        reason={rollReason}
+        quiet
+        buttonClass={compact ? "ghost small" : "ghost"}
+        onRoll={rollDice}
+        onExpand={onRollExpand}
+      />
+    </span>
+  );
   // 生成中、不在名單上、已送出時不展開
   useEffect(() => {
     if (!compact) return;
@@ -184,9 +257,9 @@ export function ActionBox({
       }}
     />
   );
-  const errorLine = error && (
+  const errorLine = (error || rollError) && (
     <div className="field-error" data-testid="action-error">
-      {error}
+      {error || rollError}
     </div>
   );
   // 「收回修改」只在行動中：結算後（GM 生成中、卡住）收不回，照常給停用的跳過／送出，不留一顆一直灰著的收回
@@ -246,7 +319,7 @@ export function ActionBox({
     </div>
   );
   return (
-    <div className="action-box" data-testid="action-box">
+    <div className="action-box" data-testid="action-box" ref={box}>
       {hint && <div className={acting && handed ? "action-status" : "action-hint"}>{hint}</div>}
       {/* 送出後輸入框清空：寫出送了什麼，免得以為沒送出又打一次（原文就在名單上，結算後消失） */}
       {shown?.status === "submitted" && shown.text && (
@@ -262,6 +335,11 @@ export function ActionBox({
       {acting && done && view.kept === r?.round && (
         <div className="action-hint" data-testid="kept-note">
           {t("actionKeptNote")}
+        </div>
+      )}
+      {acting && !done && myRolls.length > 0 && (
+        <div className="action-hint" data-testid="roll-kept-note">
+          {t("rollKeptNote")}
         </div>
       )}
       {taken && (
@@ -325,23 +403,22 @@ export function ActionBox({
             </>
           )}
           {errorLine}
-          {/* 收起時跳過跟著輸入列走；下面只留 GM 列，要跳過先點細列展開 */}
-          {(leading || !tucked) && (
-            <div className="action-buttons action-minor">
-              {leading && <span className="action-leading">{leading}</span>}
-              {!tucked && (
-                <button
-                  type="button"
-                  className="ghost small action-tuck"
-                  data-testid="action-tuck"
-                  onClick={() => setTucked(true)}
-                >
-                  {t("actionFold")}
-                </button>
-              )}
-              {!tucked && !retractable && skip}
-            </div>
-          )}
+          {/* 收起時跳過跟著輸入列走；下面留 GM 與骰鈕，要跳過先點細列展開 */}
+          <div className="action-buttons action-minor">
+            {leading && <span className="action-leading">{leading}</span>}
+            {diceButton}
+            {!tucked && (
+              <button
+                type="button"
+                className="ghost small action-tuck"
+                data-testid="action-tuck"
+                onClick={() => setTucked(true)}
+              >
+                {t("actionFold")}
+              </button>
+            )}
+            {!tucked && !retractable && skip}
+          </div>
           {below}
         </>
       ) : (
@@ -352,6 +429,7 @@ export function ActionBox({
           {errorLine}
           <div className="action-buttons">
             {leading && <span className="action-leading">{leading}</span>}
+            {diceButton}
             {retractable ? (
               retract
             ) : (

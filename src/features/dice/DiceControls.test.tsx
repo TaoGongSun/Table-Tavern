@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 const ipc = vi.hoisted(() =>
   vi.fn(async (command: string) =>
-    command === "read_state" ? { dice_enabled: true, table_kind: "chat" } : ["2d6+3"],
+    command === "read_state" ? { dice_enabled: true, table_kind: "chat" } : [],
   ),
 );
 vi.mock("@tauri-apps/api/core", () => ({ invoke: ipc }));
@@ -12,7 +12,9 @@ const ask = vi.hoisted(() => vi.fn(async (_message: string) => true));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ confirm: ask }));
 import { DiceSettings } from "./DiceSettings";
 import { DiceControls } from "./DiceControls";
-import { playerTurn } from "./dice-ui";
+import { DicePicker } from "./DicePicker";
+import { DiceRollText } from "./DiceRollText";
+import { diceCopy, playerTurn } from "./dice-ui";
 import { rulesCopy } from "./rules/rule-books";
 import { RuleBookList } from "./rules/RuleBookRow";
 import type { TranscriptEvent } from "../../shared/contracts/backend-contracts";
@@ -44,13 +46,13 @@ it("keeps a disabled dice button visible and submits only the chosen formula", a
   const render = (room: boolean) =>
     root.render(
       <DiceControls
-        worldId="w"
         diceEnabled
         events={[event("narration")]}
         busy={false}
         locked={false}
         room={room}
         hasTarget
+        playerName="沃恩"
         onRoll={onRoll}
       />,
     );
@@ -59,12 +61,66 @@ it("keeps a disabled dice button visible and submits only the chosen formula", a
   expect(host.querySelector('[role="status"]')?.textContent).toBeTruthy();
   await act(async () => render(false));
   await act(async () => host.querySelector("button")!.click());
-  const option = [...host.querySelectorAll("button")].find(
-    (b) => b.textContent?.includes("2d6+3"),
-  )!;
-  await act(async () => option.click());
   expect(onRoll).toHaveBeenCalledExactlyOnceWith("2d6+3");
   expect(host.querySelector(".dice-options")).toBeNull();
+});
+it("opens the other suggestions and custom fields from the arrow, or the plain button without suggestions", async () => {
+  host = document.createElement("div");
+  document.body.append(host);
+  root = createRoot(host);
+  const onRoll = vi.fn(async () => {});
+  const onExpand = vi.fn();
+  const render = (options: string[]) =>
+    root.render(<DicePicker copy={diceCopy()} options={options} reason="" onRoll={onRoll} onExpand={onExpand} />);
+  await act(async () => render(["1d20+3", "2d6"]));
+  await act(async () => host.querySelector<HTMLButtonElement>(".dice-more")!.click());
+  expect(onExpand).toHaveBeenCalledOnce();
+  const option = host.querySelector<HTMLButtonElement>(".dice-option")!;
+  expect(option.textContent).toContain("2d6");
+  await act(async () => option.click());
+  expect(onRoll).toHaveBeenCalledExactlyOnceWith("2d6");
+  await act(async () => render([]));
+  expect(host.querySelector(".dice-more")).toBeNull();
+  await act(async () => host.querySelector("button")!.click());
+  const [custom] = [...host.querySelectorAll<HTMLButtonElement>(".dice-custom button")];
+  await act(async () => custom.click());
+  expect(onRoll).toHaveBeenLastCalledWith("1d20");
+});
+it("falls back to the plain button when nothing is left for the player, and ticks rolled options", async () => {
+  host = document.createElement("div");
+  document.body.append(host);
+  root = createRoot(host);
+  const onRoll = vi.fn(async () => {});
+  await act(async () =>
+    root.render(<DicePicker copy={diceCopy()} options={["2d6", "1d20"]} primary={null} rolled={["2d6"]} reason="" onRoll={onRoll} />),
+  );
+  expect(host.querySelector(".dice-more")).toBeNull();
+  await act(async () => host.querySelector("button")!.click());
+  const [first] = [...host.querySelectorAll<HTMLButtonElement>(".dice-option")];
+  expect(first.textContent?.startsWith("✓")).toBe(true);
+  await act(async () => first.click());
+  expect(onRoll).toHaveBeenCalledExactlyOnceWith("2d6");
+});
+it("bolds the total after the last equals sign", async () => {
+  host = document.createElement("div");
+  document.body.append(host);
+  root = createRoot(host);
+  await act(async () => root.render(<DiceRollText text="沃恩 = 雷克 1d20: [7] = 7" />));
+  expect(host.querySelector("strong")?.textContent).toBe("= 7");
+  expect(host.textContent).toBe("沃恩 = 雷克 1d20: [7] = 7");
+});
+it("quiet picker keeps the reason hidden until tapped and never rolls", async () => {
+  host = document.createElement("div");
+  document.body.append(host);
+  root = createRoot(host);
+  const onRoll = vi.fn(async () => {});
+  await act(async () =>
+    root.render(<DicePicker copy={diceCopy()} options={["2d6"]} reason="等 GM 說完" quiet onRoll={onRoll} />),
+  );
+  expect(host.querySelector('[role="status"]')).toBeNull();
+  await act(async () => host.querySelector("button")!.click());
+  expect(host.querySelector('[role="status"]')?.textContent).toBe("等 GM 說完");
+  expect(onRoll).not.toHaveBeenCalled();
 });
 it("only an unresolved explicit NPC call blocks the player turn", () => {
   const call = event("system", { type: "gm_call", name: "雷克" });

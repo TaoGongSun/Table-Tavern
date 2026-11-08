@@ -283,15 +283,14 @@ pub(crate) fn set_dice_enabled(
 ) -> Result<(), String> {
     let _permit = data::world_write_permit(&world_id)?;
     let config = data::read_config(&config_root(&app)?).map_err(|e| e.to_string())?;
-    let status = crate::room::status(&config_root(&app)?, Some(&world_id));
-    let room = status.world_id.as_deref() == Some(&world_id) && status.active;
     crate::dice::set_enabled(
         &data_root(&app)?,
         &world_id,
         enabled,
         transport::ui_language(&config).as_str(),
-        room,
-    )
+    )?;
+    crate::room::report_status(&world_id);
+    Ok(())
 }
 
 #[tauri::command]
@@ -303,8 +302,4 @@ pub(crate) fn roll_dice(
 ) -> Result<data::TranscriptEvent, String> {
     let _permit = data::world_write_permit(&world_id)?;
     crate::dice::roll(&data_root(&app)?, &world_id, scene, &formula)
-}
-#[tauri::command]
-pub(crate) fn dice_suggestions(text: String) -> Vec<String> {
-    crate::dice::suggestions(&text)
 }

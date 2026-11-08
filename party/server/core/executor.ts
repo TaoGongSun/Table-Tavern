@@ -11,7 +11,7 @@ import {
   reopen,
   unseat,
 } from "./round";
-import { keptCount, storyOf, type KeepThrough } from "./snapshot";
+import { isPendingRoll, keptCount, storyOf, type KeepThrough } from "./snapshot";
 import { crockford, sameHash, sha256Hex } from "./secrets";
 import { Fail, need, type Tx } from "./tx";
 import type {
@@ -90,7 +90,12 @@ function sceneResult(tx: Tx, job: Extract<Job, { kind: "scene_advance" }>, p: an
   tx.emit("scene.summary", { scene: w.scene, text: summary, round: w.roundNo });
   w.summarySeqs.push(w.seq);
   w.lastDispatch = null; // 上一幕不是收回目標
-  Object.assign(w, { scene: w.scene + 1, sceneSettings: job.nextSettings, nextSettings: null });
+  Object.assign(w, {
+    scene: w.scene + 1,
+    sceneSettings: job.nextSettings,
+    nextSettings: null,
+    pendingRolls: [], // 已在上一幕的故事串，不進 GM
+  });
   tx.emit("scene.started", { scene: w.scene, settings: job.nextSettings });
   w.sceneStartSeq = w.seq;
   announceExec(tx);
@@ -128,6 +133,8 @@ function undoResult(tx: Tx, j: PendingJob, p: any) {
   // 收回後開出的那回合：已送出的退回草稿；收回的是房主 GM 回合就照現況存進 carry，重跑完再放回
   if (w.round?.phase === "acting") cancelRound(tx, ld.kind === "host");
   w.lastDispatch = null; // 只收一層
+  // 桌面那批擲果跟著派工刪了：放回待落，下一次派工再落。列還在故事串原位，順序不變、也不是重擲的機會
+  w.pendingRolls = [...(ld.rolls ?? []), ...(w.pendingRolls ?? [])];
   tx.emit("round.undone", { round: ld.round });
   if (u.mode === "regenerate") {
     if (u.next) {
@@ -179,9 +186,16 @@ function syncScene(tx: Tx, summary: string) {
   w.round = null;
   tx.emit("scene.summary", { scene: w.scene, text: summary, round: w.roundNo });
   w.summarySeqs.push(w.seq);
-  Object.assign(w, { scene: w.scene + 1, nextSettings: null });
+  Object.assign(w, { scene: w.scene + 1, nextSettings: null, pendingRolls: [] });
   tx.emit("scene.started", { scene: w.scene, settings: w.sceneSettings });
   w.sceneStartSeq = w.seq;
+}
+
+/** 截斷錨點：`keep` 排在待落列之後時（中間只有收回提示）退到第一筆待落列之前，重發才不會重複 */
+function beforePending(s: RoomState, scene: StoryPart[], keep: KeepThrough): KeepThrough {
+  const first = scene.findIndex((p) => isPendingRoll(s, p));
+  if (first < 0 || first >= keptCount(scene, keep, 0)) return keep;
+  return first > 0 ? { round: scene[first - 1].round, part: scene[first - 1].part } : null;
 }
 
 /** 補送（§3.3）：撤掉桌上已不存在的段 → 依序補段落與換幕 → 退回已送出的行動 → 解除閘門 */
@@ -201,11 +215,20 @@ async function applySync(tx: Tx, keep: KeepThrough, items: SyncItem[]) {
     w.lastDispatch = null; // 同 round.continue
     openRound(tx, "play");
   }
-  const cut = scene.length - keptCount(scene, keep, 0) > 0;
-  if (cut) tx.emit("story.truncated", { after: keep });
+  // 待落的擲果執行端還沒有，不算分歧；但有補送內容時要排到補送之後，桌面才會同順序落
+  const solid = scene.filter((p) => !isPendingRoll(s, p));
+  const cut = solid.length - keptCount(solid, keep, 0) > 0;
+  const moved = (s.pendingRolls ?? []).length > 0 && (cut || items.length > 0);
+  if (cut || moved)
+    tx.emit("story.truncated", { after: moved ? beforePending(s, scene, keep) : keep });
+  // 補送到換幕時，擲果落在舊幕這段（換幕清空、不進 GM）
+  const putBack = () => {
+    if (moved) for (const roll of w.pendingRolls ?? []) tx.emit("action.rolled", { ...roll });
+  };
   const slot = slots(w);
   for (const item of items) {
     if ("summary" in item) {
+      putBack();
       slot.reset();
       if (w.status === "lobby")
         tx.emit("story.part", {
@@ -221,6 +244,7 @@ async function applySync(tx: Tx, keep: KeepThrough, items: SyncItem[]) {
     }
     tx.emit("story.part", { ...item.part, ...slot.next(item.part.speaker), at: tx.now });
   }
+  putBack();
   const changed = cut || items.length > 0;
   // 有補送內容：等著的回合作廢重開（已送出的退回草稿），新回合號排在補送段之後，收回才認得「上一回合」
   if (changed && w.round?.phase === "acting") {
@@ -460,6 +484,7 @@ export const EXECUTOR: Record<string, (tx: Tx, p: any) => ReturnType<Handler>> =
       paused: p.paused === true || tx.s.exec.sync === "needed",
       imageGen: p.imageGen === true,
       imageGenRoute: p.imageGenRoute !== false,
+      diceEnabled: p.diceEnabled === true,
     });
     // 沒帶欄位不動既有值。幕號用房間自己的，不信執行端報的幕
     if (p.capacityHint !== undefined) {

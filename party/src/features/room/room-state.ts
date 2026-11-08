@@ -264,7 +264,7 @@ function onEvent(v: RoomView, e: any, at: number) {
       break;
     }
     case "round.undone": // 房主收回：那回合的段落與玩家行動都撤掉（storyOf 另補一行提示）
-      v.story = v.story.filter((p) => p.round !== e.round);
+      v.story = v.story.filter((p) => p.round !== e.round || p.rollBy); // 擲果不作廢
       if (v.story[v.story.length - 1]?.part === 33) v.story = v.story.slice(0, -1); // 連續收回只留一行（新的那行隨後補上）
       break;
     case "story.truncated": // 重開補送：本幕（上一幕摘要之後）保留到 after 為止

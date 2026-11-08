@@ -24,7 +24,6 @@ export function WorldEditor({
   onDiceChanged,
   onAddRulesBook,
   diceEnabled,
-  roomMode = false,
   onRefactorApplied,
   onRefreshReceipts,
   isTurnRunning,
@@ -47,7 +46,6 @@ export function WorldEditor({
   onDiceChanged?: () => Promise<void>;
   onAddRulesBook?: (bookJson: string, label: string) => Promise<void>;
   diceEnabled?: boolean;
-  roomMode?: boolean;
   /** AI 卡重構套用成功後：角色清單／卡片介面／桌面狀態都可能變了，交回 App 層重載 */
   onRefactorApplied: (live: () => boolean) => Promise<void>;
   /** 只重讀收據清單：重構套用失敗後的補救（桌面刷新不了也要讓陣容欄的復原項目對上） */
@@ -218,7 +216,7 @@ export function WorldEditor({
       {bibleTab && <div hidden={!bibleShown}>{bibleTab(setBibleDirty, bibleFlush)}</div>}
       <div className="world-editor-page" hidden={Boolean(bibleTab) && bibleShown}>
         {/* world form 只包這一格：世界書區有自己的條目表單，不能巢狀；頂列儲存寫 world.md 後再存劇本 */}
-        {diceEnabled !== undefined && <DiceSettings room={roomMode} entries={worldbook.entries} onAddRulesBook={onAddRulesBook} onRemoveEntries={worldbook.removeEntries} worldId={world} diceEnabled={diceEnabled} isTurnRunning={isTurnRunning} onChanged={onDiceChanged} />}
+        {diceEnabled !== undefined && <DiceSettings entries={worldbook.entries} onAddRulesBook={onAddRulesBook} onRemoveEntries={worldbook.removeEntries} worldId={world} diceEnabled={diceEnabled} isTurnRunning={isTurnRunning} onChanged={onDiceChanged} />}
         <form id={formId} onSubmit={saveWorldSettings} className="settings-form">
           <label>
             {t("worldSummary")}

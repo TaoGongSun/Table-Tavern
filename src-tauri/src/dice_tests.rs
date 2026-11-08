@@ -31,18 +31,16 @@ fn generated_faces_match_profile_and_bounds() {
 }
 
 #[test]
-fn instructions_split_player_and_room_and_track_the_exact_block() {
+fn instruction_adopts_player_rolls_and_tracks_the_exact_block() {
     let pool = measured_pool();
     for lang in ["zh-TW", "en"] {
-        let solo = instruction(&pool, false, lang);
-        let room = instruction(&pool, true, lang);
-        assert!(solo.contains("1d20+3"));
-        assert!(!room.contains("1d20+3"));
-        assert!(solo.contains("(d20#2=19)"));
-        assert_ne!(solo, room);
+        let text = instruction(&pool, lang);
+        assert!(text.contains("1d20+3"));
+        assert!(text.contains("(d20#2=19)"));
+        assert!(text.contains("NPC"));
         assert_eq!(
-            retained(&format!("before\n{solo}\nafter")),
-            Some(solo.as_str())
+            retained(&format!("before\n{text}\nafter")),
+            Some(text.as_str())
         );
     }
     assert_eq!(retained("plain instruction"), None);
@@ -53,14 +51,14 @@ fn pool_follows_normal_half_pending_and_idempotent_landing() {
     let root = crate::smart_free::test_root("dice-land");
     let world = data::create_world(&root, "沃恩的骰桌").unwrap();
     assert!(!data::read_state(&root, &world).unwrap().dice_enabled);
-    set_enabled(&root, &world, true, "zh-TW", false).unwrap();
-    set_enabled(&root, &world, true, "zh-TW", false).unwrap();
+    set_enabled(&root, &world, true, "zh-TW").unwrap();
+    set_enabled(&root, &world, true, "zh-TW").unwrap();
     assert_eq!(data::read_transcript(&root, &world, 0).unwrap().len(), 1);
     for (index, aborted) in [false, true].into_iter().enumerate() {
         let turn = format!("turn-{index}");
         with_commit(&root, &world, |tx| vars::begin_turn(tx, &turn, None)).unwrap();
         let pool = begin(&root, &world, &turn).unwrap().unwrap();
-        assert!(set_enabled(&root, &world, false, "en", false).is_err());
+        assert!(set_enabled(&root, &world, false, "en").is_err());
         let main = vars::PendingMain {
             text: format!("沃恩 (d20#1=1) {index}"),
             raw: None,
@@ -89,7 +87,7 @@ fn pool_follows_normal_half_pending_and_idempotent_landing() {
             data::append_event(&root, &world, 0, &event("late"), Some(&key)).unwrap();
         assert_eq!(receipt, None);
     }
-    set_enabled(&root, &world, false, "en", false).unwrap();
+    set_enabled(&root, &world, false, "en").unwrap();
     with_commit(&root, &world, |tx| vars::begin_turn(tx, "off", None)).unwrap();
     assert!(begin(&root, &world, "off").unwrap().is_none());
     with_commit(&root, &world, |tx| vars::finish_turn(tx, "off", None)).unwrap();
@@ -103,7 +101,7 @@ fn gm_lane_tail_retains_one_pool_and_api_history_does_not_add_it() {
     let m = crate::chat_assembly::gm_materials(&root, &world).unwrap();
     let scan = crate::chat_assembly::test_gm_scan(&root, &world, &m, "en");
     let (scope, _) = crate::chat_assembly::gm_scope(&m);
-    let dice = instruction(&measured_pool(), false, "en");
+    let dice = instruction(&measured_pool(), "en");
     let (_, turn) = crate::chat_assembly::gm_lane_parts(&m, &scan, &scope, &dice, "en");
     assert_eq!(turn.tail.matches(OPEN).count(), 1);
     assert_eq!(
@@ -146,11 +144,7 @@ fn editing_undo_and_restore_keep_the_saved_pool() {
 }
 
 #[test]
-fn player_formulas_obey_bounds_and_never_salvage_partial_expressions() {
-    assert_eq!(
-        suggestions("沃恩請擲d20、2D6 + 3，或1d20-2；再擲2d6+3。"),
-        ["1d20", "2d6+3", "1d20-2"]
-    );
+fn player_formulas_obey_bounds() {
     for bad in [
         "0d6",
         "101d6",
@@ -166,20 +160,16 @@ fn player_formulas_obey_bounds_and_never_salvage_partial_expressions() {
         "999999999999999d6",
     ] {
         assert!(parse_formula(bad).is_none(), "{bad}");
-        assert!(suggestions(bad).is_empty(), "{bad}");
+        assert!(!mentions_formula(bad), "{bad}");
     }
     for good in ["100d1000+9999", "1d2-9999", " D6 "] {
         assert!(parse_formula(good).is_some());
     }
-    assert_eq!(suggestions("請擲 1d20＋3，或 1d6－1"), ["1d20+3", "1d6-1"]);
-    assert!(suggestions("(d4#1=2)（d20 # 2=19）＋2。").is_empty());
-    assert_eq!(
-        suggestions("**命中骰：1d20+7**，**2d6**"),
-        ["1d20+7", "2d6"]
-    );
-    assert!(suggestions("1d6**2 與 2**1d6").is_empty());
-    assert_eq!(suggestions("1d2 1d3 1d4 1d5 1d6 1d7 1d8 1d9 1d10").len(), 8);
-    assert!(suggestions(&format!("{}1d20", "沃".repeat(32768))).is_empty());
+    assert!(mentions_formula("沃恩請擲 1d20＋3"));
+    assert!(mentions_formula("**命中骰：1d20+7**"));
+    assert!(!mentions_formula("(d4#1=2)（d20 # 2=19）＋2。"));
+    assert!(!mentions_formula("1d6**2 與 2**1d6"));
+    assert!(!mentions_formula(&format!("{}1d20", "沃".repeat(32768))));
 }
 
 #[test]
@@ -187,7 +177,7 @@ fn player_roll_checks_scene_and_turn_then_lands_one_restorable_public_floor() {
     let root = crate::smart_free::test_root("dice-player");
     let world = data::create_world(&root, "沃恩的骰桌").unwrap();
     assert!(roll(&root, &world, 0, "1d6").is_err());
-    set_enabled(&root, &world, true, "zh-TW", false).unwrap();
+    set_enabled(&root, &world, true, "zh-TW").unwrap();
     assert_eq!(
         roll(&root, &world, 1, "1d6").unwrap_err(),
         "dice-scene-changed"

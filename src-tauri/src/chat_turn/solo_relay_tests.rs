@@ -124,7 +124,7 @@ fn round_cap_defaults_to_three() {
 fn dice_refuses_the_gap_between_solo_relay_parts() {
     let root = crate::smart_free::test_root("dice-relay-gap");
     let world = data::create_world(&root, "雷克的骰桌").unwrap();
-    crate::dice::set_enabled(&root, &world, true, "en", false).unwrap();
+    crate::dice::set_enabled(&root, &world, true, "en").unwrap();
     let key = (world.clone(), "dice-relay".to_owned());
     signals().insert(key.clone(), Signal::default());
     let registration = Registration(key);

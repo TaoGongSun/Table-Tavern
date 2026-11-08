@@ -501,6 +501,14 @@
   font-size: 14px;
 }
 
+.app .part-dice {
+  color: var(--text);
+  font-size: inherit;
+}
+.app .part-dice .part-name {
+  color: var(--muted);
+}
+
 .app .part-handed {
   font-style: italic;
 }
@@ -992,6 +1000,14 @@
   min-height: 0;
   padding: 2px 8px;
   font-size: 13px;
+}
+
+/* 骰鈕：手機那排高度對齊鄰鈕（整排 stretch，這裡給下限）；擲自訂對齊輸入框底線 */
+.app .action-dice button.small {
+  min-height: 32px;
+}
+.app .dice-custom button.small {
+  min-height: 42px;
 }
 
 .app .row.attend {

@@ -37,6 +37,9 @@
 .dice-custom input { width: 6rem; }
 .dice-settings { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; margin-block: .75rem; }
 .dice-pool.dice-idle { border: 0; padding: 0; font-size: var(--fs-meta, .85em); color: var(--ink-3, currentColor); opacity: .75; }
+.dice-main { display: inline-flex; gap: .25rem; }
+.dice-more { padding-inline: .5rem; }
+.dice-off button:not(:disabled)[aria-disabled] { opacity: .55; }
 .dice-option { border-radius: 999px; border-color: var(--accent); }
 .dice-custom .btn { min-height: var(--control-h); }
 .rule-books { flex-basis: 100%; margin: 0; padding: 0; list-style: none; }

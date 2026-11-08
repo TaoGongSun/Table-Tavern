@@ -781,7 +781,7 @@ async fn dice_only_tail_is_counted_and_reopens_without_replaying_old_pools() {
     let _serial = crate::inflight::lock_real_process_tests();
     let fake = fake_claude("dice-tail-cap");
     let mut events = vec![event(TranscriptKind::Player, "", "沃恩", "巡視酒館")];
-    let dice = crate::dice::instruction(&crate::dice::measured_pool(), false, "en");
+    let dice = crate::dice::instruction(&crate::dice::measured_pool(), "en");
     for round in 0..9 {
         let mut input = gm_input(&events, ROOMY);
         input.tail = dice.clone();

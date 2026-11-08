@@ -23,7 +23,7 @@ fn same(a: &Key, b: &Key) -> bool {
     a.1 == b.1 && (a.0.is_none() || b.0.is_none() || a.0 == b.0)
 }
 
-/// 房間本幕的一段：位置與比對鍵；系統段（觀望、收回提示、分隔）不比
+/// 房間本幕的一段：位置與比對鍵；擲骰以外的系統段（觀望、收回提示、分隔）不比
 pub(super) struct RoomLine {
     pub(super) at: Value,
     pub(super) key: Option<Key>,
@@ -40,8 +40,8 @@ pub(super) fn room_lines(snapshot: &Value, queue: &[Value]) -> Vec<RoomLine> {
         .iter()
         .map(|p| RoomLine {
             at: json!({ "round": p["round"], "part": p["part"] }),
-            // 觀望、交給 GM 是房間自己投影的空段，桌上 seed 不輸出：留位置、不比
-            key: (p["speaker"]["kind"] != "system"
+            // 觀望、交給 GM 是房間自己投影的空段，桌上 seed 不輸出：留位置、不比。擲骰桌上有（seed 同樣輸出）
+            key: ((p["speaker"]["kind"] != "system" || p["speaker"]["marker"] == "dice_roll")
                 && p["watched"].is_null()
                 && p["handed"].is_null())
             .then(|| key_of(&p["speaker"], p["text"].as_str().unwrap_or_default())),

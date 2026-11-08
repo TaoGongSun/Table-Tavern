@@ -684,6 +684,13 @@ pub(crate) fn set_image_gen(enabled: bool) -> Result<(), String> {
     Ok(())
 }
 
+/// 這桌正開著房間就馬上重報狀態（途中切換擲骰，手機才立刻跟上）
+pub(crate) fn report_status(world: &str) {
+    if let Some(running) = running().as_ref().filter(|r| r.room.world() == world) {
+        let _ = running.room.out.send(run::status_frame(&running.room));
+    }
+}
+
 /// 桌面成員連線的身分（協定 §1.2）：裝置碼第一次用時產生、跟這間房存在一起
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -821,9 +828,8 @@ impl Engine for AppEngine {
     ) -> BoxFut<'_, Result<Narration, String>> {
         Box::pin(async move {
             let app = self.app.clone();
-            let n =
-                crate::chat_turn::gm_narrate(app, world, turn, channel(delta), Some(action), true)
-                    .await?;
+            let n = crate::chat_turn::gm_narrate(app, world, turn, channel(delta), Some(action))
+                .await?;
             Ok(Narration {
                 state_updates: n.state_update_text(),
                 text: n.text,

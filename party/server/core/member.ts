@@ -1,4 +1,5 @@
 // 客戶端 → 伺服器指令（協定 §5.1）：每則先查角色再查狀態，失敗拋 Fail、狀態不動。
+import { parseFormula, rollText } from "./dice";
 import { resnapshot } from "./snapshot";
 import {
   activeMembers,
@@ -36,6 +37,7 @@ export type Handler = (tx: Tx, p: any, m: Member) => void | "later" | Promise<vo
 const STORY = new Set([
   "story.part",
   "round.resolved",
+  "action.rolled",
   "round.undone",
   "story.truncated",
   "scene.summary",
@@ -227,6 +229,7 @@ function setDelegated(tx: Tx, by: Member, memberId: string, on: boolean) {
   tx.emit("seat.delegated", { memberId: t.id, cardId: t.cardId, on, by: by.id });
 }
 
+const ROLLS_PER_MEMBER = 8;
 const CHAT_KEEP = 200;
 const CHAT_BYTES = 64 * 1024;
 
@@ -258,7 +261,7 @@ function moveSeat(tx: Tx, from: Member, to: Member, by: Member) {
     delete s.returned[from.id];
   }
   s.cards = s.cards.map((c) => (c.cardId === to.cardId ? { ...c, claimedBy: to.id } : c));
-  for (const e of [...(s.round?.roster ?? []), ...(s.carry ?? [])])
+  for (const e of [...(s.round?.roster ?? []), ...(s.carry ?? []), ...(s.pendingRolls ?? [])])
     if (e.memberId === from.id) e.memberId = to.id;
   tx.emit("seat.reassigned", { from: from.id, to: to.id, cardId: to.cardId });
   // 暫離沒派出就抵消，否則下一回合登場
@@ -431,6 +434,32 @@ export const MEMBER: Record<string, Handler> = {
     if (e.text) tx.w.drafts[m.id] = e.text;
     Object.assign(e, { status: tx.s.drafts[m.id] ? "drafting" : "pending", text: null });
     tx.emit("action.retracted", { round: p.round, memberId: m.id });
+  },
+  // 由伺服器擲才公平：擲果一擲就公開、不能作廢。`submit`＝輸入框空著，同一筆交易把行動標成已送出（文字空）
+  "action.roll": (tx, p, m) => {
+    const e = myEntry(tx, m, p.round);
+    need(tx.s.exec.diceEnabled === true, "E_STATE_CONFLICT", "dice_disabled");
+    need(e.status !== "submitted" && e.status !== "skipped", "E_STATE_CONFLICT");
+    const formula = parseFormula(p.formula);
+    need(formula, "E_TEXT_INVALID");
+    const w = tx.w;
+    const pending = (w.pendingRolls ??= []);
+    need(pending.filter((x) => x.memberId === m.id).length < ROLLS_PER_MEMBER, "E_STATE_CONFLICT");
+    rate(tx, `r:${m.id}`, 5, 10_000);
+    const r = w.round!;
+    r.rollNo = (r.rollNo ?? 0) + 1;
+    const roll = {
+      memberId: m.id,
+      round: r.round,
+      part: -99 - r.rollNo,
+      text: rollText(cardName(w, m.cardId!), formula, tx.ctx.rng),
+    };
+    pending.push(roll);
+    tx.emit("action.rolled", { ...roll });
+    if (!p.submit) return;
+    Object.assign(e, { status: "submitted", text: "" });
+    delete w.drafts[m.id];
+    tx.emit("action.submitted", { round: r.round, memberId: m.id, text: "" });
   },
   "round.resolve": (tx, p, m) => {
     host(tx, m);

@@ -169,12 +169,11 @@ pub fn import_worldbook_as(
                 .and_then(serde_json::Value::as_bool)
                 .unwrap_or(false)
             {
-                summary.dice_detected |= !crate::dice::suggestions(entry_content(&entry))
-                    .is_empty()
+                summary.dice_detected |= crate::dice::mentions_formula(entry_content(&entry))
                     || ["key", "keysecondary"].iter().any(|key| {
                         entry
                             .get(key)
-                            .is_some_and(|v| !crate::dice::suggestions(&v.to_string()).is_empty())
+                            .is_some_and(|v| crate::dice::mentions_formula(&v.to_string()))
                     });
             }
             let new_key = uid.to_string();
