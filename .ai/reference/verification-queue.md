@@ -33,6 +33,8 @@
 
 ## 梯 2：要開 API 實聊、會燒額度
 
+- [vn-sprite-exit](../handoffs/vn-sprite-exit.md)：真模型同地點讓角色離開一輪，看 GM 是否照標 `[exit: 角色名]`、位置在最後台詞之後與離場旁白之前。
+
 | 順位 | 項目 | 為何排這個位置 |
 |---|---|---|
 | 5 | [refactor-mode-split](../handoffs/archive/refactor-mode-split.md) 已結案（2026-10-27） | 實測全過；下游 [interface-takeover-spike](../handoffs/archive/interface-takeover-spike.md) 逐型驗卡可開始 |

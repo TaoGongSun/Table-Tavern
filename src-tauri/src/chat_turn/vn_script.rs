@@ -66,6 +66,9 @@ pub(crate) enum VnCell {
         query: String,
         key: String,
     },
+    Exit {
+        character_id: String,
+    },
 }
 
 /// GM 這一拍停在哪種終止標記（停接力、球交回玩家）。
@@ -142,6 +145,32 @@ impl VnRoster {
                 .is_some_and(|keys| keys.iter().any(|key| key == expression))
     }
 
+    /// 退場專用寬容比對：完整名優先，其次簡稱；每層都必須唯一，不改對白解析。
+    fn exit_id(&self, name: &str) -> Option<String> {
+        let name = exit_name(name);
+        if name.is_empty() || name == "all" {
+            return None;
+        }
+        let known: Vec<_> = self
+            .characters
+            .iter()
+            .map(|(id, name)| (id, exit_name(name)))
+            .collect();
+        let exact: Vec<_> = known.iter().filter(|(_, known)| *known == name).collect();
+        let candidates = if exact.is_empty() {
+            known
+                .iter()
+                .filter(|(_, known)| without_note(known).contains(&name))
+                .collect()
+        } else {
+            exact
+        };
+        match candidates.as_slice() {
+            [(id, _)] => Some((*id).clone()),
+            _ => None,
+        }
+    }
+
     fn id_of(&self, name: &str) -> Option<String> {
         // 卡名常帶括號註記（「雷恩（花豹）」），模型只寫「雷恩」：去掉註記後唯一對上才認
         let mut noted = self
@@ -162,6 +191,18 @@ impl VnRoster {
                     .then(|| transport::PLAYER_SENTINEL.to_owned())
             })
     }
+}
+
+/// 忽略空白、大小寫，並把全形英數與標點折回半形（含卡名括號註記）。
+fn exit_name(name: &str) -> String {
+    name.chars()
+        .filter(|c| !c.is_whitespace())
+        .map(|c| match c {
+            '\u{FF01}'..='\u{FF5E}' => char::from_u32(c as u32 - 0xFEE0).unwrap_or(c),
+            _ => c,
+        })
+        .flat_map(char::to_lowercase)
+        .collect()
 }
 
 /// 名字尾端的括號註記去掉（全形、半形皆可）；沒有註記回原字。
@@ -206,6 +247,7 @@ enum Marker {
     Bgm(Option<Vec<String>>),
     /// `None`＝描述不合格，整格丟掉
     Sfx(Option<(String, String)>),
+    Exit(String),
 }
 
 /// 一行是不是章末／結局標記（包 5 提交時驗證用）。
@@ -236,6 +278,7 @@ fn marker(line: &str) -> Option<Marker> {
         ("ending", Some(id)) if !id.is_empty() => Some(Marker::Ending(id.to_owned())),
         ("bgm", Some(rest)) => Some(Marker::Bgm(crate::vn_audio::parse_bgm(rest))),
         ("sfx", Some(rest)) => Some(Marker::Sfx(crate::vn_audio::parse_sfx(rest))),
+        ("exit", Some(rest)) => Some(Marker::Exit(rest.to_owned())),
         ("bg", Some(rest)) => {
             // `[bg: 地點 | 時段 | 天氣]`，後兩欄可省
             let mut fields = rest.splitn(3, ['|', '｜']).map(str::trim);
@@ -404,6 +447,13 @@ fn parse_cells(text: &str, source: &VnSource, roster: &VnRoster) -> Vec<VnCell> 
                 Marker::Bgm(None) | Marker::Sfx(None) => {}
                 Marker::Bgm(Some(moods)) => cells.push(VnCell::Bgm { moods }),
                 Marker::Sfx(Some((query, key))) => cells.push(VnCell::Sfx { query, key }),
+                Marker::Exit(name) => {
+                    if matches!(source, VnSource::Gm) {
+                        if let Some(character_id) = roster.exit_id(&name) {
+                            cells.push(VnCell::Exit { character_id });
+                        }
+                    }
+                }
             }
             continue;
         }
@@ -690,7 +740,7 @@ pub(crate) fn gm_stop(
     }
 }
 
-/// 角色線過濾：`[bg]`／`[bgm]`／`[sfx]`／`[choices]`（連其下選項行）／`[chapter]`／`[ending]` 整行剝掉；
+/// 角色線過濾：`[bg]`／`[bgm]`／`[sfx]`／`[exit]`／`[choices]`（連其下選項行）／`[chapter]`／`[ending]` 整行剝掉；
 /// 別人的對白行文字原樣留著，解析時（`VnSource::Character`）改成旁白格。
 pub(crate) fn filter_character_reply(text: &str) -> String {
     let mut kept = Vec::new();

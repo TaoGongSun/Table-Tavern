@@ -189,7 +189,8 @@ export type VnCell =
   | { type: "chapter" }
   | { type: "ending"; id: string }
   | { type: "bgm"; moods: string[] }
-  | { type: "sfx"; query: string; key: string };
+  | { type: "sfx"; query: string; key: string }
+  | { type: "exit"; character_id: string };
 
 export interface VnEventCells {
   event_id: string | null;

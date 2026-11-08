@@ -38,6 +38,7 @@ pub fn vn_format_rules(lang: &str, extra: bool, places: bool) -> String {
              - Inner thoughts: `Name (expression) thought: text`, without quotation marks. Inner thoughts are shown to the player. Write only what the character feels or reacts to right now. Never reveal anything the player does not yet know from the private profile, the story bible, or any other setting material, and never add hints beyond the hint the story bible already wrote for that secret; that written hint may be followed as written.\n\
              - Staging: after the expression you may add `, closeup` or `, shake`, e.g. `Name (surprised, shake): \"line\"`; at most two per turn.\n\
              - Scene: `[bg: location | time | weather]` on its own line, only when the location, time or weather changes; {times}. Weather is optional and only for outdoor scenes: overcast, fog, rain, or clear when it clears up; left out, it stays the same at the same location and is clear at a new one. A new location clears the stage.\n\
+             - Exit: `[exit: Name]` on its own line, after that character's last dialogue and before the narration describing their departure, even at the same location. Use the name from the Characters list; one marker per departing character. Never use `[exit: all]`. The sprite disappears when that narration cell is entered; speaking again brings the character back.\n\
              - Music: `[bgm: mood]` on its own line, only when the mood changes, usually right after `[bg]`. Use one mood, or two separated by a comma, only from: Dark, Grooving, Relaxed, Bright, Calming, Bouncy, Driving, Mysterious, Intense, Eerie, Unnerving, Somber, Mystical, Uplifting, Humorous, Epic, Action, Suspenseful, Aggressive. `[bgm: off]` silences the music; leaving it out keeps the current track. Situations: combat → Action / Intense / Aggressive; suspense → Mysterious / Suspenseful / Eerie; sadness → Somber / Dark; daily life → Bouncy / Relaxed / Grooving; warmth or romance → Calming / Bright / Uplifting; grandeur → Epic; comedy → Humorous.\n\
              - Sound: `[sfx: short English description]` on its own line, for example `[sfx: door creak]` or `[sfx: thunder]`. It plays once when that cell is reached; at most two per turn. Only for a clear one-off event such as a door, thunder or breaking glass; never for every line and never for mood.\n\
              - Choices: only when the story reaches a point where the player must decide, end the story text with `[choices]` followed by 2–4 lines `- option`. No choices anywhere else.\n\
@@ -57,6 +58,7 @@ pub fn vn_format_rules(lang: &str, extra: bool, places: bool) -> String {
              - 內心獨白：`名字 (表情) thought: 台詞`，不加引號。內心獨白會播給玩家，只寫這個角色此刻的感受與反應。私設、劇本聖經與其他設定裡玩家還不知道的事，不要直接說破，也不要加上超出設計的暗示；劇本聖經為這條秘密寫好的「暗示」可以照著鋪。\n\
              - 演出：表情後可加 `, closeup`（特寫）或 `, shake`（震動），例如 `名字 (surprised, shake): 「台詞」`；每回合最多兩個。\n\
              - 換場景：`[bg: 地點 | 時段 | 天氣]` 單獨一行，只在地點、時段或天氣改變時寫；{times}；天氣可省、只寫室外：陰、霧、雨，轉晴時寫「晴」；不寫＝同地點沿用、換地點回晴；換地點＝舞台清空。\n\
+             - 退場：`[exit: 角色名]` 單獨一行，放在該角色最後一句台詞之後、離場旁白之前；同地點離開也要標。名字照登場角色名單，每位離場角色各寫一行，不用 `[exit: all]`。進入離場旁白那格就移除立繪，再說話會重新上台。\n\
              - 配樂：`[bgm: 情緒]` 單獨一行，只在氣氛改變時寫，通常緊接 `[bg]`。情緒用一個，或兩個以逗號分隔，只能從這份清單選：Dark, Grooving, Relaxed, Bright, Calming, Bouncy, Driving, Mysterious, Intense, Eerie, Unnerving, Somber, Mystical, Uplifting, Humorous, Epic, Action, Suspenseful, Aggressive。`[bgm: off]`＝靜音；不寫＝沿用現在這首。情境：戰鬥→Action／Intense／Aggressive、懸疑→Mysterious／Suspenseful／Eerie、悲傷→Somber／Dark、日常→Bouncy／Relaxed／Grooving、溫情戀愛→Calming／Bright／Uplifting、壯闊→Epic、搞笑→Humorous。\n\
              - 音效：`[sfx: 英文短描述]` 單獨一行，例如 `[sfx: door creak]`、`[sfx: thunder]`，播到這格時放一次；每回合最多兩個。只配明確的單次事件（開門、雷聲、碎裂），不配每句台詞、不配情緒。\n\
              - 選項：只在劇情走到需要玩家抉擇的分岔點時，在正文最後寫 `[choices]`，下面每行 `- 選項` 共 2–4 個；其他時候不要出選項。\n\
@@ -163,7 +165,7 @@ pub fn vn_character_rules(lang: &str) -> String {
             "\n## Visual novel script format\n\
              This table is played as a visual novel. Write only the assigned character's own part: dialogue as `Name (expression): \"line\"` \
              (expressions: {expressions}), inner thoughts as `Name (expression) thought: text`, and actions or expressions as narration \
-             (plain lines, no `Narration:` prefix); a blank line starts the next cell. Use the name exactly as on the list. Do not write markers such as `[bg]`, `[choices]`, `[chapter]` or `[ending]`, \
+             (plain lines, no `Narration:` prefix); a blank line starts the next cell. Use the name exactly as on the list. Do not write markers such as `[bg]`, `[exit]`, `[choices]`, `[chapter]` or `[ending]`, \
              and do not speak for other characters or the player. Inner thoughts are shown to the player. \
              Write only what the character feels or reacts to right now. You may show them faltering, guilty, or stopping short of speaking, so the player senses something is held back without learning what it is. Never reveal anything the player does not yet know from the private profile, \
              and never hint at it so the player could guess it.\n"
@@ -172,7 +174,7 @@ pub fn vn_character_rules(lang: &str) -> String {
             "\n## 視覺小說劇本格式\n\
              這桌以視覺小說呈現。每一輪只寫被指定角色自己的部分：對白 `名字 (表情): 「台詞」`（表情限 {expressions}）、\
              內心獨白 `名字 (表情) thought: 台詞`，動作與神情寫成旁白（直接寫，不加「旁白：」），空一行換下一格。名字照名單原字。\
-             不要寫 `[bg]`、`[choices]`、`[chapter]`、`[ending]` 這類標記，不要替其他角色或玩家說話。\
+             不要寫 `[bg]`、`[exit]`、`[choices]`、`[chapter]`、`[ending]` 這類標記，不要替其他角色或玩家說話。\
              內心獨白會播給玩家，跟台詞一樣，只寫這個角色此刻的感受與反應。可以寫出動搖、心虛或欲言又止，讓玩家感覺到有事，但不點出是什麼事。\
              私設裡玩家還不知道的事，不要說破，也不要暗示到猜得出。\n"
         ),

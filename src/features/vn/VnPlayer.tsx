@@ -220,7 +220,8 @@ export function VnPlayer({
   });
   realignRef.current = play.realign;
   playRef.current = play;
-  const stage = useMemo(() => stageAt(vn.cells, play.flatIndex), [vn.cells, play.flatIndex]);
+  const trailingExits = Boolean(play.current && !play.typing && !play.tailing && play.current === play.playable[play.playable.length - 1]);
+  const stage = useMemo(() => stageAt(vn.cells, play.flatIndex, trailingExits), [vn.cells, play.flatIndex, trailingExits]);
   const { previewSfx } = useVnAudio({
     worldId,
     bgm: stage.bgm,

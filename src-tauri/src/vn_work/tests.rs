@@ -244,6 +244,18 @@ fn cells(root: &Path, world: &str, scene: u64) -> String {
 #[test]
 fn export_then_import_rebuilds_the_same_scenes_and_branches() {
     let table = played("vn-work-roundtrip");
+    data::append_transcript(
+        &table.root,
+        &table.world,
+        2,
+        &event(
+            TranscriptKind::Narration,
+            "",
+            "[exit: 艾琳]",
+            staged(2, None),
+        ),
+    )
+    .unwrap();
     let pack = export(&table);
     let imported = import_work(&table.root, &pack, ImportMode::Replay, false).unwrap();
     let (root, copy) = (&table.root, &imported.world_id);

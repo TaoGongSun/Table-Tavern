@@ -276,7 +276,10 @@ fn failure_midway_leaves_no_table() {
 /// 匯出再匯入：聖經（持有者）、角色、可見度、開場、主角、語系分級人稱、逐角色欄位、卡層級美術欄位全部一致
 #[test]
 fn export_then_import_round_trips() {
-    let (root, first) = import("vn-card-round", &fixture());
+    let mut card = fixture();
+    let opening = vn_of(&mut card)["opening"].as_str().unwrap().to_owned();
+    vn_of(&mut card)["opening"] = json!(format!("[exit: 艾琳]\n{opening}"));
+    let (root, first) = import("vn-card-round", &card);
     let exported = vn_card_json(&root, &first.world_id, "en").unwrap();
     let vn_value = &exported["data"]["extensions"]["table_tavern"]["vn"];
     assert_eq!(

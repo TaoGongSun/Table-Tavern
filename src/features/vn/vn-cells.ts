@@ -186,7 +186,7 @@ export interface Stage {
 const SLOT_ORDER = [0, 1, 2];
 
 /** 從幕首摺疊到 `index`（含）：站位照進場順序，第四位進場時最久沒說話的人讓位；換地點清場 */
-export function stageAt(cells: FlatCell[], index: number): Stage {
+export function stageAt(cells: FlatCell[], index: number, trailingExits = false): Stage {
   const stage: Stage = {
     slots: [null, null, null],
     names: {},
@@ -201,7 +201,14 @@ export function stageAt(cells: FlatCell[], index: number): Stage {
     bgm: null,
   };
   let recent: string[] = [];
-  for (const { cell } of cells.slice(0, index + 1)) {
+  // 最後文字格讀完後也處理尾端退場；不提早套用背景、音樂或改動閱讀游標。
+  for (const [i, { cell }] of cells.slice(0, trailingExits ? undefined : index + 1).entries()) {
+    if (i > index && cell.type !== "exit") continue;
+    if (cell.type === "exit") {
+      stage.slots = stage.slots.map((id) => id === cell.character_id ? null : id);
+      recent = recent.filter((id) => id !== cell.character_id);
+      continue;
+    }
     if (cell.type === "bg") {
       if (cell.location !== stage.location) {
         stage.slots = [null, null, null];

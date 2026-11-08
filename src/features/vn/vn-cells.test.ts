@@ -132,6 +132,31 @@ describe("stageAt", () => {
     expect(stage.speaker).toBe("c");
   });
 
+  it("exits at the departure cell, rewinds, and re-enters without losing the outfit", () => {
+    const cells: VnCell[] = [d("a", "bye", { variant: "armor" }), d("b", "bye"),
+      { type: "exit", character_id: "a" }, { type: "exit", character_id: "missing" }, n("leaves"),
+      { type: "exit", character_id: "b" }, d("a", "back"), d("c", "hi"), d("d", "hi"), d("e", "hi")];
+    expect(at(cells, 1).slots).toEqual(["a", "b", null]);
+    expect(at(cells, 4).slots).toEqual([null, "b", null]);
+    expect(at(cells, 5).slots).toEqual([null, null, null]);
+    expect(at(cells, 6).slots).toEqual(["a", null, null]);
+    expect(at(cells, 6).variants.a).toBe("armor");
+    expect(at(cells, 9).slots).toEqual(["e", "c", "d"]);
+    expect(at(cells, 1).slots).toEqual(["a", "b", null]);
+    expect(isPlayable(pendingCells(0, [cells[2]])[0], null)).toBe(false);
+  });
+
+  it("projects trailing exits only when requested, without advancing other controls", () => {
+    const cells = flatten([ev("g", "narration", [d("a", "bye"),
+      { type: "exit", character_id: "a" }, bg("Elsewhere"), { type: "bgm", moods: [] }])]);
+    expect(stageAt(cells, 0).slots).toEqual(["a", null, null]);
+    expect(stageAt(cells, 0, true)).toMatchObject({ slots: [null, null, null], location: null, bgm: null });
+    const formal = cells.map(({ cell }) => cell);
+    expect(realignCursor(formal, { index: 0, shown: 3 }, formal)).toEqual({ index: 0, shown: 3 });
+    expect(stageAt(pendingCells(1, formal), 0, true).slots).toEqual(stageAt(cells, 0, true).slots);
+    expect(stageAt(cells.slice(0, 1), 0, true).slots).toEqual(["a", null, null]); // 撤回暫定退場
+  });
+
   it("a fourth entrant replaces whoever spoke least recently", () => {
     const stage = at([d("a", "1"), d("b", "2"), d("c", "3"), d("a", "4"), d("d", "5")]);
     expect(stage.slots).toEqual(["a", "d", "c"]);

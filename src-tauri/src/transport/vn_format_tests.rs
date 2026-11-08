@@ -53,12 +53,14 @@ fn format_rules_teach_chapter_and_ending_markers() {
     for lang in ["zh-TW", "en"] {
         let rules = vn_format_rules(lang, false, false);
         assert!(
-            rules.contains("[chapter]") && rules.contains("[ending:"),
+            rules.contains("[chapter]") && rules.contains("[ending:") && rules.contains("[exit:"),
             "{lang}"
         );
         let character = vn_character_rules(lang);
         assert!(
-            character.contains("[chapter]") && character.contains("[ending]"),
+            character.contains("[chapter]")
+                && character.contains("[ending]")
+                && character.contains("[exit]"),
             "{lang}"
         );
         let assigned = vn_assigned_line("格羅姆", lang);

@@ -231,6 +231,30 @@ afterEach(() => {
 });
 
 describe("VnPlayer", () => {
+  it("removes the sprite on entering departure narration and restores it when going back", async () => {
+    const bye: VnCell = { type: "dialogue", speaker_id: "a", speaker_name: "Alice", expression: "neutral",
+      variant: null, thought: false, directive: null, text: "bye" };
+    const exit: VnCell = { type: "exit", character_id: "a" };
+    const sprites = () => host.querySelectorAll(".vn-sprite").length;
+    backend.cells = [gm("g", [bye, exit, n("leaves"), { ...bye, text: "back" }])];
+    await render({ events: [event("g")] });
+    expect(sprites()).toBe(1);
+    await advance();
+    expect(text()).toBe("leaves");
+    expect(sprites()).toBe(0);
+    await press("ArrowLeft");
+    expect(text()).toBe("bye");
+    expect(sprites()).toBe(1);
+    await advance();
+    await advance();
+    expect(text()).toBe("back");
+    expect(sprites()).toBe(1);
+    backend.cells = [gm("g", [bye, exit])];
+    await render({ events: [event("g")] });
+    expect(text()).toBe("bye");
+    expect(sprites()).toBe(0); // 尾端控制格沒有額外停點
+  });
+
   it("shows an event's flag hints on its first cell only, and not when turned off", async () => {
     backend.cells = [
       {

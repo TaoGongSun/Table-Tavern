@@ -421,3 +421,67 @@ fn bgm_and_sfx_markers_parse_and_drop_unknown_moods() {
     let reply = "[bgm: Mysterious]\n[sfx: door creak]\n狐狸 (happy): 「嗨」";
     assert_eq!(filter_character_reply(reply), "狐狸 (happy): 「嗨」");
 }
+
+#[test]
+fn exit_markers_are_gm_only_and_stream_with_the_departure_cell() {
+    let text = "艾琳: 再見。\n[EXIT： 艾琳]\n她走出門。";
+    let expected = vec![
+        line(Some("irene"), "艾琳", "neutral", "再見。"),
+        VnCell::Exit {
+            character_id: "irene".into(),
+        },
+        narration("她走出門。"),
+    ];
+    assert_eq!(gm(text), expected);
+    assert_eq!(parse_text(text, &VnSource::Gm, &roster()).cells, expected);
+    assert!(!parse_text("[exit: 艾琳", &VnSource::Gm, &roster())
+        .cells
+        .iter()
+        .any(|cell| matches!(cell, VnCell::Exit { .. })));
+    assert_eq!(
+        gm("[exit: 未知]\n[exit: 阿誠]\n[exit: all]\n[exit:]"),
+        vec![]
+    );
+    assert_eq!(gm("[exit]"), vec![narration("[exit]")]);
+    let source = VnSource::Character {
+        self_id: "irene".into(),
+    };
+    assert_eq!(
+        parse_event(text, &source, &roster()),
+        vec![expected[0].clone(), expected[2].clone()]
+    );
+    assert_eq!(filter_character_reply(text), "艾琳: 再見。\n她走出門。");
+    assert!(!parse_text(text, &source, &roster())
+        .cells
+        .iter()
+        .any(|cell| matches!(cell, VnCell::Exit { .. })));
+}
+
+#[test]
+fn exit_names_allow_unique_short_names_spacing_case_and_width() {
+    let mut roster = VnRoster {
+        characters: vec![
+            ("a".into(), "Ｒａｙ　Ｗｏｌｆ（牧羊犬）".into()),
+            ("b".into(), "雷恩（花豹）".into()),
+        ],
+        ..Default::default()
+    };
+    for (name, id) in [
+        ("ray wolf(牧羊犬)", "a"),
+        (" RAY WOLF ", "a"),
+        ("ｗｏｌｆ", "a"),
+        ("Ray", "a"),
+        ("雷恩", "b"),
+        ("雷", "b"),
+    ] {
+        assert_eq!(roster.exit_id(name), Some(id.into()), "{name}");
+    }
+    roster.characters.push(("c".into(), "Ray Fox".into()));
+    assert_eq!(roster.exit_id("Ray"), None);
+    assert_eq!(roster.exit_id("Ray Wolf"), Some("a".into()));
+    roster
+        .characters
+        .push(("d".into(), "raywolf(牧羊犬)".into()));
+    assert_eq!(roster.exit_id("ＲＡＹＷＯＬＦ（牧羊犬）"), None);
+    assert_eq!(roster.exit_id("牧羊犬"), None); // 註記不是角色簡稱
+}
