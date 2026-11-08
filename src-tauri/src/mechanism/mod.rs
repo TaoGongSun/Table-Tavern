@@ -6,6 +6,7 @@ mod apply;
 mod block_paths;
 mod budget;
 mod collection;
+mod combat;
 mod derive;
 pub mod engine_records;
 mod ledger;
@@ -28,6 +29,8 @@ mod write_guard;
 mod block_scope_tests;
 #[cfg(test)]
 mod collection_tests;
+#[cfg(test)]
+mod combat_tests;
 #[cfg(test)]
 mod feedback_e2e_tests;
 #[cfg(test)]

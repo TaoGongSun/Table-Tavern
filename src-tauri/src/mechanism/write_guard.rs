@@ -101,12 +101,14 @@ pub(super) fn guard_fence(
 // `characters.*.status` 擋不住新格，所以格存不存在另查 `panel_cells`。
 // ---------------------------------------------------------------------
 
+use crate::data::default_panel::combat::{COMBAT, FOES};
 use crate::data::default_panel::{CHARACTERS, TRACKING};
 use crate::data::{FieldKind, FieldRule};
 
-fn panel_root(path: &[String]) -> bool {
-    path.first()
-        .is_some_and(|root| root == CHARACTERS || root == TRACKING)
+fn panel_root(mechanism: &Mechanism, path: &[String]) -> bool {
+    path.first().is_some_and(|root| {
+        root == CHARACTERS || root == TRACKING || (mechanism.combat_panel && root == COMBAT)
+    })
 }
 
 fn cell_exists(mechanism: &Mechanism, key: &str) -> bool {
@@ -124,7 +126,7 @@ pub(super) fn panel_target(
     mechanism: &Mechanism,
     path: &[String],
 ) -> Option<Result<FieldRule, String>> {
-    if !mechanism.default_panel || !panel_root(path) {
+    if !mechanism.default_panel || !panel_root(mechanism, path) {
         return None;
     }
     let shown = super::note::shown_pointer(path);
@@ -133,6 +135,12 @@ pub(super) fn panel_target(
         [root, key, ..] if root == CHARACTERS && !cell_exists(mechanism, key) => format!(
             "{} 底下的角色格由系統建立，沒有「{key}」這一格；只能寫已有角色格的欄位。",
             super::note::shown_pointer(&path[..1])
+        ),
+        [root, foes] if root == COMBAT && foes == FOES => format!(
+            "{shown} 是整組敵人，不能整支替換、刪除或搬移；新增敵人用 insert 寫 {shown}/<名字>。"
+        ),
+        [root, foes, _] if root == COMBAT && foes == FOES => format!(
+            "{shown} 是整筆敵人，只能在更新區塊用 insert 新增或 remove 移除。"
         ),
         [root, _] if root == CHARACTERS => format!(
             "{shown} 是整個角色格，不能整支替換、刪除或搬移；只能更新底下的欄位（例 {shown}/status）。"
@@ -229,7 +237,9 @@ pub(super) fn panel_fence(
     block.lists.retain(|path| !inside(path));
     block.maps.retain(|path| !inside(path));
     block.lists.retain(|path| {
+        let combat = super::combat::fence_refusal(mechanism, path);
         let refusal = match panel_target(mechanism, path) {
+            _ if combat.is_some() => combat.unwrap_or_default(),
             None => return true,
             Some(Ok(rule)) if rule.kind == FieldKind::List => return true,
             Some(Ok(_)) => format!(
@@ -243,8 +253,13 @@ pub(super) fn panel_fence(
         false
     });
     block.maps.retain(|path| {
+        if let Some(detail) = super::combat::fence_refusal(mechanism, path) {
+            records.push(Record::new(RecordKind::Rejected, path.join("."), detail));
+            dropped.push(path.clone());
+            return false;
+        }
         let container = match path.as_slice() {
-            [root] => root == CHARACTERS || root == TRACKING,
+            [root] => root == CHARACTERS || root == TRACKING || root == COMBAT,
             [root, key] => root == CHARACTERS && cell_exists(mechanism, key),
             _ => false,
         };
@@ -273,7 +288,9 @@ pub(super) fn panel_fence(
         let in_list = lists
             .iter()
             .any(|list| list.len() < path.len() && path.starts_with(list));
+        let combat = super::combat::fence_refusal(mechanism, path);
         let refusal = match panel_target(mechanism, path) {
+            _ if combat.is_some() => combat,
             _ if in_list => None,
             None => None,
             Some(Ok(rule)) if rule.kind == FieldKind::List => Some(list_item_refusal(path)),

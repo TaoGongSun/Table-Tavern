@@ -317,6 +317,7 @@ fn value_to_patch(value: &serde_json::Value) -> Result<Patch, Record> {
             path,
             from,
             value: None,
+            dice: None,
         });
     }
     let path = match obj.get("path") {
@@ -331,11 +332,22 @@ fn value_to_patch(value: &serde_json::Value) -> Result<Patch, Record> {
     if path.is_empty() {
         return Err(reject(label, format!("{name} 的 path 是空的，未套用。")));
     }
+    let dice = match obj.get("dice") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(text)) if text.chars().count() <= 64 => Some(text.clone()),
+        Some(_) => {
+            return Err(reject(
+                label,
+                format!("dice 要是 64 字以內的骰號算式字串（例 \"d8#1+3\"）{at}，未套用。"),
+            ))
+        }
+    };
     Ok(Patch {
         op,
         path,
         from: Vec::new(),
         value: obj.get("value").cloned(),
+        dice,
     })
 }
 

@@ -10,6 +10,8 @@ use super::{
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
+pub mod combat;
+
 pub const CHARACTERS: &str = "characters";
 pub const TRACKING: &str = "tracking";
 pub const STATUS: &str = "status";
@@ -70,6 +72,13 @@ pub fn label(path: &[String], en: bool) -> Option<&'static str> {
         [TRACKING, "goals"] => ("目標", "Goals"),
         [TRACKING, "promises"] => ("承諾", "Promises"),
         [TRACKING, "clues"] => ("線索", "Clues"),
+        [CHARACTERS, _, combat::HP] | [combat::COMBAT, combat::FOES, _, combat::HP] => ("HP", "HP"),
+        [CHARACTERS, _, combat::CONDITIONS]
+        | [combat::COMBAT, combat::FOES, _, combat::CONDITIONS] => ("狀態效果", "Conditions"),
+        [combat::COMBAT] => ("戰鬥", "Combat"),
+        [combat::COMBAT, combat::ORDER] => ("先攻", "Initiative"),
+        [combat::COMBAT, combat::TURN] => ("輪到", "Turn"),
+        [combat::COMBAT, combat::FOES] => ("敵人", "Foes"),
         _ => return None,
     };
     Some(if en { english } else { zh })
@@ -229,6 +238,7 @@ pub fn sync(state: &mut WorldState, cards: &[PanelCard]) -> bool {
             bindings.insert(card.id.clone(), cell_path(&key));
         }
     }
+    combat::sync(state);
     before
         != (
             state.mechanism.clone(),
@@ -333,6 +343,7 @@ pub fn add_field(state: &mut WorldState, parent: &[String], name: &str) -> bool 
         || name.contains(['.', '*'])
         || name.starts_with('_')
         || RESERVED.contains(&name)
+        || combat::RESERVED.contains(&name)
     {
         return false;
     }

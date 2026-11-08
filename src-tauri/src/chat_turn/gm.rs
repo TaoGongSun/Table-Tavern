@@ -119,7 +119,7 @@ pub(crate) struct GmNarration {
 /// 房間廣播的預設狀態欄快照（table-status-panel §4）：只在預設桌回 Some。白名單取欄位、不整棵序列化——
 /// 每格帶 `status`、`items`（索引分支轉字串陣列）與手動加的文字欄；追蹤只帶三條清單。底線開頭的鍵不送。
 pub(crate) fn scene_panel(state: &data::WorldState) -> Option<Value> {
-    use data::default_panel::{CHARACTERS, ITEMS, STATUS, TRACKING, TRACKING_LISTS};
+    use data::default_panel::{combat, CHARACTERS, ITEMS, STATUS, TRACKING, TRACKING_LISTS};
     use data::StateNode;
     if !state.mechanism.default_panel {
         return None;
@@ -153,7 +153,7 @@ pub(crate) fn scene_panel(state: &data::WorldState) -> Option<Value> {
         let mut out = serde_json::Map::new();
         for (name, node) in fields {
             match (name.as_str(), node) {
-                (ITEMS, _) => {
+                (ITEMS | combat::CONDITIONS, _) => {
                     out.insert(name.clone(), list(Some(node)));
                 }
                 (_, StateNode::Leaf(text)) if !name.starts_with('_') => {
@@ -171,7 +171,32 @@ pub(crate) fn scene_panel(state: &data::WorldState) -> Option<Value> {
         .iter()
         .map(|key| ((*key).to_owned(), list(tracking.and_then(|t| t.get(*key)))))
         .collect();
-    Some(json!({ "characters": characters, "tracking": tracking }))
+    let mut panel = json!({ "characters": characters, "tracking": tracking });
+    // 戰鬥區（ttrpg-combat-tracker §4）：先攻順序非空才附；拒收標記不廣播
+    let fight = children(tree.get(combat::COMBAT));
+    let order = combat::list_values(fight.and_then(|f| f.get(combat::ORDER)));
+    if !order.is_empty() {
+        let turn = match fight.and_then(|f| f.get(combat::TURN)) {
+            Some(StateNode::Leaf(name)) => name.clone(),
+            _ => String::new(),
+        };
+        let foes: serde_json::Map<String, Value> =
+            children(fight.and_then(|f| f.get(combat::FOES)))
+                .into_iter()
+                .flatten()
+                .filter_map(|(name, foe)| {
+                    let fields = children(Some(foe))?;
+                    let hp = match fields.get(combat::HP) {
+                        Some(StateNode::Leaf(hp)) => hp.clone(),
+                        _ => String::new(),
+                    };
+                    let conditions = list(fields.get(combat::CONDITIONS));
+                    Some((name.clone(), json!({ "hp": hp, "conditions": conditions })))
+                })
+                .collect();
+        panel["combat"] = json!({ "order": order, "turn": turn, "foes": foes });
+    }
+    Some(panel)
 }
 
 /// 房間狀態列：提交後的平欄三鍵。沒有的鍵送空字串（清空）。
@@ -222,6 +247,8 @@ pub(crate) async fn gm_narrate(
     let turn = TurnGuard::begin(&root, &world_id, &turn_id, &lang)?;
     let dice_pool = crate::dice::begin(&root, &world_id, &turn_id)?;
     let mut materials = gm_materials(&root, &world_id)?;
+    // 戰鬥 HP 的 dice 骰號只認本輪池（ttrpg-combat-tracker §2.5）：跟著固定輸入的機制帶進提交
+    materials.state.mechanism.turn_dice = dice_pool.clone();
     materials
         .party
         .hand_over(&materials.events, action_id.as_deref());

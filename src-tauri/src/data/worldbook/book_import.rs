@@ -161,6 +161,7 @@ pub fn import_worldbook_as(
                     path: title,
                     detail: crate::ui_msg::UiMsg::LedgerScaffoldAbsorbed.to_string(),
                     group: None,
+                    mark: None,
                 });
             }
             if !entry

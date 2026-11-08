@@ -96,10 +96,27 @@ pub(crate) async fn set_state_path(
             return Ok(());
         }
         let changed = data::update_state(&root, &world_id, |state| {
-            let changed = match data::default_panel::clear_field(state, &path, &value) {
+            let combat = state.mechanism.combat_panel;
+            // 輪到誰只能是先攻順序裡的名字（ttrpg-combat-tracker §2.6）
+            if combat
+                && !value.is_empty()
+                && path
+                    == [
+                        data::default_panel::combat::COMBAT,
+                        data::default_panel::combat::TURN,
+                    ]
+                && !data::default_panel::combat::in_order(&state.state.tree, &value)
+            {
+                return Err(format!("「{value}」不在先攻順序裡。").into());
+            }
+            let mut changed = match data::default_panel::clear_field(state, &path, &value) {
                 Some(changed) => changed,
                 None => data::set_tree_value(&mut state.state.tree, &path, &value),
             };
+            if combat {
+                changed |= data::default_panel::combat::settle(&mut state.state.tree);
+                changed |= state.state.refused.remove(&path.join(".")).is_some();
+            }
             Ok(changed.then(|| state.clone()))
         })?;
         match changed {
@@ -127,7 +144,13 @@ pub(crate) async fn set_panel_list(
     data::state_commit::with_commit(&root, &world_id, |_| {
         let changed = data::update_state(&root, &world_id, |state| {
             let items = mechanism::panel_list(&state.mechanism, &path, items)?;
-            Ok(data::default_panel::write_list(state, &path, &items).then(|| state.clone()))
+            let mut changed = data::default_panel::write_list(state, &path, &items);
+            // 改先攻順序後在存快照前清掉不在順序裡的輪到誰（ttrpg-combat-tracker §2.6）
+            if state.mechanism.combat_panel {
+                changed |= data::default_panel::combat::settle(&mut state.state.tree);
+                changed |= state.state.refused.remove(&path.join(".")).is_some();
+            }
+            Ok(changed.then(|| state.clone()))
         })?;
         match changed {
             Some(state) => {

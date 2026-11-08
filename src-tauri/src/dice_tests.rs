@@ -269,3 +269,28 @@ fn import_detects_only_enabled_new_entries_for_both_book_formats() {
     }
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn resolve_reads_faces_from_pool() {
+    let pool = "d4:[1,3]\nd6:[4,2]\nd20:[19,3]";
+    assert_eq!(
+        resolve(pool, "d6#1 + d6#2 + 3"),
+        Ok((9, vec![(6, 1), (6, 2)]))
+    );
+    assert_eq!(resolve(pool, "D20#1-2"), Ok((17, vec![(20, 1)])));
+    assert_eq!(resolve(pool, "d4#1-3").map(|(total, _)| total), Ok(-2));
+    for bad in [
+        "d6#3",
+        "d8#1",
+        "d6#0",
+        "d6#1+d6#1",
+        "2d6",
+        "d6#1+3+4",
+        "",
+        "d6",
+    ] {
+        assert!(resolve(pool, bad).is_err(), "{bad}");
+    }
+    let eleven = ["d6#1"; 11].join("+");
+    assert!(resolve(pool, &eleven).is_err(), "最多 10 顆");
+}

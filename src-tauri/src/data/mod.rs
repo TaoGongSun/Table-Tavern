@@ -74,8 +74,9 @@ pub(crate) use state::is_false;
 pub use state::{
     clear_party, is_index_branch, node_at, read_state, set_party, set_player_card, set_tree_value,
     update_state, write_state, CollectionItem, CollectionSpec, CollectionValueType, Condition,
-    FieldKind, FieldRule, InjectLevel, Mechanism, NumericUpdate, OpeningMeta, StateNode, TableKind,
-    TableState, TimePart, Trigger, TriggerCase, TriggerMode, UpdateMode, WorldState,
+    FieldKind, FieldRule, InjectLevel, Mechanism, NumericUpdate, OpeningMeta, RefusedMark,
+    StateNode, TableKind, TableState, TimePart, Trigger, TriggerCase, TriggerMode, UpdateMode,
+    WorldState,
 };
 #[cfg(test)]
 pub use world::create_world;
@@ -136,6 +137,7 @@ pub(crate) use paths::{
     refactor_outcome_path, validate_id, vn_audio_dir, vn_background_dir, vn_sprite_dir,
 };
 #[allow(unused_imports)]
+pub(crate) use state::node_at_mut;
 pub use state::SceneLabel;
 pub use state::COLLECTION_ORDER_KEY;
 

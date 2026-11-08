@@ -357,6 +357,7 @@ mod tests {
                 path: "船員合集".to_owned(),
                 detail: "偵測到 [initvar] 標記".to_owned(),
                 group: None,
+                mark: None,
             }],
         );
 
@@ -431,6 +432,7 @@ mod tests {
             path: path.to_owned(),
             detail,
             group: None,
+            mark: None,
         };
         mechanism::append_log(
             &root.0,

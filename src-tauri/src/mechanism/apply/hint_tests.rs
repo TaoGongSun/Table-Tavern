@@ -19,6 +19,7 @@ fn patch(op: PatchOp, pointer: &str, value: Option<serde_json::Value>) -> Patch 
         path: segments(pointer),
         from: Vec::new(),
         value,
+        dice: None,
     }
 }
 
@@ -36,6 +37,7 @@ fn move_patch(from: &str, to: &str) -> Patch {
         path: segments(to),
         from: segments(from),
         value: None,
+        dice: None,
     }
 }
 
@@ -417,6 +419,7 @@ fn hint_pointer_escapes_and_round_trips_through_the_parser() {
             path: vec!["a/b~c".to_owned(), "子".to_owned()],
             from: Vec::new(),
             value: Some(serde_json::json!(1)),
+            dice: None,
         }],
     );
     let note = only_note(&outcome);

@@ -59,6 +59,7 @@ fn patch(op: PatchOp, path: &str, value: Option<serde_json::Value>) -> Patch {
         path: path.split('/').map(str::to_owned).collect(),
         from: Vec::new(),
         value,
+        dice: None,
     }
 }
 
@@ -68,6 +69,7 @@ fn moved(from: &str, to: &str) -> Patch {
         path: to.split('/').map(str::to_owned).collect(),
         from: from.split('/').map(str::to_owned).collect(),
         value: None,
+        dice: None,
     }
 }
 

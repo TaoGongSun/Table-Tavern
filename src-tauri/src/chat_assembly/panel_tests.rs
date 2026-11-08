@@ -87,3 +87,22 @@ fn new_list_item_is_visible_on_the_next_non_aligned_turn() {
     assert!(all.contains("- 泥地上的蹄印"), "{all}");
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn combat_table_prompt_carries_combat_guide_and_dice_example() {
+    let (root, world_id) = panel_table("panel-combat-prompt");
+    data::update_state(&root, &world_id, |state| {
+        state.dice_enabled = true;
+        Ok(Some(state.clone()))
+    })
+    .unwrap();
+    assert!(data::default_panel::ensure(&root, &world_id).unwrap());
+    let system = messages(&root, &world_id, "zh-TW")[0].content.clone();
+    assert!(system.contains("## 戰鬥欄（數字由系統算）"), "{system}");
+    assert!(system.contains("同種敵人要取不同名字"));
+    assert!(system
+        .contains(r#"{"op":"delta","path":"/characters/格羅姆/hp","value":-7,"dice":"d8#1+3"}"#));
+    let english = messages(&root, &world_id, "en")[0].content.clone();
+    assert!(english.contains("## Combat fields (arithmetic done by the system)"));
+    let _ = std::fs::remove_dir_all(&root);
+}

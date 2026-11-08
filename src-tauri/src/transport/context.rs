@@ -271,6 +271,14 @@ pub(super) fn gm_system_prompt(
             system.push_str(&super::panel_prompt::guide(lang));
             system.push_str("\n\n");
             system.push_str(&super::panel_prompt::example(mechanism, lang));
+            if mechanism.combat_panel {
+                system.push_str("\n\n");
+                system.push_str(&super::panel_prompt::combat_guide(lang));
+                if let Some(example) = super::panel_prompt::combat_example(mechanism, lang) {
+                    system.push_str("\n\n");
+                    system.push_str(&example);
+                }
+            }
         } else if mechanism.numeric_update == NumericUpdate::DeltaOnly {
             // 無介面的增量桌（重構過、或非 MVU 來源）：沒有範例 GM 只看得到通用協定的
             // /Heroes、/World，會照那個樣子自創路徑（DongeonMaster 重構桌實測踩過）。

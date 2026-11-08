@@ -249,3 +249,67 @@ pub(crate) fn roll(
             .map_err(|e| e.to_string())
     })
 }
+
+/// 骰號算式引用到的一顆骰：骰型與型內序號（1 起算）。
+pub(crate) type DieRef = (u32, usize);
+
+/// 戰鬥 HP 綁骰池（ttrpg-combat-tracker §2.5）：本輪池（`format_pool` 的固定格式）＋骰號算式 → 總和與用到的骰。
+/// 算式：`dN#k` 以 `+` 相連，最後可接一個 `±整數`（例 `d8#1+d6#3+3`），最多 10 顆、常數 ±9999；骰面一律取池裡的值。
+/// 擋下時回給模型看的原因。
+pub(crate) fn resolve(pool: &str, formula: &str) -> Result<(i64, Vec<DieRef>), String> {
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = RE.get_or_init(|| {
+        regex::Regex::new(
+            r"^(d[0-9]{1,4}#[0-9]{1,3}(?:\+d[0-9]{1,4}#[0-9]{1,3}){0,9})(?:([+-])([0-9]{1,4}))?$",
+        )
+        .unwrap()
+    });
+    let compact: String = formula
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    let shape = || {
+        format!("dice「{formula}」格式不對：骰號用 dN#k 以 + 相連、最後可加一個常數（例 d8#1+3），最多 10 顆。")
+    };
+    let caps = re.captures(&compact).ok_or_else(shape)?;
+    let rows: Vec<(u32, Vec<i64>)> = pool
+        .lines()
+        .filter_map(|line| {
+            let (sides, faces) = line.strip_prefix('d')?.split_once(":[")?;
+            let faces = faces.strip_suffix(']')?;
+            Some((
+                sides.parse().ok()?,
+                faces.split(',').filter_map(|f| f.parse().ok()).collect(),
+            ))
+        })
+        .collect();
+    let mut total: i64 = 0;
+    let mut used: Vec<DieRef> = Vec::new();
+    for term in caps[1].split('+') {
+        let (sides, index) = term[1..].split_once('#').ok_or_else(shape)?;
+        let (sides, index): (u32, usize) = (
+            sides.parse().map_err(|_| shape())?,
+            index.parse().map_err(|_| shape())?,
+        );
+        let face = rows
+            .iter()
+            .find(|(row, _)| *row == sides)
+            .and_then(|(_, faces)| faces.get(index.wrapping_sub(1)))
+            .ok_or_else(|| format!("本輪骰池沒有 d{sides}#{index}，dice 只能引用本輪池裡的骰。"))?;
+        if used.contains(&(sides, index)) {
+            return Err(format!("d{sides}#{index} 在同一個 dice 裡用了兩次。"));
+        }
+        used.push((sides, index));
+        total += face;
+    }
+    if let (Some(sign), Some(digits)) = (caps.get(2), caps.get(3)) {
+        let constant: i64 = digits.as_str().parse().map_err(|_| shape())?;
+        total += if sign.as_str() == "-" {
+            -constant
+        } else {
+            constant
+        };
+    }
+    Ok((total, used))
+}

@@ -121,6 +121,7 @@ fn revert_scene_returns_to_previous_scene_and_drops_title() {
         changes: BTreeMap::new(),
         triggers: BTreeMap::new(),
         jumps: BTreeMap::new(),
+        refused: Default::default(),
     };
     append_transcript(
         root.path(),
@@ -369,6 +370,7 @@ fn replace_scene_summary_keeps_snapshot_for_later_revert() {
         changes: BTreeMap::new(),
         triggers: BTreeMap::new(),
         jumps: BTreeMap::new(),
+        refused: Default::default(),
     };
     append_transcript(
         root.path(),

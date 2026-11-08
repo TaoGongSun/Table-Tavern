@@ -16,6 +16,7 @@ fn delta(path: &str, value: serde_json::Value) -> Patch {
         path: path.split('.').map(str::to_owned).collect(),
         from: Vec::new(),
         value: Some(value),
+        dice: None,
     }
 }
 
@@ -160,6 +161,7 @@ fn insert_under_a_list_leaf_is_rejected_with_list_guidance() {
         path: vec!["神經狀態".to_owned(), "-".to_owned()],
         from: Vec::new(),
         value: Some(serde_json::json!("neuro|恐懼|15|不安")),
+        dice: None,
     };
     let outcome = apply_updates(&mut tree, &mechanism, &[patch]);
     assert_eq!(outcome.records.len(), 1);
@@ -229,6 +231,7 @@ fn list_and_text_with_local_or_reject_answer_with_readonly_wording() {
         path: vec!["清單甲".to_owned(), "-".to_owned()],
         from: Vec::new(),
         value: Some(serde_json::json!("a|2")),
+        dice: None,
     };
     let outcome = apply_updates(
         &mut tree,

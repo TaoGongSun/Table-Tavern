@@ -45,6 +45,7 @@ fn gm_dynamic_block_renders_nested_tree() {
         changes: std::collections::BTreeMap::new(),
         triggers: std::collections::BTreeMap::new(),
         jumps: std::collections::BTreeMap::new(),
+        refused: Default::default(),
     };
     let dynamic = gm_dynamic_block(
         "",
@@ -73,6 +74,7 @@ fn gm_dynamic_block_replaces_user_macro_in_tree_leaves() {
         changes: std::collections::BTreeMap::new(),
         triggers: std::collections::BTreeMap::new(),
         jumps: std::collections::BTreeMap::new(),
+        refused: Default::default(),
     };
 
     let dynamic = gm_dynamic_block(
@@ -96,6 +98,7 @@ fn gm_dynamic_block_prints_notes_after_current_state_and_hides_when_empty() {
         changes: std::collections::BTreeMap::new(),
         triggers: std::collections::BTreeMap::new(),
         jumps: std::collections::BTreeMap::new(),
+        refused: Default::default(),
     };
     let dynamic = gm_dynamic_block(
         "",
@@ -153,6 +156,8 @@ fn gm_dynamic_block_prints_trigger_hits_after_current_state() {
         incremental_by_refactor: false,
         guide: String::new(),
         mirrors: Default::default(),
+        combat_panel: false,
+        turn_dice: None,
     };
     let state = TableState {
         table: BTreeMap::from([("time".to_owned(), "黃昏".to_owned())]),
@@ -161,6 +166,7 @@ fn gm_dynamic_block_prints_trigger_hits_after_current_state() {
         changes: BTreeMap::new(),
         triggers: BTreeMap::from([("侵略".to_owned(), "戰雲密布".to_owned())]),
         jumps: BTreeMap::new(),
+        refused: Default::default(),
     };
     let dynamic = gm_dynamic_block(
         "",
@@ -195,6 +201,8 @@ fn gm_dynamic_block_hides_trigger_section_when_state_triggers_is_empty() {
         incremental_by_refactor: false,
         guide: String::new(),
         mirrors: Default::default(),
+        combat_panel: false,
+        turn_dice: None,
     };
     let state = TableState {
         table: BTreeMap::from([("time".to_owned(), "黃昏".to_owned())]),
@@ -203,6 +211,7 @@ fn gm_dynamic_block_hides_trigger_section_when_state_triggers_is_empty() {
         changes: BTreeMap::new(),
         triggers: BTreeMap::new(),
         jumps: BTreeMap::new(),
+        refused: Default::default(),
     };
     let dynamic = gm_dynamic_block(
         "",
@@ -239,6 +248,8 @@ fn gm_dynamic_block_hides_trigger_scoped_to_a_hidden_branch_but_prints_when_alig
         incremental_by_refactor: false,
         guide: String::new(),
         mirrors: Default::default(),
+        combat_panel: false,
+        turn_dice: None,
     };
     let state = TableState {
         table: BTreeMap::from([("time".to_owned(), "黃昏".to_owned())]),
@@ -250,6 +261,7 @@ fn gm_dynamic_block_hides_trigger_scoped_to_a_hidden_branch_but_prints_when_alig
             ("世界氛圍".to_owned(), "世界氛圍文本".to_owned()),
         ]),
         jumps: BTreeMap::new(),
+        refused: Default::default(),
     };
     let hidden = vec![vec!["Heroes".to_owned(), "亞瑟".to_owned()]];
     let scope = StateScope {
@@ -291,6 +303,8 @@ fn gm_dynamic_block_hides_trigger_scoped_to_a_descendant_of_a_hidden_branch() {
         incremental_by_refactor: false,
         guide: String::new(),
         mirrors: Default::default(),
+        combat_panel: false,
+        turn_dice: None,
     };
     let state = TableState {
         table: BTreeMap::from([("time".to_owned(), "黃昏".to_owned())]),
@@ -299,6 +313,7 @@ fn gm_dynamic_block_hides_trigger_scoped_to_a_descendant_of_a_hidden_branch() {
         changes: BTreeMap::new(),
         triggers: BTreeMap::from([("亞瑟細節".to_owned(), "亞瑟細節文本".to_owned())]),
         jumps: BTreeMap::new(),
+        refused: Default::default(),
     };
     let scope = StateScope {
         hidden: vec![vec!["Heroes".to_owned(), "亞瑟".to_owned()]],
@@ -328,6 +343,8 @@ fn gm_dynamic_block_orders_triggers_by_mechanism_list_not_by_map_key() {
         incremental_by_refactor: false,
         guide: String::new(),
         mirrors: Default::default(),
+        combat_panel: false,
+        turn_dice: None,
     };
     let state = TableState {
         table: BTreeMap::from([("time".to_owned(), "黃昏".to_owned())]),
@@ -339,6 +356,7 @@ fn gm_dynamic_block_orders_triggers_by_mechanism_list_not_by_map_key() {
             ("乙".to_owned(), "乙文本".to_owned()),
         ]),
         jumps: BTreeMap::new(),
+        refused: Default::default(),
     };
     let dynamic = gm_dynamic_block(
         "",
@@ -363,6 +381,7 @@ fn gm_dynamic_block_never_prints_trigger_section_for_a_full_snapshot_table() {
         changes: BTreeMap::new(),
         triggers: BTreeMap::from([("侵略".to_owned(), "戰雲密布".to_owned())]),
         jumps: BTreeMap::new(),
+        refused: Default::default(),
     };
     let dynamic = gm_dynamic_block(
         "",

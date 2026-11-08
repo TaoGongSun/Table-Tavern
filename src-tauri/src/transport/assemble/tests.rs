@@ -1000,6 +1000,7 @@ fn table_state_reaches_the_gm_only() {
         changes: std::collections::BTreeMap::new(),
         triggers: std::collections::BTreeMap::new(),
         jumps: std::collections::BTreeMap::new(),
+        refused: Default::default(),
     };
     let gm = assemble_gm_messages(
         "",

@@ -7,6 +7,7 @@ use crate::data::{self, RenameFailGuard, TranscriptEvent, TranscriptKind};
 use serde_json::json;
 use std::path::Path;
 
+mod combat_undo;
 mod undo_floor;
 mod vn_chapter;
 

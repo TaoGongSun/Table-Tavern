@@ -15,6 +15,7 @@ fn delta_adds_to_current_value_within_bounds() {
         path: vec!["World".to_owned(), "HP".to_owned()],
         from: Vec::new(),
         value: Some(serde_json::json!(5)),
+        dice: None,
     }];
     let outcome = apply_updates(&mut tree, &mechanism, &patches);
     assert!(outcome.records.is_empty());
@@ -34,6 +35,7 @@ fn replace_overwrites_text_field() {
         path: vec!["World".to_owned(), "Location".to_owned()],
         from: Vec::new(),
         value: Some(serde_json::json!("晨港")),
+        dice: None,
     }];
     let outcome = apply_updates(&mut tree, &mechanism, &patches);
     assert!(outcome.records.is_empty());
@@ -59,6 +61,7 @@ fn insert_creates_missing_branches_and_leaf() {
         ],
         from: Vec::new(),
         value: Some(serde_json::json!({ "數量": 2 })),
+        dice: None,
     }];
     let outcome = apply_updates(&mut tree, &mechanism, &patches);
     assert!(outcome.records.is_empty());
@@ -84,6 +87,7 @@ fn remove_deletes_leaf_and_prunes_empty_parent() {
         ],
         from: Vec::new(),
         value: None,
+        dice: None,
     }];
     let outcome = apply_updates(&mut tree, &mechanism, &patches);
     assert!(outcome.records.is_empty());
@@ -100,6 +104,7 @@ fn move_relocates_subtree_without_recording_anything() {
         path: vec!["Heroes".to_owned(), "鴉".to_owned()],
         from: vec!["NPCs".to_owned(), "A".to_owned()],
         value: None,
+        dice: None,
     }];
     let outcome = apply_updates(&mut tree, &mechanism, &patches);
     assert!(outcome.records.is_empty());
@@ -122,6 +127,7 @@ fn replace_absolute_value_on_number_field_is_rejected_and_local_state_unchanged(
         path: vec!["World".to_owned(), "HP".to_owned()],
         from: Vec::new(),
         value: Some(serde_json::json!(999)),
+        dice: None,
     }];
     let outcome = apply_updates(&mut tree, &mechanism, &patches);
     assert_eq!(outcome.records.len(), 1);
@@ -142,6 +148,7 @@ fn delta_clamps_to_max_and_records_clamped() {
         path: vec!["World".to_owned(), "HP".to_owned()],
         from: Vec::new(),
         value: Some(serde_json::json!(50)),
+        dice: None,
     }];
     let outcome = apply_updates(&mut tree, &mechanism, &patches);
     assert_eq!(outcome.records.len(), 1);
@@ -164,6 +171,7 @@ fn pair_delta_moves_current_value_and_replace_only_changes_cap() {
         path: vec!["亚瑟·晨光".to_owned(), "HP".to_owned()],
         from: Vec::new(),
         value: Some(serde_json::json!(-30)),
+        dice: None,
     };
     let outcome = apply_updates(&mut tree, &mechanism, std::slice::from_ref(&delta_patch));
     assert!(outcome.records.is_empty());
@@ -181,6 +189,7 @@ fn pair_delta_moves_current_value_and_replace_only_changes_cap() {
         path: vec!["亚瑟·晨光".to_owned(), "HP".to_owned()],
         from: Vec::new(),
         value: Some(serde_json::json!("450/600")),
+        dice: None,
     };
     let outcome = apply_updates(&mut tree, &mechanism, std::slice::from_ref(&upgrade_patch));
     assert!(outcome.records.is_empty());
@@ -198,6 +207,7 @@ fn pair_delta_moves_current_value_and_replace_only_changes_cap() {
         path: vec!["亚瑟·晨光".to_owned(), "HP".to_owned()],
         from: Vec::new(),
         value: Some(serde_json::json!("999/700")),
+        dice: None,
     };
     let outcome = apply_updates(&mut tree, &mechanism, std::slice::from_ref(&bad_patch));
     assert_eq!(outcome.records.len(), 1);
@@ -224,6 +234,7 @@ fn delta_on_missing_path_is_rejected_and_fed_back() {
         path: vec!["World".to_owned(), "HP".to_owned()],
         from: Vec::new(),
         value: Some(serde_json::json!(5)),
+        dice: None,
     }];
     let outcome = apply_updates(&mut tree, &mechanism, &patches);
     assert_eq!(outcome.records.len(), 1);
@@ -241,6 +252,7 @@ fn delta_on_text_field_is_rejected_and_fed_back() {
         path: vec!["World".to_owned(), "Location".to_owned()],
         from: Vec::new(),
         value: Some(serde_json::json!(5)),
+        dice: None,
     }];
     let outcome = apply_updates(&mut tree, &mechanism, &patches);
     assert_eq!(outcome.records.len(), 1);
@@ -269,6 +281,7 @@ fn remove_on_missing_path_is_rejected_and_fed_back() {
         ],
         from: Vec::new(),
         value: None,
+        dice: None,
     }];
     let outcome = apply_updates(&mut tree, &mechanism, &patches);
     assert_eq!(outcome.records.len(), 1);
@@ -285,6 +298,7 @@ fn underscore_prefixed_field_is_rejected_and_untouched() {
         path: vec!["World".to_owned(), "_Secret".to_owned()],
         from: Vec::new(),
         value: Some(serde_json::json!("洩漏")),
+        dice: None,
     }];
     let outcome = apply_updates(&mut tree, &mechanism, &patches);
     assert_eq!(outcome.records.len(), 1);
@@ -314,6 +328,7 @@ fn wildcard_rule_clamps_any_hero_affection_between_0_and_200() {
         ],
         from: Vec::new(),
         value: Some(serde_json::json!(50)),
+        dice: None,
     }];
     let outcome = apply_updates(&mut tree, &mechanism, &patches);
     assert_eq!(outcome.records.len(), 1);
@@ -356,6 +371,7 @@ fn notes_are_deduped_and_capped_at_five() {
         path: vec!["World".to_owned(), "Roll100".to_owned()],
         from: Vec::new(),
         value: Some(serde_json::json!(1)),
+        dice: None,
     };
     let patches = vec![patch.clone(), patch.clone(), patch];
     let outcome = apply_updates(&mut tree, &mechanism, &patches);
@@ -436,6 +452,7 @@ fn accepted_delta_records_signed_mark_but_rejection_and_error_do_not() {
             path: vec!["World".to_owned(), "HP".to_owned()],
             from: Vec::new(),
             value: Some(serde_json::json!(50)),
+            dice: None,
         },
         // 絕對值頂替 delta 欄＝拒收，不進 changes。
         Patch {
@@ -443,6 +460,7 @@ fn accepted_delta_records_signed_mark_but_rejection_and_error_do_not() {
             path: vec!["World".to_owned(), "HP".to_owned()],
             from: Vec::new(),
             value: Some(serde_json::json!(999)),
+            dice: None,
         },
         // 路徑不存在＝拒收（回饋 GM），不進 changes。
         Patch {
@@ -450,13 +468,14 @@ fn accepted_delta_records_signed_mark_but_rejection_and_error_do_not() {
             path: vec!["World".to_owned(), "沒有這欄".to_owned()],
             from: Vec::new(),
             value: Some(serde_json::json!(1)),
+            dice: None,
         },
     ];
     let outcome = apply_updates(&mut tree, &mechanism, &patches);
     assert_eq!(
         outcome.changes.get("World.HP"),
-        Some(&"+50".to_owned()),
-        "標記要帶原始 delta（+50），不是夾完的 +20"
+        Some(&"+20".to_owned()),
+        "標記是夾完的實際變化（+20），不是原始 delta +50"
     );
     assert_eq!(outcome.changes.len(), 1, "拒收與硬錯誤都不該進 changes");
 }
@@ -477,6 +496,7 @@ fn negative_delta_and_replace_insert_remove_move_each_record_the_documented_mark
             path: vec!["World".to_owned(), "HP".to_owned()],
             from: Vec::new(),
             value: Some(serde_json::json!(-80)),
+            dice: None,
         },
         // replace：文字欄收下＝「更新」。
         Patch {
@@ -484,6 +504,7 @@ fn negative_delta_and_replace_insert_remove_move_each_record_the_documented_mark
             path: vec!["World".to_owned(), "Location".to_owned()],
             from: Vec::new(),
             value: Some(serde_json::json!("晨港")),
+            dice: None,
         },
         // insert：新建路徑＝「更新」。
         Patch {
@@ -495,6 +516,7 @@ fn negative_delta_and_replace_insert_remove_move_each_record_the_documented_mark
             ],
             from: Vec::new(),
             value: Some(serde_json::json!({ "數量": 2 })),
+            dice: None,
         },
         // remove：刪除既有路徑＝「移除」。
         Patch {
@@ -506,6 +528,7 @@ fn negative_delta_and_replace_insert_remove_move_each_record_the_documented_mark
             ],
             from: Vec::new(),
             value: None,
+            dice: None,
         },
         // move：搬移成功＝「搬移」，記在目的地路徑。
         Patch {
@@ -513,6 +536,7 @@ fn negative_delta_and_replace_insert_remove_move_each_record_the_documented_mark
             path: vec!["Heroes".to_owned(), "鴉".to_owned()],
             from: vec!["NPCs".to_owned(), "A".to_owned()],
             value: None,
+            dice: None,
         },
     ];
     let outcome = apply_updates(&mut tree, &mechanism, &patches);

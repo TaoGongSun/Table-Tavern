@@ -24,6 +24,19 @@ pub struct TableState {
     /// 每回合重算，跟著逐則快照走，不需另外處理回滾。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub jumps: BTreeMap<String, String>,
+    /// 戰鬥欄被拒收或依骰面改套的標記（ttrpg-combat-tracker §2.8）：路徑（點分）→ GM 寫了什麼、實際套了什麼。
+    /// 只給玩家看、不進提示詞；每次套用重算、玩家手改那一欄就刪，跟著逐則快照走。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub refused: BTreeMap<String, RefusedMark>,
+}
+
+/// 戰鬥欄的拒收標記：`applied` 為 None＝整筆未套用；有值＝依骰面改套的實際增減。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RefusedMark {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wrote: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub applied: Option<String>,
 }
 
 /// 狀態樹節點保留自然 JSON 形狀，讓匯出的初始值仍可由人閱讀與手改。
@@ -253,6 +266,12 @@ pub struct Mechanism {
     /// 歸屬以 id 記，卡改名時整格搬到新鍵、資料留著。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub panel_cells: BTreeMap<String, String>,
+    /// 預設桌的戰鬥欄（ttrpg-combat-tracker §2.1）：開了擲骰就種 HP、狀態效果與 `combat` 分支；種過就留，關擲骰不收回。
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub combat_panel: bool,
+    /// 本輪 GM 骰池（不落檔）：GM 提交時由 `gm_commit_apply` 帶進來，供 HP 增量驗 `dice` 骰號；其餘時候為 None。
+    #[serde(skip)]
+    pub turn_dice: Option<String>,
 }
 
 /// 退場桌開場格子補齊的附帶資料。
@@ -356,6 +375,8 @@ impl Default for Mechanism {
             locked_roots: Vec::new(),
             default_panel: false,
             panel_cells: BTreeMap::new(),
+            combat_panel: false,
+            turn_dice: None,
         }
     }
 }
@@ -373,6 +394,7 @@ impl Mechanism {
             && self.locked_roots.is_empty()
             && !self.default_panel
             && self.panel_cells.is_empty()
+            && !self.combat_panel
     }
 }
 

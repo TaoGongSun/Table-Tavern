@@ -273,6 +273,7 @@ fn extract_triggers(entries: &[&Value]) -> (Vec<data::Trigger>, Vec<Record>) {
                 path: title.to_owned(),
                 detail: UiMsg::LedgerScaffoldAbsorbed.to_string(),
                 group: None,
+                mark: None,
             });
         } else {
             ledger.push(Record {
@@ -280,6 +281,7 @@ fn extract_triggers(entries: &[&Value]) -> (Vec<data::Trigger>, Vec<Record>) {
                 path: title.to_owned(),
                 detail: UiMsg::LedgerScriptUnrecognized.to_string(),
                 group: None,
+                mark: None,
             });
         }
     }

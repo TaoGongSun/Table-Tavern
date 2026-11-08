@@ -44,6 +44,7 @@ fn patch(op: PatchOp, path: &str, value: Option<serde_json::Value>) -> Patch {
             Vec::new()
         },
         value,
+        dice: None,
     }
 }
 

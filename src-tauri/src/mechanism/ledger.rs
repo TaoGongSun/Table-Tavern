@@ -345,6 +345,7 @@ pub fn apply_block_typed(
                     path: path.clone(),
                     from: Vec::new(),
                     value: Some(serde_json::Value::String(tree_value.to_owned())),
+                    dice: None,
                 }));
                 true
             }
@@ -414,6 +415,11 @@ pub fn apply_block_typed(
             doc: view.finish(),
             mid: world.state.tree.clone(),
         });
+    }
+    // 戰鬥欄：先攻成員驗證與連帶清理在產生最終快照前做完；拒收標記每次套用重算（ttrpg-combat-tracker §2.6／2.8）
+    if world.mechanism.combat_panel {
+        crate::data::default_panel::combat::settle(&mut world.state.tree);
+        world.state.refused = super::combat::refused(&world.mechanism, &outcome.records);
     }
     if jump_check {
         detect_jumps(world, &block.fields, &old_values, &mut outcome.records);

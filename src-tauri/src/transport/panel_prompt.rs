@@ -84,3 +84,67 @@ pub(super) fn example(mechanism: &Mechanism, lang: &str) -> String {
         lines.join(",\n")
     )
 }
+
+/// 戰鬥欄指引（ttrpg-combat-tracker §2.9）：只在 `combat_panel` 桌接在 `guide` 之後，靜態文字、進凍結快照。
+pub(super) fn combat_guide(lang: &str) -> String {
+    use crate::data::default_panel::combat::{
+        CONDITIONS_MAX, CONDITION_CHARS, FOES_MAX, HP_MAX, NAME_CHARS, ORDER_MAX,
+    };
+    if scaffold_en(lang) {
+        format!(
+            "## Combat fields (arithmetic done by the system)\n\n\
+             - `/characters/<name>/hp` and `/combat/foes/<foe>/hp` (HP): \"current/max\" as two whole numbers, max at most \
+             {HP_MAX}. The first time, replace it with the full value (e.g. \"24/24\"). After that, always report the change \
+             with delta (damage negative, healing positive); the system adds it up and keeps it between 0 and max. Never \
+             replace HP with a result. To change only the max, replace with the current value copied and the new max.\n\
+             - When the amount comes from this turn's dice pool, add `\"dice\"` with the dice references and any constant, \
+             e.g. {{\"op\":\"delta\",\"path\":\"/combat/foes/Goblin A/hp\",\"value\":-7,\"dice\":\"d8#1+3\"}}. The system \
+             takes the faces from the pool; if your number differs, the dice total is applied. Each die is used once. If \
+             the damage is halved or otherwise adjusted, leave out `dice`.\n\
+             - `/characters/<name>/conditions`, `/combat/foes/<foe>/conditions` (Conditions): whole array of strings, at \
+             most {CONDITIONS_MAX} items of {CONDITION_CHARS} characters; remove ended effects yourself.\n\
+             - When a fight starts: replace `/combat/order` with everyone in initiative order (roll initiative from the \
+             pool; at most {ORDER_MAX} names of {NAME_CHARS} characters), and add each foe without a character entry with \
+             insert `/combat/foes/<foe>` value {{\"hp\":\"7/7\"}} (at most {FOES_MAX}). Give foes of the same kind \
+             different names (Goblin A, Goblin B); an existing name cannot be inserted again. Remove a foe that falls or \
+             flees with remove.\n\
+             - Each reply, replace `/combat/turn` with the name in the order whose turn it is now.\n\
+             - When the fight ends, replace `/combat/order` with []; the system clears the turn and the foes."
+        )
+    } else {
+        format!(
+            "## 戰鬥欄（數字由系統算）\n\n\
+             - `/characters/<角色名>/hp`、`/combat/foes/<敵人>/hp`（HP）：「現值/上限」兩個整數，上限最多 {HP_MAX}。第一次用 \
+             replace 寫完整值（例 \"24/24\"）；之後一律用 delta 報增減量（扣血負數、補血正數），系統加總並夾在 0 到上限之間。\
+             不要用 replace 報結果；只改上限時現值照抄、寫新上限。\n\
+             - 增減量來自本輪骰池時加 `\"dice\"` 寫骰號與常數，例 {{\"op\":\"delta\",\"path\":\"/combat/foes/哥布林A/hp\",\"value\":-7,\"dice\":\"d8#1+3\"}}。\
+             骰面由系統從池裡取，數字對不上時以骰面總和為準；每顆骰只能用一次。傷害有減半等調整時不要帶 dice。\n\
+             - `/characters/<角色名>/conditions`、`/combat/foes/<敵人>/conditions`（狀態效果）：整串字串陣列，最多 \
+             {CONDITIONS_MAX} 項、每項 {CONDITION_CHARS} 字；效果結束自己拿掉。\n\
+             - 開打時：用 replace 把 `/combat/order` 寫成照先攻排好的全部名字（先攻從骰池擲；最多 {ORDER_MAX} 個、每個 \
+             {NAME_CHARS} 字），沒有角色格的敵人逐一 insert `/combat/foes/<敵人>`，值 {{\"hp\":\"7/7\"}}（最多 {FOES_MAX} 筆）。\
+             同種敵人要取不同名字（哥布林A、哥布林B），已有的名字不能再 insert；倒下或逃走的敵人用 remove。\n\
+             - 每則回覆用 replace 把 `/combat/turn` 寫成順序裡現在輪到的人。\n\
+             - 戰鬥結束時把 `/combat/order` replace 成 []，系統會清掉輪到誰與敵人。"
+        )
+    }
+}
+
+/// 戰鬥欄的固定範例：第一格角色的 HP 增量帶骰號（沒有格就略過）。
+pub(super) fn combat_example(mechanism: &Mechanism, lang: &str) -> Option<String> {
+    let cell = mechanism.panel_cells.values().min()?;
+    let line = serde_json::json!({
+        "op": "delta",
+        "path": format!("/{CHARACTERS}/{}/hp", cell.replace('~', "~0").replace('/', "~1")),
+        "value": -7,
+        "dice": "d8#1+3",
+    });
+    let heading = if scaffold_en(lang) {
+        "Damage with a dice reference looks like this:"
+    } else {
+        "帶骰號的扣血長這樣："
+    };
+    Some(format!(
+        "{heading}\n<UpdateVariable>\n<JSONPatch>\n[\n  {line}\n]\n</JSONPatch>\n</UpdateVariable>"
+    ))
+}

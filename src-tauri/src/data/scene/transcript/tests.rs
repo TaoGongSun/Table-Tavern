@@ -233,6 +233,7 @@ fn append_transcript_uses_current_snapshot_without_overwriting_supplied_state() 
         changes: BTreeMap::new(),
         triggers: BTreeMap::new(),
         jumps: BTreeMap::new(),
+        refused: Default::default(),
     };
     append_transcript(
         root.path(),
@@ -308,6 +309,7 @@ fn append_opening_merges_state_and_pop_restores_previous_snapshot() {
         changes: BTreeMap::new(),
         triggers: BTreeMap::new(),
         jumps: BTreeMap::new(),
+        refused: Default::default(),
     };
     append_transcript(
         root.path(),
@@ -361,6 +363,7 @@ fn append_opening_merges_state_and_pop_restores_previous_snapshot() {
         changes: BTreeMap::new(),
         triggers: BTreeMap::new(),
         jumps: BTreeMap::new(),
+        refused: Default::default(),
     };
     assert_eq!(event.state, Some(expected.clone()));
     assert_eq!(read_state(root.path(), &world_id).unwrap().state, expected);
@@ -408,6 +411,7 @@ fn pop_transcript_restores_the_previous_event_snapshot() {
         changes: BTreeMap::new(),
         triggers: BTreeMap::new(),
         jumps: BTreeMap::new(),
+        refused: Default::default(),
     };
     let second = TableState {
         table: BTreeMap::from([("place".to_owned(), "碼頭".to_owned())]),
@@ -416,6 +420,7 @@ fn pop_transcript_restores_the_previous_event_snapshot() {
         changes: BTreeMap::new(),
         triggers: BTreeMap::new(),
         jumps: BTreeMap::new(),
+        refused: Default::default(),
     };
     for (text, snapshot) in [("第一句", first.clone()), ("第二句", second.clone())] {
         append_transcript(
@@ -466,6 +471,7 @@ fn restoring_an_undone_event_puts_its_snapshot_back() {
         changes: BTreeMap::new(),
         triggers: BTreeMap::new(),
         jumps: BTreeMap::new(),
+        refused: Default::default(),
     });
     let event = |text: &str, snapshot: &TableState| TranscriptEvent {
         dice_pool: None,
@@ -528,6 +534,7 @@ fn pop_transcript_restores_entire_nested_tree_snapshot() {
         changes: BTreeMap::new(),
         triggers: BTreeMap::new(),
         jumps: BTreeMap::new(),
+        refused: Default::default(),
     };
     let second = TableState {
         table: BTreeMap::new(),
@@ -545,6 +552,7 @@ fn pop_transcript_restores_entire_nested_tree_snapshot() {
         changes: BTreeMap::new(),
         triggers: BTreeMap::new(),
         jumps: BTreeMap::new(),
+        refused: Default::default(),
     };
     for snapshot in [first.clone(), second.clone()] {
         append_transcript(

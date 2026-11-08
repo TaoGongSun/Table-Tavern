@@ -27,6 +27,7 @@ pub(crate) fn gm_commit_apply(
     let outcome = apply.then(|| {
         let scene = state.current_scene;
         state.mechanism.numeric_update = loaded.numeric_update;
+        state.mechanism.turn_dice = loaded.turn_dice.clone();
         let scope = if takeover {
             mechanism::BlockScope::TakeoverReply
         } else if state.statusbar_retired {
@@ -35,6 +36,7 @@ pub(crate) fn gm_commit_apply(
             mechanism::BlockScope::Table
         };
         let outcome = mechanism::apply_block_typed(state, block, user_name, stat, scope);
+        state.mechanism.turn_dice = None;
         if align {
             state.aligned_scene = Some(scene);
         }

@@ -42,6 +42,7 @@ pub(super) fn apply_updates_typed(
 ) -> Outcome {
     let mut records = Vec::new();
     let mut changes = BTreeMap::new();
+    let mut used_dice = std::collections::BTreeSet::new();
     for item in parsed {
         let patch = match item {
             Parsed::Patch(patch) => patch,
@@ -57,6 +58,17 @@ pub(super) fn apply_updates_typed(
                 continue;
             }
         };
+        // 戰鬥欄：HP、敵人整筆、輪到誰（ttrpg-combat-tracker §2.4–2.7）
+        if super::combat::patch(
+            tree,
+            mechanism,
+            &canonical,
+            &mut used_dice,
+            &mut records,
+            &mut changes,
+        ) {
+            continue;
+        }
         // 預設狀態欄：表外守門與硬預算（夾好的值寫回 canonical）
         match super::budget::patch(mechanism, &mut canonical) {
             Ok(trimmed) => records.extend(trimmed),
@@ -147,6 +159,7 @@ fn canonicalize(
         path,
         from,
         value,
+        dice: patch.dice.clone(),
     })
 }
 
@@ -248,8 +261,20 @@ fn guard_record(
     Some(Record::new(RecordKind::Rejected, path.join("."), detail))
 }
 
+/// 同一次套用同一路徑多次增減時累加實際變化（新值 − 舊值，夾值之後）；舊標記不是帶號數字（「更新」）就照這次寫。
+/// 被拒收的增減不呼叫這裡。
+pub(super) fn add_delta_mark(changes: &mut BTreeMap<String, String>, path: &str, actual: f64) {
+    let previous = changes
+        .get(path)
+        .and_then(|mark| mark.parse::<f64>().ok())
+        .unwrap_or(0.0);
+    changes.insert(
+        path.to_owned(),
+        signed_delta_mark(to_precision_12(previous + actual)),
+    );
+}
+
 /// delta 的變動標記：帶號數字，正數補 `+`（負數 `format_num` 本身就帶 `-`）。
-/// 標記照原始 delta 寫——被夾邊界也算改到，記的是模型要求的量，不是夾完的量。
 pub(super) fn signed_delta_mark(delta: f64) -> String {
     if delta >= 0.0 {
         format!("+{}", format_num(delta))
@@ -274,7 +299,8 @@ pub(super) fn to_precision_12(value: f64) -> f64 {
 /// `[值, 說明]` 的 delta 算出來的結果：新值、增量、夾值前後。
 pub(super) struct VwdDelta {
     pub(super) value: Val,
-    pub(super) delta: f64,
+    /// 實際變化（夾值之後的新值 − 舊值），變動標記累加用
+    pub(super) actual: f64,
     raw: f64,
     next: f64,
 }
@@ -327,7 +353,7 @@ pub(super) fn vwd_delta_value(
     }
     Ok(VwdDelta {
         value: Val::Arr(vec![Val::Num(next), items[1].clone()]),
-        delta,
+        actual: to_precision_12(next - first),
         raw,
         next,
     })
@@ -360,7 +386,7 @@ fn vwd_delta(
         return;
     }
     view.set(&patch.path, &result.value);
-    changes.insert(path_str.to_owned(), signed_delta_mark(result.delta));
+    add_delta_mark(changes, path_str, result.actual);
     records.extend(result.clamped(path_str));
 }
 
@@ -439,7 +465,7 @@ fn apply_delta(
                 &patch.path,
                 &format!("{}/{}", format_num(next), format_num(max)),
             );
-            changes.insert(path_str.clone(), signed_delta_mark(delta));
+            add_delta_mark(changes, &path_str, next - current_value);
             if next != raw_next {
                 records.push(Record::new(
                     RecordKind::Clamped,
@@ -476,7 +502,7 @@ fn apply_delta(
                 }
             }
             data::set_tree_value(tree, &patch.path, &format_num(next));
-            changes.insert(path_str.clone(), signed_delta_mark(delta));
+            add_delta_mark(changes, &path_str, next - current_value);
             if clamped {
                 records.push(Record::new(
                     RecordKind::Clamped,

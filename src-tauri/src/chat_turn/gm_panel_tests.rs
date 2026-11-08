@@ -53,3 +53,40 @@ fn panel_snapshot_only_on_default_tables_with_lists_as_arrays() {
     );
     assert!(panel.get("World").is_none());
 }
+
+#[test]
+fn panel_snapshot_carries_combat_but_not_refused_marks() {
+    let mut state: WorldState = serde_json::from_str(r#"{"id":"w","name":"桌"}"#).unwrap();
+    state.dice_enabled = true;
+    let card = PanelCard {
+        id: "a".into(),
+        name: "沃恩".into(),
+        fresh: true,
+    };
+    sync(&mut state, &[card]);
+    let panel = scene_panel(&state).unwrap();
+    assert!(panel.get("combat").is_none(), "沒開打不附");
+    assert_eq!(panel["characters"]["沃恩"]["hp"], json!(""));
+    assert_eq!(panel["characters"]["沃恩"]["conditions"], json!([]));
+    set(&mut state, "characters.沃恩.hp", "18/24");
+    set(&mut state, "characters.沃恩.conditions.0", "中毒");
+    set(&mut state, "combat.order.0", "沃恩");
+    set(&mut state, "combat.order.1", "哥布林A");
+    set(&mut state, "combat.turn", "哥布林A");
+    set(&mut state, "combat.foes.哥布林A.hp", "3/7");
+    state
+        .state
+        .refused
+        .insert("characters.沃恩.hp".into(), Default::default());
+    let panel = scene_panel(&state).unwrap();
+    assert_eq!(panel["characters"]["沃恩"]["conditions"], json!(["中毒"]));
+    assert_eq!(
+        panel["combat"],
+        json!({
+            "order": ["沃恩", "哥布林A"],
+            "turn": "哥布林A",
+            "foes": { "哥布林A": { "hp": "3/7", "conditions": [] } }
+        })
+    );
+    assert!(!panel.to_string().contains("refused"));
+}

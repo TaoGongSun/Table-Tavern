@@ -13,7 +13,9 @@ use super::super::types::{Patch, PatchOp, Record, RecordKind};
 use super::super::upstream_set::{
     array_index, collect_non_finite, is_vwd, set_non_finite, upstream_set, TypedView, Val,
 };
-use super::{finite_delta, hint, signed_delta_mark, to_precision_12, vwd_delta_value};
+use super::{
+    add_delta_mark, finite_delta, hint, signed_delta_mark, to_precision_12, vwd_delta_value,
+};
 
 /// 路徑在樹上第一個葉子出現在中途、且視圖在那裡是陣列：回傳陣列欄的段數。
 pub(super) fn array_field(
@@ -259,7 +261,13 @@ pub(super) fn apply(
                 return;
             }
             view.replace_json(field, work.doc, work.marks);
-            changes.insert(field.join("."), mark);
+            // 帶號增量與一般增減同一套累加（同一則多次增減標實際淨值）
+            match mark.parse::<f64>() {
+                Ok(actual) => add_delta_mark(changes, &field.join("."), actual),
+                Err(_) => {
+                    changes.insert(field.join("."), mark);
+                }
+            }
             records.extend(extra);
         }
         Err(Fail::Say(detail)) => records.push(rejected(detail)),
@@ -300,7 +308,7 @@ fn delta(
                     work.write(parent_at, &result.value);
                     // 帶號增量只在 X 就是陣列欄本身時寫（標記記在陣列欄，巢狀的寫「更新」）
                     let mark = if parent_at.is_empty() {
-                        signed_delta_mark(result.delta)
+                        signed_delta_mark(result.actual)
                     } else {
                         "更新".to_owned()
                     };

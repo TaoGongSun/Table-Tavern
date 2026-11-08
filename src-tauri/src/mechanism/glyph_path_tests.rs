@@ -12,6 +12,7 @@ fn patch(op: PatchOp, path: &[&str], from: &[&str], value: serde_json::Value) ->
         path: path.iter().map(|s| (*s).to_owned()).collect(),
         from: from.iter().map(|s| (*s).to_owned()).collect(),
         value: Some(value),
+        dice: None,
     }
 }
 

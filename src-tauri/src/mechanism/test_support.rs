@@ -54,6 +54,8 @@ pub(super) fn mechanism_with(rules: &[(&str, FieldRule)]) -> Mechanism {
         incremental_by_refactor: false,
         guide: String::new(),
         mirrors: Default::default(),
+        combat_panel: false,
+        turn_dice: None,
     }
 }
 
@@ -86,6 +88,7 @@ pub(super) fn world_with(pairs: &[(&str, &str)], mechanism: Mechanism) -> data::
             changes: BTreeMap::new(),
             triggers: BTreeMap::new(),
             jumps: BTreeMap::new(),
+            refused: Default::default(),
         },
         mechanism,
         aligned_scene: None,
@@ -161,5 +164,7 @@ pub(super) fn once_mechanism() -> Mechanism {
         incremental_by_refactor: false,
         guide: String::new(),
         mirrors: Default::default(),
+        combat_panel: false,
+        turn_dice: None,
     }
 }

@@ -20,6 +20,7 @@ fn replace(path: &str, value: serde_json::Value) -> Patch {
         path: path.split('.').map(str::to_owned).collect(),
         from: Vec::new(),
         value: Some(value),
+        dice: None,
     }
 }
 
@@ -164,6 +165,7 @@ fn insert_on_existing_number_follows_the_policy() {
         path: vec!["A".to_owned(), "n".to_owned()],
         from: Vec::new(),
         value: Some(serde_json::json!(42)),
+        dice: None,
     };
     let mut tree = tree_from(&[("A.n", "5")]);
     let upstream = with_policy(Mechanism::default(), NumericUpdate::Upstream);

@@ -142,6 +142,7 @@ fn table_with_the_old_wrong_absorbed_record_is_corrected_by_reimport() {
                 path: title.to_owned(),
                 detail: crate::ui_msg::UiMsg::LedgerScaffoldAbsorbed.to_string(),
                 group: None,
+                mark: None,
             })
             .collect();
         mechanism::append_log(root.path(), &world_id, 0, &legacy);

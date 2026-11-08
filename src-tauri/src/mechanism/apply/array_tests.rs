@@ -20,6 +20,7 @@ fn patch(op: PatchOp, pointer: &str, value: Option<serde_json::Value>) -> Patch 
         path: segments(pointer),
         from: Vec::new(),
         value,
+        dice: None,
     }
 }
 
@@ -62,7 +63,11 @@ fn vwd_first_item_delta_clamps_by_the_field_rule_like_delta_on_the_field() {
         &[delta("/HP/0", serde_json::json!(10))],
     );
     assert_eq!(tree, tree_from(&[("HP", r#"[100,"生命"]"#)]));
-    assert_eq!(outcome.changes.get("HP").map(String::as_str), Some("+10"));
+    assert_eq!(
+        outcome.changes.get("HP").map(String::as_str),
+        Some("+5"),
+        "標記是夾完的實際變化"
+    );
     assert_eq!(outcome.records.len(), 1);
     assert_eq!(outcome.records[0].kind, RecordKind::Clamped);
     assert_eq!(outcome.records[0].path, "HP");
@@ -134,6 +139,7 @@ fn move_into_or_out_of_an_array_is_refused_and_nothing_moves() {
                 path: segments(to),
                 from: segments(from),
                 value: None,
+                dice: None,
             }],
         );
         assert_eq!(tree, tree_from(&leaves));
@@ -253,6 +259,7 @@ fn rejection_pointers_escape_and_stay_under_the_cap() {
             path: vec![key.clone(), "4".to_owned()],
             from: Vec::new(),
             value: None,
+            dice: None,
         }],
     );
     let note = only_note(&outcome);
@@ -268,6 +275,7 @@ fn rejection_pointers_escape_and_stay_under_the_cap() {
             path: vec![short.clone(), "4".to_owned()],
             from: Vec::new(),
             value: None,
+            dice: None,
         }],
     );
     let pointer = only_note(&outcome).split(' ').next().unwrap();

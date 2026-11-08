@@ -879,6 +879,7 @@ fn read_only_world_blocks_every_write_category_but_delete_still_works() {
             path: "hp".to_owned(),
             detail: "x".to_owned(),
             group: None,
+            mark: None,
         }],
     );
     assert!(!live(root.path(), &id).join("mechanism-log.jsonl").exists());

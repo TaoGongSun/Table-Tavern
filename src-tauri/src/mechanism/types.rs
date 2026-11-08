@@ -17,6 +17,8 @@ pub struct Patch {
     /// 只有 Move 用得到；其餘 op 固定空。
     pub from: Vec<String>,
     pub value: Option<serde_json::Value>,
+    /// 戰鬥 HP 增量引用的骰號算式（ttrpg-combat-tracker §2.5，例 `d8#1+3`）；其餘補丁固定 None。
+    pub dice: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -47,6 +49,9 @@ pub struct Record {
     /// 「路徑不存在」的回饋分組：同一批撞同一個不存在前綴的合成一條回饋。只在記憶體，帳本照舊一筆一筆記。
     #[serde(skip)]
     pub(crate) group: Option<Box<NoteGroup>>,
+    /// 戰鬥欄的拒收標記內容（GM 寫了什麼、依骰面套了什麼）；只在記憶體，套用收尾時收進 `TableState.refused`。
+    #[serde(skip)]
+    pub(crate) mark: Option<crate::data::RefusedMark>,
 }
 
 impl Record {
@@ -56,6 +61,7 @@ impl Record {
             path,
             detail,
             group: None,
+            mark: None,
         }
     }
 }
