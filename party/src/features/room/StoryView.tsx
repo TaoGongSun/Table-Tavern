@@ -1,6 +1,7 @@
 // 故事串：GM 旁白、NPC 對話、玩家行動、系統標記；串流中那段即時長出，定稿整段取代。
 // 一律純文字（協定 §10：別人的行動與模型輸出都是不可信文字，不插 HTML）。
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import markerCopy from "@desktop/shared/contracts/transcript-marker.json";
 import { DicePoolView } from "@desktop/features/dice/DicePoolView";
 import { streamDisplayText } from "@desktop/features/play/stream-display";
 import type { Speaker } from "../../../server/core/types";
@@ -35,7 +36,9 @@ function Part({
     speaker.kind === "gm"
       ? t("speakerGm")
       : speaker.kind === "system"
-        ? t(MARKER[speaker.marker])
+        ? speaker.marker === "dice_roll"
+          ? markerCopy[currentLang()].dice_roll
+          : t(MARKER[speaker.marker])
         : speaker.name;
   const color =
     "cardId" in speaker ? view.cards.find((c) => c.cardId === speaker.cardId)?.color : null;

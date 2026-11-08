@@ -21,6 +21,7 @@ describe("骰池對帳", () => {
       value: 3,
       used: true,
       issues: ["face", "order", "repeat"],
+      reported: [20],
     });
     expect(result.unknown).toEqual(["(d8#1=4)"]);
   });

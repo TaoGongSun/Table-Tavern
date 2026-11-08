@@ -34,6 +34,10 @@ fn signals() -> MutexGuard<'static, HashMap<Key, Signal>> {
         .unwrap_or_else(|poison| poison.into_inner())
 }
 
+pub(crate) fn active(world_id: &str) -> bool {
+    signals().keys().any(|(world, _)| world == world_id)
+}
+
 /// 接力在跑的期間登記著；結束（含失敗、被取消）就摘掉。
 struct Registration(Key);
 

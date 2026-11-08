@@ -974,7 +974,8 @@ fn broken_books_are_reported_not_swallowed() {
         imported.book,
         Some(data::WorldbookImport {
             imported: 2,
-            skipped: 1
+            skipped: 1,
+            dice_detected: false
         })
     );
     // enabled 照 JS 真假值："yes" 算啟用

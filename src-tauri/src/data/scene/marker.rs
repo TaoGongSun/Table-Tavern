@@ -21,6 +21,7 @@ pub enum EventMarker {
         name: String,
     },
     StateUpdate,
+    DiceRoll,
     /// name 空字串＝點名玩家且玩家沒名字，組字時退回該語系的玩家稱呼。
     GmCall {
         name: String,
@@ -152,6 +153,7 @@ pub fn marker_heading(marker: &EventMarker, lang: &str) -> Option<String> {
             template(lang, "person_arrival", Some(("title", title)))
         }
         EventMarker::CardPrivate { name } => template(lang, "card_private", Some(("name", name))),
+        EventMarker::DiceRoll => template(lang, "dice_roll", None),
         EventMarker::StateUpdate => template(lang, "state_update", None),
         EventMarker::GmCall { name } => {
             let name = if name.trim().is_empty() {

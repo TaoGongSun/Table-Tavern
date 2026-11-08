@@ -37,6 +37,7 @@ pub use turn::{
     bump_generation, busy, generation, world_swapped, PendingMain, TurnKey, PART_CHARACTER,
     PART_MAIN, PART_OPENING,
 };
+pub(crate) use write::set_dice_pool;
 pub use write::{
     apply_gm_block_then, begin_turn, card_write, drop_scene_seed, edit_effective_tree,
     edit_tree_if_events, finish_turn, has_unlanded_reply, mark_turn_appended, opening_stat,
@@ -45,7 +46,6 @@ pub use write::{
     settle_before_append, settle_previous_turn, turn_owns, unlanded_events, CardWrite,
     CardWriteTarget, GmCommit, TurnAppend, TurnSide, TurnTicket,
 };
-pub(crate) use write::{dice_pool, set_dice_pool};
 
 #[cfg(test)]
 use control::Mode;

@@ -362,7 +362,8 @@ fn worldbook_json_unwraps_lorebook_cards() {
         results[1],
         data::WorldbookImport {
             imported: 0,
-            skipped: 2
+            skipped: 2,
+            dice_detected: false
         }
     );
     let entries = data::read_worldbook(root.path(), &world_id).unwrap();
@@ -474,7 +475,8 @@ fn worldbook_json_converts_persona_fields_when_card_has_no_entries() {
         data::import_worldbook(root.path(), &world_id, &json).unwrap(),
         data::WorldbookImport {
             imported: 1,
-            skipped: 0
+            skipped: 0,
+            dice_detected: false
         }
     );
     let entries = data::read_worldbook(root.path(), &world_id).unwrap();

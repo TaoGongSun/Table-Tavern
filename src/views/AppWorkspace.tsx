@@ -19,6 +19,7 @@ import { ErrorNote } from "../shared/ui/atoms";
 import { buildOverlayComposer, CardInterfaceOverlay } from "../features/card-interface/CardInterfaceOverlay";
 import { MainView } from "./MainView";
 import { Onboarding } from "../features/ai-connection/Onboarding";
+import { DiceControls } from "../features/dice/DiceControls";
 import { PlayView } from "../features/play/PlayView";
 import { useSceneBudget } from "../features/play/scene/useSceneBudget";
 import { CastRail } from "../features/characters/CastRail";
@@ -265,6 +266,8 @@ export function AppWorkspace({
   return (
     <>
       <CastRail
+        diceEnabled={tableState.diceEnabled}
+        roomMode={roomMode}
         gmId={GM_TARGET}
         speaker={speaker}
         cardsTargetable={!gmOnly}
@@ -413,6 +416,8 @@ export function AppWorkspace({
               isBusy={chat.isBusy}
               worldOpen={mainView?.kind === "world"}
               onEntryConverted={onEntryConverted}
+              onDiceChanged={async () => { await Promise.all([tableState.refresh(), chat.reload()]); }}
+              diceEnabled={onShowVn ? undefined : tableState.diceEnabled}
               onRefactorApplied={onRefactorApplied}
               onRefreshReceipts={() => imports.refreshReceipts(table)}
               pendingRefactorCard={pendingRefactorCard}
@@ -443,6 +448,7 @@ export function AppWorkspace({
                       <Onboarding config={config} onSaved={onConfigSaved} />
                     </>
                   }
+                  diceControls={(onExpand) => <DiceControls onExpand={onExpand} worldId={table} events={chat.events} diceEnabled={tableState.diceEnabled} busy={chat.busy || tableOpBusy} locked={gate === "readonly"} room={roomMode} hasTarget={gmTargeted || Boolean(speaker)} playerName={characters.player?.name} onRoll={chat.rollDice} />}
                   sceneLabel={sceneDisplayLabel(scene)}
                   storyKey={`${table}\u0000${scene}`}
                   events={chat.events}

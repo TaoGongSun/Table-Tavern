@@ -26,9 +26,11 @@ fn is_arrival_block(event: &TranscriptEvent) -> bool {
     )
 }
 
-/// 真正的一樓：玩家句、GM 旁白、角色回覆、開場白。附屬行只掛在這種樓上。
+/// 真正的一樓：玩家句、GM 旁白、角色回覆、開場白、公開擲果。附屬行只掛在這種樓上。
 fn is_story_floor(event: &TranscriptEvent) -> bool {
-    event.opening || event.kind != TranscriptKind::System
+    event.opening
+        || event.kind != TranscriptKind::System
+        || matches!(event.marker, Some(EventMarker::DiceRoll))
 }
 
 /// 這一幕最後一樓從哪一則開始（含）；空幕回 None。

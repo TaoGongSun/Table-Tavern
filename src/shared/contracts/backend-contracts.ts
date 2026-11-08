@@ -73,6 +73,7 @@ export interface SceneLabel {
 }
 
 export interface WorldState {
+  replay?: boolean;
   dice_enabled?: boolean;
   id: string;
   name: string;
@@ -517,6 +518,7 @@ export type KnownMarker =
   | { type: "person_arrival"; title: string }
   | { type: "card_private"; name: string }
   | { type: "state_update" }
+  | { type: "dice_roll" }
   | { type: "gm_call"; name: string }
   | { type: "player_watch"; name: string }
   | { type: "player_handed_to_gm"; name: string }

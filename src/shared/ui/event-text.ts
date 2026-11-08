@@ -14,7 +14,7 @@ const NAMED: Record<string, "name" | "title"> = {
   player_delegated: "name",
   player_returned: "name",
 };
-const BARE = new Set(["scene_summary", "state_update"]);
+const BARE = new Set(["scene_summary", "state_update", "dice_roll"]);
 
 /** 執行期形狀檢查：已知 type 且必要欄位是字串才算數；未知、畸形（寬鬆讀取原樣帶來的）一律回 null。 */
 export function parseMarker(value: unknown): KnownMarker | null {
@@ -39,6 +39,8 @@ export function markerHeading(marker: KnownMarker): string {
       return t("marker_person_arrival", { title: marker.title });
     case "card_private":
       return t("marker_card_private", { name: marker.name });
+    case "dice_roll":
+      return t("marker_dice_roll");
     case "state_update":
       return t("marker_state_update");
     case "gm_call":

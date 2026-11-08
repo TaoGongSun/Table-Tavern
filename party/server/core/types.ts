@@ -54,6 +54,7 @@ export interface PublicCard {
   reserved?: boolean;
 }
 export type SystemMarker =
+  | "dice_roll"
   | "scene_summary"
   | "card_arrival"
   | "person_arrival"

@@ -16,14 +16,14 @@ it("未引用時仍有收合池列、錯面使用文字警告，舊事件沒有�
     ),
   );
   expect(host.querySelector("details")?.open).toBe(false);
-  expect(host.querySelector("summary")?.textContent).toContain("未找到骰號");
+  expect(host.querySelector("summary")?.textContent).toContain("本輪未用骰");
   await act(() =>
     root.render(
       <DicePoolView pool="d20:[19]" text="（ d20 # 1 = 3 ）" language="en" />,
     ),
   );
   expect(host.querySelector(".dice-error")?.textContent).toContain(
-    "Face mismatch",
+    "GM wrote 3; actual roll is 19",
   );
   await act(() => root.render(<DicePoolView text="沃恩等待" language="en" />));
   expect(host.innerHTML).toBe("");

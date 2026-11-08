@@ -58,6 +58,7 @@ export interface TableStateController {
   /** 平欄（time／place／present 與卡自訂欄） */
   fields: Record<string, string>;
   defaultPanel: boolean;
+  diceEnabled: boolean;
   addPanelField: (parentPath: string[], name: string) => Promise<void>;
   removePanelField: (path: string[]) => Promise<void>;
   removePanelItem: (path: string[]) => Promise<void>;
@@ -84,6 +85,7 @@ export interface TableStateController {
     displayPrefixes?: Record<string, string>,
     collections?: MechanismCollections,
     defaultPanel?: boolean,
+    diceEnabled?: boolean,
   ) => void;
   /** 重讀這桌的狀態與綁定 */
   refresh: () => Promise<void>;
@@ -118,6 +120,7 @@ export function useTableStateController(input: {
   const onEditedRef = useRef(input.onEdited);
   onEditedRef.current = input.onEdited;
   const [defaultPanel, setDefaultPanel] = useState(false);
+  const [diceEnabled, setDiceEnabled] = useState(false);
   const [tableState, setTableState] = useState<Record<string, string>>({});
   const [tableTree, setTableTree] = useState<Record<string, StateNode>>({});
   const [tableJumps, setTableJumps] = useState<Record<string, string>>({});
@@ -143,9 +146,11 @@ export function useTableStateController(input: {
       prefixes?: Record<string, string>,
       collections?: MechanismCollections,
       panel = false,
+      dice = false,
     ) => {
       readGeneration.current += 1;
       setDefaultPanel(panel);
+      setDiceEnabled(dice);
       setTableState(state?.table ?? {});
       setTableTree(state?.tree ?? {});
       setTableJumps(state?.jumps ?? {});
@@ -183,6 +188,7 @@ export function useTableStateController(input: {
           const bindings = await loadBranchBindings(worldId);
           if (!current()) return;
           setDefaultPanel(state.mechanism?.default_panel ?? false);
+          setDiceEnabled(state.dice_enabled ?? false);
           setTableState(state.state?.table ?? {});
           setTableTree(state.state?.tree ?? {});
           setTableJumps(state.state?.jumps ?? {});
@@ -324,6 +330,7 @@ export function useTableStateController(input: {
   return useMemo(
     () => ({
       defaultPanel,
+      diceEnabled,
       addPanelField,
       removePanelField,
       removePanelItem,
@@ -348,6 +355,7 @@ export function useTableStateController(input: {
     }),
     [
       defaultPanel,
+      diceEnabled,
       addPanelField,
       removePanelField,
       removePanelItem,

@@ -60,6 +60,8 @@ interface MainViewProps {
   transport?: string;
   worldOpen: boolean;
   onEntryConverted: () => Promise<void>;
+  onDiceChanged?: () => Promise<void>;
+  diceEnabled?: boolean;
   onRefactorApplied: (live: () => boolean) => Promise<void>;
   onRefreshReceipts: () => Promise<void>;
   pendingRefactorCard: PendingRefactorCard | null;
@@ -106,6 +108,8 @@ export function MainView({
   transport,
   worldOpen,
   onEntryConverted,
+  onDiceChanged,
+  diceEnabled,
   onRefactorApplied,
   onRefreshReceipts,
   pendingRefactorCard,
@@ -193,6 +197,9 @@ export function MainView({
           leaveGuard={leaveGuard}
           convertColor={nextColor}
           onEntryConverted={onEntryConverted}
+          onDiceChanged={onDiceChanged}
+          diceEnabled={diceEnabled}
+          roomMode={roomMode}
           onRefactorApplied={onRefactorApplied}
           onRefreshReceipts={onRefreshReceipts}
           pendingRefactorCard={pendingRefactorCard}

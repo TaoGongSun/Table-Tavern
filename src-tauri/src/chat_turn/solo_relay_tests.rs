@@ -119,3 +119,24 @@ fn round_cap_defaults_to_three() {
         .insert("max_round_speakers".to_owned(), json!(0));
     assert_eq!(max_speakers(&config), 3);
 }
+
+#[test]
+fn dice_refuses_the_gap_between_solo_relay_parts() {
+    let root = crate::smart_free::test_root("dice-relay-gap");
+    let world = data::create_world(&root, "雷克的骰桌").unwrap();
+    crate::dice::set_enabled(&root, &world, true, "en", false).unwrap();
+    let key = (world.clone(), "dice-relay".to_owned());
+    signals().insert(key.clone(), Signal::default());
+    let registration = Registration(key);
+    assert_eq!(
+        crate::dice::roll(&root, &world, 0, "1d20").unwrap_err(),
+        "dice-relay-active"
+    );
+    assert_eq!(
+        crate::dice::roll(&root, &world, 1, "1d20").unwrap_err(),
+        "dice-scene-changed"
+    );
+    drop(registration);
+    assert!(crate::dice::roll(&root, &world, 0, "1d20").is_ok());
+    std::fs::remove_dir_all(root).unwrap();
+}

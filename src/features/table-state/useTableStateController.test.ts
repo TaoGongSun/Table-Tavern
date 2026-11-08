@@ -242,3 +242,19 @@ describe("useTableStateController 房間落段", () => {
     await act(async () => root.unmount());
   });
 });
+
+it("dice setting follows the shared hydrate and refresh state", async () => {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  let controller!: TableStateController;
+  function Probe() {
+    controller = useTableStateController({ worldId: "dice-w", onError: () => {} });
+    return null;
+  }
+  const root = createRoot(document.createElement("div"));
+  await act(async () => root.render(createElement(Probe)));
+  act(() => controller.hydrate(undefined, [], undefined, undefined, undefined, undefined, false, true));
+  expect(controller.diceEnabled).toBe(true);
+  await act(async () => controller.refresh());
+  expect(controller.diceEnabled).toBe(false);
+  await act(async () => root.unmount());
+});

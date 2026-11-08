@@ -238,6 +238,7 @@ export function cleanCards(list: unknown): PublicCard[] | null {
 }
 
 const MARKERS = [
+  "dice_roll",
   "scene_summary",
   "card_arrival",
   "person_arrival",

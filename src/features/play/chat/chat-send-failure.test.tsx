@@ -944,4 +944,47 @@ describe("chat turn failures", () => {
       vi.useRealTimers();
     }
   });
+  it("dice saves before empty-submit continuation, and GM failure never rerolls", async () => {
+    const result = { ...playerEvent("沃恩 2d6+3: [4, 2] +3 = 9"), kind: "system", marker: { type: "dice_roll" } };
+    const h = mount({ roll_dice: () => result, read_transcript: () => [result], gm_narrate: () => Promise.reject("AI_CALL_FAILED: boom") }, { gm: true });
+    await act(async () => h.chat().rollDice("2d6+3"));
+    expect(h.count("roll_dice")).toBe(1);
+    expect(h.count("append_player_event")).toBe(0);
+    expect(h.calls.findIndex(c => c.command === "roll_dice")).toBeLessThan(h.calls.findIndex(c => c.command === "gm_narrate"));
+    expect(h.chat().events[0].text).toBe(result.text);
+    await act(async () => h.chat().gmNarrate());
+    expect(h.count("roll_dice")).toBe(1);
+  });
+  it("dice preserves an existing draft and never continues after append failure", async () => {
+    const h = mount({ roll_dice: () => Promise.reject("disk unavailable"), read_transcript: () => [] }, { gm: true });
+    act(() => h.chat().setInput("雷克舉盾"));
+    await act(async () => h.chat().rollDice("1d20"));
+    expect(h.chat().input).toBe("雷克舉盾");
+    expect(h.count("gm_narrate")).toBe(0);
+    expect(h.count("roll_dice")).toBe(1);
+    expect(h.count("read_transcript")).toBe(1);
+  });
+  it("a successful roll with draft waits for send; a draft typed during IPC also waits", async () => {
+    const pending = gate<unknown>();
+    const h = mount({ roll_dice: () => pending.promise, read_transcript: () => [] }, { gm: true });
+    let rolling!: Promise<void>;
+    await act(async () => { rolling = h.chat().rollDice("1d20"); });
+    act(() => h.chat().setInput("沃恩繼續追蹤"));
+    await act(async () => { pending.resolve({}); await rolling; });
+    expect(h.chat().input).toBe("沃恩繼續追蹤");
+    expect(h.count("gm_narrate")).toBe(0);
+    await act(async () => h.chat().rollDice("1d20"));
+    expect(h.chat().input).toBe("沃恩繼續追蹤");
+    expect(h.count("gm_narrate")).toBe(0);
+  });
+  it("a roll returning after a scene switch never starts narration in either scene", async () => {
+    const pending = gate<unknown>();
+    const h = mount({ roll_dice: () => pending.promise, read_transcript: () => [] }, { gm: true });
+    let rolling!: Promise<void>;
+    await act(async () => { rolling = h.chat().rollDice("1d20"); });
+    h.moveTo("w1", 1);
+    await act(async () => { pending.resolve({}); await rolling; });
+    expect(h.count("gm_narrate")).toBe(0);
+  });
+
 });

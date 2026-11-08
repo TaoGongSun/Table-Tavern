@@ -21,7 +21,8 @@ pub(crate) use party_batch::{
     append_party_batch, BatchOutcome, DepartureMode, PartyAction, PartyBatch,
 };
 pub(crate) use solo_relay::{
-    chat_relay, interrupt as interrupt_relay, release as release_relay, RelayReport,
+    active as solo_relay_active, chat_relay, interrupt as interrupt_relay,
+    release as release_relay, RelayReport,
 };
 pub(crate) use vn_reroll::reroll_choices;
 pub(crate) use vn_script::{

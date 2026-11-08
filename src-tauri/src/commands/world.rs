@@ -282,3 +282,18 @@ pub(crate) fn set_dice_enabled(
         room,
     )
 }
+
+#[tauri::command]
+pub(crate) fn roll_dice(
+    app: tauri::AppHandle,
+    world_id: String,
+    scene: u64,
+    formula: String,
+) -> Result<data::TranscriptEvent, String> {
+    let _permit = data::world_write_permit(&world_id)?;
+    crate::dice::roll(&data_root(&app)?, &world_id, scene, &formula)
+}
+#[tauri::command]
+pub(crate) fn dice_suggestions(text: String) -> Vec<String> {
+    crate::dice::suggestions(&text)
+}

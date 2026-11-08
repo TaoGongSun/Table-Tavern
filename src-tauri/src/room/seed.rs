@@ -190,6 +190,10 @@ pub(super) fn scene(
                 json!({ "kind": "gm" }),
                 format!("{}：{}", event.speaker_name.trim(), event.text),
             ),
+            (TranscriptKind::System, Some(EventMarker::DiceRoll), _) => (
+                json!({ "kind": "system", "marker": "dice_roll" }),
+                event.text.clone(),
+            ),
             (TranscriptKind::System, Some(EventMarker::SceneSummary), _) => {
                 out.played_from = Some(0);
                 if out.lines.is_empty() && out.summary.is_none() {

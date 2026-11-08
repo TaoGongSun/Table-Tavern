@@ -3,7 +3,9 @@
 // 所有權從 App() 搬過來，行為與依賴陣列照舊。
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { message as showMessage } from "@tauri-apps/plugin-dialog";
+import { diceCopy } from "../dice/dice-ui";
+import { readRoomStatus } from "../room/room-status";
+import { message as showMessage, confirm } from "@tauri-apps/plugin-dialog";
 import { Lang, t } from "../../i18n";
 import { decideImportRoute, type ImportReceiptKind, type ImportRouteAnswer } from "./import-routing";
 import { hasRefactorCardChunk } from "../refactor/refactor-card";
@@ -13,6 +15,7 @@ import {
   type VnCardImport,
   type VnCardProbe,
   type WorldbookEntry,
+  type WorldState,
 } from "../../shared/contracts/backend-contracts";
 import { confirmVnCard, vnCardErrorText, vnCardNoticeText } from "../vn/card/vn-card";
 import { PALETTE, type CharacterMeta } from "../characters/card-model";
@@ -71,6 +74,7 @@ export interface WebSaveImport {
 
 /** 世界書匯入結果：skipped＝內容和現有條目一模一樣、被略過的條數 */
 interface WorldbookImport {
+  dice_detected?: boolean;
   imported: number;
   skipped: number;
 }
@@ -400,6 +404,18 @@ export function useImportController(input: {
     [lang],
   );
 
+  const offerDice = useCallback(async (worldId: string, book: WorldbookImport) => {
+    if (!book.dice_detected) return;
+    const state = await invoke<WorldState>("read_state", { worldId });
+    if (state.dice_enabled || state.table_kind !== "chat" || state.replay) return;
+    const status = await readRoomStatus(worldId);
+    const room = status.active && status.worldId === worldId;
+    const c = diceCopy();
+    if (await confirm(room ? c.roomPrompt : c.prompt, { title: c.roll, kind: "info" })) {
+      await turnBackend(() => invoke("set_dice_enabled", { worldId, enabled: true }));
+    }
+  }, [turnBackend]);
+
   // worldId 顯式帶入（不吃這桌的 worldId）：開新桌並匯入時外層那個當下還是舊桌值。
   // adoptName 預設 true；開新桌路徑傳 false——新桌從建立那刻就已經用卡名命名，不必再改一次。
   const importAsCharacter = useCallback(
@@ -429,6 +445,7 @@ export function useImportController(input: {
           okLabel: t("dialogAck"),
         });
       }
+      await offerDice(worldId, book);
       await refreshStateOf(worldId);
       await offerOpeningLine(worldId, data, source);
       await tellAboutInterface(worldId, meta.id);
@@ -443,6 +460,7 @@ export function useImportController(input: {
       refreshReceipts,
       refreshStateOf,
       offerOpeningLine,
+      offerDice,
       tellAboutInterface,
     ],
   );
@@ -466,6 +484,7 @@ export function useImportController(input: {
       focusSpeaker(null);
       if (adoptName) await adoptTableName(label);
       await refreshReceipts(worldId);
+      await offerDice(worldId, book);
       await refreshStateOf(worldId);
       await offerOpeningLine(worldId, data, book.source);
       // 這桌等級的介面殼 character_id 是空字串（角色卡的是那張卡的 id）
@@ -480,6 +499,7 @@ export function useImportController(input: {
       refreshReceipts,
       refreshStateOf,
       offerOpeningLine,
+      offerDice,
       tellAboutInterface,
     ],
   );

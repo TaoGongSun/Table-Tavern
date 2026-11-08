@@ -3,6 +3,7 @@
 // 這種最常見的起手狀況不必讓出一整條欄寬。寬窄完全由張數決定；手動拖過的欄寬只在寬欄生效，
 // 窄欄固定 76px 且不寫回記憶，切回寬欄就是上次拖到的寬度。
 import { useCallback, useEffect, useRef, useState } from "react";
+import { RulesGuide } from "../dice/RulesGuide";
 import { t } from "../../i18n";
 import type { CharacterCard, CharacterMeta } from "./card-model";
 import { IconPlus } from "../../shared/ui/icons";
@@ -27,6 +28,8 @@ const MAIN_MIN_WIDTH = 520;
 const SIDEBAR_KEY_STEP = 16;
 
 interface CastRailProps {
+  diceEnabled?: boolean;
+  roomMode?: boolean;
   /** 發言對象是 GM 時的代號（App 持有 speaker，這裡只拿它比對） */
   gmId: string;
   /** 目前的發言對象；空字串＝還沒選。描邊與 aria-pressed 一律看它 */
@@ -290,6 +293,7 @@ export function CastRail(props: CastRailProps) {
               items={addItems}
             />
           )}
+          {props.diceEnabled && <RulesGuide compact={narrow} room={props.roomMode} />}
           <input
             ref={importInputRef}
             type="file"

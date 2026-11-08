@@ -1346,3 +1346,16 @@ mod card_tests;
 mod gallery_tests;
 mod host;
 mod sync;
+
+#[test]
+fn room_seed_keeps_solo_public_dice_results() {
+    let root = crate::smart_free::test_root("dice-room-history");
+    let world = data::create_world(&root, "沃恩的骰桌").unwrap();
+    crate::dice::set_enabled(&root, &world, true, "en", false).unwrap();
+    let roll = crate::dice::roll(&root, &world, 0, "1d20").unwrap();
+    let scene = seed::scene(&root, &world, 0, &[], &Default::default());
+    assert_eq!(scene.lines.len(), 1);
+    assert_eq!(scene.lines[0]["speaker"]["marker"], "dice_roll");
+    assert_eq!(scene.lines[0]["text"], roll.text);
+    std::fs::remove_dir_all(root).unwrap();
+}

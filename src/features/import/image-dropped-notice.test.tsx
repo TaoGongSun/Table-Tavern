@@ -21,7 +21,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
   save: vi.fn(async () => null),
 }));
 
-import { message as showMessage } from "@tauri-apps/plugin-dialog";
+import { confirm, message as showMessage } from "@tauri-apps/plugin-dialog";
 import { useImportController, type ImportController } from "./useImportController";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -173,4 +173,22 @@ describe("卡圖沒存成的提示", () => {
     await importFile("書.png");
     expect(shown()).toEqual([t("worldbookImportDone", { n: 1 })]);
   });
+  it.each(["character", "worldbook"])("%s import offers dice only when the imported entries match", async (route) => {
+    let enabled = 0;
+    backend.handlers.read_state = () => ({ table_kind: "chat", dice_enabled: false });
+    backend.handlers.room_status = () => ({ active: false, worldId: null });
+    backend.handlers.set_dice_enabled = () => { enabled++; };
+    backend.handlers.import_character = () => ({ meta: { ...meta, name: "沃恩" }, book: { imported: 1, skipped: 0, dice_detected: true }, source: null });
+    backend.handlers.import_worldbook = () => ({ imported: 1, skipped: 0, dice_detected: true, source: null });
+    if (route === "worldbook") backend.handlers.probe_import = () => ({ lorebook_heavy: true, parsed: true, book_entries: 1, book_shaped: true, alternate_greetings: 0 });
+    vi.mocked(confirm).mockClear();
+    await importFile("沃恩的規則.png");
+    expect(enabled).toBe(1);
+    expect(vi.mocked(confirm).mock.calls.some(c => String(c[0]).includes("骰號"))).toBe(true);
+    vi.mocked(confirm).mockResolvedValueOnce(false);
+    await importFile("沃恩的規則.png");
+    expect(enabled).toBe(1);
+    expect(errors).toEqual([]);
+  });
+
 });

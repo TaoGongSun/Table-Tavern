@@ -31,6 +31,8 @@ pub enum BookOwner {
 pub struct WorldbookImport {
     pub imported: usize,
     pub skipped: usize,
+    #[serde(default)]
+    pub dice_detected: bool,
 }
 
 /// 匯入時被合併改寫的既有條目：撤銷只還原這兩個欄位（`extensions.table_tavern` 的
@@ -160,6 +162,19 @@ pub fn import_worldbook_as(
                     detail: crate::ui_msg::UiMsg::LedgerScaffoldAbsorbed.to_string(),
                     group: None,
                 });
+            }
+            if !entry
+                .get("disable")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false)
+            {
+                summary.dice_detected |= !crate::dice::suggestions(entry_content(&entry))
+                    .is_empty()
+                    || ["key", "keysecondary"].iter().any(|key| {
+                        entry
+                            .get(key)
+                            .is_some_and(|v| !crate::dice::suggestions(&v.to_string()).is_empty())
+                    });
             }
             let new_key = uid.to_string();
             entries.insert(new_key.clone(), entry);

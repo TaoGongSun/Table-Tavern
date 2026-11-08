@@ -1,6 +1,6 @@
 // 遊玩畫面：這一幕的訊息清單與底下的 composer。整支是受控元件——
 // 逐字稿、生成狀態、輸入框與所有動作都由 chat controller 擁有，這裡只負責畫與回報。
-import { Fragment, FormEvent, ReactNode, useEffect, useLayoutEffect, useRef } from "react";
+import { Fragment, FormEvent, ReactNode, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { t, currentLang } from "../../i18n";
 import { DicePoolView } from "../dice/DicePoolView";
 import { TranscriptEvent } from "../../shared/contracts/backend-contracts";
@@ -45,6 +45,7 @@ function sameStory(previous: TranscriptEvent[], next: TranscriptEvent[]): boolea
 interface PlayViewProps {
   /** 還沒填 API key 時的引導面板；元件本身留在 App */
   onboarding: ReactNode;
+  diceControls?: ReactNode | ((onExpand: () => void) => ReactNode);
   /** 幕書籤上的文字（第 n 幕：幕名） */
   sceneLabel: string;
   /** 這份逐字稿屬於哪桌哪幕：換了一定捲到底（分岔複製出的新桌事件可以跟舊桌一模一樣） */
@@ -114,6 +115,7 @@ interface PlayViewProps {
 
 export function PlayView({
   onboarding,
+  diceControls,
   sceneLabel,
   storyKey,
   events,
@@ -162,6 +164,12 @@ export function PlayView({
   const bottomRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLElement>(null);
   const markStuck = useStickToBottom(listRef);
+
+  const scrollToBottom = useCallback(() => {
+    const list = listRef.current;
+    if (list) list.scrollTop = list.scrollHeight;
+    markStuck();
+  }, [markStuck]);
 
   // 逐字稿整份換掉（切桌／換幕／分岔）或多一則：直接跳到底，不跑動畫。
   // 動畫在這裡會停在錯的位置——分岔是先掛載舊幕再換成新幕的紀錄，容器高度中途劇變，
@@ -429,6 +437,7 @@ export function PlayView({
         />
         {/* 左邊相連的三顆是「交給 AI 的動作」，各自直接執行、不是選模式；右下是唯一的主按鈕。
             主次分級＋分處兩端，送出不會跟「請某某發言」相鄰誤按（2026-07-28 使用者回報的問題） */}
+        {typeof diceControls === "function" ? diceControls(scrollToBottom) : diceControls}
         <div className="composer-actions">
           <div className="btn-seg" role="group">
             {/* 全舞台卡桌（沒有發言角色）對象只剩 GM，「請他發言」＝GM 旁白，藏起來〔作者裁決 2026-10-28〕 */}

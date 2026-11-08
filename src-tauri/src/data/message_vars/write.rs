@@ -785,10 +785,3 @@ pub(crate) fn set_dice_pool(
         Err(invalid_data("turn-mismatch"))
     }
 }
-
-pub(crate) fn dice_pool(tx: &CommitTx<'_>, turn_id: &str) -> DataResult<Option<String>> {
-    turn::turn(tx)
-        .filter(|r| r.turn_id == turn_id)
-        .map(|r| r.dice_pool)
-        .ok_or_else(|| invalid_data("turn-mismatch"))
-}

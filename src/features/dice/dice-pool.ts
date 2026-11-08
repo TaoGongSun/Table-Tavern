@@ -2,6 +2,7 @@ export type DiceIssue = "face" | "order" | "repeat" | "unknown";
 export interface PoolDie {
   value: number;
   used: boolean;
+  reported?: number[];
   issues: DiceIssue[];
 }
 export interface PoolRow {
@@ -46,7 +47,10 @@ export function inspectPool(pool: string, text: string) {
     }
     const issues = new Set(die.issues);
     if (die.used) issues.add("repeat");
-    if (value !== die.value) issues.add("face");
+    if (value !== die.value) {
+      issues.add("face");
+      die.reported = [...new Set([...(die.reported ?? []), value])];
+    }
     const expected = next.get(sides) ?? 1;
     if (index !== expected) issues.add("order");
     else next.set(sides, expected + 1);

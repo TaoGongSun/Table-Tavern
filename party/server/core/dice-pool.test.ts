@@ -62,3 +62,15 @@ it("即時段與 seed／sync 保留同一池", async () => {
   expect(reply?.t).toBe("ok");
   expect(seeded.events("story.part").at(-1)?.payload.dicePool).toBe(pool);
 });
+
+it("keeps a solo public roll when reopening a room", () => {
+  const roll = {
+    ...history(pool),
+    speaker: { kind: "system", marker: "dice_roll" },
+    text: "沃恩 1d20: [19] = 19",
+  };
+  expect(cleanHistory([roll], cards)?.[0]).toMatchObject({
+    text: roll.text,
+    speaker: roll.speaker,
+  });
+});

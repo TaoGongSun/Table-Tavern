@@ -57,7 +57,6 @@ fn pool_follows_normal_half_pending_and_idempotent_landing() {
         let turn = format!("turn-{index}");
         with_commit(&root, &world, |tx| vars::begin_turn(tx, &turn, None)).unwrap();
         let pool = begin(&root, &world, &turn).unwrap().unwrap();
-        assert_eq!(begin(&root, &world, &turn).unwrap(), Some(pool.clone()));
         assert!(set_enabled(&root, &world, false, "en", false).is_err());
         let main = vars::PendingMain {
             text: format!("沃恩 (d20#1=1) {index}"),
@@ -140,5 +139,133 @@ fn editing_undo_and_restore_keep_the_saved_pool() {
         data::read_transcript(&root, &world, 0).unwrap()[0].dice_pool,
         e.dice_pool
     );
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn player_formulas_obey_bounds_and_never_salvage_partial_expressions() {
+    assert_eq!(
+        suggestions("沃恩請擲d20、2D6 + 3，或1d20-2；再擲2d6+3。"),
+        ["1d20", "2d6+3", "1d20-2"]
+    );
+    for bad in [
+        "0d6",
+        "101d6",
+        "1d1",
+        "1d1001",
+        "1d6+10000",
+        "1d6-10000",
+        "2d20kh1",
+        "1d6+1d4",
+        "1d6 + 1d4",
+        "abc1d20",
+        "1d6!",
+        "999999999999999d6",
+    ] {
+        assert!(parse_formula(bad).is_none(), "{bad}");
+        assert!(suggestions(bad).is_empty(), "{bad}");
+    }
+    for good in ["100d1000+9999", "1d2-9999", " D6 "] {
+        assert!(parse_formula(good).is_some());
+    }
+    assert_eq!(suggestions("1d2 1d3 1d4 1d5 1d6 1d7 1d8 1d9 1d10").len(), 8);
+    assert!(suggestions(&format!("{}1d20", "沃".repeat(32768))).is_empty());
+}
+
+#[test]
+fn player_roll_checks_scene_and_turn_then_lands_one_restorable_public_floor() {
+    let root = crate::smart_free::test_root("dice-player");
+    let world = data::create_world(&root, "沃恩的骰桌").unwrap();
+    assert!(roll(&root, &world, 0, "1d6").is_err());
+    set_enabled(&root, &world, true, "zh-TW", false).unwrap();
+    assert_eq!(
+        roll(&root, &world, 1, "1d6").unwrap_err(),
+        "dice-scene-changed"
+    );
+    with_commit(&root, &world, |tx| vars::begin_turn(tx, "busy", None)).unwrap();
+    assert!(roll(&root, &world, 0, "1d6").is_err());
+    with_commit(&root, &world, |tx| vars::finish_turn(tx, "busy", None)).unwrap();
+    assert!(roll(&root, &world, 0, "101d6").is_err());
+    data::append_transcript(&root, &world, 0, &event("雷克等待擲果")).unwrap();
+    let result = roll(&root, &world, 0, "2d6+3").unwrap();
+    assert_eq!(result.marker, Some(data::EventMarker::DiceRoll));
+    assert!(!result.gm_only);
+    assert!(result.text.starts_with("2d6+3: ["));
+    let values = result
+        .text
+        .split_once('[')
+        .unwrap()
+        .1
+        .split_once(']')
+        .unwrap()
+        .0;
+    let sum: u32 = values
+        .split(", ")
+        .map(|v| v.parse::<u32>().unwrap())
+        .inspect(|v| assert!((1..=6).contains(v)))
+        .sum();
+    assert!(result.text.ends_with(&format!(" +3 = {}", sum + 3)));
+    let line =
+        crate::transport::lane_event_line(&result, "en", crate::transport::Side::Gm).unwrap();
+    assert!(line.contains(&result.text));
+    let materials = crate::chat_assembly::gm_materials(&root, &world).unwrap();
+    let scan = crate::chat_assembly::test_gm_scan(&root, &world, &materials, "en");
+    let api = crate::transport::assemble_gm_messages_with(
+        &[],
+        None,
+        std::slice::from_ref(&result),
+        &scan,
+        &Default::default(),
+        &Default::default(),
+        &Default::default(),
+        "en",
+        crate::transport::GmVoice::Shared,
+        &Default::default(),
+        &Default::default(),
+        false,
+    );
+    assert!(api
+        .iter()
+        .any(|message| message.role == "user" && message.content.contains(&result.text)));
+
+    let popped = data::pop_transcript_floor(&root, &world, 0).unwrap();
+    assert_eq!(popped.len(), 1);
+    assert_eq!(popped[0].text, result.text);
+    data::restore_transcript_events(&root, &world, 0, &popped).unwrap();
+    assert_eq!(
+        data::read_transcript(&root, &world, 0)
+            .unwrap()
+            .last()
+            .unwrap()
+            .text,
+        result.text
+    );
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn import_detects_only_enabled_new_entries_for_both_book_formats() {
+    let root = crate::smart_free::test_root("dice-import");
+    let world = data::create_world(&root, "雷克的骰桌").unwrap();
+    for (book, detected) in [
+        (
+            json!({"entries":{"0":{"content":"2d6+3", "disable":true}}}),
+            false,
+        ),
+        (json!({"entries":{"0":{"content":"沃恩擲2d20kh1"}}}), false),
+        (json!({"entries":{"0":{"content":"雷克擲1d20+3"}}}), true),
+        (
+            json!({"entries":[{"content":"沃恩請擲2d6", "enabled":true}]}),
+            true,
+        ),
+    ] {
+        let first = data::import_worldbook(&root, &world, &book.to_string()).unwrap();
+        assert_eq!(first.dice_detected, detected, "{book}");
+        assert!(
+            !data::import_worldbook(&root, &world, &book.to_string())
+                .unwrap()
+                .dice_detected
+        );
+    }
     std::fs::remove_dir_all(root).unwrap();
 }

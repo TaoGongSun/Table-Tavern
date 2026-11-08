@@ -13,6 +13,7 @@ import {
 } from "../../../shared/contracts/backend-contracts";
 import { CharacterMeta } from "../../characters/card-model";
 import { backendCode } from "../../../shared/ui/backend-text";
+import { diceError } from "../../dice/dice-ui";
 import { t } from "../../../i18n";
 import { showWorldInfoNotices } from "../world-info-notices";
 import { askWorldInfoReset, offersWorldInfoReset } from "../world-info-reset";
@@ -79,6 +80,7 @@ export interface ChatController {
   restoreUndone: () => Promise<void>;
   send: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   submitText: (raw: string) => Promise<void>;
+  rollDice: (formula: string) => Promise<void>;
   /** 送出並讓點名角色接話：GM 旁白後被點名的角色接一句就停 */
   sendRelay: () => Promise<void>;
   gmNarrate: () => Promise<void>;
@@ -143,7 +145,9 @@ export function useChatController({
 }): ChatController {
   // 這一輪收回的那幾樓，後收的疊在最上面（復原一次放回一樓，順序自然還原）
   const [undone, setUndone] = useState<UndoStack | null>(null);
-  const [input, setInput] = useState("");
+  const [input, setInputState] = useState("");
+  const inputLive = useRef(input);
+  const setInput = useCallback((value: string) => { inputLive.current = value; setInputState(value); }, []);
   // 打字送出整輪（含玩家句落檔、失敗收回）期間鎖住輸入框：失敗時框內不可能有新字，原文才能直接放回
   const [sending, setSending] = useState(false);
   // 換桌／換幕世代：await 回來時世代不同（含換走又換回）就不再碰畫面與輸入框
@@ -680,6 +684,36 @@ export function useChatController({
     [gmTargeted, vnTable, speaker, gmNarrate, requestReply, worldId, scene, playerName, onError, runRelay, finishRelay, rememberCall, refreshWorlds, failTurn, discardPlayer, refreshState, reload, beginWrite, setEvents, endTurn],
   );
 
+  const rollDice = useCallback(async (formula: string) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setSending(true);
+    const started = generation.current;
+    const wasEmpty = !inputLive.current.trim();
+    const endWrite = beginWrite();
+    let saved = false;
+    onError("");
+    try {
+      const result = await invoke<TranscriptEvent>("roll_dice", { worldId, scene, formula });
+      showLanded(result, started);
+      if (generation.current === started) owed.current = false;
+      saved = true;
+    } catch (reason) {
+      if (generation.current === started) onError(diceError(reason));
+    } finally {
+      endWrite();
+      if (generation.current === started) {
+        // 失敗也只重讀，絕不補擲；成功時也收進被代落的前輪正文。
+        try { await reload(); } catch (reason) { saved = false; if (generation.current === started) onError(String(reason)); }
+      }
+      busyRef.current = false;
+      setSending(false);
+    }
+    if (saved && generation.current === started && wasEmpty && !inputLive.current.trim()) {
+      await submitTurn("", false);
+    }
+  }, [worldId, scene, beginWrite, reload, showLanded, onError, submitTurn]);
+
   const submitText = useCallback((raw: string) => submitTurn(raw, false), [submitTurn]);
   const sendRelay = useCallback(() => submitTurn(input, true, true), [submitTurn, input]);
 
@@ -729,6 +763,7 @@ export function useChatController({
       restoreUndone,
       send,
       submitText,
+      rollDice,
       sendRelay,
       gmNarrate,
       gmAdvance,
@@ -759,6 +794,7 @@ export function useChatController({
       restoreUndone,
       send,
       submitText,
+      rollDice,
       sendRelay,
       gmNarrate,
       gmAdvance,

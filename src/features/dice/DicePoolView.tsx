@@ -16,18 +16,14 @@ export const DicePoolView = memo(function DicePoolView({
   const labels = copy[language as keyof typeof copy] ?? copy.en;
   const result = inspectPool(pool, text);
   return (
-    <details className="dice-pool">
+    <details className={`dice-pool${result?.references === 0 ? " dice-idle" : ""}`}>
       <summary>
-        {labels.title}
-        {result?.references === 0 ? ` · ${labels.noReferences}` : ""}
+        {result?.references === 0 ? labels.noReferences : labels.title}
       </summary>
       {!result ? (
         <p role="status">{labels.invalid}</p>
       ) : (
         <>
-          {result.references === 0 && (
-            <p role="status">{labels.noReferences}</p>
-          )}
           {result.rows.map((row) => (
             <div className="dice-row" key={row.sides}>
               <strong>d{row.sides}</strong>
@@ -39,7 +35,7 @@ export const DicePoolView = memo(function DicePoolView({
                   #{index + 1}={die.value}
                   {die.used ? ` · ${labels.used}` : ""}
                   {die.issues.map((issue) => (
-                    <small key={issue}>⚠ {labels[issue]}</small>
+                    <small key={issue}>⚠ {issue === "face" ? labels.face.replace("{written}", die.reported!.join(", ")).replace("{actual}", String(die.value)) : labels[issue]}</small>
                   ))}
                 </span>
               ))}
