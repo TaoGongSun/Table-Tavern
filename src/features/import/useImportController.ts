@@ -193,6 +193,8 @@ export interface ImportController {
   refreshReceipts: (worldId: string) => Promise<void>;
   /** 陣容欄「匯入卡」選了檔：探測身分後分流 */
   importFile: (file: File) => Promise<void>;
+  /** 桌設定加入內建規則書：照世界書路匯入（收據、去重、骰子偵測提示都同一條） */
+  addRulesBook: (bookJson: string, label: string) => Promise<void>;
   /** VN 精靈 ①「我有角色卡」：探測身分後開新 VN 桌並匯入（不問身分、不過路由框）；VN 卡帶 ① 的劇透鎖 */
   importFileToVnTable: (file: File, spoilerLock: boolean) => Promise<void>;
   answerChoice: (choice: "character" | "worldbook" | "cancel") => Promise<void>;
@@ -661,6 +663,19 @@ export function useImportController(input: {
     [routeImport, importAsCharacter, importWebSave, importVnCard, runTableOp, worldId, onError, onRefactorCard],
   );
 
+  const addRulesBook = useCallback(
+    async (bookJson: string, label: string) => {
+      onError("");
+      try {
+        const data = Array.from(new TextEncoder().encode(bookJson));
+        await runTableOp(() => importAsWorldbook(worldId, data, label, false));
+      } catch (reason) {
+        onError(String(reason));
+      }
+    },
+    [runTableOp, importAsWorldbook, worldId, onError],
+  );
+
   // VN 精靈 ①：純世界書檔照探測走世界書，其餘（含帶書的角色卡）當角色卡匯，卡內書跟著進
   const importFileToVnTable = useCallback(
     async (file: File, spoilerLock: boolean) => {
@@ -807,6 +822,7 @@ export function useImportController(input: {
       loadReceipts,
       refreshReceipts,
       importFile,
+      addRulesBook,
       importFileToVnTable,
       answerChoice,
       answering,
@@ -834,6 +850,7 @@ export function useImportController(input: {
       loadReceipts,
       refreshReceipts,
       importFile,
+      addRulesBook,
       importFileToVnTable,
       answerChoice,
       answering,

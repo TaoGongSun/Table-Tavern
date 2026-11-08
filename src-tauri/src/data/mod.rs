@@ -108,14 +108,15 @@ pub use world_lock::{
 pub use worldbook::import_worldbook;
 pub use worldbook::{
     apply_entry_fields, apply_restore_before, apply_visibility_restore, character_book_raw_entries,
-    character_to_worldbook_entry_held, dedupe_worldbook, delete_worldbook_entry, entry_view_of,
-    export_worldbook, identity_fingerprint, identity_fingerprints, import_worldbook_as,
-    insert_worldbook_entry_raw, read_worldbook, read_worldbook_raw, read_worldbook_scan_entries,
-    reorder_worldbook_entries, restore_after_matches, restore_deleted_entry_raw,
-    restore_worldbook_entry, scrub_character_ids, scrub_entry, scrub_entry_value, scrub_restore,
-    set_entry_flags, set_mechanism_flags, set_source_cards, source_cards_of,
-    upsert_worldbook_entry, worldbook_entry_to_character, worldbook_entry_value, BookImport,
-    BookOwner, RestoreOutcome, Visibility, VisibilityRestore, WorldbookEntry, WorldbookImport,
+    character_to_worldbook_entry_held, dedupe_worldbook, delete_worldbook_entries,
+    delete_worldbook_entry, entry_view_of, export_worldbook, identity_fingerprint,
+    identity_fingerprints, import_worldbook_as, insert_worldbook_entry_raw, read_worldbook,
+    read_worldbook_raw, read_worldbook_scan_entries, reorder_worldbook_entries,
+    restore_after_matches, restore_deleted_entry_raw, restore_worldbook_entry, scrub_character_ids,
+    scrub_entry, scrub_entry_value, scrub_restore, set_entry_flags, set_mechanism_flags,
+    set_source_cards, source_cards_of, upsert_worldbook_entry, worldbook_entry_to_character,
+    worldbook_entry_value, BookImport, BookOwner, RestoreOutcome, Visibility, VisibilityRestore,
+    WorldbookEntry, WorldbookImport,
 };
 
 // 這幾項在 data 之外沒有引用者：同檔時不觸發 lint，改成 re-export 才會，

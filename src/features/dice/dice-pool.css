@@ -36,5 +36,11 @@
 .dice-pool.dice-idle { border: 0; padding: 0; font-size: var(--fs-meta, .85em); color: var(--ink-3, currentColor); opacity: .75; }
 .dice-option { border-radius: 999px; border-color: var(--accent); }
 .dice-custom .btn { min-height: var(--control-h); }
-.dice-guide a { color: var(--accent); text-underline-offset: .15em; }
-.dice-guide a:hover { text-decoration-thickness: 2px; }
+.rule-books { flex-basis: 100%; margin: 0; padding: 0; list-style: none; }
+.rule-book { padding: .5rem .75rem; border: 1px solid var(--line, currentColor); border-radius: .5rem; }
+.rule-book-head { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+.rule-book-name { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 700; cursor: pointer; }
+.rule-book-sub, .rule-book-details { margin: .25rem 0 0; }
+.rule-book-sub { color: var(--ink-2, inherit); }
+.rule-book-credit, .rule-trademark { display: block; margin-top: .5rem; font-size: var(--fs-meta, .8em); color: var(--ink-3, inherit); }
+.dice-guide h3 { margin: 1rem 0 .5rem; font-size: 1em; }

@@ -61,6 +61,7 @@ interface MainViewProps {
   worldOpen: boolean;
   onEntryConverted: () => Promise<void>;
   onDiceChanged?: () => Promise<void>;
+  onAddRulesBook?: (bookJson: string, label: string) => Promise<void>;
   diceEnabled?: boolean;
   onRefactorApplied: (live: () => boolean) => Promise<void>;
   onRefreshReceipts: () => Promise<void>;
@@ -109,6 +110,7 @@ export function MainView({
   worldOpen,
   onEntryConverted,
   onDiceChanged,
+  onAddRulesBook,
   diceEnabled,
   onRefactorApplied,
   onRefreshReceipts,
@@ -198,6 +200,7 @@ export function MainView({
           convertColor={nextColor}
           onEntryConverted={onEntryConverted}
           onDiceChanged={onDiceChanged}
+          onAddRulesBook={onAddRulesBook}
           diceEnabled={diceEnabled}
           roomMode={roomMode}
           onRefactorApplied={onRefactorApplied}

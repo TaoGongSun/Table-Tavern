@@ -377,6 +377,20 @@ export function useWorldbookEditor({
     }
   }
 
+  // 移除內建規則書：一次提交刪完（確認框在選書卡），正在編輯其中一條的草稿一併關掉
+  async function removeEntries(uids: number[]) {
+    setMessage("");
+    try {
+      await invoke("delete_worldbook_entries", { worldId: world, uids });
+      await refreshWorldbook();
+      updateDraft((current) =>
+        current.draft?.uid != null && uids.includes(current.draft.uid) ? { ...current, ...CLOSED } : current,
+      );
+    } catch (reason) {
+      setMessage(String(reason));
+    }
+  }
+
   async function reorderEntries(ordered: WorldbookEntry[]) {
     setMessage("");
     const previous = entries;
@@ -514,6 +528,7 @@ export function useWorldbookEditor({
     saveEntry,
     deleteEntry,
     reorderEntries,
+    removeEntries,
     dedupeWorldbook,
     exportWorldbook,
     convertEntryToCharacter,

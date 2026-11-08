@@ -1,5 +1,7 @@
-import { Fragment, type ReactNode, type RefObject, useEffect, useRef } from "react";
-import { t } from "../../i18n";
+import { Fragment, type ReactNode, type RefObject, useEffect, useMemo, useRef } from "react";
+import { currentLang, t } from "../../i18n";
+import type { WorldbookEntry } from "../../shared/contracts/backend-contracts";
+import { ruleBookOf, ruleKeys, rulesCopy } from "../dice/rules/rule-books";
 import { useDragReorder } from "../../shared/ui/drag-reorder";
 import { IconDelete, IconPlus, IconSparkle } from "../../shared/ui/icons";
 import { MoreMenu } from "../../shared/ui/MoreMenu";
@@ -49,8 +51,21 @@ export function WorldbookSection({
   } = worldbook;
 
   const draftFormRef = useRef<HTMLFormElement>(null);
+  // 規則書條目的關鍵字收十語系：列表只列目前語系＋英文，其餘折成「＋N 種語言」，編輯畫面才全列
+  const entryKeys = (entry: WorldbookEntry) => {
+    const rules = ruleBookOf(entry);
+    if (!rules) return entry.keys.join(t("listSeparator")) || t("worldbookNoKeys");
+    const { shown, hidden } = ruleKeys(rules, entry, currentLang());
+    const more = hidden > 0 ? rulesCopy().moreLangs.replace("{n}", String(hidden)) : "";
+    return [shown.join(t("listSeparator")), more].filter(Boolean).join(" ") || t("worldbookNoKeys");
+  };
+  // 規則書條目排在玩家自己的條目後面：只改列表顯示，注入的 order 不動（拖曳排序存的也只是顯示順序）
+  const listed = useMemo(
+    () => [...entries].sort((a, b) => Number(Boolean(ruleBookOf(a))) - Number(Boolean(ruleBookOf(b)))),
+    [entries],
+  );
   const entryDrag = useDragReorder(
-    entries,
+    listed,
     (entry) => String(entry.uid),
     (ordered) => void reorderEntries(ordered),
   );
@@ -219,8 +234,11 @@ export function WorldbookSection({
                     const head = (
                       <>
                         <strong>{entry.title || entry.uid}</strong>
-                        <span>{entry.keys.join(t("listSeparator")) || t("worldbookNoKeys")}</span>
+                        <span>{entryKeys(entry)}</span>
                         <div className="worldbook-badges">
+                          {ruleBookOf(entry) && (
+                            <span className="worldbook-badge">{ruleBookOf(entry)!.name}</span>
+                          )}
                           {entry.constant && <span className="worldbook-badge">{t("worldbookConstant")}</span>}
                           {/* 可見範圍＝資訊邊界：全 app 統一的虛線琥珀機密記號 */}
                           <span className="worldbook-badge worldbook-badge-visibility">

@@ -637,6 +637,11 @@ pub fn reorder_worldbook_entries(root: &Path, world_id: &str, uids: &[u64]) -> D
 }
 
 pub fn delete_worldbook_entry(root: &Path, world_id: &str, uid: u64) -> DataResult<()> {
+    delete_worldbook_entries(root, world_id, &[uid])
+}
+
+/// 一次刪掉多條（移除內建規則書用）：同一筆提交，不會刪一半。
+pub fn delete_worldbook_entries(root: &Path, world_id: &str, uids: &[u64]) -> DataResult<()> {
     with_commit(root, world_id, |_| {
         let path = worldbook_path(root, world_id)?;
         if !path.exists() {
@@ -644,12 +649,9 @@ pub fn delete_worldbook_entry(root: &Path, world_id: &str, uid: u64) -> DataResu
         }
         let mut worldbook = read_worldbook_value(root, world_id)?;
         let entries = entries_object_mut(&mut worldbook)?;
-        let key = entries
-            .iter()
-            .find(|(key, value)| entry_uid(key, value) == Some(uid))
-            .map(|(key, _)| key.clone());
-        if let Some(key) = key {
-            entries.remove(&key);
+        let before = entries.len();
+        entries.retain(|key, value| !entry_uid(key, value).is_some_and(|uid| uids.contains(&uid)));
+        if entries.len() != before {
             write_worldbook_value(root, world_id, &worldbook)?;
         }
         Ok(())

@@ -2,17 +2,25 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { RulesGuide } from "./RulesGuide";
 import { diceCopy, diceError } from "./dice-ui";
+import { RuleBookList } from "./rules/RuleBookRow";
 
 export function DiceSettings({
   worldId,
   diceEnabled,
   room = false,
+  entries = [],
+  onAddRulesBook,
+  onRemoveEntries,
   isTurnRunning,
   onChanged,
 }: {
   worldId: string;
   diceEnabled: boolean;
   room?: boolean;
+  /** 這桌世界書條目：判斷內建書加過沒 */
+  entries?: readonly { uid: number; title: string; content: string }[];
+  onAddRulesBook?: (bookJson: string, label: string) => Promise<void>;
+  onRemoveEntries?: (uids: number[]) => Promise<void>;
   isTurnRunning: () => boolean;
   onChanged?: () => Promise<void>;
 }) {
@@ -54,8 +62,9 @@ export function DiceSettings({
         />
         {c.roll}
       </label>
-      <RulesGuide room={room} />
+      <RulesGuide room={room} entries={entries} onAddRulesBook={onAddRulesBook} onRemoveEntries={onRemoveEntries} />
       {error && <p role="alert">{error}</p>}
+      {onAddRulesBook && <RuleBookList entries={entries} onAddRulesBook={onAddRulesBook} onRemoveEntries={onRemoveEntries} />}
     </section>
   );
 }

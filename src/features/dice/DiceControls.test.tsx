@@ -8,9 +8,13 @@ const ipc = vi.hoisted(() =>
   ),
 );
 vi.mock("@tauri-apps/api/core", () => ({ invoke: ipc }));
+const ask = vi.hoisted(() => vi.fn(async (_message: string) => true));
+vi.mock("@tauri-apps/plugin-dialog", () => ({ confirm: ask }));
 import { DiceSettings } from "./DiceSettings";
 import { DiceControls } from "./DiceControls";
 import { playerTurn } from "./dice-ui";
+import { rulesCopy } from "./rules/rule-books";
+import { RuleBookList } from "./rules/RuleBookRow";
 import type { TranscriptEvent } from "../../shared/contracts/backend-contracts";
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -106,4 +110,50 @@ it("table settings commits the toggle and refreshes the public notice", async ()
   expect(checkbox.checked).toBe(false);
   expect(onChanged).toHaveBeenCalledOnce();
   expect(ipc).not.toHaveBeenCalledWith("read_state", expect.anything());
+});
+it("adds the built-in rules book, then removes only its untouched entries", async () => {
+  host = document.createElement("div");
+  document.body.append(host);
+  root = createRoot(host);
+  const onAdd = vi.fn(async () => {});
+  const onRemove = vi.fn(async (_uids: number[]) => {});
+  const render = (entries: { uid: number; title: string; content: string }[]) =>
+    root.render(
+      <DiceSettings
+        worldId="w"
+        diceEnabled
+        entries={entries}
+        onAddRulesBook={onAdd}
+        onRemoveEntries={onRemove}
+        isTurnRunning={() => false}
+      />,
+    );
+  await act(async () => render([]));
+  const add = [...host.querySelectorAll(".dice-settings > .rule-books button")].find((b) => b.textContent === rulesCopy().add)!;
+  await act(async () => (add as HTMLButtonElement).click());
+  expect(onAdd).toHaveBeenCalledOnce();
+  const [json, label] = onAdd.mock.calls[0] as unknown as [string, string];
+  expect(label).toBe("5e SRD 5.1");
+  const book = JSON.parse(json) as { entries: Record<string, { comment: string; content: string }> };
+  const table = Object.values(book.entries).map((e, uid) => ({ uid, title: e.comment, content: e.content }));
+  table[0] = { ...table[0], content: "沃恩改過的檢定規則" };
+  table.push({ uid: 99, title: "沃恩的酒館", content: "雷克常來喝酒。" });
+  await act(async () => render(table));
+  const remove = [...host.querySelectorAll(".dice-settings > .rule-books button")].find((b) => b.textContent === rulesCopy().remove)!;
+  await act(async () => (remove as HTMLButtonElement).click());
+  await vi.waitFor(() => expect(onRemove).toHaveBeenCalledOnce());
+  expect(ask.mock.calls[0][0]).toContain("50");
+  const removed = onRemove.mock.calls[0][0];
+  expect(removed).toHaveLength(50);
+  expect(removed).not.toContain(0);
+  expect(removed).not.toContain(99);
+});
+it("points to table settings when the guide cannot add books", async () => {
+  host = document.createElement("div");
+  document.body.append(host);
+  root = createRoot(host);
+  await act(async () => root.render(<RuleBookList />));
+  const button = [...host.querySelectorAll("button")].find((b) => b.textContent === rulesCopy().inSettings)!;
+  expect(button.disabled).toBe(true);
+  expect(host.querySelector(".rule-book-details")).toBeNull();
 });

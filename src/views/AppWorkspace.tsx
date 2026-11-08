@@ -417,6 +417,7 @@ export function AppWorkspace({
               worldOpen={mainView?.kind === "world"}
               onEntryConverted={onEntryConverted}
               onDiceChanged={async () => { await Promise.all([tableState.refresh(), chat.reload()]); }}
+              onAddRulesBook={imports.addRulesBook}
               diceEnabled={onShowVn ? undefined : tableState.diceEnabled}
               onRefactorApplied={onRefactorApplied}
               onRefreshReceipts={() => imports.refreshReceipts(table)}

@@ -125,6 +125,17 @@ pub(crate) fn delete_worldbook_entry(
 }
 
 #[tauri::command]
+pub(crate) fn delete_worldbook_entries(
+    app: tauri::AppHandle,
+    world_id: String,
+    uids: Vec<u64>,
+) -> Result<(), String> {
+    let _permit = data::world_write_permit(&world_id)?;
+    data::delete_worldbook_entries(&data_root(&app)?, &world_id, &uids)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub(crate) fn worldbook_entry_to_character(
     app: tauri::AppHandle,
     world_id: String,

@@ -1,0 +1,182 @@
+{
+  "zh-TW": {
+    "addable": "可直接加入這桌",
+    "add": "加入",
+    "added": "已加入",
+    "more": "說明",
+    "others": "其他規則可自行整理成世界書後匯入。",
+    "trademark": "各規則名為其出版商所有，本 app 非官方產品。",
+    "srd51": {
+      "subtitle": "最多人玩的奇幻冒險規則，擲 d20 加修正值過門檻。",
+      "details": "第五版 D&D（2014 版）開放規則 SRD 的裁決精簡版，收檢定、戰鬥、狀態與休息。擲 d20 加修正值比難度，戰鬥有行動、移動與 HP。新手最好上手、AI 也最熟，第一次跑團選這個。"
+    },
+    "inSettings": "到桌設定加入",
+    "moreLangs": "＋{n} 種語言",
+    "remove": "移除",
+    "removeTitle": "移除規則書",
+    "removeConfirm": "要從這桌世界書移除「{name}」嗎？會刪掉 {n} 條條目。",
+    "removeKept": "你改過內文的 {kept} 條會保留。"
+  },
+  "zh-CN": {
+    "addable": "可直接加入这桌",
+    "add": "加入",
+    "added": "已加入",
+    "more": "说明",
+    "others": "其他规则可自行整理成世界书后导入。",
+    "trademark": "各规则名归其出版商所有，本 app 非官方产品。",
+    "srd51": {
+      "subtitle": "玩家最多的奇幻冒险规则，掷 d20 加修正值过门槛。",
+      "details": "第五版 D&D（2014 版）开放规则 SRD 的裁决精简版，收检定、战斗、状态与休息。掷 d20 加修正值比难度，战斗有动作、移动与 HP。新手最好上手、AI 也最熟，第一次跑团选这个。"
+    },
+    "inSettings": "到桌设置加入",
+    "moreLangs": "＋{n} 种语言",
+    "remove": "移除",
+    "removeTitle": "移除规则书",
+    "removeConfirm": "要从这桌世界书移除「{name}」吗？会删掉 {n} 条条目。",
+    "removeKept": "你改过内文的 {kept} 条会保留。"
+  },
+  "en": {
+    "addable": "Add to this table",
+    "add": "Add",
+    "added": "Added",
+    "more": "Details",
+    "others": "For other rules, turn them into a lorebook yourself and import it.",
+    "trademark": "Rule names belong to their publishers. This app is not an official product.",
+    "srd51": {
+      "subtitle": "The most played fantasy adventure rules: roll d20 plus modifiers to beat a target.",
+      "details": "A condensed rulings book from the open SRD of fifth edition D&D (2014): checks, combat, conditions and rest. Roll d20 plus modifiers against a DC; combat has actions, movement and HP. Easiest to learn and best known to AI, so pick this for your first game."
+    },
+    "inSettings": "Add in table settings",
+    "moreLangs": "+{n} languages",
+    "remove": "Remove",
+    "removeTitle": "Remove rules book",
+    "removeConfirm": "Remove “{name}” from this table’s lorebook? {n} entries will be deleted.",
+    "removeKept": "{kept} entries you edited will be kept."
+  },
+  "ja": {
+    "addable": "この卓に追加できるルール",
+    "add": "追加",
+    "added": "追加済み",
+    "more": "説明",
+    "others": "ほかのルールはワールドブックにまとめてからインポートしてください。",
+    "trademark": "各ルール名はその出版社に帰属します。本アプリは公式製品ではありません。",
+    "srd51": {
+      "subtitle": "最も遊ばれているファンタジー冒険ルール。d20 に修正値を足して目標値を超える。",
+      "details": "第5版 D&D（2014年版）のオープンルール SRD から、判定・戦闘・状態・休息の裁定をまとめた簡易版です。d20 に修正値を足して難易度と比べ、戦闘には行動・移動・HP があります。初心者でも入りやすく AI もよく知っているので、初めての卓に最適です。"
+    },
+    "inSettings": "卓設定で追加",
+    "moreLangs": "＋{n} 言語",
+    "remove": "削除",
+    "removeTitle": "ルールブックを削除",
+    "removeConfirm": "この卓のワールドブックから「{name}」を削除しますか？{n} 件のエントリが削除されます。",
+    "removeKept": "本文を編集した {kept} 件は残ります。"
+  },
+  "ko": {
+    "addable": "이 테이블에 바로 추가",
+    "add": "추가",
+    "added": "추가됨",
+    "more": "설명",
+    "others": "다른 규칙은 직접 월드북으로 정리해 가져오세요.",
+    "trademark": "각 규칙 이름은 해당 출판사의 소유이며, 이 앱은 공식 제품이 아닙니다.",
+    "srd51": {
+      "subtitle": "가장 많이 플레이하는 판타지 모험 규칙. d20에 수정치를 더해 목표치를 넘깁니다.",
+      "details": "5판 D&D(2014년판) 오픈 규칙 SRD에서 판정·전투·상태·휴식 판정을 추린 요약판입니다. d20에 수정치를 더해 난이도와 비교하고, 전투에는 행동·이동·HP가 있습니다. 입문자에게 가장 쉽고 AI도 가장 잘 알아서 첫 세션에 추천합니다."
+    },
+    "inSettings": "테이블 설정에서 추가",
+    "moreLangs": "+{n}개 언어",
+    "remove": "제거",
+    "removeTitle": "규칙서 제거",
+    "removeConfirm": "이 테이블의 월드북에서 「{name}」을(를) 제거할까요? 항목 {n}개가 삭제됩니다.",
+    "removeKept": "내용을 고친 {kept}개는 남겨 둡니다."
+  },
+  "es": {
+    "addable": "Se puede añadir a esta mesa",
+    "add": "Añadir",
+    "added": "Añadido",
+    "more": "Detalles",
+    "others": "Para otras reglas, conviértelas tú en un lorebook e impórtalo.",
+    "trademark": "Los nombres de las reglas pertenecen a sus editoriales. Esta app no es un producto oficial.",
+    "srd51": {
+      "subtitle": "Las reglas de aventura fantástica más jugadas: tira d20 más modificadores y supera la dificultad.",
+      "details": "Versión resumida para arbitrar, tomada del SRD abierto de D&D quinta edición (2014): pruebas, combate, estados y descanso. Tiras d20 más modificadores contra una CD; el combate tiene acciones, movimiento y PG. Es la más fácil de aprender y la que mejor conoce la IA: ideal para tu primera partida."
+    },
+    "inSettings": "Añádelo en la configuración de la mesa",
+    "moreLangs": "+{n} idiomas",
+    "remove": "Quitar",
+    "removeTitle": "Quitar libro de reglas",
+    "removeConfirm": "¿Quitar «{name}» del lorebook de esta mesa? Se borrarán {n} entradas.",
+    "removeKept": "Se conservarán las {kept} entradas que editaste."
+  },
+  "pt-BR": {
+    "addable": "Pode ser adicionado a esta mesa",
+    "add": "Adicionar",
+    "added": "Adicionado",
+    "more": "Detalhes",
+    "others": "Para outras regras, transforme-as você mesmo em um lorebook e importe.",
+    "trademark": "Os nomes das regras pertencem às suas editoras. Este app não é um produto oficial.",
+    "srd51": {
+      "subtitle": "As regras de aventura de fantasia mais jogadas: role d20 mais modificadores para vencer a dificuldade.",
+      "details": "Versão resumida para arbitragem, tirada do SRD aberto de D&D quinta edição (2014): testes, combate, condições e descanso. Role d20 mais modificadores contra uma CD; o combate tem ações, movimento e PV. É a mais fácil de aprender e a que a IA conhece melhor: escolha esta para a sua primeira sessão."
+    },
+    "inSettings": "Adicione nas configurações da mesa",
+    "moreLangs": "+{n} idiomas",
+    "remove": "Remover",
+    "removeTitle": "Remover livro de regras",
+    "removeConfirm": "Remover “{name}” do lorebook desta mesa? {n} entradas serão apagadas.",
+    "removeKept": "As {kept} entradas que você editou serão mantidas."
+  },
+  "de": {
+    "addable": "Direkt zu diesem Tisch hinzufügen",
+    "add": "Hinzufügen",
+    "added": "Hinzugefügt",
+    "more": "Details",
+    "others": "Andere Regeln bitte selbst als Lorebook aufbereiten und importieren.",
+    "trademark": "Regelnamen gehören ihren Verlagen. Diese App ist kein offizielles Produkt.",
+    "srd51": {
+      "subtitle": "Die meistgespielten Fantasy-Abenteuerregeln: W20 plus Modifikatoren gegen einen Zielwert.",
+      "details": "Eine Kurzfassung zum Schiedsrichtern aus dem offenen SRD der fünften D&D-Edition (2014): Proben, Kampf, Zustände und Rast. W20 plus Modifikatoren gegen einen SG; im Kampf gibt es Aktionen, Bewegung und TP. Am leichtesten zu lernen und der KI am besten bekannt, ideal für die erste Runde."
+    },
+    "inSettings": "In den Tischeinstellungen hinzufügen",
+    "moreLangs": "+{n} Sprachen",
+    "remove": "Entfernen",
+    "removeTitle": "Regelbuch entfernen",
+    "removeConfirm": "„{name}“ aus dem Lorebook dieses Tisches entfernen? {n} Einträge werden gelöscht.",
+    "removeKept": "{kept} von dir bearbeitete Einträge bleiben erhalten."
+  },
+  "fr": {
+    "addable": "À ajouter directement à cette table",
+    "add": "Ajouter",
+    "added": "Ajouté",
+    "more": "Détails",
+    "others": "Pour d’autres règles, mettez-les vous-même en lorebook puis importez-le.",
+    "trademark": "Les noms de règles appartiennent à leurs éditeurs. Cette app n’est pas un produit officiel.",
+    "srd51": {
+      "subtitle": "Les règles d’aventure fantastique les plus jouées : d20 plus modificateurs contre un seuil.",
+      "details": "Une version condensée pour arbitrer, tirée du SRD ouvert de D&D cinquième édition (2014) : tests, combat, états et repos. On lance un d20 plus modificateurs contre un DD ; le combat comprend actions, déplacement et PV. La plus simple à apprendre et la mieux connue de l’IA : idéale pour une première partie."
+    },
+    "inSettings": "À ajouter dans les réglages de la table",
+    "moreLangs": "+{n} langues",
+    "remove": "Retirer",
+    "removeTitle": "Retirer le livre de règles",
+    "removeConfirm": "Retirer « {name} » du lorebook de cette table ? {n} entrées seront supprimées.",
+    "removeKept": "Les {kept} entrées que vous avez modifiées seront conservées."
+  },
+  "ru": {
+    "addable": "Можно добавить к этому столу",
+    "add": "Добавить",
+    "added": "Добавлено",
+    "more": "Подробнее",
+    "others": "Другие правила оформите в книгу мира сами и импортируйте.",
+    "trademark": "Названия правил принадлежат их издателям. Это приложение не является официальным продуктом.",
+    "srd51": {
+      "subtitle": "Самые популярные правила фэнтези-приключений: d20 плюс модификаторы против сложности.",
+      "details": "Сокращённая версия для судейства из открытого SRD пятой редакции D&D (2014): проверки, бой, состояния и отдых. Бросьте d20 плюс модификаторы против Сл; в бою есть действия, перемещение и хиты. Проще всего освоить, и ИИ знает её лучше всего, поэтому подходит для первой игры."
+    },
+    "inSettings": "Добавьте в настройках стола",
+    "moreLangs": "+{n} языков",
+    "remove": "Убрать",
+    "removeTitle": "Убрать книгу правил",
+    "removeConfirm": "Убрать «{name}» из книги мира этого стола? Будет удалено записей: {n}.",
+    "removeKept": "Изменённые вами записи ({kept}) останутся."
+  }
+}
