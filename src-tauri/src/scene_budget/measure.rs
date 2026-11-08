@@ -195,7 +195,17 @@ fn gm_request(
         lang,
     );
     let (scope, _) = chat_assembly::gm_scope(m);
-    let (instruction, closing) = chat_assembly::gm_instruction(root, world_id, m, &scan, lang);
+    let (mut instruction, closing) = chat_assembly::gm_instruction(root, world_id, m, &scan, lang);
+    if crate::dice::enabled(&m.state) {
+        instruction.content.push_str(&format!(
+            "\n{}",
+            crate::dice::instruction(
+                &crate::dice::measured_pool(),
+                !m.party.present.is_empty(),
+                lang
+            )
+        ));
+    }
     match provider {
         Some(_) => {
             let joined = format!("{}\n{closing}", instruction.content);

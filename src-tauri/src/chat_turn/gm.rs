@@ -196,6 +196,7 @@ pub(crate) async fn gm_narrate(
     turn_id: String,
     on_delta: tauri::ipc::Channel<String>,
     action_id: Option<String>,
+    room: bool,
 ) -> Result<GmNarration, String> {
     let _permit = data::world_write_permit_async(&world_id).await?;
     let (_guard, mut cancel) = inflight::register_turn(&world_id, &turn_id);
@@ -219,6 +220,7 @@ pub(crate) async fn gm_narrate(
     }
     // 回合開始（鎖內）：記回合紀錄與固定輸入；中止、出錯時 TurnGuard 把它改成已中止（計畫 8.3）
     let turn = TurnGuard::begin(&root, &world_id, &turn_id, &lang)?;
+    let dice_pool = crate::dice::begin(&root, &world_id, &turn_id)?;
     let mut materials = gm_materials(&root, &world_id)?;
     materials
         .party
@@ -258,8 +260,14 @@ pub(crate) async fn gm_narrate(
     let player_name = materials.player.as_ref().map(|card| card.name.as_str());
     // 換幕後第一輪 GM 回合送整棵樹對齊；之後每輪只送在場分支＋變動標記（狀態欄二期包 5）。
     let (scope, align) = chat_assembly::gm_scope(&materials);
-    let (instruction_message, closing) =
+    let (mut instruction_message, closing) =
         chat_assembly::gm_instruction(&root, &world_id, &materials, &scan, &lang);
+    if let Some(pool) = dice_pool {
+        instruction_message.content.push_str(&format!(
+            "\n{}",
+            crate::dice::instruction(&pool, room, &lang)
+        ));
+    }
     let emit = |delta: &str| push_delta(&buffer, &on_delta, delta);
     // 這一次 GM 呼叫的回覆有沒有被供應商截斷（只認這次呼叫自己回報的，同桌別的呼叫碰不到）
     let cut = std::sync::atomic::AtomicBool::new(false);

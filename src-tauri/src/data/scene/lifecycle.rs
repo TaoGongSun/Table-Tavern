@@ -222,6 +222,7 @@ fn begin_next_scene_tx(
         tx,
         next_scene,
         &TranscriptEvent {
+            dice_pool: None,
             id: None,
             message_vars: seed.as_ref().map(|vars| vars.seed.clone()),
             vars_rev: None,

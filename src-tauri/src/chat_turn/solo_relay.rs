@@ -134,6 +134,7 @@ impl RelayHost for SoloHost {
                 turn_id,
                 deltas,
                 Some(self.action.clone()),
+                false,
             )
             .await?;
             if !n.aborted && n.text.trim().is_empty() {

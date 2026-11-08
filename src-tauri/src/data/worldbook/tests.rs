@@ -757,6 +757,7 @@ fn converted_card_is_not_recreated_by_the_next_scene() {
         &world_id,
         state.current_scene,
         &TranscriptEvent {
+            dice_pool: None,
             id: None,
             message_vars: None,
             vars_rev: None,

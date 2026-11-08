@@ -41,6 +41,8 @@ export function t(key: MsgKey, vars: Record<string, string | number> = {}): stri
 }
 
 /** 執行端沒有固定模型名（智慧免費、CLI 預設）時送 "default"，顯示時在地化 */
+export const currentLang = () => current;
+
 export const modelName = (label: string) => (label === "default" ? t("modelDefault") : label);
 
 export function initialLang(): Lang {

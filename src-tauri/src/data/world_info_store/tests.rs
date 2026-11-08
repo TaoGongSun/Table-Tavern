@@ -14,6 +14,7 @@ const GM: Perspective = Perspective::Gm;
 
 fn ev(kind: TranscriptKind, text: &str) -> TranscriptEvent {
     TranscriptEvent {
+        dice_pool: None,
         ts: format!("ts-{text}"),
         speaker_id: String::new(),
         speaker_name: "GM".to_owned(),

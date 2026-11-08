@@ -74,7 +74,6 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [list-field-line-update](tasks/list-field-line-update.md) — 清單欄逐行更新（依鍵 upsert／remove） — 下一步：未排程〔作者裁決 2026-10-11〕；縮小成重構時拆欄位、不做 upsert 協定〔模型判斷·未裁決〕
 - [model-version-follow](tasks/model-version-follow.md) — 模型新版推出時跟上：CLI 手選型號的人提醒換新版、OpenRouter 檔位預填不再寫死 — 下一步：縮小〔模型判斷·未裁決〕：OpenRouter 預填改執行時決定、CLI 提醒先只做 grok〔作者裁決 2026-10-06：立案、兩件併一案〕
 - [ai-connection-provider-panels](tasks/ai-connection-provider-panels.md) — AI 連線設定重整：供應商專屬面板（延後） — 下一步：暫不動工〔模型判斷·未裁決〕；前置 free-player-onboarding 已結案，等真實玩家回饋設定頁困擾再評估
-- [ttrpg-rules-system](tasks/ttrpg-rules-system.md) — 跑團規則系統：規則書引入＋擲骰＋角色紙（v1 中案估 200–300；跑團＝聊天桌能力組、不另立桌種〔作者裁決 2026-11-07〕） — 下一步：v1 不依賴狀態欄可直接開工，開工先重讀 MVU 與房間協定現況
 - [ttrpg-combat-tracker](tasks/ttrpg-combat-tracker.md) — 跑團戰鬥層：先攻、HP 加減、骰池綁定，掛在通用狀態欄角色格上（中案估 150–250，方案送審） — 下一步：等 table-status-panel 與 ttrpg-rules-system v1
 - [release-1-mac-signing](tasks/release-1-mac-signing.md) — 發佈 1：Mac 正式簽章＋公證（Developer ID＋notarytool） — 下一步：首發不簽章〔作者裁決 2026-10-04〕，等使用者變多再考慮；Gatekeeper 繞過說明併入 release-2 發布說明
 - [cli-custom-provider](tasks/cli-custom-provider.md) — 自訂 CLI 供應商：使用者自填指令模板接任意 CLI（如 Kimi） — 下一步：暫不動工〔模型判斷·未裁決〕；確認真實需求後拍板設定 schema，v1 只做純文字模式

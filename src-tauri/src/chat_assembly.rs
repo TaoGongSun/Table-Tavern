@@ -610,7 +610,15 @@ pub(crate) fn gm_lane_parts(
     if vn_table(&materials.state) {
         frozen.push_str(&vn_system(materials, lang));
     }
-    let turn = transport::gm_lane_turn(
+    // 開關翻轉會觸發既有 system-changed 重開，關閉後不留下舊池。
+    if crate::dice::enabled(&materials.state) {
+        frozen.push_str(if lang.starts_with("zh") {
+            "\n擲骰已開啟，只能使用本輪骰池。"
+        } else {
+            "\nDice enabled: use only the current turn's pool."
+        });
+    }
+    let mut turn = transport::gm_lane_turn(
         scan,
         materials.player.as_ref(),
         &materials.state.state,
@@ -619,6 +627,11 @@ pub(crate) fn gm_lane_parts(
         instruction,
         lang,
     );
+    if let Some(dice) = crate::dice::retained(instruction) {
+        let tail = turn.tail_worldbook.get_or_insert_with(String::new);
+        tail.push_str("\n");
+        tail.push_str(dice);
+    }
     (frozen, turn)
 }
 

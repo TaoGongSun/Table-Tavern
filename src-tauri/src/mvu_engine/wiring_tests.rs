@@ -89,6 +89,7 @@ const SMALL: &str = "import { registerMvuSchema } from 'https://testingcf.jsdeli
 
 fn event(kind: TranscriptKind, text: &str) -> TranscriptEvent {
     TranscriptEvent {
+        dice_pool: None,
         ts: format!("ts-{text}"),
         speaker_id: String::new(),
         speaker_name: "GM".to_owned(),

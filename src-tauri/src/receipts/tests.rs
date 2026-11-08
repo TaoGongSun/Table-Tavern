@@ -54,6 +54,7 @@ fn import_worldbook_recorded(root: &Path, world_id: &str, label: &str, json_text
 
 fn transcript_event(ts: &str, text: &str) -> data::TranscriptEvent {
     data::TranscriptEvent {
+        dice_pool: None,
         id: None,
         message_vars: None,
         vars_rev: None,

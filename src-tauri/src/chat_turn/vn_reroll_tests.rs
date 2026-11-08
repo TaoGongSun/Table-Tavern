@@ -29,6 +29,7 @@ fn path() -> PathLimits {
 
 fn event(kind: data::TranscriptKind, text: &str, raw: Option<&str>) -> data::TranscriptEvent {
     data::TranscriptEvent {
+        dice_pool: None,
         ts: "2026-11-01T00:00:00Z".to_owned(),
         speaker_id: String::new(),
         speaker_name: "GM".to_owned(),

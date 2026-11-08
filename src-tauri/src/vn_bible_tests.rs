@@ -108,6 +108,7 @@ async fn generate_installs_and_reroll_replaces_the_flag_table() {
     assert!(!rules.contains_key("flags.trust") && rules.contains_key("flags.courage"));
 
     let player = data::TranscriptEvent {
+        dice_pool: None,
         ts: "2026-11-01T00:00:00Z".to_owned(),
         speaker_id: String::new(),
         speaker_name: "玩家".to_owned(),
@@ -286,6 +287,7 @@ fn flag_hints_read_marks_values_and_reveals() {
 fn gm_line(root: &Path, world_id: &str, text: &str) {
     let scene = data::read_state(root, world_id).unwrap().current_scene;
     let event = data::TranscriptEvent {
+        dice_pool: None,
         id: None,
         message_vars: None,
         vars_rev: None,

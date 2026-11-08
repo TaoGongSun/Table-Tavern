@@ -257,6 +257,7 @@ fn turn_event(
     marker: Option<crate::data::EventMarker>,
 ) -> DataResult<TranscriptEvent> {
     Ok(TranscriptEvent {
+        dice_pool: None,
         ts: crate::data::local_timestamp()?,
         speaker_id: String::new(),
         speaker_name: "GM".to_owned(),
@@ -382,6 +383,7 @@ pub fn begin_turn(
     turn::set_turn(
         tx,
         TurnRecord {
+            dice_pool: None,
             turn_id: turn_id.to_owned(),
             phase: Phase::Generating,
             scene,
@@ -573,7 +575,10 @@ pub enum TurnAppend {
     /// 同鍵已經落過（前端重試）：回那則，不再追加
     Existing(TranscriptEvent),
     /// 照常追加；`table` 有值＝這則是 main，掛上回合紀錄裡的表
-    New { table: Option<Json> },
+    New {
+        table: Option<Json>,
+        dice_pool: Option<String>,
+    },
 }
 
 /// `(turn_id, turn_part)` 冪等：先查本幕逐字稿有沒有同鍵的事件（寫檔成功但回傳失敗的重試也認得出），
@@ -597,13 +602,20 @@ pub fn prepare_turn_append(tx: &CommitTx<'_>, scene: u64, key: &TurnKey) -> Data
         })
         .ok_or_else(|| invalid_data("turn-mismatch"))?;
     if key.part != PART_MAIN {
-        return Ok(TurnAppend::New { table: None });
+        return Ok(TurnAppend::New {
+            table: None,
+            dice_pool: None,
+        });
     }
     match record.phase {
         Phase::AwaitingAppend => Ok(TurnAppend::New {
             table: record.pending,
+            dice_pool: record.dice_pool,
         }),
-        Phase::Aborted => Ok(TurnAppend::New { table: None }),
+        Phase::Aborted => Ok(TurnAppend::New {
+            table: None,
+            dice_pool: record.dice_pool,
+        }),
         Phase::Appended => Err(invalid_data("turn-already-landed")),
         Phase::Generating => Err(invalid_data("turn-not-committed")),
     }
@@ -760,4 +772,23 @@ pub fn publish_imported_seed(
     );
     write_control(tx, &control)?;
     Ok(epoch)
+}
+
+pub(crate) fn set_dice_pool(
+    tx: &CommitTx<'_>,
+    turn_id: &str,
+    pool: Option<String>,
+) -> DataResult<()> {
+    if turn::update_turn(tx, turn_id, |record| record.dice_pool = pool) {
+        Ok(())
+    } else {
+        Err(invalid_data("turn-mismatch"))
+    }
+}
+
+pub(crate) fn dice_pool(tx: &CommitTx<'_>, turn_id: &str) -> DataResult<Option<String>> {
+    turn::turn(tx)
+        .filter(|r| r.turn_id == turn_id)
+        .map(|r| r.dice_pool)
+        .ok_or_else(|| invalid_data("turn-mismatch"))
 }

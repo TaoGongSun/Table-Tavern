@@ -76,6 +76,7 @@ pub(super) fn record_person_arrivals(
     for entry in arrivals {
         let (marker, text) = transport::person_arrival(entry, fill);
         let event = data::TranscriptEvent {
+            dice_pool: None,
             id: None,
             message_vars: None,
             vars_rev: None,
@@ -137,6 +138,7 @@ pub(super) fn record_card_arrivals(
     let mut ids = Vec::new();
     let system_event =
         |(marker, text): (data::EventMarker, String), gm_only: bool| data::TranscriptEvent {
+            dice_pool: None,
             id: None,
             message_vars: None,
             vars_rev: None,

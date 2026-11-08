@@ -821,8 +821,9 @@ impl Engine for AppEngine {
     ) -> BoxFut<'_, Result<Narration, String>> {
         Box::pin(async move {
             let app = self.app.clone();
-            let n = crate::chat_turn::gm_narrate(app, world, turn, channel(delta), Some(action))
-                .await?;
+            let n =
+                crate::chat_turn::gm_narrate(app, world, turn, channel(delta), Some(action), true)
+                    .await?;
             Ok(Narration {
                 state_updates: n.state_update_text(),
                 text: n.text,

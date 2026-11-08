@@ -219,6 +219,7 @@ fn rerun_status_covers_fresh_ready_played_and_no_source() {
 
     // 開場白以外多一則訊息＝已遊玩，擋下時不動任何檔案
     let played = data::TranscriptEvent {
+        dice_pool: None,
         id: None,
         message_vars: None,
         vars_rev: None,

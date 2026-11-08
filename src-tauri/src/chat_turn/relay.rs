@@ -106,6 +106,7 @@ pub(crate) struct Landed {
 
 /// 這段要收進廣播的內容。沒有＝這步不開段（碰到上限、只寫點名列）。
 pub(crate) struct PartClose {
+    pub(crate) dice_pool: Option<String>,
     pub(crate) text: String,
     pub(crate) interrupted: bool,
     pub(crate) status: Option<Value>,
@@ -277,6 +278,7 @@ async fn narrate_segment<H: RelayHost>(
     let turn = host.begin_turn();
     let piece = host.narrate(turn.clone(), part).await?;
     let main = land_main(&run.desk, &req.action_id, &turn, &piece, req.retry_delay).await?;
+    let dice_pool = main.as_ref().and_then(|event| event.dice_pool.clone());
     if let Some(event) = main {
         let next = (!piece.aborted && !piece.truncated)
             .then(|| piece.next.clone())
@@ -314,6 +316,7 @@ async fn narrate_segment<H: RelayHost>(
         part,
         &text,
         piece.aborted,
+        dice_pool,
         status,
         panel,
     );
@@ -455,6 +458,7 @@ async fn reply_segment<H: RelayHost>(
         line.aborted,
         None,
         None,
+        None,
     );
     Ok(())
 }
@@ -476,12 +480,14 @@ fn close_part<H: RelayHost>(
     part: u32,
     text: &str,
     interrupted: bool,
+    dice_pool: Option<String>,
     status: Option<Value>,
     panel: Option<Value>,
 ) {
     let consumed = host.checkpoint(
         progress,
         Some(PartClose {
+            dice_pool,
             text: text.to_owned(),
             interrupted,
             status,
@@ -506,6 +512,7 @@ fn story_event(
     action: &str,
 ) -> TranscriptEvent {
     TranscriptEvent {
+        dice_pool: None,
         ts: data::local_timestamp().unwrap_or_default(),
         speaker_id: speaker.0.to_owned(),
         speaker_name: speaker.1.to_owned(),

@@ -773,3 +773,45 @@ async fn aborted_and_worldbook_free_rounds_do_not_count() {
     assert_eq!(stored(&fake).tail_stale.unwrap().copies, 2, "中止不加");
     std::fs::remove_dir_all(&fake.dir).unwrap();
 }
+
+/// 骰池不是 transcript 本文，卻會留在 CLI session；到門檻必須重建。
+#[cfg(unix)]
+#[tokio::test]
+async fn dice_only_tail_is_counted_and_reopens_without_replaying_old_pools() {
+    let _serial = crate::inflight::lock_real_process_tests();
+    let fake = fake_claude("dice-tail-cap");
+    let mut events = vec![event(TranscriptKind::Player, "", "沃恩", "巡視酒館")];
+    let dice = crate::dice::instruction(&crate::dice::measured_pool(), false, "en");
+    for round in 0..9 {
+        let mut input = gm_input(&events, ROOMY);
+        input.tail = dice.clone();
+        input.tail_worldbook = Some(dice.clone());
+        let reply = run_turn(&fake.call, &fake.root, &fake.world_id, input, None, |_| {})
+            .await
+            .unwrap()
+            .text;
+        events.push(event(TranscriptKind::Narration, "", "", &reply));
+        events.push(event(
+            TranscriptKind::Player,
+            "",
+            "沃恩",
+            &format!("巡視 {round}"),
+        ));
+        let session = stored(&fake).session_id;
+        let expected = if round == 8 { 1 } else { round + 1 };
+        assert_eq!(user_line_count(&fake, &session, "[dice_pool]"), expected);
+        assert_eq!(stored(&fake).tail_stale.unwrap().copies as usize, expected);
+    }
+    let calls = calls_of(&fake);
+    assert_ne!(session_of(&calls[7]), session_of(&calls[8]));
+    assert_eq!(
+        calls[8]["prompt"]
+            .as_str()
+            .unwrap()
+            .matches("[dice_pool]")
+            .count(),
+        1
+    );
+    assert_eq!(ledger_rows(&fake)[8]["reason"], "tail-worldbook");
+    std::fs::remove_dir_all(fake.dir).unwrap();
+}

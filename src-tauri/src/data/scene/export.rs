@@ -267,6 +267,7 @@ mod tests {
             (
                 1,
                 TranscriptEvent {
+                    dice_pool: None,
                     id: None,
                     message_vars: None,
                     vars_rev: None,
@@ -289,6 +290,7 @@ mod tests {
             (
                 0,
                 TranscriptEvent {
+                    dice_pool: None,
                     id: None,
                     message_vars: None,
                     vars_rev: None,
@@ -311,6 +313,7 @@ mod tests {
             (
                 1,
                 TranscriptEvent {
+                    dice_pool: None,
                     id: None,
                     message_vars: None,
                     vars_rev: None,
@@ -333,6 +336,7 @@ mod tests {
             (
                 0,
                 TranscriptEvent {
+                    dice_pool: None,
                     id: None,
                     message_vars: None,
                     vars_rev: None,
@@ -387,6 +391,7 @@ mod tests {
             (
                 0,
                 TranscriptEvent {
+                    dice_pool: None,
                     id: None,
                     message_vars: None,
                     vars_rev: None,
@@ -409,6 +414,7 @@ mod tests {
             (
                 1,
                 TranscriptEvent {
+                    dice_pool: None,
                     id: None,
                     message_vars: None,
                     vars_rev: None,
@@ -450,6 +456,7 @@ mod tests {
         text: &str,
     ) -> TranscriptEvent {
         TranscriptEvent {
+            dice_pool: None,
             id: None,
             message_vars: None,
             vars_rev: None,

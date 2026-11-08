@@ -97,6 +97,7 @@ pub fn list_worlds(root: &Path) -> DataResult<Vec<WorldMeta>> {
 
 fn blank_state(id: &str, name: &str, table_kind: TableKind) -> WorldState {
     WorldState {
+        dice_enabled: false,
         id: id.to_owned(),
         name: name.to_owned(),
         model_bindings: BTreeMap::new(),
@@ -292,6 +293,7 @@ pub fn create_sample_world(root: &Path, lang: &str) -> DataResult<String> {
         &world_id,
         0,
         &TranscriptEvent {
+            dice_pool: None,
             id: None,
             message_vars: None,
             vars_rev: None,
@@ -739,6 +741,7 @@ mod tests {
 
         // 對名稱排序居後的甲桌寫一筆訊息，活動排序應把它推到最前
         let event = TranscriptEvent {
+            dice_pool: None,
             id: None,
             message_vars: None,
             vars_rev: None,
@@ -779,6 +782,7 @@ mod tests {
 
         let has_message = create_world(root.path(), "有訊息").unwrap();
         let event = TranscriptEvent {
+            dice_pool: None,
             id: None,
             message_vars: None,
             vars_rev: None,

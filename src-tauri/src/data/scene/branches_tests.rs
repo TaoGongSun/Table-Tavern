@@ -4,6 +4,7 @@ use crate::data::*;
 
 fn line(root: &Path, world_id: &str, scene: u64, kind: TranscriptKind, text: &str) {
     let event = TranscriptEvent {
+        dice_pool: None,
         id: None,
         message_vars: None,
         vars_rev: None,

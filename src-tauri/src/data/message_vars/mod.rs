@@ -45,6 +45,7 @@ pub use write::{
     settle_before_append, settle_previous_turn, turn_owns, unlanded_events, CardWrite,
     CardWriteTarget, GmCommit, TurnAppend, TurnSide, TurnTicket,
 };
+pub(crate) use write::{dice_pool, set_dice_pool};
 
 #[cfg(test)]
 use control::Mode;

@@ -39,6 +39,7 @@ fn plain_card(name: &str) -> String {
 
 fn say(root: &Path, world_id: &str, text: &str) {
     let event = TranscriptEvent {
+        dice_pool: None,
         ts: "2026-10-10T12:00:00+08:00".to_owned(),
         speaker_id: String::new(),
         speaker_name: "玩家".to_owned(),

@@ -324,6 +324,12 @@ export function cleanScenePanel(v: unknown): ScenePanel | null {
   return Object.keys(out).length ? out : null;
 }
 
+export function cleanDicePool(value: unknown): string | undefined {
+  return typeof value === "string" && new TextEncoder().encode(value).length <= 512
+    ? value
+    : undefined;
+}
+
 export function cleanHistory(list: unknown, cards: PublicCard[]): StoryPart[] | null {
   if (!Array.isArray(list)) return null;
   const out: StoryPart[] = [];
@@ -344,6 +350,9 @@ export function cleanHistory(list: unknown, cards: PublicCard[]): StoryPart[] | 
       at: h.at,
       ...(state ? { state } : {}),
       ...(panel ? { panel } : {}),
+      ...(speaker.kind === "gm" && cleanDicePool(h.dicePool) !== undefined
+        ? { dicePool: cleanDicePool(h.dicePool) }
+        : {}),
     });
   }
   return out;

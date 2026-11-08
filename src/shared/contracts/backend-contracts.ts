@@ -73,6 +73,7 @@ export interface SceneLabel {
 }
 
 export interface WorldState {
+  dice_enabled?: boolean;
   id: string;
   name: string;
   player_card_id: string | null;
@@ -115,6 +116,7 @@ export interface BranchBinding {
 // 角色發言 speaker_id 是角色 id；GM 旁白／系統訊息與玩家發言 speaker_id 是空字串，
 // speaker_name 是當下顯示名快照——改名後舊事件不動（2026-07-27 拍板），顯示一律讀這欄
 export interface TranscriptEvent {
+  dice_pool?: string;
   ts: string;
   speaker_id: string;
   speaker_name: string;

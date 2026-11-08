@@ -35,6 +35,7 @@ pub(super) fn event(
     state: TableState,
 ) -> TranscriptEvent {
     TranscriptEvent {
+        dice_pool: None,
         id: None,
         message_vars: None,
         vars_rev: None,

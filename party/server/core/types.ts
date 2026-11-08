@@ -80,6 +80,7 @@ export interface ScenePanel {
   tracking?: Partial<Record<"goals" | "promises" | "clues", string[]>>;
 }
 export interface StoryPart {
+  dicePool?: string;
   round: number;
   part: number;
   speaker: Speaker;

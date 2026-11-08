@@ -405,6 +405,7 @@ fn card_of(member: &Character) -> CharacterCard {
 
 fn transcript_event(event: &Event) -> TranscriptEvent {
     TranscriptEvent {
+        dice_pool: None,
         ts: data::local_timestamp().unwrap_or_default(),
         speaker_id: event.speaker.clone().unwrap_or_default(),
         speaker_name: event.speaker_name.clone(),

@@ -605,6 +605,7 @@ mod tests {
             &world_id,
             0,
             &data::TranscriptEvent {
+                dice_pool: None,
                 id: None,
                 message_vars: None,
                 vars_rev: None,
@@ -632,6 +633,7 @@ mod tests {
             &world_id,
             0,
             &data::TranscriptEvent {
+                dice_pool: None,
                 id: None,
                 message_vars: None,
                 vars_rev: None,
@@ -682,6 +684,7 @@ mod tests {
         data::write_state(&root, &world_id, &world).unwrap();
 
         let bare = data::TranscriptEvent {
+            dice_pool: None,
             id: None,
             message_vars: None,
             vars_rev: None,

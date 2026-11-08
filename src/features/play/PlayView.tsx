@@ -1,7 +1,8 @@
 // 遊玩畫面：這一幕的訊息清單與底下的 composer。整支是受控元件——
 // 逐字稿、生成狀態、輸入框與所有動作都由 chat controller 擁有，這裡只負責畫與回報。
 import { Fragment, FormEvent, ReactNode, useEffect, useLayoutEffect, useRef } from "react";
-import { t } from "../../i18n";
+import { t, currentLang } from "../../i18n";
+import { DicePoolView } from "../dice/DicePoolView";
 import { TranscriptEvent } from "../../shared/contracts/backend-contracts";
 import type { ChatNotice } from "./chat/useSmartFreeNotices";
 import { CharacterMeta } from "../characters/card-model";
@@ -33,6 +34,7 @@ function sameStory(previous: TranscriptEvent[], next: TranscriptEvent[]): boolea
           event.speaker_id === other.speaker_id &&
           event.speaker_name === other.speaker_name &&
           event.text === other.text &&
+          event.dice_pool === other.dice_pool &&
           event.truncated === other.truncated &&
           JSON.stringify(event.marker) === JSON.stringify(other.marker))
       );
@@ -225,6 +227,7 @@ export function PlayView({
     return (
       <div key={index} className={`message message-${event.kind}`}>
         <StoryText text={eventDisplayText(event)} />
+        {event.kind === "narration" && <DicePoolView pool={event.dice_pool} text={event.text} language={currentLang()} />}
         {event.truncated && <span className="response-truncated">{t("responseTruncated")}</span>}
       </div>
     );

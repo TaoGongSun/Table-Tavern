@@ -452,6 +452,7 @@ pub fn materialize(
 /// 開場旁白事件（`opening: true`）：genesis 建桌與 VN 卡匯入共用。
 pub fn opening_event(text: &str) -> TranscriptEvent {
     TranscriptEvent {
+        dice_pool: None,
         id: None,
         message_vars: None,
         vars_rev: None,

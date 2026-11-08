@@ -11,6 +11,7 @@ fn transcript_round_trip_is_ordered_jsonl_and_rejects_invalid_kind() {
     let world_id = create_world(root.path(), "劇場").unwrap();
     let events = vec![
         TranscriptEvent {
+            dice_pool: None,
             id: None,
             message_vars: None,
             vars_rev: None,
@@ -30,6 +31,7 @@ fn transcript_round_trip_is_ordered_jsonl_and_rejects_invalid_kind() {
             opening: false,
         },
         TranscriptEvent {
+            dice_pool: None,
             id: None,
             message_vars: None,
             vars_rev: None,
@@ -49,6 +51,7 @@ fn transcript_round_trip_is_ordered_jsonl_and_rejects_invalid_kind() {
             opening: false,
         },
         TranscriptEvent {
+            dice_pool: None,
             id: None,
             message_vars: None,
             vars_rev: None,
@@ -123,6 +126,7 @@ fn pop_transcript_removes_last_event_until_scene_is_empty() {
         .iter()
         .enumerate()
         .map(|(index, text)| TranscriptEvent {
+            dice_pool: None,
             id: None,
             message_vars: None,
             vars_rev: None,
@@ -192,6 +196,7 @@ fn append_transcript_uses_current_snapshot_without_overwriting_supplied_state() 
         .insert("time".to_owned(), "清晨".to_owned());
     write_state(root.path(), &world_id, &state).unwrap();
     let event = TranscriptEvent {
+        dice_pool: None,
         id: None,
         message_vars: None,
         vars_rev: None,
@@ -234,6 +239,7 @@ fn append_transcript_uses_current_snapshot_without_overwriting_supplied_state() 
         &world_id,
         0,
         &TranscriptEvent {
+            dice_pool: None,
             id: None,
             message_vars: None,
             vars_rev: None,
@@ -308,6 +314,7 @@ fn append_opening_merges_state_and_pop_restores_previous_snapshot() {
         &world_id,
         0,
         &TranscriptEvent {
+            dice_pool: None,
             id: None,
             message_vars: None,
             vars_rev: None,
@@ -416,6 +423,7 @@ fn pop_transcript_restores_the_previous_event_snapshot() {
             &world_id,
             0,
             &TranscriptEvent {
+                dice_pool: None,
                 id: None,
                 message_vars: None,
                 vars_rev: None,
@@ -460,6 +468,7 @@ fn restoring_an_undone_event_puts_its_snapshot_back() {
         jumps: BTreeMap::new(),
     });
     let event = |text: &str, snapshot: &TableState| TranscriptEvent {
+        dice_pool: None,
         id: None,
         message_vars: None,
         vars_rev: None,
@@ -543,6 +552,7 @@ fn pop_transcript_restores_entire_nested_tree_snapshot() {
             &world_id,
             0,
             &TranscriptEvent {
+                dice_pool: None,
                 id: None,
                 message_vars: None,
                 vars_rev: None,

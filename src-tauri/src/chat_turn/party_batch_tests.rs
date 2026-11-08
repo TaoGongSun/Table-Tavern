@@ -324,6 +324,7 @@ fn single_player_table_prompt_is_unchanged() {
 
 fn first_event(name: &str) -> data::TranscriptEvent {
     data::TranscriptEvent {
+        dice_pool: None,
         ts: String::new(),
         speaker_id: String::new(),
         speaker_name: name.to_owned(),

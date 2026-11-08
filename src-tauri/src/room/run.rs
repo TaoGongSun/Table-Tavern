@@ -551,6 +551,7 @@ impl RelayHost for RoomHost<'_> {
             close.interrupted,
             close.status.as_ref(),
             close.panel.as_ref(),
+            close.dice_pool.as_deref(),
             apply,
         );
         self.room.engine.table_changed(&self.world);
@@ -637,6 +638,7 @@ impl Part {
         interrupted: bool,
         status: Option<&Value>,
         panel: Option<&Value>,
+        dice_pool: Option<&str>,
         change: impl FnOnce(&mut DispatchRun),
     ) -> bool {
         let mut state = self
@@ -657,6 +659,9 @@ impl Part {
         if let Some(panel) = panel {
             p["panel"] = panel.clone();
         }
+        if let Some(pool) = dice_pool {
+            p["dicePool"] = json!(pool);
+        }
         self.room.durable("gen.part.end", p, |saved| {
             if let Some(run) = saved.dispatch.as_mut() {
                 run.last_ended = Some(n);
@@ -671,6 +676,7 @@ impl Part {
 
 fn event(kind: TranscriptKind, speaker: (&str, &str), body: &str, action: &str) -> TranscriptEvent {
     TranscriptEvent {
+        dice_pool: None,
         ts: data::local_timestamp().unwrap_or_default(),
         speaker_id: speaker.0.to_owned(),
         speaker_name: speaker.1.to_owned(),

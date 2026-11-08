@@ -10,6 +10,7 @@ use std::time::Duration;
 
 fn event(kind: TranscriptKind, ts: &str, text: &str) -> TranscriptEvent {
     TranscriptEvent {
+        dice_pool: None,
         id: None,
         message_vars: None,
         vars_rev: None,

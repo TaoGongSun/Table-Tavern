@@ -234,6 +234,7 @@ fn narration(root: &std::path::Path, world_id: &str, text: &str) {
         world_id,
         0,
         &data::TranscriptEvent {
+            dice_pool: None,
             id: None,
             message_vars: None,
             vars_rev: None,

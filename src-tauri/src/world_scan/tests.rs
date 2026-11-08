@@ -55,6 +55,7 @@ pub(super) fn card(id: &str, name: &str, public_md: &str, private_md: &str) -> C
 
 pub(super) fn event(kind: TranscriptKind, name: &str, text: &str) -> TranscriptEvent {
     TranscriptEvent {
+        dice_pool: None,
         id: None,
         message_vars: None,
         vars_rev: None,

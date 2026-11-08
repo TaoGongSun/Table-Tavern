@@ -261,6 +261,7 @@ fn only_the_last_ten_actions_count() {
 
 fn event(kind: TranscriptKind, name: &str, text: &str) -> TranscriptEvent {
     TranscriptEvent {
+        dice_pool: None,
         id: None,
         message_vars: None,
         vars_rev: None,

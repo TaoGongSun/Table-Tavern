@@ -760,6 +760,7 @@ fn long_save_hits_the_capacity_lock_then_advances_and_sends() {
 
 fn event_template() -> TranscriptEvent {
     TranscriptEvent {
+        dice_pool: None,
         ts: String::new(),
         speaker_id: String::new(),
         speaker_name: String::new(),

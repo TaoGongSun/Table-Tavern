@@ -52,6 +52,7 @@ pub struct PendingPart {
 
 #[derive(Debug, Clone)]
 pub struct TurnRecord {
+    pub dice_pool: Option<String>,
     pub turn_id: String,
     pub phase: Phase,
     /// 開始當下的幕與桌世代：提交與落檔都要對得上，舊回合不會套到新幕或換過的桌

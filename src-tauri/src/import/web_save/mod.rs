@@ -338,6 +338,7 @@ fn event_of(
         ),
     };
     TranscriptEvent {
+        dice_pool: None,
         ts: message.ts.clone(),
         speaker_id,
         speaker_name,

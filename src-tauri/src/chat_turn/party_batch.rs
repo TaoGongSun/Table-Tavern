@@ -135,6 +135,7 @@ fn batch_events(
         }
     }
     let event = |kind, name: String, text: String, marker| TranscriptEvent {
+        dice_pool: None,
         ts: data::local_timestamp().unwrap_or_default(),
         speaker_id: String::new(),
         speaker_name: name,

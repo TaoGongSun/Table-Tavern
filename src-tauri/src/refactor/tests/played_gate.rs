@@ -40,6 +40,7 @@ fn post_opening(root: &Path, world_id: &str, ts: &str, index: usize, source: Opt
 
 fn event(kind: data::TranscriptKind, opening: bool) -> data::TranscriptEvent {
     data::TranscriptEvent {
+        dice_pool: None,
         id: None,
         message_vars: None,
         vars_rev: None,

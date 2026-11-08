@@ -187,6 +187,7 @@ mod tests {
         action: Option<&str>,
     ) -> TranscriptEvent {
         TranscriptEvent {
+            dice_pool: None,
             ts: String::new(),
             speaker_id: String::new(),
             speaker_name: String::new(),

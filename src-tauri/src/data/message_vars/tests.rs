@@ -52,6 +52,7 @@ fn import_card(root: &Path, world_id: &str, name: &str, mvu: bool) {
 
 fn event(kind: TranscriptKind, text: &str) -> TranscriptEvent {
     TranscriptEvent {
+        dice_pool: None,
         ts: format!("ts-{text}"),
         speaker_id: String::new(),
         speaker_name: "GM".to_owned(),

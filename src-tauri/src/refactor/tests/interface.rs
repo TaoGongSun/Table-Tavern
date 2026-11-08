@@ -518,6 +518,7 @@ fn apply_interface_syncs_new_tree_into_scene_snapshots() {
             &world_id,
             0,
             &data::TranscriptEvent {
+                dice_pool: None,
                 id: None,
                 message_vars: None,
                 vars_rev: None,

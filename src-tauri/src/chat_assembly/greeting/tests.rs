@@ -86,6 +86,7 @@ fn post_opening(root: &std::path::Path, world_id: &str, scene: u64, raw: &str) {
 
 fn player(text: &str) -> TranscriptEvent {
     TranscriptEvent {
+        dice_pool: None,
         id: None,
         message_vars: None,
         vars_rev: None,

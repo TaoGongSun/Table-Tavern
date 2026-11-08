@@ -227,6 +227,7 @@ mod tests {
             &world_id,
             0,
             &TranscriptEvent {
+                dice_pool: None,
                 id: None,
                 message_vars: None,
                 vars_rev: None,

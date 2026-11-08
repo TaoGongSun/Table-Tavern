@@ -1,0 +1,29 @@
+.dice-pool {
+  margin: 0.5rem 0;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid currentColor;
+  border-radius: 0.5rem;
+  font-size: 0.85rem;
+}
+.dice-pool summary {
+  cursor: pointer;
+}
+.dice-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: baseline;
+  margin-top: 0.4rem;
+}
+.dice-cell {
+  padding: 0.15rem 0.3rem;
+  border: 1px solid currentColor;
+  border-radius: 0.25rem;
+}
+.dice-cell small {
+  display: block;
+}
+.dice-pool .dice-error {
+  color: #b82424;
+  font-weight: 600;
+}

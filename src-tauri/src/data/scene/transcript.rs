@@ -20,6 +20,8 @@ pub enum TranscriptKind {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TranscriptEvent {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dice_pool: Option<String>,
     pub ts: String,
     /// 角色事件存角色 id；GM 旁白／系統訊息／玩家發言存空字串（kind 已足以區分）
     pub speaker_id: String,
@@ -213,7 +215,13 @@ pub fn append_event(
                     reply_landed(root, world_id, scene, key);
                     return Ok((existing, None));
                 }
-                message_vars::TurnAppend::New { table: attach } => table = attach,
+                message_vars::TurnAppend::New {
+                    table: attach,
+                    dice_pool,
+                } => {
+                    table = attach;
+                    event.dice_pool = dice_pool;
+                }
             }
             event.turn_key = Some(key.clone());
             event.message_vars = None;
@@ -464,6 +472,7 @@ pub fn append_opening_keyed(
                 ));
         }
         let event = TranscriptEvent {
+            dice_pool: None,
             ts: ts.to_owned(),
             speaker_id: String::new(),
             speaker_name: "GM".to_owned(),

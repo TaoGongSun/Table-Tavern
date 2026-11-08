@@ -5,6 +5,7 @@ use data::{EventMarker, TranscriptEvent, TranscriptKind};
 
 fn line(kind: TranscriptKind, speaker: (&str, &str), text: &str) -> TranscriptEvent {
     TranscriptEvent {
+        dice_pool: None,
         ts: String::new(),
         speaker_id: speaker.0.to_owned(),
         speaker_name: speaker.1.to_owned(),

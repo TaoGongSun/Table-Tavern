@@ -4,6 +4,7 @@ mod chat_turn;
 mod cli;
 mod commands;
 mod data;
+mod dice;
 mod evaluator;
 mod generated_image;
 mod genesis;
@@ -109,6 +110,7 @@ pub fn run() {
             commands::world::delete_world,
             commands::world::read_world_md,
             commands::world::write_world_md,
+            commands::world::set_dice_enabled,
             commands::world::read_worldbook,
             commands::world::upsert_worldbook_entry,
             commands::world::reorder_worldbook_entries,
@@ -466,6 +468,7 @@ mod command_classification {
         "write_character",
         "write_state",
         "write_world_md",
+        "set_dice_enabled",
     ];
 
     const READ_WORLD: &[&str] = &[

@@ -65,6 +65,7 @@ pub(super) fn derived_rule(formula: &str) -> FieldRule {
 
 pub(super) fn world_with(pairs: &[(&str, &str)], mechanism: Mechanism) -> data::WorldState {
     data::WorldState {
+        dice_enabled: false,
         id: "01ARZ3NDEKTSV4RRFFQ69G5FAV".to_owned(),
         name: "測試桌".to_owned(),
         model_bindings: BTreeMap::new(),

@@ -32,6 +32,7 @@ import {
   cleanQuota,
   cleanSceneState,
   cleanScenePanel,
+  cleanDicePool,
   cleanSpeaker,
   cleanSyncItems,
   ID64,
@@ -378,6 +379,9 @@ export const EXECUTOR: Record<string, (tx: Tx, p: any) => ReturnType<Handler>> =
       at: tx.now,
       ...(state ? { state } : {}),
       ...(panel ? { panel } : {}),
+      ...(r.speaker.kind === "gm" && cleanDicePool(p.dicePool) !== undefined
+        ? { dicePool: cleanDicePool(p.dicePool) }
+        : {}),
     });
     Object.assign(r, { partsEnded: r.partsEnded + 1, speaker: null });
     tx.ctx.live.stream = null;

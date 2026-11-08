@@ -30,6 +30,7 @@ fn begin_next_scene_appends_summary_and_advances_scene() {
     let root = TestRoot::new("begin-next-scene");
     let world_id = create_world(root.path(), "換場桌").unwrap();
     let event = TranscriptEvent {
+        dice_pool: None,
         id: None,
         message_vars: None,
         vars_rev: None,
@@ -71,6 +72,7 @@ fn begin_next_scene_stores_title_on_old_scene_when_given() {
     let root = TestRoot::new("begin-next-scene-title");
     let world_id = create_world(root.path(), "取名桌").unwrap();
     let event = TranscriptEvent {
+        dice_pool: None,
         id: None,
         message_vars: None,
         vars_rev: None,
@@ -125,6 +127,7 @@ fn revert_scene_returns_to_previous_scene_and_drops_title() {
         &world_id,
         0,
         &TranscriptEvent {
+            dice_pool: None,
             id: None,
             message_vars: None,
             vars_rev: None,
@@ -173,6 +176,7 @@ fn revert_scene_rejects_extra_events_without_touching_anything() {
         &world_id,
         0,
         &TranscriptEvent {
+            dice_pool: None,
             id: None,
             message_vars: None,
             vars_rev: None,
@@ -200,6 +204,7 @@ fn revert_scene_rejects_extra_events_without_touching_anything() {
         &world_id,
         1,
         &TranscriptEvent {
+            dice_pool: None,
             id: None,
             message_vars: None,
             vars_rev: None,
@@ -256,6 +261,7 @@ fn replace_scene_summary_overwrites_text_and_drops_title_when_none() {
         &world_id,
         0,
         &TranscriptEvent {
+            dice_pool: None,
             id: None,
             message_vars: None,
             vars_rev: None,
@@ -313,6 +319,7 @@ fn replace_scene_summary_refuses_a_forked_scene() {
         &world_id,
         0,
         &TranscriptEvent {
+            dice_pool: None,
             id: None,
             message_vars: None,
             vars_rev: None,
@@ -368,6 +375,7 @@ fn replace_scene_summary_keeps_snapshot_for_later_revert() {
         &world_id,
         0,
         &TranscriptEvent {
+            dice_pool: None,
             id: None,
             message_vars: None,
             vars_rev: None,
@@ -413,6 +421,7 @@ fn fork_scene_copies_history_and_relabels_through_continue_and_revert() {
         &world_id,
         0,
         &TranscriptEvent {
+            dice_pool: None,
             id: None,
             message_vars: None,
             vars_rev: None,
@@ -495,6 +504,7 @@ fn fork_scene_copies_history_and_relabels_through_continue_and_revert() {
         &world_id,
         3,
         &TranscriptEvent {
+            dice_pool: None,
             id: None,
             message_vars: None,
             vars_rev: None,
@@ -576,6 +586,7 @@ fn fork_scene_rejects_current_or_future_scene() {
         &world_id,
         0,
         &TranscriptEvent {
+            dice_pool: None,
             id: None,
             message_vars: None,
             vars_rev: None,

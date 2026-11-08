@@ -263,3 +263,22 @@ pub(crate) fn export_worldbook(
     data::export_worldbook(&data_root(&app)?, &world_id, std::path::Path::new(&path))
         .map_err(|error| error.to_string())
 }
+
+#[tauri::command]
+pub(crate) fn set_dice_enabled(
+    app: tauri::AppHandle,
+    world_id: String,
+    enabled: bool,
+) -> Result<(), String> {
+    let _permit = data::world_write_permit(&world_id)?;
+    let config = data::read_config(&config_root(&app)?).map_err(|e| e.to_string())?;
+    let status = crate::room::status(&config_root(&app)?, Some(&world_id));
+    let room = status.world_id.as_deref() == Some(&world_id) && status.active;
+    crate::dice::set_enabled(
+        &data_root(&app)?,
+        &world_id,
+        enabled,
+        transport::ui_language(&config).as_str(),
+        room,
+    )
+}

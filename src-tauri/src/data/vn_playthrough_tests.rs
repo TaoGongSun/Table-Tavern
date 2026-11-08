@@ -6,6 +6,7 @@ const TEMPLATE: &str = "{name}（第 {n} 周目）";
 
 fn event(text: &str, opening: bool) -> TranscriptEvent {
     TranscriptEvent {
+        dice_pool: None,
         id: None,
         message_vars: None,
         vars_rev: None,

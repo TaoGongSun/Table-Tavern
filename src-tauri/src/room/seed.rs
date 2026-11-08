@@ -204,6 +204,7 @@ pub(super) fn scene(
         }
         out.lines.push(json!({
             "speaker": speaker, "text": clip(&text, 64000), "interrupted": event.truncated, "at": 0,
+            "dicePool": event.dice_pool,
         }));
     }
     out

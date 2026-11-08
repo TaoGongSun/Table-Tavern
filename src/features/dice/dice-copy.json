@@ -1,0 +1,122 @@
+{
+  "zh-TW": {
+    "title": "骰池",
+    "noReferences": "未找到骰號",
+    "invalid": "骰池無法讀取",
+    "used": "已用",
+    "face": "面值不符",
+    "order": "未依序取用",
+    "repeat": "重複取用",
+    "unknown": "找不到這顆骰",
+    "enabledSolo": "已開啟擲骰：GM 敘事會標骰號；單人桌可用骰鈕自己擲，房間由 GM 擲骰。",
+    "enabledRoom": "已開啟擲骰：所有骰由 GM 從骰池取用，敘事會標骰號。"
+  },
+  "zh-CN": {
+    "title": "骰池",
+    "noReferences": "未找到骰号",
+    "invalid": "骰池无法读取",
+    "used": "已用",
+    "face": "面值不符",
+    "order": "未依序取用",
+    "repeat": "重复取用",
+    "unknown": "找不到这颗骰",
+    "enabledSolo": "已开启掷骰：GM 叙事会标骰号；单人桌可用骰钮自己掷，房间由 GM 掷骰。",
+    "enabledRoom": "已开启掷骰：所有骰由 GM 从骰池取用，叙事会标骰号。"
+  },
+  "en": {
+    "title": "Dice pool",
+    "noReferences": "No dice references found",
+    "invalid": "Cannot read this dice pool",
+    "used": "Used",
+    "face": "Face mismatch",
+    "order": "Out of order",
+    "repeat": "Used more than once",
+    "unknown": "Unknown die",
+    "enabledSolo": "Dice enabled: GM narration cites dice. Solo tables offer a roll button; in rooms the GM rolls.",
+    "enabledRoom": "Dice enabled: the GM takes every roll from the pool and cites it in narration."
+  },
+  "ja": {
+    "title": "ダイスプール",
+    "noReferences": "ダイス番号が見つかりません",
+    "invalid": "ダイスプールを読み取れません",
+    "used": "使用済み",
+    "face": "出目が不一致",
+    "order": "順番が不一致",
+    "repeat": "重複使用",
+    "unknown": "不明なダイス",
+    "enabledSolo": "ダイスを有効にしました。GM は番号を記載します。ソロ卓ではボタンで、ルームでは GM が振ります。",
+    "enabledRoom": "ダイスを有効にしました。ルームの全ダイスは GM がプールから使い、番号を記載します。"
+  },
+  "ko": {
+    "title": "주사위 풀",
+    "noReferences": "주사위 참조를 찾지 못했습니다",
+    "invalid": "주사위 풀을 읽을 수 없습니다",
+    "used": "사용됨",
+    "face": "눈금 불일치",
+    "order": "순서 불일치",
+    "repeat": "중복 사용",
+    "unknown": "알 수 없는 주사위",
+    "enabledSolo": "주사위를 켰습니다. GM이 번호를 표시합니다. 솔로 테이블에서는 버튼으로, 방에서는 GM이 굴립니다.",
+    "enabledRoom": "주사위를 켰습니다. 방에서는 GM이 풀의 주사위를 사용하고 번호를 표시합니다."
+  },
+  "es": {
+    "title": "Reserva de dados",
+    "noReferences": "No se encontraron referencias a dados",
+    "invalid": "No se puede leer la reserva",
+    "used": "Usado",
+    "face": "Valor incorrecto",
+    "order": "Fuera de orden",
+    "repeat": "Uso repetido",
+    "unknown": "Dado desconocido",
+    "enabledSolo": "Dados activados: el DJ cita los dados. En solitario puedes usar el botón; en salas tira el DJ.",
+    "enabledRoom": "Dados activados: el DJ usa la reserva para todas las tiradas y las cita en la narración."
+  },
+  "pt-BR": {
+    "title": "Reserva de dados",
+    "noReferences": "Nenhuma referência a dados encontrada",
+    "invalid": "Não foi possível ler a reserva",
+    "used": "Usado",
+    "face": "Valor divergente",
+    "order": "Fora de ordem",
+    "repeat": "Uso repetido",
+    "unknown": "Dado desconhecido",
+    "enabledSolo": "Dados ativados: o mestre cita os dados. Em mesas solo há um botão; nas salas o mestre rola.",
+    "enabledRoom": "Dados ativados: o mestre usa a reserva para todas as rolagens e as cita na narrativa."
+  },
+  "de": {
+    "title": "Würfelvorrat",
+    "noReferences": "Keine Würfelverweise gefunden",
+    "invalid": "Würfelvorrat nicht lesbar",
+    "used": "Verwendet",
+    "face": "Augenzahl stimmt nicht",
+    "order": "Falsche Reihenfolge",
+    "repeat": "Mehrfach verwendet",
+    "unknown": "Unbekannter Würfel",
+    "enabledSolo": "Würfeln aktiviert: Die SL nennt Würfelnummern. Solo gibt es eine Würfeltaste; in Räumen würfelt die SL.",
+    "enabledRoom": "Würfeln aktiviert: Die SL nutzt für alle Würfe den Vorrat und nennt die Würfelnummern."
+  },
+  "fr": {
+    "title": "Réserve de dés",
+    "noReferences": "Aucune référence aux dés trouvée",
+    "invalid": "Réserve de dés illisible",
+    "used": "Utilisé",
+    "face": "Valeur incorrecte",
+    "order": "Hors séquence",
+    "repeat": "Utilisé plusieurs fois",
+    "unknown": "Dé inconnu",
+    "enabledSolo": "Dés activés : le MJ cite les dés. En solo, utilisez le bouton ; en salle, le MJ lance les dés.",
+    "enabledRoom": "Dés activés : le MJ utilise la réserve pour tous les jets et cite les dés dans le récit."
+  },
+  "ru": {
+    "title": "Запас кубиков",
+    "noReferences": "Ссылки на кубики не найдены",
+    "invalid": "Не удалось прочитать запас",
+    "used": "Использован",
+    "face": "Значение не совпадает",
+    "order": "Нарушен порядок",
+    "repeat": "Повторное использование",
+    "unknown": "Неизвестный кубик",
+    "enabledSolo": "Кубики включены: ведущий указывает номера. За одиночным столом есть кнопка, в комнате бросает ведущий.",
+    "enabledRoom": "Кубики включены: в комнате ведущий берёт все броски из запаса и указывает их номера."
+  }
+}

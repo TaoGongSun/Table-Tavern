@@ -466,6 +466,8 @@ pub fn is_index_branch(children: &BTreeMap<String, StateNode>) -> bool {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WorldState {
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub dice_enabled: bool,
     pub id: String,
     pub name: String,
     #[serde(default)]
