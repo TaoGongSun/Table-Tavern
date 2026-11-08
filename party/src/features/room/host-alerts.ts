@@ -70,6 +70,12 @@ function alertTexts(before: RoomView, next: RoomView): string[] {
       out.push(t("hostAlertSeated", { name: m.nickname, card: cardName(next, m.cardId) }));
     }
   }
+  const asked = new Set(before.seatRequests.map((r) => r.requestId));
+  for (const r of next.seatRequests) {
+    const name = next.members.find((m) => m.memberId === r.memberId)?.nickname;
+    if (name && !asked.has(r.requestId))
+      out.push(t("hostAlertSeatRequest", { name, card: cardName(next, r.cardId) }));
+  }
   const br = before.round;
   const nr = next.round;
   if (!br || !nr || br.round !== nr.round || br.phase !== "acting") return out;

@@ -1,7 +1,9 @@
 // 重連快照（協定 §4.3）：整份換掉本地狀態用。草稿只給本人、額度細節只給出額度者，裝置碼與雜湊一律不出。
 import { carryOf, execViewFor, isOnline } from "./round";
+import { seatRequestsFor } from "./seat-request";
 import type { Tx } from "./tx";
 import type {
+  SeatRequestView,
   ActionItem,
   ExecutorError,
   ExecutorView,
@@ -42,6 +44,7 @@ export interface Snapshot {
     draft: string | null;
     returned: string | null;
     delegated: boolean;
+    seatRequest?: string | null; // 自己認領中的卡；舊伺服器沒有這欄
   } | null;
   members: Array<{
     memberId: string;
@@ -58,6 +61,7 @@ export interface Snapshot {
   quota: Pick<QuotaReport, "state" | "resetsAt"> | null;
   /** 這位看得到的桌邊聊天（公開，或自己是收發方的私訊）。執行端不是成員，一律空陣列 */
   chat: ChatMsg[];
+  seatRequests?: SeatRequestView[]; // 只給房主
   quotaDetail?: QuotaReport | null;
   routes?: RouteOffer[] | null; // 以下兩欄只給出額度者
   errorDetail?: { round: number; error: ExecutorError } | null;
@@ -124,7 +128,7 @@ export function storyOf(events: StoredEvent[]): StoryPart[] {
           interrupted: false,
           at,
         });
-      else if (a.watchReason === "skipped")
+      else
         story.push({
           round: p.round as number,
           part: -1 - i,
@@ -132,7 +136,7 @@ export function storyOf(events: StoredEvent[]): StoryPart[] {
           text: "",
           interrupted: false,
           at,
-          handed: true,
+          ...(a.watchReason === "skipped" ? { handed: true as const } : { watched: true as const }),
         });
     });
   }
@@ -204,6 +208,7 @@ export function buildSnapshot(
           draft: s.drafts[me.id] ?? null,
           returned: s.returned?.[me.id] ?? null,
           delegated: !!me.delegated,
+          seatRequest: me.seatRequest?.cardId ?? null,
         }
       : null,
     members: s.members
@@ -230,10 +235,12 @@ export function buildSnapshot(
       called: viewer === s.hostId ? (r.called ?? null) : null,
       ...carryOf(s, r.kind),
     },
-    story: storyOf(events),
+    // 觀望行是給玩家看的投影：執行端的桌上沒有這段，拿去比對會誤判分歧（只濾顯示，段號不動）
+    story: viewer === "exec" ? storyOf(events).filter((p) => !p.watched) : storyOf(events),
     streaming,
     quota,
     chat: visibleChat(s, viewer),
+    ...(viewer === s.hostId ? { seatRequests: seatRequestsFor(s) } : {}),
     ...(payer
       ? {
           quotaDetail: s.exec.quota,

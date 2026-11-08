@@ -50,6 +50,8 @@ const MEMBER_FRAMES: Record<string, string> = {
   "seat.delegate_many": "memberIds:a",
   "seat.release": "",
   "seat.create": "name:s blurb:s",
+  "seat.request": "cardId:s",
+  "seat.request.resolve": "memberId:s requestId:s accept:b",
   "action.draft": "text:s",
   "action.submit": "round:i text:s",
   "action.skip": "round:i",

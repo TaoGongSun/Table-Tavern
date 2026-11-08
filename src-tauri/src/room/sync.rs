@@ -40,8 +40,11 @@ pub(super) fn room_lines(snapshot: &Value, queue: &[Value]) -> Vec<RoomLine> {
         .iter()
         .map(|p| RoomLine {
             at: json!({ "round": p["round"], "part": p["part"] }),
-            key: (p["speaker"]["kind"] != "system")
-                .then(|| key_of(&p["speaker"], p["text"].as_str().unwrap_or_default())),
+            // 觀望、交給 GM 是房間自己投影的空段，桌上 seed 不輸出：留位置、不比
+            key: (p["speaker"]["kind"] != "system"
+                && p["watched"].is_null()
+                && p["handed"].is_null())
+            .then(|| key_of(&p["speaker"], p["text"].as_str().unwrap_or_default())),
         })
         .collect();
     let round = &snapshot["round"];

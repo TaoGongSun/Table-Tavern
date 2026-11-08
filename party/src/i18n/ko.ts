@@ -4,6 +4,23 @@ import type { PartyMessages } from "./zh-TW";
 
 export const ko: PartyMessages = {
   ...en,
+  seatTakenOffline: "선택됨 · 오프라인",
+  seatClaimMine: "내 자리인가요?",
+  seatClaimSameNick: "상대도 {name}",
+  seatClaimWaiting: "방장 확인을 기다리는 중입니다. 다른 캐릭터를 골라도 됩니다",
+  seatClaimRefused: "방장이 이 자리는 당신 자리가 아니라고 합니다.",
+  hostAlertSeatRequest: "{name}이(가) {card}을(를) 되찾고 싶어 합니다. 명단에서 확인하세요",
+  seatClaimRetry: "다시 물어보기",
+  seatHandedAway:
+    "방장이 「{card}」을(를) 다른 기기에 넘겼습니다. 본인이 바꾼 기기가 아니라면 채팅으로 방장에게 알려 주세요.",
+  hostClaimTitle: "새로 들어온 「{name}」이(가) 「{card}」이(가) 자기 것이라고 합니다. 넘길까요?",
+  hostClaimNewRow: "방금 들어온 「{name}」: {state}",
+  hostClaimOldRow: "{card}을(를) 골랐던 「{name}」: {state}",
+  hostClaimOfflineFor: "오프라인 {n}분",
+  hostClaimOfflineUnknown: "오프라인, 시간 알 수 없음",
+  hostClaimSameNick: "닉네임이 같습니다",
+  hostClaimYes: "네, 넘기기",
+  hostClaimNo: "아니요",
   guideLink: "플레이 방법",
   statusPanel: "상태 패널",
   statusClose: "닫기",

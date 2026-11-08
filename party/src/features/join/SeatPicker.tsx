@@ -6,6 +6,7 @@ import { errorText } from "../room/error-text";
 import type { RoomView } from "../room/room-state";
 import { Avatar } from "../room/SeatStrip";
 import { useRun, type Act } from "../room/useRoom";
+import { seatBlurb } from "./seat-blurb";
 
 interface Props {
   view: RoomView;
@@ -18,6 +19,46 @@ interface Props {
   onImported?: () => void;
   /** 桌面版的入口（用左欄的玩家卡、匯入角色卡），取代建立與匯入 */
   entry?: ReactNode;
+}
+
+/** 佔位者離線、不是房主或出額度者的座位，才可能是自己換裝置前坐的 */
+function claimable(view: RoomView, occupantId: string | null) {
+  if (occupantId === null) return false;
+  const o = view.members.find((m) => m.memberId === occupantId);
+  return !!o && !o.connected && o.memberId !== view.room.hostId && o.memberId !== view.room.payerId;
+}
+
+function SeatClaim({
+  view,
+  cardId,
+  onClaim,
+}: {
+  view: RoomView;
+  cardId: string;
+  onClaim: () => void;
+}) {
+  const waiting = view.me.seatRequest;
+  const occupant = view.cards.find((c) => c.cardId === cardId)?.claimedBy;
+  const name = view.members.find((m) => m.memberId === occupant)?.nickname;
+  if (waiting === cardId)
+    return (
+      <span className="seat-claim" data-testid="seat-claim-waiting">
+        {t("seatClaimWaiting")}
+      </span>
+    );
+  if (waiting) return null;
+  const refused = view.seatRefused === cardId;
+  return (
+    <span className="seat-claim">
+      {refused && <span className="seat-claim-line">{t("seatClaimRefused")}</span>}
+      <button type="button" className="link" data-testid={`seat-mine-${cardId}`} onClick={onClaim}>
+        {t(refused ? "seatClaimRetry" : "seatClaimMine")}
+      </button>
+      {name === view.me.nickname && (
+        <span className="chip">{t("seatClaimSameNick", { name: name ?? "" })}</span>
+      )}
+    </span>
+  );
 }
 
 export function SeatPicker({
@@ -46,20 +87,36 @@ export function SeatPicker({
   return (
     <div className="seat-picker" data-testid="seat-picker">
       <h2>{t("seatTitle")}</h2>
+      {view.seatHanded && (
+        <div className="banner" data-testid="seat-handed">
+          {t("seatHandedAway", { card: view.seatHanded })}
+        </div>
+      )}
       {cards.map((c) => (
         <div key={c.cardId} className="seat-card">
           <Avatar name={c.name} card={c} />
           <div className="seat-info">
             <strong>{c.name}</strong>
-            <span className="muted">{c.blurb}</span>
+            <span className="muted">{seatBlurb(c.blurb, c.name)}</span>
           </div>
           <button
             type="button"
             disabled={c.claimedBy !== null}
             onClick={() => run("seat.claim", { cardId: c.cardId })}
           >
-            {c.claimedBy ? t("seatTaken") : t("seatClaim")}
+            {!c.claimedBy
+              ? t("seatClaim")
+              : !desktop && claimable(view, c.claimedBy)
+                ? t("seatTakenOffline")
+                : t("seatTaken")}
           </button>
+          {!desktop && claimable(view, c.claimedBy) && (
+            <SeatClaim
+              view={view}
+              cardId={c.cardId}
+              onClaim={() => run("seat.request", { cardId: c.cardId })}
+            />
+          )}
         </div>
       ))}
       {entry ? (

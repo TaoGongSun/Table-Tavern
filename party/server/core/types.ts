@@ -98,6 +98,8 @@ export interface StoryPart {
   panel?: ScenePanel;
   /** 玩家把這回合交給 GM（`watchReason: "skipped"`）：沒有原文，客戶端照語系寫一行 */
   handed?: true;
+  /** 沒送出就被結算（`watchReason: "timeout" | "host_resolved"`）：沒有原文，客戶端照語系寫一行 */
+  watched?: true;
 }
 export interface ActionItem {
   memberId: string;
@@ -279,6 +281,16 @@ export interface Member {
   banned: boolean;
   arriving: boolean; // 中途入座、下一次開 acting 才進 roster
   delegated?: boolean; // 座位暫時交給 AI 代管：不進 roster、不算在場玩家；舊房間沒有這欄
+  offlineSince?: number; // 最後一條連線真的斷掉的時間；不知道時沒有這欄
+  seatRequest?: { requestId: string; cardId: string; occupantId: string }; // 認領別人的離線座位，等房主確認（一人一筆）
+}
+/** 給房主看的一筆認領（requestId 原樣送回確認） */
+export interface SeatRequestView {
+  requestId: string;
+  memberId: string;
+  cardId: string;
+  occupantId: string;
+  offlineSince: number | null;
 }
 export interface RoundState extends RoundView {
   batch: ActionItem[];
@@ -382,6 +394,7 @@ export interface RoomState {
       hold?: PublicExecutorError | null;
     }
   >;
+  handedOver?: Record<string, string>; // 裝置雜湊 → 卡名：座位交給別的裝置後，舊裝置回來提示一次
   conns: Record<string, { role: ConnRole; who: string | null; at: number }>; // who＝memberId／"exec"；null＝還沒 hello
 }
 
@@ -433,7 +446,7 @@ export interface CoreCtx {
 }
 export type CoreInput =
   | { kind: "frame"; conn: ConnInfo; raw: string }
-  | { kind: "connect" | "disconnect"; conn: ConnInfo }
+  | { kind: "connect" | "disconnect"; conn: ConnInfo; stale?: boolean }
   | { kind: "alarm" }
   | { kind: "http"; route: "create"; body: unknown; code: string; origin: string; idleDays: number }
   | { kind: "http"; route: "export"; deviceId: string }

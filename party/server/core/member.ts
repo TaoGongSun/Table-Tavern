@@ -4,6 +4,7 @@ import {
   activeMembers,
   announceExec,
   cancelRound,
+  cardName,
   delegate,
   enterRoster,
   execReady,
@@ -16,6 +17,7 @@ import {
   undelegate,
   unseat,
 } from "./round";
+import { seatRequestValid } from "./seat-request";
 import { CROCKFORD8, secret, sameHash, sha256Hex, ulid } from "./secrets";
 import { Fail, need, type Tx } from "./tx";
 import type {
@@ -238,6 +240,51 @@ function trimChat(chat: ChatMsg[]) {
     chat.shift();
 }
 
+/** 座位連同草稿、回合名單移給另一位；代管中的座位有人接手＝人在玩，照接回處理 */
+function moveSeat(tx: Tx, from: Member, to: Member, by: Member) {
+  const s = tx.w;
+  const wasDelegated = !!from.delegated;
+  Object.assign(to, {
+    cardId: from.cardId,
+    seat: from.seat,
+    arriving: from.arriving,
+    delegated: wasDelegated,
+  });
+  Object.assign(from, { cardId: null, arriving: false, delegated: false });
+  if (s.drafts[from.id] !== undefined) s.drafts[to.id] = s.drafts[from.id];
+  delete s.drafts[from.id];
+  if (s.returned?.[from.id] !== undefined) {
+    s.returned[to.id] = s.returned[from.id];
+    delete s.returned[from.id];
+  }
+  s.cards = s.cards.map((c) => (c.cardId === to.cardId ? { ...c, claimedBy: to.id } : c));
+  for (const e of [...(s.round?.roster ?? []), ...(s.carry ?? [])])
+    if (e.memberId === from.id) e.memberId = to.id;
+  tx.emit("seat.reassigned", { from: from.id, to: to.id, cardId: to.cardId });
+  // 暫離沒派出就抵消，否則下一回合登場
+  if (wasDelegated) {
+    undelegate(tx, to);
+    tx.emit("seat.delegated", { memberId: to.id, cardId: to.cardId, on: false, by: by.id });
+  }
+}
+
+/** 把成員移出房間（已沒座位）；ban＝留裝置雜湊擋重進 */
+function dropMember(tx: Tx, t: Member, ban: boolean) {
+  const s = tx.w;
+  if (s.payerId === t.id) {
+    s.payerId = null;
+    tx.emit("pair.unbound", { memberId: t.id });
+  }
+  if (ban)
+    t.banned = true; // 封鎖只記裝置雜湊
+  else s.members = s.members.filter((x) => x !== t);
+  delete s.drafts[t.id];
+  if (s.returned) delete s.returned[t.id];
+  tx.emit("member.kicked", { memberId: t.id, ban });
+  for (const [id, c] of Object.entries(s.conns))
+    if (c.who === t.id) tx.shut(id, 4403, ban ? "E_BANNED" : "E_KICKED");
+}
+
 export const MEMBER: Record<string, Handler> = {
   ping: (tx) => {
     tx.send(tx.conn, "pong", undefined);
@@ -299,6 +346,37 @@ export const MEMBER: Record<string, Handler> = {
     open(tx.s);
     need(m.cardId, "E_SEAT_REQUIRED");
     unseat(tx, m);
+  },
+  // 換裝置認領：只通知房主，不公開、不進事件日誌
+  "seat.request": (tx, p, m) => {
+    need(!m.seatRequest, "E_STATE_CONFLICT");
+    need(seatRequestValid(tx.s, tx.ctx.live, m, p.cardId), "E_STATE_CONFLICT");
+    rate(tx, `sr:${m.id}`, 3, 10 * MIN);
+    m.seatRequest = {
+      requestId: ulid(tx.now, tx.ctx.rng),
+      cardId: p.cardId,
+      occupantId: tx.s.cards.find((c) => c.cardId === p.cardId)!.claimedBy!,
+    };
+  },
+  "seat.request.resolve": (tx, p, m) => {
+    host(tx, m);
+    const s = tx.w;
+    const t = s.members.find((x) => x.id === p.memberId);
+    const r = t?.seatRequest;
+    need(t && r && r.requestId === p.requestId, "E_STATE_CONFLICT"); // 舊認領的延遲確認不能批准新認領
+    if (!p.accept) {
+      delete t.seatRequest;
+      tx.toMember(t.id, "vol", { type: "seat_request", cardId: null, refused: r.cardId });
+      return;
+    }
+    need(seatRequestValid(s, tx.ctx.live, t, r.cardId, r.occupantId), "E_STATE_CONFLICT");
+    const from = s.members.find((x) => x.id === r.occupantId)!;
+    delete t.seatRequest;
+    const handed = (s.handedOver ??= {});
+    handed[from.dev] = cardName(s, r.cardId);
+    for (const dev of Object.keys(handed).slice(0, -8)) delete handed[dev]; // 只留最近幾筆
+    moveSeat(tx, from, t, m);
+    dropMember(tx, from, false);
   },
   "seat.create": (tx, p, m) => {
     const s = tx.s;
@@ -520,18 +598,7 @@ export const MEMBER: Record<string, Handler> = {
     unseat(tx, t, p.mode); // 移除時一起決定角色處置（§3.2）：一則到位，不卡在中間狀態
     if (cardId && p.mode && s.status !== "lobby")
       tx.emit("seat.departure", { cardId, mode: p.mode });
-    if (s.payerId === t.id) {
-      s.payerId = null;
-      tx.emit("pair.unbound", { memberId: t.id });
-    }
-    if (p.ban)
-      t.banned = true; // 封鎖只記裝置雜湊
-    else s.members = s.members.filter((x) => x !== t);
-    delete s.drafts[t.id];
-    if (s.returned) delete s.returned[t.id];
-    tx.emit("member.kicked", { memberId: t.id, ban: p.ban });
-    for (const [id, c] of Object.entries(s.conns))
-      if (c.who === t.id) tx.shut(id, 4403, p.ban ? "E_BANNED" : "E_KICKED");
+    dropMember(tx, t, p.ban);
   },
   "member.departure": (tx, p, m) => {
     host(tx, m);
@@ -555,31 +622,10 @@ export const MEMBER: Record<string, Handler> = {
     const from = s.members.find((x) => x.id === p.from && x.cardId);
     const to = s.members.find((x) => x.id === p.to && !x.banned && !x.cardId);
     need(from && to, "E_STATE_CONFLICT");
-    const wasDelegated = !!from.delegated;
-    Object.assign(to, {
-      cardId: from.cardId,
-      seat: from.seat,
-      arriving: from.arriving,
-      delegated: wasDelegated,
-    });
-    Object.assign(from, { cardId: null, arriving: false, delegated: false });
-    if (s.drafts[from.id] !== undefined) s.drafts[to.id] = s.drafts[from.id];
-    delete s.drafts[from.id];
-    if (s.returned?.[from.id] !== undefined) {
-      s.returned[to.id] = s.returned[from.id];
-      delete s.returned[from.id];
-    }
-    s.cards = s.cards.map((c) => (c.cardId === to.cardId ? { ...c, claimedBy: to.id } : c));
-    for (const e of [...(s.round?.roster ?? []), ...(s.carry ?? [])])
-      if (e.memberId === from.id) e.memberId = to.id;
-    tx.emit("seat.reassigned", { from: from.id, to: to.id, cardId: to.cardId });
-    // 代管中的座位有人接手＝人在玩：照接回處理（暫離沒派出就抵消，否則下一回合登場）
-    if (wasDelegated) {
-      undelegate(tx, to);
-      tx.emit("seat.delegated", { memberId: to.id, cardId: to.cardId, on: false, by: m.id });
-    }
+    moveSeat(tx, from, to, m);
   },
   "member.leave": (tx, _p, m) => {
+    delete m.seatRequest;
     if (tx.s.status !== "closed") unseat(tx, m);
     tx.emit("member.left", { memberId: m.id });
     tx.ok();

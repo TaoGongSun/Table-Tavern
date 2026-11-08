@@ -141,8 +141,8 @@ export function StoryView({
           </button>
         )}
       {view.story.map((p) =>
-        p.handed && p.speaker.kind === "player" ? (
-          // 交給 GM：旁白式一行（樣式比照系統行），左邊色條保留角色色
+        (p.handed || p.watched) && p.speaker.kind === "player" ? (
+          // 交給 GM、觀望：旁白式一行（樣式比照系統行），左邊色條保留角色色
           <div
             key={`${p.round}:${p.part}`}
             className="part part-system part-handed"
@@ -152,7 +152,9 @@ export function StoryView({
                   ?.color ?? undefined,
             }}
           >
-            {t("storyHandedToGm", { name: "name" in p.speaker ? p.speaker.name : "" })}
+            {p.handed
+              ? t("storyHandedToGm", { name: p.speaker.name })
+              : markerCopy[currentLang()].player_watch.replace("{name}", p.speaker.name)}
           </div>
         ) : (
           <Part

@@ -4,6 +4,23 @@ import type { PartyMessages } from "./zh-TW";
 
 export const fr: PartyMessages = {
   ...en,
+  seatTakenOffline: "Pris · hors ligne",
+  seatClaimMine: "C'est le mien ?",
+  seatClaimSameNick: "Se nomme aussi {name}",
+  seatClaimWaiting: "En attente de l'hôte ; vous pouvez aussi choisir un autre personnage",
+  seatClaimRefused: "L'hôte dit que ce n'est pas votre place.",
+  hostAlertSeatRequest: "{name} veut récupérer {card}. À confirmer dans la liste",
+  seatClaimRetry: "Redemander",
+  seatHandedAway:
+    "L'hôte a donné « {card} » à un autre appareil. Ce n'est pas vous ? Prévenez l'hôte dans le chat.",
+  hostClaimTitle: "« {name} », qui vient d'arriver, dit que « {card} » est à lui. Le lui donner ?",
+  hostClaimNewRow: "Tout juste arrivé « {name} » : {state}",
+  hostClaimOldRow: "« {name} », qui avait {card} : {state}",
+  hostClaimOfflineFor: "hors ligne depuis {n} min",
+  hostClaimOfflineUnknown: "hors ligne, durée inconnue",
+  hostClaimSameNick: "Les deux ont le même pseudo",
+  hostClaimYes: "Oui, le lui donner",
+  hostClaimNo: "Non",
   guideLink: "Comment jouer",
   statusPanel: "Panneau de situation",
   statusClose: "Fermer",

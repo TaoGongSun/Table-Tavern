@@ -4,6 +4,23 @@ import type { PartyMessages } from "./zh-TW";
 
 export const ja: PartyMessages = {
   ...en,
+  seatTakenOffline: "選択済み・オフライン",
+  seatClaimMine: "これは自分の？",
+  seatClaimSameNick: "相手も{name}",
+  seatClaimWaiting: "ホストの確認待ちです。別のキャラクターも選べます",
+  seatClaimRefused: "ホストはこの席はあなたのものではないと言っています。",
+  hostAlertSeatRequest: "{name}が{card}に戻りたいそうです。名簿で確認してください",
+  seatClaimRetry: "もう一度聞く",
+  seatHandedAway:
+    "ホストが「{card}」を別の端末に渡しました。心当たりがなければ、チャットでホストに伝えてください。",
+  hostClaimTitle: "新しく参加した「{name}」が「{card}」は自分のものだと言っています。渡しますか？",
+  hostClaimNewRow: "参加したばかりの「{name}」：{state}",
+  hostClaimOldRow: "{card}を選んでいた「{name}」：{state}",
+  hostClaimOfflineFor: "オフライン {n} 分",
+  hostClaimOfflineUnknown: "オフライン、時間不明",
+  hostClaimSameNick: "両方とも同じ名前です",
+  hostClaimYes: "はい、渡す",
+  hostClaimNo: "いいえ",
   guideLink: "遊び方",
   statusPanel: "状況パネル",
   statusClose: "閉じる",

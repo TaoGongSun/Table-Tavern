@@ -8,6 +8,7 @@ import type {
   Frame,
   RosterEntry,
   RouteOffer,
+  SeatRequestView,
   StoryPart,
 } from "../../../server/core/types";
 
@@ -25,6 +26,12 @@ export interface RoomView extends Omit<Snapshot, "quotaDetail"> {
   kept: number | null;
   /** 房主在這個回合當場開的倒數（客戶端記憶體，快照不帶）。房間設定一開就有的倒數不算 */
   timerStarted: number | null;
+  /** 只給房主：等確認的座位認領 */
+  seatRequests: SeatRequestView[];
+  /** 本人被房主拒絕的卡（客戶端記憶體） */
+  seatRefused: string | null;
+  /** 舊裝置回來：座位已交給另一台裝置的卡名（客戶端記憶體） */
+  seatHanded: string | null;
 }
 
 /** 依 id 去重、升冪，只留最後 200 則（長時間在線不累積） */
@@ -68,6 +75,9 @@ function fromSnapshot(s: Snapshot): RoomView {
     nudged: null,
     kept: null,
     timerStarted: null,
+    seatRequests: s.seatRequests ?? [],
+    seatRefused: null,
+    seatHanded: null,
     chat: keepChat(s.chat ?? []),
   };
 }
@@ -298,6 +308,17 @@ function onVolatile(v: RoomView, x: any) {
       break;
     case "called": // 只給房主：上一則 GM 旁白點到的 NPC
       if (round) round.called = x.cardId;
+      break;
+    case "seat_request":
+      v.me.seatRequest = x.cardId;
+      if (x.cardId) v.seatRefused = null;
+      if (x.refused) v.seatRefused = x.refused;
+      break;
+    case "seat_requests":
+      v.seatRequests = x.list;
+      break;
+    case "seat_handed":
+      v.seatHanded = x.name;
       break;
     case "presence":
       for (const m of v.members) if (m.memberId === x.memberId) m.connected = x.connected;

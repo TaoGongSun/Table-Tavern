@@ -8,6 +8,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { MemoryStorage } from "@web/features/openrouter/memory-storage";
 import { CARDS, Room, STAGE } from "../../../server/core/room-test-kit";
 import { ChatPanel } from "../chat/ChatPanel";
+import { seatBlurb } from "../join/seat-blurb";
 import { SeatPicker } from "../join/SeatPicker";
 import type { Act } from "./useRoom";
 import type { RoomView } from "./room-state";
@@ -299,6 +300,42 @@ describe("手機客戶端對真伺服器核心", () => {
     expect(A.q('[data-testid="story"]')!.textContent).toContain("角色2這回合交給 GM 安排");
   });
 
+  it("換裝置認領：新裝置按「這是我的？」、房主名單卡片確認；拒絕時玩家看得到、不卡住", async () => {
+    const { room, hub, A } = await table();
+    await room.join("z", "格羅");
+    await room.send("z", "seat.claim", { cardId: "c3" });
+    await room.disconnect("z");
+    const C = phone(hub, `k=${room.joinSecret}`);
+    C.type('[data-testid="nickname"]', "格羅");
+    await act(async () => C.q<HTMLFormElement>("form")!.requestSubmit());
+    await until(() => C.q('[data-testid="seat-mine-c3"]'));
+    expect(C.text()).toContain("已有人選・離線");
+    expect(C.text()).toContain("對方也叫格羅");
+    expect(C.q('[data-testid="seat-mine-c1"]')).toBeNull(); // 房主的座位不給認領
+
+    act(() => C.q<HTMLButtonElement>('[data-testid="seat-mine-c3"]')!.click());
+    await until(() => C.q('[data-testid="seat-claim-waiting"]'));
+    expect(C.q('[data-testid="seat-claim-waiting"]')!.textContent).toBe(
+      "等房主確認；也可以先選別的角色",
+    );
+    await until(() => A.q('[data-testid="members-badge"]')?.textContent === "1");
+    expect(A.text()).toContain("格羅想接回角色3，到名單確認"); // 停在故事頁也看得到
+    A.tab("members");
+    expect(A.text()).toContain("新加入的「格羅」說「角色3」是他的，要交給他嗎？");
+    expect(A.text()).toContain("兩邊暱稱相同");
+
+    A.click("不是");
+    await until(() => C.text().includes("房主說這不是你的座位。"));
+    expect(A.q('[data-testid="members-badge"]')).toBeNull();
+
+    act(() => C.q<HTMLButtonElement>('[data-testid="seat-mine-c3"]')!.click());
+    await until(() => A.button("是，交給他"));
+    A.click("是，交給他");
+    await until(() => C.q('[data-testid="action-box"]'));
+    expect(room.s.members.filter((m) => m.nickname === "格羅")).toHaveLength(1);
+    await until(() => !A.button("是，交給他"));
+  });
+
   it("房主結算；回合已往下走時送出被拒，草稿原樣保留", async () => {
     const { room, hub, A, B } = await table();
     B.socket().held = true; // B 暫時收不到：畫面停在第 2 回合
@@ -307,6 +344,7 @@ describe("手機客戶端對真伺服器核心", () => {
     await room.finishGen("第二段");
     hub.flush();
     expect(room.s.round!.round).toBe(3);
+    expect(A.q('[data-testid="story"]')!.textContent).toContain("〈角色2〉這回合觀望");
 
     B.type('[data-testid="action-text"]', "我躲到吧台後面");
     B.click("送出");
@@ -1848,5 +1886,21 @@ describe("桌邊聊天", () => {
     expect(rows[1].querySelector("img.seat-avatar")?.getAttribute("src")).toBe(
       "data:image/jpeg;base64,xx",
     );
+  });
+
+  it("選角清單的簡介剝掉 Markdown：標題開頭的卡顯示內文", () => {
+    expect(
+      seatBlurb("### 簡介\n**雄狼獸人**傭兵，[北境](https://x.test)出身\n- 擅長*雙斧*", "格羅"),
+    ).toBe("雄狼獸人傭兵，北境出身 擅長雙斧");
+    expect(seatBlurb("# 格羅\n---\n![圖](a.png)", "格羅")).toBe("格羅");
+    expect(seatBlurb("<b>{{char}}</b> 是獅獸人鐵匠", "雷恩")).toBe("雷恩 是獅獸人鐵匠");
+    expect(seatBlurb("純文字，2*3 不動", "雷恩")).toBe("純文字，2*3 不動");
+    expect(seatBlurb("看[北境](https://x.test/a(b))的地圖", "雷恩")).toBe("看北境的地圖");
+    expect(seatBlurb("簡介\n====\n熊獸人酒保", "雷恩")).toBe("熊獸人酒保");
+    expect(seatBlurb("雄狼傭兵\n\n---\n\n北境出身", "雷恩")).toBe("雄狼傭兵 北境出身");
+    expect(seatBlurb("<style>.a{color:red}</style>熊獸人<!-- 註 -->酒保", "雷恩")).toBe(
+      "熊獸人酒保",
+    );
+    expect(seatBlurb("獅獸人<style>.a{color:red", "雷恩")).toBe("獅獸人");
   });
 });

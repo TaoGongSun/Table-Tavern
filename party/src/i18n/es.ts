@@ -4,6 +4,23 @@ import type { PartyMessages } from "./zh-TW";
 
 export const es: PartyMessages = {
   ...en,
+  seatTakenOffline: "Ocupado · sin conexión",
+  seatClaimMine: "¿Es mío?",
+  seatClaimSameNick: "También se llama {name}",
+  seatClaimWaiting: "Esperando al anfitrión; también puedes elegir otro personaje",
+  seatClaimRefused: "El anfitrión dice que este no es tu puesto.",
+  hostAlertSeatRequest: "{name} quiere recuperar a {card}. Revisa la lista",
+  seatClaimRetry: "Preguntar otra vez",
+  seatHandedAway:
+    "El anfitrión entregó «{card}» a otro dispositivo. ¿No has sido tú? Díselo al anfitrión en el chat.",
+  hostClaimTitle: "«{name}», recién llegado, dice que «{card}» es suyo. ¿Se lo entregas?",
+  hostClaimNewRow: "Recién llegado «{name}»: {state}",
+  hostClaimOldRow: "«{name}», que tenía a {card}: {state}",
+  hostClaimOfflineFor: "sin conexión desde hace {n} min",
+  hostClaimOfflineUnknown: "sin conexión, tiempo desconocido",
+  hostClaimSameNick: "Ambos tienen el mismo apodo",
+  hostClaimYes: "Sí, entregar",
+  hostClaimNo: "No",
   guideLink: "Cómo jugar",
   statusPanel: "Panel de estado",
   statusClose: "Cerrar",

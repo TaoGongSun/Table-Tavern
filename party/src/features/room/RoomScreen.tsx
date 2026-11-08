@@ -21,6 +21,7 @@ import { HostPanel } from "../controls/HostPanel";
 import { UndoControls } from "../controls/UndoControls";
 import { PairForm } from "../controls/PairForm";
 import { PayerPanel } from "../controls/PayerPanel";
+import { SeatRequests } from "../controls/SeatRequests";
 import { SeatPicker } from "../join/SeatPicker";
 import type { Upload } from "../my-card/card-upload";
 import { CardSheet } from "../my-card/CardSheet";
@@ -75,6 +76,7 @@ function MemberList({
   const roster = new Map(view.round?.roster.map((e) => [e.memberId, e.status]));
   return (
     <div className="panel" data-testid="members">
+      <SeatRequests view={view} act={act} />
       {view.members.map((m) => (
         <div key={m.memberId} className="row member" data-testid={`member-${m.memberId}`}>
           <span
@@ -358,6 +360,11 @@ export function RoomScreen({ view, c: controls }: { view: RoomView; c: RoomContr
           data-testid={`tab-${k}`}
         >
           {t(`tab_${k}`)}
+          {k === "members" && isHost && view.seatRequests.length > 0 && (
+            <span className="tab-badge" data-testid="members-badge">
+              {view.seatRequests.length}
+            </span>
+          )}
           {k === "chat" && unread.count > 0 && (
             <span className="tab-badge" data-testid="chat-unread">
               {unread.count}

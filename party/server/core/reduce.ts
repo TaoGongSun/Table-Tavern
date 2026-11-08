@@ -16,6 +16,7 @@ import { EXECUTOR } from "./executor";
 import { toWebSave } from "./export";
 import { closeRoom, evFrame, MEMBER, pairClaim, rate } from "./member";
 import { announceExec, nextAlarm, onAlarm, pushDispatch, setExecOnline, settle } from "./round";
+import { seatRequestsFor, settleSeatRequests } from "./seat-request";
 import { sameHash, secret, sha256Hex } from "./secrets";
 import { liveValues, sendSnapshot } from "./snapshot";
 import { Fail, need, Tx } from "./tx";
@@ -135,6 +136,12 @@ async function welcome(tx: Tx, lastSeq: number, extra: Record<string, unknown>) 
       tx.send(tx.conn, "vol", { type: "called", round: s.round.round, cardId: s.round.called });
     if (who !== "exec")
       tx.send(tx.conn, "vol", { type: "returned", text: s.returned?.[who] ?? null });
+    if (who !== "exec") {
+      const cardId = s.members.find((x) => x.id === who)?.seatRequest?.cardId ?? null;
+      tx.send(tx.conn, "vol", { type: "seat_request", cardId });
+    }
+    if (who === s.hostId)
+      tx.send(tx.conn, "vol", { type: "seat_requests", list: seatRequestsFor(s) });
     return;
   }
   await sendSnapshot(tx, tx.conn, who, extra);
@@ -149,6 +156,7 @@ async function memberHello(tx: Tx, p: any) {
   need(!known?.banned, "E_BANNED");
   const w = tx.w;
   let m = known && w.members.find((x) => x.id === known.id);
+  const isNew = !m;
   if (!m) {
     need(s.status !== "closed", "E_ROOM_CLOSED");
     need(
@@ -172,11 +180,16 @@ async function memberHello(tx: Tx, p: any) {
     w.members.push(m);
     tx.emit("member.joined", { memberId: m.id, nickname });
   }
+  delete m.offlineSince;
   for (const [id, c] of Object.entries(w.conns))
     if (c.who === m.id) tx.shut(id, 4409, "E_SESSION_REPLACED");
   w.conns[tx.conn].who = m.id;
-  await welcome(tx, p.lastSeq, {});
+  await welcome(tx, isNew ? 0 : p.lastSeq, {}); // 新成員一律給快照：舊身分的 lastSeq（交接後舊頁籤重連）補不出新身分
   tx.toAll("vol", { type: "presence", memberId: m.id, connected: true });
+  if (w.handedOver?.[dev]) {
+    tx.send(tx.conn, "vol", { type: "seat_handed", name: w.handedOver[dev] });
+    delete w.handedOver[dev];
+  }
   if (typeof p.pairCode !== "string") return;
   try {
     await pairClaim(tx, m, p.pairCode); // 出額度者的 QR：加入與配對一步完成
@@ -336,8 +349,12 @@ export async function reduce(
       for (const key of Object.keys(ctx.live.buckets))
         if (key.endsWith(`:${conn}`)) delete ctx.live.buckets[key];
       if (who === "exec" && tx.s.execConn === conn) setExecOnline(tx, false);
-      else if (who && who !== "exec" && !Object.values(tx.s.conns).some((c) => c.who === who))
+      else if (who && who !== "exec" && !Object.values(tx.s.conns).some((c) => c.who === who)) {
         tx.toAll("vol", { type: "presence", memberId: who, connected: false });
+        // 休眠醒來補的斷線：真正斷線的時間不知道，不記
+        const m = tx.w.members.find((x) => x.id === who);
+        if (m && !input.stale) m.offlineSince = ctx.now;
+      }
     }
     if (input.kind === "alarm" && tx.exists) onAlarm(tx);
     if (input.kind === "http") {
@@ -356,6 +373,7 @@ export async function reduce(
     }
     if (tx.exists && !tx.deleteRoom) settle(tx);
     settleCards(tx);
+    if (tx.exists && !tx.deleteRoom) settleSeatRequests(tx, state);
     return output(tx);
   } catch (e) {
     if (!(e instanceof Fail)) throw e;

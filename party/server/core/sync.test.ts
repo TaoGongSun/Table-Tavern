@@ -4,6 +4,7 @@ import { applyFrame, type RoomView } from "../../src/features/room/room-state";
 import { toWebSave } from "./export";
 import { CARDS, Room, STAGE } from "./room-test-kit";
 import { buildSnapshot } from "./snapshot";
+import type { StoryPart } from "./types";
 
 const LIVE = { stream: null, seed: null, buckets: {}, uploads: {}, cardReqs: {} };
 const story = (room: Room) => buildSnapshot(room.s, room.store.events, "m2", LIVE).story;
@@ -86,6 +87,43 @@ describe("同步閘門（§3.3）", () => {
     expect(room.s.round).toMatchObject({ round: 3, phase: "queued" }); // 補完才結算、派工 // 沒有補送內容：已送出的不動，照常結算
     expect(room.frames("x2", "dispatch")).toHaveLength(1);
     expect((await sync(room, {}))?.p.detail).toBe("sync_not_needed");
+  });
+
+  it("執行端快照沒有觀望行、手機有；keepThrough 指原座標，觀望行留著", async () => {
+    const room = await Room.create();
+    await room.exec();
+    await room.send("x1", "room.seed", {
+      part: 0,
+      total: 1,
+      cards: [...CARDS, STAGE],
+      history: [],
+    });
+    for (const [i, id] of ["a", "b"].entries()) {
+      await room.join(id, id, i === 0 ? { pairCode: await room.pairCode(true) } : {});
+      await room.send(id, "seat.claim", { cardId: CARDS[i].cardId });
+    }
+    await room.send("a", "room.start");
+    await room.finishGen("開場");
+    const round = room.s.round!.round;
+    await room.send("a", "action.submit", { round, text: "我拔劍" });
+    await room.send("a", "round.resolve", { round });
+    await room.finishGen("接著");
+    await room.send("x1", "status", { keepAwake: null, busy: false, paused: true });
+    await room.disconnect("x1");
+    await room.exec("x2");
+
+    const before = story(room);
+    expect(before.filter((p) => p.watched)).toHaveLength(1);
+    const seen = room.frames("x2", "welcome")[0].p.snapshot.story as StoryPart[];
+    expect(seen.some((p) => p.watched)).toBe(false);
+    expect(seen).toEqual(before.filter((p) => !p.watched)); // 只濾掉，段號不重編
+    const last = seen.at(-1)!;
+    const reply = await sync(room, {
+      keepThrough: { round: last.round, part: last.part },
+      items: [],
+    });
+    expect(reply?.t).toBe("ok");
+    expect(story(room)).toEqual(before); // 觀望行與真劇情都留著
   });
 
   it("閘門期間停在 generating 的回合（執行端沒留下結果）：補完重送同一份派工", async () => {

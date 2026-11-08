@@ -1,6 +1,7 @@
 // 協定 §2／§3 每個狀態轉移各一條（房間生命週期、回合階段、中途加入與離開）。
 import { describe, expect, it } from "vitest";
 import { CARDS, playing, Room } from "./room-test-kit";
+import { buildSnapshot } from "./snapshot";
 
 describe("房間生命週期（§2）", () => {
   it("建房 → lobby；成員帶加入密鑰加入、掃 grantHost 碼成為房主兼出額度者", async () => {
@@ -151,6 +152,15 @@ describe("回合階段（§3.1–§3.2）", () => {
       { watchReason: "host_resolved" },
     ]);
     expect(room.s.drafts.m2).toBe("第一版");
+    // 快照也帶得到觀望行（重新整理不消失）；匯出照舊不輸出
+    const story = buildSnapshot(room.s, room.store.events, "m2", {
+      stream: null,
+      seed: null,
+      buckets: {},
+      uploads: {},
+      cardReqs: {},
+    }).story;
+    expect(story.filter((p) => p.round === 2 && p.watched)).toHaveLength(2);
   });
 
   it("acting → queued：倒數到期比照房主結算，沒送出的一律算觀望（timeout）、草稿留著", async () => {

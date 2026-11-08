@@ -110,9 +110,12 @@ async fn reopen_sends_solo_play_after_the_common_prefix() {
     let running = start(Fake::new(&root, Vec::new()), first, FAST, false).await;
     let mut conn = accept(&listener).await;
     let player = json!({ "kind": "player", "memberId": "m1", "cardId": tao, "name": "阿濤" });
+    let mut watched = part(2, -2, player.clone(), "");
+    watched["watched"] = json!(true); // 房間自己投影的觀望行：桌上沒有，不能算分歧
     let story = vec![
         part(1, 0, json!({ "kind": "gm" }), "開場"),
         part(2, -1, player, "我拔劍"),
+        watched,
         part(2, 0, json!({ "kind": "gm" }), "門開了"),
         part(
             2,
@@ -213,6 +216,27 @@ async fn reopen_cuts_what_solo_undo_removed_and_bridges_scenes_without_repeating
     tokio::time::sleep(Duration::from_millis(100)).await;
     assert_eq!(running.room.saved().synced_scene, Some(scene + 1));
     running.stop().await;
+}
+
+/// 觀望、交給 GM 是房間自己投影的空段，桌上沒有對應：留位置、不參與比對，後面的段落不會被裁掉重送
+#[test]
+fn watch_and_handed_lines_stay_out_of_the_comparison() {
+    let player = json!({ "kind": "player", "memberId": "m2", "cardId": "c2", "name": "格羅" });
+    let mut watched = part(2, -1, player.clone(), "");
+    watched["watched"] = json!(true);
+    let mut handed = part(3, -1, player, "");
+    handed["handed"] = json!(true);
+    let snapshot = json!({ "story": [
+        part(1, 0, json!({ "kind": "gm" }), "開場"),
+        watched,
+        part(2, 0, json!({ "kind": "gm" }), "接著"),
+        handed,
+    ], "round": null });
+    let lines = crate::room::sync::room_lines(&snapshot, &[]);
+    assert_eq!(lines.len(), 4);
+    assert!(lines[1].key.is_none() && lines[3].key.is_none());
+    assert!(lines[0].key.is_some() && lines[2].key.is_some());
+    assert_eq!(lines[3].at, json!({ "round": 3, "part": -1 }));
 }
 
 /// 關房時中止的那段還在重送佇列：伺服器會先收它，比對基準要接上（沒有 begin 的只比正文）

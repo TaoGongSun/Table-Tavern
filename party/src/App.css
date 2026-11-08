@@ -598,6 +598,7 @@
 
 .app .seat-card {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   padding: 8px 0;
@@ -619,6 +620,43 @@
   flex: 1;
   min-width: 0;
   flex-direction: column;
+}
+
+.app .seat-claim {
+  display: flex;
+  flex-basis: 100%;
+  padding-left: 54px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.app .seat-claim .link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-size: 14px;
+  text-decoration: underline;
+}
+
+.app .seat-claim-line {
+  flex-basis: 100%;
+}
+
+.app .seat-claim .chip {
+  margin-left: 0;
+}
+
+.app .seat-request {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
 }
 
 .app .seat-info .muted {

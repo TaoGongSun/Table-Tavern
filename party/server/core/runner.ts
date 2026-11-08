@@ -67,7 +67,8 @@ export class RoomRunner {
       // 休眠期間消失的連線（部署重啟等）補一次離線
       const alive = new Set(this.conns.list().map((c) => c.id));
       for (const [id, c] of Object.entries(this.state?.conns ?? {}))
-        if (!alive.has(id)) await this.apply({ kind: "disconnect", conn: { id, role: c.role } });
+        if (!alive.has(id))
+          await this.apply({ kind: "disconnect", conn: { id, role: c.role }, stale: true });
     }
     return this.apply(input);
   }
