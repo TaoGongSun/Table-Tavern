@@ -1,7 +1,6 @@
 {
   "zh-TW": {
     "title": "骰池",
-    "noReferences": "本輪未用骰",
     "invalid": "骰池無法讀取",
     "used": "GM 用了",
     "face": "GM 寫 {written}，實際是 {actual}",
@@ -32,7 +31,6 @@
   },
   "zh-CN": {
     "title": "骰池",
-    "noReferences": "本轮未用骰",
     "invalid": "骰池无法读取",
     "used": "GM 用了",
     "face": "GM 写 {written}，实际是 {actual}",
@@ -63,7 +61,6 @@
   },
   "en": {
     "title": "Dice pool",
-    "noReferences": "No dice used this turn",
     "invalid": "Cannot read this dice pool",
     "used": "GM used this",
     "face": "GM wrote {written}; actual roll is {actual}",
@@ -94,7 +91,6 @@
   },
   "ja": {
     "title": "ダイスプール",
-    "noReferences": "このターンはダイス未使用",
     "invalid": "ダイスプールを読み取れません",
     "used": "GM が使用",
     "face": "GM の記載は {written}、実際は {actual}",
@@ -125,7 +121,6 @@
   },
   "ko": {
     "title": "주사위 풀",
-    "noReferences": "이번 턴에는 주사위를 쓰지 않음",
     "invalid": "주사위 풀을 읽을 수 없습니다",
     "used": "GM이 사용함",
     "face": "GM은 {written}로 썼지만 실제 값은 {actual}",
@@ -156,7 +151,6 @@
   },
   "es": {
     "title": "Reserva de dados",
-    "noReferences": "No se usaron dados este turno",
     "invalid": "No se puede leer la reserva",
     "used": "El GM lo usó",
     "face": "El GM escribió {written}; el resultado real es {actual}",
@@ -187,7 +181,6 @@
   },
   "pt-BR": {
     "title": "Reserva de dados",
-    "noReferences": "Nenhum dado usado neste turno",
     "invalid": "Não foi possível ler a reserva",
     "used": "O GM usou",
     "face": "O GM escreveu {written}; o resultado real é {actual}",
@@ -218,7 +211,6 @@
   },
   "de": {
     "title": "Würfelvorrat",
-    "noReferences": "In diesem Zug keine Würfel genutzt",
     "invalid": "Würfelvorrat nicht lesbar",
     "used": "GM hat ihn genutzt",
     "face": "GM schrieb {written}; gewürfelt wurde {actual}",
@@ -249,7 +241,6 @@
   },
   "fr": {
     "title": "Réserve de dés",
-    "noReferences": "Aucun dé utilisé ce tour",
     "invalid": "Réserve de dés illisible",
     "used": "Le GM l’a utilisé",
     "face": "Le GM a écrit {written} ; le résultat réel est {actual}",
@@ -280,7 +271,6 @@
   },
   "ru": {
     "title": "Запас кубиков",
-    "noReferences": "В этом ходу кости не использованы",
     "invalid": "Не удалось прочитать запас",
     "used": "GM использовал",
     "face": "GM написал {written}; выпало {actual}",

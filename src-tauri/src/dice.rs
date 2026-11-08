@@ -52,11 +52,11 @@ pub(crate) fn measured_pool() -> String {
 
 pub(crate) fn instruction(pool: &str, room: bool, lang: &str) -> String {
     let (common, solo, party) = if lang.starts_with("zh") {
-        ("本輪骰池：各骰型依序取，每顆一次；以(d20#2=19)標原面值，多顆逐一標號，加值／合計寫括號外。用罄或缺型就明說待補，禁自報、挑號、重用或用舊池。",
+        ("本輪骰池：各骰型依序取，每顆一次；以(d20#2=19)標原面值，多顆逐一標號，加值／合計寫括號外。先攻、命中、豁免、傷害，凡從池取的骰都要在旁白標號，更新區塊的 dice 不能代替。用罄或缺型就停在下一個行動開始前，不寫半截結果，明說骰子用完、請玩家說一聲就接著跑；禁自報、挑號、重用或用舊池。",
          "直接採用玩家公開擲果，只引數字，不加骰號括號；骰號僅用於本輪池。請玩家擲骰須寫完整式，如1d20+3。",
          "玩家不能擲骰，所有骰由你從池取用。")
     } else {
-        ("Current dice pool: consume each die type in order, once per die. Cite (d20#2=19); full-width parentheses and whitespace are allowed. Cite each die separately; put modifiers and totals outside parentheses. If exhausted or missing, ask for replenishment. Never invent faces, skip, reuse, or use an older pool.",
+        ("Current dice pool: consume each die type in order, once per die. Cite (d20#2=19); full-width parentheses and whitespace are allowed. Cite each die separately; put modifiers and totals outside parentheses. Every die taken from the pool (initiative, attacks, saves, damage) must be cited in the narration; `dice` in the update block does not replace that. If exhausted or missing, stop before the next action, never leave one half-resolved, and tell the player the dice ran out and to say anything to continue. Never invent faces, skip, reuse, or use an older pool.",
          "Use public player rolls as given. Quote their numbers without dice-reference parentheses: dice references are only for this pool. Ask players with a complete formula such as 1d20+3.",
          "Players cannot roll dice here. Take every roll from this pool yourself.")
     };
@@ -169,18 +169,37 @@ fn parse_formula(text: &str) -> Option<Formula> {
     (c.get(0)?.as_str() == text).then(|| captured(&c)).flatten()
 }
 pub(crate) fn suggestions(text: &str) -> Vec<String> {
-    let text: String = text.chars().take(32768).collect();
+    // 模型常寫全形加減號
+    let text: String = text
+        .chars()
+        .take(32768)
+        .map(|ch| match ch {
+            '＋' => '+',
+            '－' | '−' => '-',
+            other => other,
+        })
+        .collect();
     let mut result = Vec::new();
     for c in formula_regex().captures_iter(&text) {
         let m = c.get(0).unwrap();
-        let left = &text[..m.start()];
-        let right = &text[m.end()..];
         let word = |ch: char| ch.is_ascii_alphanumeric() || ch == '_';
         let operator = |ch: char| "+-*/!".contains(ch);
+        // Markdown 粗體不算運算子；`**` 另一側緊接算式字元（1d6**2）才是乘冪
+        let left = &text[..m.start()];
+        let left = left
+            .strip_suffix("**")
+            .filter(|l| !l.ends_with(word))
+            .unwrap_or(left);
+        let right = &text[m.end()..];
+        let right = right
+            .strip_prefix("**")
+            .filter(|r| !r.starts_with(word))
+            .unwrap_or(right);
         if left.chars().next_back().is_some_and(word)
             || right.chars().next().is_some_and(word)
             || left.trim_end().chars().next_back().is_some_and(operator)
             || right.trim_start().chars().next().is_some_and(operator)
+            || right.trim_start().starts_with('#')
         {
             continue;
         }

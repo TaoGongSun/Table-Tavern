@@ -35,8 +35,8 @@ export function inspectPool(pool: string, text: string) {
   const next = new Map<number, number>();
   const unknown: string[] = [];
   let references = 0;
-  const pattern =
-    /[（(]\s*d\s*([0-9]+)\s*#\s*([0-9]+)\s*=\s*([0-9]+)\s*[）)]/gi;
+  // 括號可有可無：模型常寫 d20#2=9 或 (d4#1=1，d4#2=3)
+  const pattern = /(?<![a-z0-9_])d\s*([0-9]+)\s*#\s*([0-9]+)\s*=\s*([0-9]+)/gi;
   for (const match of text.matchAll(pattern)) {
     references++;
     const [sides, index, value] = match.slice(1).map(Number);

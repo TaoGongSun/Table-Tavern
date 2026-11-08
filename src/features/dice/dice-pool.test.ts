@@ -23,7 +23,15 @@ describe("骰池對帳", () => {
       issues: ["face", "order", "repeat"],
       reported: [20],
     });
-    expect(result.unknown).toEqual(["(d8#1=4)"]);
+    expect(result.unknown).toEqual(["d8#1=4"]);
+  });
+  it("不加括號或合寫一個括號也認得", () => {
+    const bare = inspectPool(pool, "命中 d20#1=19，傷害 d6#1=4＋2")!;
+    expect(bare.references).toBe(2);
+    expect(bare.rows[1].dice[0].used).toBe(true);
+    const merged = inspectPool(pool, "(d6#1=4，d6#2=2)")!;
+    expect(merged.rows[0].dice.every((d) => d.used)).toBe(true);
+    expect(inspectPool(pool, "add20#1=19")!.references).toBe(0);
   });
   it("未引用仍回傳池；再次解析不沿用已用狀態", () => {
     expect(inspectPool(pool, "(d20#1=19)")!.rows[1].dice[0].used).toBe(true);

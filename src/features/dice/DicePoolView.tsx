@@ -17,9 +17,7 @@ export const DicePoolView = memo(function DicePoolView({
   const result = inspectPool(pool, text);
   return (
     <details className={`dice-pool${result?.references === 0 ? " dice-idle" : ""}`}>
-      <summary>
-        {result?.references === 0 ? labels.noReferences : labels.title}
-      </summary>
+      <summary>{labels.title}</summary>
       {!result ? (
         <p role="status">{labels.invalid}</p>
       ) : (

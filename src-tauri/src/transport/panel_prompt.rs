@@ -99,12 +99,13 @@ pub(super) fn combat_guide(lang: &str) -> String {
              replace HP with a result. To change only the max, replace with the current value copied and the new max.\n\
              - When the amount comes from this turn's dice pool, add `\"dice\"` with the dice references and any constant, \
              e.g. {{\"op\":\"delta\",\"path\":\"/combat/foes/Goblin A/hp\",\"value\":-7,\"dice\":\"d8#1+3\"}}. The system \
-             takes the faces from the pool; if your number differs, the dice total is applied. Each die is used once. If \
-             the damage is halved or otherwise adjusted, leave out `dice`.\n\
+             takes the faces from the pool; if your number differs, the dice total is applied. Each die is used once. Report \
+             one delta per hit; never merge several hits into one. If the damage is halved or otherwise adjusted, leave \
+             out `dice`.\n\
              - `/characters/<name>/conditions`, `/combat/foes/<foe>/conditions` (Conditions): whole array of strings, at \
              most {CONDITIONS_MAX} items of {CONDITION_CHARS} characters; remove ended effects yourself.\n\
              - When a fight starts: replace `/combat/order` with everyone in initiative order (roll initiative from the \
-             pool; at most {ORDER_MAX} names of {NAME_CHARS} characters), and add each foe without a character entry with \
+             pool, citing dice in the order rolled, not the sorted order; at most {ORDER_MAX} names of {NAME_CHARS} characters), and add each foe without a character entry with \
              insert `/combat/foes/<foe>` value {{\"hp\":\"7/7\"}} (at most {FOES_MAX}). Give foes of the same kind \
              different names (Goblin A, Goblin B); an existing name cannot be inserted again. Remove a foe that falls or \
              flees with remove.\n\
@@ -118,10 +119,10 @@ pub(super) fn combat_guide(lang: &str) -> String {
              replace 寫完整值（例 \"24/24\"）；之後一律用 delta 報增減量（扣血負數、補血正數），系統加總並夾在 0 到上限之間。\
              不要用 replace 報結果；只改上限時現值照抄、寫新上限。\n\
              - 增減量來自本輪骰池時加 `\"dice\"` 寫骰號與常數，例 {{\"op\":\"delta\",\"path\":\"/combat/foes/哥布林A/hp\",\"value\":-7,\"dice\":\"d8#1+3\"}}。\
-             骰面由系統從池裡取，數字對不上時以骰面總和為準；每顆骰只能用一次。傷害有減半等調整時不要帶 dice。\n\
+             骰面由系統從池裡取，數字對不上時以骰面總和為準；每顆骰只能用一次。每次命中各報一筆 delta，不要把幾次命中併成一筆。傷害有減半等調整時不要帶 dice。\n\
              - `/characters/<角色名>/conditions`、`/combat/foes/<敵人>/conditions`（狀態效果）：整串字串陣列，最多 \
              {CONDITIONS_MAX} 項、每項 {CONDITION_CHARS} 字；效果結束自己拿掉。\n\
-             - 開打時：用 replace 把 `/combat/order` 寫成照先攻排好的全部名字（先攻從骰池擲；最多 {ORDER_MAX} 個、每個 \
+             - 開打時：用 replace 把 `/combat/order` 寫成照先攻排好的全部名字（先攻從骰池擲，旁白照擲的順序標骰號，不要照排好的順序；最多 {ORDER_MAX} 個、每個 \
              {NAME_CHARS} 字），沒有角色格的敵人逐一 insert `/combat/foes/<敵人>`，值 {{\"hp\":\"7/7\"}}（最多 {FOES_MAX} 筆）。\
              同種敵人要取不同名字（哥布林A、哥布林B），已有的名字不能再 insert；倒下或逃走的敵人用 remove。\n\
              - 每則回覆用 replace 把 `/combat/turn` 寫成順序裡現在輪到的人。\n\

@@ -16,7 +16,8 @@ it("未引用時仍有收合池列、錯面使用文字警告，舊事件沒有�
     ),
   );
   expect(host.querySelector("details")?.open).toBe(false);
-  expect(host.querySelector("summary")?.textContent).toContain("本輪未用骰");
+  expect(host.querySelector("details")?.className).toContain("dice-idle");
+  expect(host.querySelector("summary")?.textContent).toBe("骰池");
   await act(() =>
     root.render(
       <DicePoolView pool="d20:[19]" text="（ d20 # 1 = 3 ）" language="en" />,

@@ -168,6 +168,13 @@ fn player_formulas_obey_bounds_and_never_salvage_partial_expressions() {
     for good in ["100d1000+9999", "1d2-9999", " D6 "] {
         assert!(parse_formula(good).is_some());
     }
+    assert_eq!(suggestions("請擲 1d20＋3，或 1d6－1"), ["1d20+3", "1d6-1"]);
+    assert!(suggestions("(d4#1=2)（d20 # 2=19）＋2。").is_empty());
+    assert_eq!(
+        suggestions("**命中骰：1d20+7**，**2d6**"),
+        ["1d20+7", "2d6"]
+    );
+    assert!(suggestions("1d6**2 與 2**1d6").is_empty());
     assert_eq!(suggestions("1d2 1d3 1d4 1d5 1d6 1d7 1d8 1d9 1d10").len(), 8);
     assert!(suggestions(&format!("{}1d20", "沃".repeat(32768))).is_empty());
 }
