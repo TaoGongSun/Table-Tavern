@@ -49,6 +49,11 @@ describe("骰池對帳", () => {
   ])("壞池只回無法讀取：%s", (s) => {
     expect(inspectPool(s, "")).toBeNull();
   });
+  it("上限 64 顆：剛好讀得出，多一顆回無法讀取", () => {
+    const dice = (n: number) => `d6:[${Array(n).fill(1).join(",")}]`;
+    expect(inspectPool(dice(64), "")!.rows[0].dice).toHaveLength(64);
+    expect(inspectPool(dice(65), "")).toBeNull();
+  });
   it("十語系字串齊全", () => {
     expect(Object.keys(copy).length).toBe(10);
     for (const labels of Object.values(copy)) {

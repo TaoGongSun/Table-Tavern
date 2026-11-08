@@ -25,6 +25,9 @@ fn generated_faces_match_profile_and_bounds() {
         }
     }
     assert!(format_pool(|_| Err("unavailable".into())).is_err());
+    // 前端 inspectPool 上限 64 顆、512 字元，超過骰池列就讀不出來
+    assert!(PROFILE.iter().map(|&(_, count)| count).sum::<usize>() <= 64);
+    assert!(format_pool(Ok).unwrap().len() <= 512);
 }
 
 #[test]

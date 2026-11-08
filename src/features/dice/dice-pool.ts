@@ -23,7 +23,7 @@ export function inspectPool(pool: string, text: string) {
     count += faces.length;
     if (
       rows.some((r) => r.sides === sides) ||
-      count > 32 ||
+      count > 64 ||
       faces.some((n) => n < 1 || n > sides)
     )
       return null;

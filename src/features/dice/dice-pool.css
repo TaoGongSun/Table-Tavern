@@ -20,6 +20,9 @@
   border: 1px solid currentColor;
   border-radius: 0.25rem;
 }
+.dice-used {
+  border-color: var(--accent, currentColor);
+}
 .dice-cell small {
   display: block;
 }

@@ -28,10 +28,11 @@ export const DicePoolView = memo(function DicePoolView({
               {row.dice.map((die, index) => (
                 <span
                   key={index}
-                  className={`dice-cell${die.issues.length ? " dice-error" : ""}`}
+                  className={`dice-cell${die.used ? " dice-used" : ""}${die.issues.length ? " dice-error" : ""}`}
+                  title={die.used ? labels.used : undefined}
                 >
                   #{index + 1}={die.value}
-                  {die.used ? ` · ${labels.used}` : ""}
+                  {die.used ? " ✓" : ""}
                   {die.issues.map((issue) => (
                     <small key={issue}>⚠ {issue === "face" ? labels.face.replace("{written}", die.reported!.join(", ")).replace("{actual}", String(die.value)) : labels[issue]}</small>
                   ))}

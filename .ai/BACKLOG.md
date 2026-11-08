@@ -60,7 +60,6 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - room-host-world-edit — 手機房主改世界書（W1，案別未估） — 下一步：0.5.0 後
 
 **未排序**：
-- dice-pool-size — 骰池每回合固定 8 顆 d20，5～7 人戰鬥第一回合就用完，GM 只能停下等玩家回話；Fable 常識審建議加大或依參戰人數配（小案約 30 行）。要同步前端 inspectPool 的 32 顆上限，並確認池字串仍在 inspectPool 與伺服器 cleanDicePool 的 512 上限內
 - room-leave-row — 玩家按離開後名單仍留一列離線（小案未估）；刪列要同步 `member.left` 語意與前端，排除房主與出額度者，離開前確認角色會空出來〔模型判斷·未裁決；Sol、常識審查員〕 — 下一步：未排序
 - gm-direction — GM 旁白／推進帶方向輸入，單人版與房間一起做（要改協定與提示詞） — 下一步：等作者排序〔模型判斷·未裁決；常識審查員〕
 - room-delegate-duration — 到場整理標「代管 N 回合」，房主好決定要不要移除〔模型判斷·未裁決；常識審查員〕

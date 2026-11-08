@@ -2,8 +2,16 @@
 use crate::data::{self, message_vars, state_commit::with_commit};
 use std::path::Path;
 
-pub(crate) const PROFILE: [(u32, usize); 7] =
-    [(4, 2), (6, 12), (8, 2), (10, 2), (12, 2), (20, 8), (100, 4)];
+/// d20 夠滿編 12 人第一回合的先攻加攻擊，傷害骰夠幾隻同型敵人同回合命中。
+pub(crate) const PROFILE: [(u32, usize); 7] = [
+    (4, 6),
+    (6, 16),
+    (8, 6),
+    (10, 4),
+    (12, 4),
+    (20, 24),
+    (100, 4),
+];
 const OPEN: &str = "[dice_pool]\n";
 const CLOSE: &str = "\n[/dice_pool]";
 
