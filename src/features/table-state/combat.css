@@ -1,0 +1,107 @@
+/* 戰鬥區（ttrpg-combat-tracker §3） */
+.state-combat-order {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.2rem;
+}
+.state-combat-order li {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  border-radius: var(--radius-s);
+  padding: 0.1rem 0.25rem;
+}
+.state-combat-order li.is-turn {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  font-weight: 600;
+}
+.state-combat-order li > button {
+  height: auto;
+  padding: 0 0.3rem;
+}
+.state-combat-index {
+  flex: none;
+  min-width: 1.4em;
+  color: var(--ink-3);
+}
+.state-combat-order .state-combat-name {
+  justify-content: flex-start;
+  white-space: normal;
+  flex: 1;
+  min-width: 0;
+  text-align: start;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.state-combat-hint,
+.state-combat-ended {
+  margin: 0.3rem 0 0;
+  color: var(--ink-3);
+  font-size: var(--fs-ui);
+}
+.state-combat-ended {
+  margin-bottom: 0.5rem;
+}
+.state-refused {
+  display: inline-block;
+  margin-inline-start: 0.35rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--danger);
+  font: inherit;
+  font-size: 0.85em;
+  font-weight: 400;
+  text-align: start;
+  cursor: pointer;
+}
+span.state-refused {
+  cursor: default;
+}
+.state-bar-delta {
+  flex: none;
+  color: var(--ink-3);
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+.state-bar-combat {
+  flex: none;
+  color: var(--accent);
+}
+.state-dice-applied {
+  margin-inline-start: 0.35rem;
+  color: var(--ink-3);
+  font-size: 0.85em;
+  font-weight: 400;
+}
+.state-panel-list h5 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.35rem;
+}
+.state-panel-list h5 .state-panel-edit {
+  height: auto;
+  padding: 0 0.4rem;
+  font-size: 0.85em;
+  font-weight: 400;
+}
+.state-panel-list-edit {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 0.3rem;
+  align-items: start;
+}
+.state-panel-list-edit textarea {
+  grid-column: 1 / -1;
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+  font: inherit;
+}

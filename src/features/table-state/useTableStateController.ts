@@ -18,10 +18,15 @@ export function treeValueAt(tree: Record<string, StateNode>, path: string[]): st
 
 function isPanelListItem(path: string[]): boolean {
   return /^\d+$/.test(path[path.length - 1] ?? "") && (
-    (path.length === 4 && path[0] === "characters" && path[2] === "items") ||
-    (path.length === 3 && path[0] === "tracking" && ["goals", "promises", "clues"].includes(path[1]))
+    (path.length === 4 && path[0] === "characters" && ["items", "conditions"].includes(path[2])) ||
+    (path.length === 3 && path[0] === "tracking" && ["goals", "promises", "clues"].includes(path[1])) ||
+    (path.length === 3 && path[0] === "combat" && path[1] === "order") ||
+    (path.length === 5 && path[0] === "combat" && path[1] === "foes" && path[3] === "conditions")
   );
 }
+
+export type RefusedMarks = NonNullable<WorldState["state"]["refused"]>;
+export type RefusedMark = RefusedMarks[string];
 
 // 索引只用來定位畫面上的項目；後端一律接收清單父路徑與整串字串陣列。
 function panelListAfterEdit(tree: Record<string, StateNode>, path: string[], value: string): string[] {
@@ -62,6 +67,16 @@ export interface TableStateController {
   addPanelField: (parentPath: string[], name: string) => Promise<void>;
   removePanelField: (path: string[]) => Promise<void>;
   removePanelItem: (path: string[]) => Promise<void>;
+  /** 不經編輯框直接寫一格（點名字設輪到誰） */
+  setLeaf: (path: string[], value: string) => Promise<void>;
+  /** 預設桌整串改清單（先攻順序上下移） */
+  setPanelList: (path: string[], items: string[]) => Promise<void>;
+  /** 上一次套用改到的欄位（點分路徑 → "-7"／"更新"） */
+  changes: Record<string, string>;
+  /** 戰鬥欄的拒收標記 */
+  refused: RefusedMarks;
+  /** 這一幕剛由 GM 收場（先攻非空→空） */
+  combatEnded: boolean;
   tree: Record<string, StateNode>;
   /** 全量桌的跳動警示：路徑（點分）→ 顯示標記 */
   jumps: Record<string, string>;
@@ -86,6 +101,7 @@ export interface TableStateController {
     collections?: MechanismCollections,
     defaultPanel?: boolean,
     diceEnabled?: boolean,
+    scene?: number,
   ) => void;
   /** 重讀這桌的狀態與綁定 */
   refresh: () => Promise<void>;
@@ -124,6 +140,9 @@ export function useTableStateController(input: {
   const [tableState, setTableState] = useState<Record<string, string>>({});
   const [tableTree, setTableTree] = useState<Record<string, StateNode>>({});
   const [tableJumps, setTableJumps] = useState<Record<string, string>>({});
+  const [tableChanges, setTableChanges] = useState<Record<string, string>>({});
+  const [refused, setRefused] = useState<RefusedMarks>({});
+  const [combatEnded, setCombatEnded] = useState(false);
   const [displayFormats, setDisplayFormats] = useState<Record<string, string>>({});
   const [mirrors, setMirrors] = useState<Record<string, string>>({});
   const [displayPrefixes, setDisplayPrefixes] = useState<Record<string, string>>({});
@@ -147,6 +166,7 @@ export function useTableStateController(input: {
       collections?: MechanismCollections,
       panel = false,
       dice = false,
+      scene?: number,
     ) => {
       readGeneration.current += 1;
       setDefaultPanel(panel);
@@ -154,6 +174,9 @@ export function useTableStateController(input: {
       setTableState(state?.table ?? {});
       setTableTree(state?.tree ?? {});
       setTableJumps(state?.jumps ?? {});
+      setTableChanges(state?.changes ?? {});
+      setRefused(state?.refused ?? {});
+      setCombatEnded(scene !== undefined && state?.combat_ended === scene);
       setDisplayFormats(formats ?? {});
       setMirrors(mirrorPaths ?? {});
       setDisplayPrefixes(prefixes ?? {});
@@ -192,6 +215,9 @@ export function useTableStateController(input: {
           setTableState(state.state?.table ?? {});
           setTableTree(state.state?.tree ?? {});
           setTableJumps(state.state?.jumps ?? {});
+          setTableChanges(state.state?.changes ?? {});
+          setRefused(state.state?.refused ?? {});
+          setCombatEnded(state.state?.combat_ended === state.current_scene);
           setDisplayFormats(state.mechanism?.display_formats ?? {});
           setMirrors(state.mechanism?.mirrors ?? {});
           setDisplayPrefixes(state.mechanism?.display_prefixes ?? {});
@@ -257,6 +283,25 @@ export function useTableStateController(input: {
     stateFieldEditCancelled.current = false;
     await save(path, true, "");
   }, [save]);
+
+  const setLeaf = useCallback(async (path: string[], value: string) => {
+    stateFieldEditCancelled.current = false;
+    await save(path, true, value);
+  }, [save]);
+
+  const setPanelList = useCallback(
+    async (path: string[], items: string[]) => {
+      onError("");
+      try {
+        await invoke("set_panel_list", { worldId, path, items });
+        await refresh();
+        onEditedRef.current?.();
+      } catch (reason) {
+        onError(String(reason));
+      }
+    },
+    [worldId, onError, refresh],
+  );
 
   const panelField = useCallback(
     async (command: string, args: Record<string, unknown>) => {
@@ -334,6 +379,11 @@ export function useTableStateController(input: {
       addPanelField,
       removePanelField,
       removePanelItem,
+      setLeaf,
+      setPanelList,
+      changes: tableChanges,
+      refused,
+      combatEnded,
       fields: tableState,
       tree: tableTree,
       jumps: tableJumps,
@@ -359,6 +409,11 @@ export function useTableStateController(input: {
       addPanelField,
       removePanelField,
       removePanelItem,
+      setLeaf,
+      setPanelList,
+      tableChanges,
+      refused,
+      combatEnded,
       tableState,
       tableTree,
       tableJumps,

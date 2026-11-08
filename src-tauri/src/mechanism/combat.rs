@@ -88,8 +88,17 @@ fn refuse(patch: &Patch, detail: String) -> Record {
     let wrote = value_text(patch.value.as_ref());
     record.mark = Some(RefusedMark {
         wrote: (!wrote.is_empty()).then(|| snippet(&wrote, 40)),
-        applied: None,
+        ..Default::default()
     });
+    record
+}
+
+/// 拒收並附原因代碼，玩家看到的是白話原因而不是 GM 寫的原文。
+fn refuse_why(patch: &Patch, detail: String, reason: &str) -> Record {
+    let mut record = refuse(patch, detail);
+    if let Some(mark) = record.mark.as_mut() {
+        mark.reason = Some(reason.to_owned());
+    }
     record
 }
 
@@ -129,13 +138,14 @@ pub(super) fn patch(
                 || name.is_empty()
                 || in_order(tree, &name);
             if !allowed {
-                records.push(refuse(
+                records.push(refuse_why(
                     patch,
                     format!(
                         "{} 只能寫先攻順序（/combat/order）裡的名字；「{}」不在順序裡，未套用。",
                         shown_pointer(&patch.path),
                         snippet(&name, 24)
                     ),
+                    "not_in_order",
                 ));
             }
             !allowed
@@ -146,12 +156,13 @@ pub(super) fn patch(
                 && foes == FOES
                 && data::node_at(tree, &patch.path[..3]).is_none() =>
         {
-            records.push(refuse(
+            records.push(refuse_why(
                 patch,
                 format!(
                     "沒有敵人「{name}」；新敵人請整筆 insert {}，值 {{\"hp\":\"現值/上限\"}}。",
                     shown_pointer(&patch.path[..3])
                 ),
+                "missing",
             ));
             true
         }
@@ -187,7 +198,11 @@ fn foe_entry(
             if foes.remove(name).is_some() {
                 changes.insert(patch.path.join("."), "移除".to_owned());
             } else {
-                records.push(refuse(patch, format!("沒有敵人「{name}」，不用移除。")));
+                records.push(refuse_why(
+                    patch,
+                    format!("沒有敵人「{name}」，不用移除。"),
+                    "missing",
+                ));
             }
             return;
         }
@@ -200,27 +215,29 @@ fn foe_entry(
         }
     }
     let refusal = if no_order {
-        Some("還沒有先攻順序，敵人加不進來；開打時先 replace /combat/order 排好順序（含敵人名字），再 insert 敵人。".to_owned())
+        Some(("no_order", "還沒有先攻順序，敵人加不進來；開打時先 replace /combat/order 排好順序（含敵人名字），再 insert 敵人。".to_owned()))
     } else if name.trim().is_empty()
         || name.chars().count() > NAME_CHARS as usize
         || name.contains(['.', '*'])
         || name.starts_with('_')
         || name == "-"
     {
-        Some(format!(
-            "敵人名字要是 1–{NAME_CHARS} 字、不含「.」「*」、不以底線開頭，未套用。"
+        Some((
+            "bad_name",
+            format!("敵人名字要是 1–{NAME_CHARS} 字、不含「.」「*」、不以底線開頭，未套用。"),
         ))
     } else if foes.contains_key(name) || foes.keys().any(|key| data::glyph_equal(key, name)) {
-        Some(format!("已有敵人「{name}」，扣血請用 delta 寫 {shown}/hp；新敵人請取不同名字（例 哥布林A、哥布林B）。"))
+        Some(("duplicate", format!("已有敵人「{name}」，扣血請用 delta 寫 {shown}/hp；新敵人請取不同名字（例 哥布林A、哥布林B）。")))
     } else if foes.len() >= FOES_MAX {
-        Some(format!(
-            "敵人最多 {FOES_MAX} 筆，未套用；倒下或逃走的請先 remove。"
+        Some((
+            "too_many",
+            format!("敵人最多 {FOES_MAX} 筆，未套用；倒下或逃走的請先 remove。"),
         ))
     } else {
         None
     };
-    if let Some(detail) = refusal {
-        records.push(refuse(patch, detail));
+    if let Some((reason, detail)) = refusal {
+        records.push(refuse_why(patch, detail, reason));
         return;
     }
     let object = patch.value.as_ref().and_then(serde_json::Value::as_object);
@@ -240,9 +257,10 @@ fn foe_entry(
         Some(_) => None,
     };
     let (Some(hp), Some(mut conditions)) = (hp, conditions) else {
-        records.push(refuse(
+        records.push(refuse_why(
             patch,
             format!("新增敵人的值要是 {{\"hp\":\"現值/上限\"}}（整數、上限 1–{HP_MAX}），可加 \"conditions\":[字串]；未套用。"),
+            "bad_hp",
         ));
         return;
     };
@@ -412,6 +430,7 @@ fn hp(
         record.mark = Some(RefusedMark {
             wrote: Some(format!("{reported:+}")),
             applied: Some(format!("{applied:+}")),
+            ..Default::default()
         });
         records.push(record);
     }

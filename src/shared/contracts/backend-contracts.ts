@@ -91,6 +91,12 @@ export interface WorldState {
     tree: Record<string, StateNode>;
     // 全量桌的跳動警示：路徑（點分）→ 顯示標記（"+40"／"-80"），增量桌一律是空物件
     jumps?: Record<string, string>;
+    // 上一次套用改到的欄位：路徑（點分）→ 標記（"+5"／"-7"／"更新"）
+    changes?: Record<string, string>;
+    // 戰鬥欄的拒收標記：路徑（點分）→ GM 寫了什麼、依骰面實際套了什麼（applied 有值＝已套用）
+    refused?: Record<string, { wrote?: string; applied?: string; reason?: string }>;
+    // GM 把先攻從非空清成空的那次套用所在的幕號（換幕後就不等於目前幕）
+    combat_ended?: number;
   };
   // 數字欄的顯示寫法（點分路徑→模板，`{}` 是數字的位置，例：「第 {} 天」）：樹上存數字，畫面照模板套回原寫法
   // 顯示前綴（點分路徑→「👤 」這類開頭符號，路徑可含 *）：樹上存不帶符號的值，畫面接回原寫法
@@ -103,6 +109,8 @@ export interface WorldState {
     // 預設狀態欄桌（沒有卡格式時 app 種的角色格＋追蹤三欄）；panel_cells＝卡 id → characters 底下的格鍵
     default_panel?: boolean;
     panel_cells?: Record<string, string>;
+    // 戰鬥欄（開擲骰的預設桌）：角色格多 hp／conditions，另有 combat 分支（先攻、輪到誰、敵人）
+    combat_panel?: boolean;
   };
 }
 

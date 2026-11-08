@@ -233,6 +233,21 @@ session，放一般段會讓下一個被點的角色看到別人的數值。角�
 - 提示詞：通用協定後附靜態「本桌狀態欄」指引與固定範例（`replace /characters/<第一格>/status`、
   `replace /tracking/clues` 整串陣列），不附多行字串清單句與介面歸屬聲明；```state 圍欄三鍵照舊。
 
+### 戰鬥欄（擲骰開啟時）
+
+預設桌開了擲骰才種（`data::default_panel::combat::sync`，種過不收回；同名自訂欄保留不掛驗證）：每格 `hp`（"現值/上限"）、
+`conditions`（≤ 6 項、每項 ≤ 16 字），根上 `combat: { order: [], turn: "", foes: {} }`（先攻 ≤ 12 項、敵人 ≤ 8 隻、HP 上限 1–99999）。
+
+- **HP**：第一次 `replace "現值/上限"`，之後只收 `delta` 整數，app 加減並夾在 0–上限；可帶 `"dice":"1d8+3"` 綁本輪骰池，
+  骰面總和與 value 不符時以骰面為準套用（取 value 的正負號），記拒收標記的 `applied`。負總和、零 value 拒收。
+- **敵人**：只收整筆 `insert /combat/foes/<名>` `{"hp":"7/7","conditions":[]}`（先攻須非空、名字不重複、未滿 8 隻）與 `remove`；
+  已存在的敵人子欄照一般規則。```state 圍欄不收 HP 與敵人。
+- **輪到誰**：`turn` 必須在 `order` 裡；套用收尾 `settle` 去重、清掉不在順序裡的 turn、順序空時清敵人。
+- **狀態欄位**：`state.changes` 記本則淨值變化；`state.refused`（路徑 → `{wrote, applied, reason}`）給玩家看、不進提示詞，
+  `reason` 為 `no_order`／`duplicate`／`too_many`／`bad_hp`／`bad_name`／`missing`／`not_in_order`，前端翻白話；
+  `state.combat_ended` 記同一次套用先攻由非空變空時的幕號。三者都每次套用重算、跟逐則快照走。
+- 面板手改：先攻與清單走 `set_panel_list`（整串）、輪到誰與 HP 走 `set_state_path`，都會再跑 `settle`。
+
 ## 觸發表
 
 存在 `state.json` 的 `mechanism.triggers`，一組觸發＝卡片裡一條腳本翻譯成的純資料。

@@ -9,6 +9,8 @@ import { IconExpand } from "../../shared/ui/icons";
 import { displayWithFormat, prefixFor, withPrefix } from "./state-format";
 import { presentItems, useGlyphFold, usePresentDisplay } from "./present-glyphs";
 import { DefaultStatePanel } from "./DefaultStatePanel";
+import { combatSummary, RefusedBadge } from "./CombatSection";
+import { type RefusedMarks } from "./useTableStateController";
 import { ORDER_KEY, orderedItemKeys } from "../refactor/refactor-shell-sections";
 
 const STATE_BAR_OPEN_KEY = "state_bar_open";
@@ -45,6 +47,16 @@ interface StateBarProps {
   onAddPanelField?: (parentPath: string[], name: string) => Promise<void>;
   onRemovePanelField?: (path: string[]) => Promise<void>;
   onRemovePanelItem?: (path: string[]) => Promise<void>;
+  /** 預設桌整串改清單（先攻順序上下移） */
+  onSetPanelList?: (path: string[], items: string[]) => void;
+  /** 不經編輯框直接寫一格（點名字設輪到誰） */
+  onSetLeaf?: (path: string[], value: string) => void;
+  /** 上一次套用改到的欄位（HP 淨值標記、戰鬥結束提示） */
+  changes?: Record<string, string>;
+  /** 戰鬥欄的拒收標記 */
+  refused?: RefusedMarks;
+  /** 這一幕剛由 GM 收場 */
+  combatEnded?: boolean;
   /** 平欄（time／place／present 與卡自訂欄） */
   fields: Record<string, string>;
   tree: Record<string, StateNode>;
@@ -82,6 +94,11 @@ export function StateBar({
   onAddPanelField,
   onRemovePanelField,
   onRemovePanelItem,
+  onSetPanelList,
+  onSetLeaf,
+  changes = {},
+  refused = {},
+  combatEnded = false,
   fields,
   tree,
   jumps,
@@ -206,6 +223,12 @@ export function StateBar({
             >
               {shownText}
             </button>
+            {defaultPanel && path[path.length - 1] === "hp" && /^[+-]\d/.test(changes[path.join(".")] ?? "") && (
+              <span className="state-bar-delta">{changes[path.join(".")]}</span>
+            )}
+            {defaultPanel && (
+              <RefusedBadge mark={refused[path.join(".")]} onClick={() => onBeginEdit(path, isTree, value)} />
+            )}
             {jumpMark && (
               <button
                 className="state-bar-jump"
@@ -307,6 +330,7 @@ export function StateBar({
     });
   }
 
+  const fight = defaultPanel ? combatSummary(tree) : null;
   return (
     <details
       className="state-bar"
@@ -333,6 +357,12 @@ export function StateBar({
             </Fragment>
           ))
         )}
+        {fight && (
+          <>
+            <span className="state-bar-pipe">｜</span>
+            <span className="state-bar-seg state-bar-combat">{fight}</span>
+          </>
+        )}
       </summary>
       <div className="state-bar-fields">
         {stateFields.map(({ key, label }) => stateLeafRow([key], false, label))}
@@ -343,6 +373,11 @@ export function StateBar({
             onAdd={onAddPanelField}
             onRemove={onRemovePanelField}
             onRemoveItem={onRemovePanelItem}
+            combatEnded={combatEnded}
+            refused={refused}
+            onSetList={onSetPanelList}
+            onSetOrder={onSetPanelList && ((order) => onSetPanelList(["combat", "order"], order))}
+            onSetTurn={onSetLeaf && ((name) => onSetLeaf(["combat", "turn"], name))}
           />
         ) : stateTreeNodes(tree, [], 0)}
       </div>

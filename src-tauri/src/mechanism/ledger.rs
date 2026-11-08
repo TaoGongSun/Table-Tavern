@@ -299,6 +299,7 @@ pub fn apply_block_typed(
     base: Option<&crate::data::message_vars::Json>,
     scope: BlockScope,
 ) -> Outcome {
+    let fighting = in_combat(world);
     let (scoped, scope_record) = scoped_block(world, block, scope);
     // 換字形寫既有欄位時先對回原鍵：舊值、清單替換、寫入、跳動記號都用對齊後的路徑
     let mut aligned = block_paths::align(world, &scoped);
@@ -420,6 +421,7 @@ pub fn apply_block_typed(
     if world.mechanism.combat_panel {
         crate::data::default_panel::combat::settle(&mut world.state.tree);
         world.state.refused = super::combat::refused(&world.mechanism, &outcome.records);
+        world.state.combat_ended = (fighting && !in_combat(world)).then_some(world.current_scene);
     }
     if jump_check {
         detect_jumps(world, &block.fields, &old_values, &mut outcome.records);
@@ -436,6 +438,17 @@ pub fn apply_block_typed(
     world.state.notes = outcome.notes.clone();
     world.state.changes = outcome.changes.clone();
     outcome
+}
+
+/// 先攻順序非空＝戰鬥中（只看戰鬥欄桌）
+fn in_combat(world: &data::WorldState) -> bool {
+    use crate::data::default_panel::combat::{list_values, COMBAT, ORDER};
+    world.mechanism.combat_panel
+        && !list_values(data::node_at(
+            &world.state.tree,
+            &[COMBAT.to_owned(), ORDER.to_owned()],
+        ))
+        .is_empty()
 }
 
 /// 套用之後的本地規則（zod 引擎路徑共用）：增量桌重擲骰值、求觸發表（一次性旗標釘死為 true），

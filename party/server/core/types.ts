@@ -76,9 +76,15 @@ export interface SceneStatus {
   place?: string;
   present?: string;
 }
+export interface PanelFoe {
+  hp?: string;
+  conditions?: string[];
+}
 export interface ScenePanel {
-  characters?: Record<string, { status?: string; items?: string[] }>;
+  characters?: Record<string, { status?: string; items?: string[] } & PanelFoe>;
   tracking?: Partial<Record<"goals" | "promises" | "clues", string[]>>;
+  /** 戰鬥區（先攻非空才有）：輪到誰必在順序裡，否則空字串 */
+  combat?: { order: string[]; turn: string; foes: Record<string, PanelFoe> };
 }
 export interface StoryPart {
   dicePool?: string;

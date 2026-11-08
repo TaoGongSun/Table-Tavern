@@ -5,11 +5,11 @@
 分類規則：仍需程式施工／規格落地才放「進行中」；施工已完成、只剩可執行環境／使用者實機／外部條件驗收則移到「等實機驗收」，並同步列入[實測佇列](reference/verification-queue.md)。
 
 ## 進行中
-- [ttrpg-combat-tracker](handoffs/ttrpg-combat-tracker.md) — 跑團戰鬥層：先攻、HP／狀態效果由 app 加減、傷害綁骰池，掛在預設狀態欄角色格（大案，包 1 後端完成等驗收，包 2 未開工）
 - [multiplayer-friends-test](handoffs/multiplayer-friends-test.md) — 給朋友測試的多人連線版：房間預設正式伺服器、簡中下載頁以多人連線為主軸（已上線，等朋友實機測試）
 - [card-mvu-shim](handoffs/card-mvu-shim.md) — 卡片介面沙盒墊 MVU 讀寫變數：全部已合併 main，剩實測佇列梯 1 項目（含 iframe 內按鈕實際互動）
 
 ## 等實機驗收（順序見[實測佇列](reference/verification-queue.md)）
+- [ttrpg-combat-tracker](handoffs/ttrpg-combat-tracker.md) — 跑團戰鬥層：先攻、HP／狀態效果由 app 加減、傷害綁骰池、拒收白話標記可點開手改：已合 main（2026-11-08）、Sol 方案審 2 輪＋驗收包 1／包 2 各 2 輪、Fable 常識審 3 次、截圖主線親看；等作者實機（佇列梯 2 第 34 項）
 - [ttrpg-rules-system](handoffs/ttrpg-rules-system.md) — 跑團 v1：GM 骰池＋單人骰鈕＋內建 5e SRD 5.1（2026-11-08 合 main，等作者實機，佇列梯 2 第 33 項）
 - [gm-relay-unify](handoffs/gm-relay-unify.md) — GM 接力單人／房間合成後端一份驅動：已合 main（2026-11-08）、Sol 方案審 2 輪＋驗收包 1／包 2 各 2 輪、Fable 常識審、截圖主線親看；等作者實機
 - [table-status-panel](handoffs/table-status-panel.md) — 通用狀態欄：無卡格式桌由 app 種角色格＋追蹤三欄、模型只報變動、硬預算、桌面側欄／手機抽屜、房間廣播：已合 main（2026-11-07）、Sol 方案審 2 輪＋驗收 2 輪、opus-review 驗收包 2／3、截圖主線親看；等作者實機

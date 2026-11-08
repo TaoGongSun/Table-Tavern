@@ -46,6 +46,7 @@ fn gm_dynamic_block_renders_nested_tree() {
         triggers: std::collections::BTreeMap::new(),
         jumps: std::collections::BTreeMap::new(),
         refused: Default::default(),
+        combat_ended: Default::default(),
     };
     let dynamic = gm_dynamic_block(
         "",
@@ -75,6 +76,7 @@ fn gm_dynamic_block_replaces_user_macro_in_tree_leaves() {
         triggers: std::collections::BTreeMap::new(),
         jumps: std::collections::BTreeMap::new(),
         refused: Default::default(),
+        combat_ended: Default::default(),
     };
 
     let dynamic = gm_dynamic_block(
@@ -99,6 +101,7 @@ fn gm_dynamic_block_prints_notes_after_current_state_and_hides_when_empty() {
         triggers: std::collections::BTreeMap::new(),
         jumps: std::collections::BTreeMap::new(),
         refused: Default::default(),
+        combat_ended: Default::default(),
     };
     let dynamic = gm_dynamic_block(
         "",
@@ -167,6 +170,7 @@ fn gm_dynamic_block_prints_trigger_hits_after_current_state() {
         triggers: BTreeMap::from([("侵略".to_owned(), "戰雲密布".to_owned())]),
         jumps: BTreeMap::new(),
         refused: Default::default(),
+        combat_ended: Default::default(),
     };
     let dynamic = gm_dynamic_block(
         "",
@@ -212,6 +216,7 @@ fn gm_dynamic_block_hides_trigger_section_when_state_triggers_is_empty() {
         triggers: BTreeMap::new(),
         jumps: BTreeMap::new(),
         refused: Default::default(),
+        combat_ended: Default::default(),
     };
     let dynamic = gm_dynamic_block(
         "",
@@ -262,6 +267,7 @@ fn gm_dynamic_block_hides_trigger_scoped_to_a_hidden_branch_but_prints_when_alig
         ]),
         jumps: BTreeMap::new(),
         refused: Default::default(),
+        combat_ended: Default::default(),
     };
     let hidden = vec![vec!["Heroes".to_owned(), "亞瑟".to_owned()]];
     let scope = StateScope {
@@ -314,6 +320,7 @@ fn gm_dynamic_block_hides_trigger_scoped_to_a_descendant_of_a_hidden_branch() {
         triggers: BTreeMap::from([("亞瑟細節".to_owned(), "亞瑟細節文本".to_owned())]),
         jumps: BTreeMap::new(),
         refused: Default::default(),
+        combat_ended: Default::default(),
     };
     let scope = StateScope {
         hidden: vec![vec!["Heroes".to_owned(), "亞瑟".to_owned()]],
@@ -357,6 +364,7 @@ fn gm_dynamic_block_orders_triggers_by_mechanism_list_not_by_map_key() {
         ]),
         jumps: BTreeMap::new(),
         refused: Default::default(),
+        combat_ended: Default::default(),
     };
     let dynamic = gm_dynamic_block(
         "",
@@ -382,6 +390,7 @@ fn gm_dynamic_block_never_prints_trigger_section_for_a_full_snapshot_table() {
         triggers: BTreeMap::from([("侵略".to_owned(), "戰雲密布".to_owned())]),
         jumps: BTreeMap::new(),
         refused: Default::default(),
+        combat_ended: Default::default(),
     };
     let dynamic = gm_dynamic_block(
         "",

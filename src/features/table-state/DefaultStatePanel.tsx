@@ -1,6 +1,8 @@
 import { type ReactNode, useState } from "react";
 import { t } from "../../i18n";
 import { type StateNode } from "../../shared/contracts/backend-contracts";
+import { CombatSection, RefusedBadge } from "./CombatSection";
+import { type RefusedMarks } from "./useTableStateController";
 
 const TRACKING_LABELS = {
   goals: "statePanelGoals",
@@ -15,6 +17,9 @@ const RESERVED = [
   "goals",
   "promises",
   "clues",
+  "hp",
+  "conditions",
+  "combat",
 ];
 const branch = (node: StateNode | undefined): Record<string, StateNode> =>
   typeof node === "object" && node !== null ? node : {};
@@ -25,6 +30,13 @@ type PanelProps = {
   onAdd?: (parentPath: string[], name: string) => Promise<void>;
   onRemove?: (path: string[]) => Promise<void>;
   onRemoveItem?: (path: string[]) => Promise<void>;
+  /** 這一幕剛由 GM 收場（顯示「戰鬥結束」一行） */
+  combatEnded?: boolean;
+  refused?: RefusedMarks;
+  /** 整串改一個清單欄（存檔走 set_panel_list） */
+  onSetList?: (path: string[], items: string[]) => void;
+  onSetOrder?: (order: string[]) => void;
+  onSetTurn?: (name: string) => void;
 };
 
 function AddField({
@@ -117,6 +129,83 @@ function RemoveField({
   );
 }
 
+/** 清單欄（持有物、追蹤三欄、狀態效果）：逐項 chip 可改可刪；「編輯」或點拒收標記打開整串編輯，一行一項，
+ *  空清單也能補，存檔整串走 set_panel_list。角色與敵人共用這一份。 */
+function PanelList({
+  items,
+  path,
+  label,
+  mark,
+  renderLeaf,
+  onRemoveItem,
+  onSetList,
+}: {
+  items: Record<string, StateNode>;
+  path: string[];
+  label: string;
+  mark: RefusedMarks[string] | undefined;
+  renderLeaf: PanelProps["renderLeaf"];
+  onRemoveItem: PanelProps["onRemoveItem"];
+  onSetList: PanelProps["onSetList"];
+}) {
+  const keys = Object.keys(items).sort((a, b) => Number(a) - Number(b));
+  const [draft, setDraft] = useState<string | null>(null);
+  const open = () =>
+    setDraft(keys.map((key) => (typeof items[key] === "string" ? items[key] : "")).join("\n"));
+  return (
+    <section className="state-panel-list" aria-label={label}>
+      <h5>
+        {label}
+        {onSetList && draft === null && (
+          <button type="button" className="state-panel-edit" onClick={open}>
+            {t("statePanelEditList")}
+          </button>
+        )}
+        <RefusedBadge mark={mark} onClick={onSetList && open} />
+      </h5>
+      {draft !== null && onSetList ? (
+        <form
+          className="state-panel-list-edit"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSetList(path, draft.split("\n").map((line) => line.trim()).filter(Boolean));
+            setDraft(null);
+          }}
+        >
+          <textarea
+            autoFocus
+            aria-label={label}
+            rows={Math.max(2, keys.length + 1)}
+            value={draft}
+            onChange={(event) => setDraft(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setDraft(null);
+            }}
+          />
+          <button type="submit">{t("statePanelSaveList")}</button>
+          <button type="button" onClick={() => setDraft(null)}>
+            {t("dialogCancel")}
+          </button>
+        </form>
+      ) : (
+        <div className="state-panel-chips">
+          {keys.map((key) => (
+            <div className="state-panel-chip" key={key}>
+              {renderLeaf([...path, key], `${label} ${Number(key) + 1}`)}
+              <RemoveField
+                path={[...path, key]}
+                onRemove={onRemoveItem}
+                label={`${t("statePanelRemoveItem")} ${items[key]}`}
+              />
+            </div>
+          ))}
+          {keys.length === 0 && <span>{t("stateEmptyValue")}</span>}
+        </div>
+      )}
+    </section>
+  );
+}
+
 /** 預設桌的固定鍵只在顯示時翻譯，所有寫入仍保留原始路徑。 */
 export function DefaultStatePanel({
   tree,
@@ -124,30 +213,24 @@ export function DefaultStatePanel({
   onAdd,
   onRemove,
   onRemoveItem,
+  combatEnded = false,
+  refused = {},
+  onSetList,
+  onSetOrder,
+  onSetTurn,
 }: PanelProps) {
   function list(node: StateNode | undefined, path: string[], label: string) {
-    const items = branch(node);
     return (
-      <section className="state-panel-list" aria-label={label}>
-        <h5>{label}</h5>
-        <div className="state-panel-chips">
-          {Object.keys(items)
-            .sort((a, b) => Number(a) - Number(b))
-            .map((key) => (
-              <div className="state-panel-chip" key={key}>
-                {renderLeaf([...path, key], `${label} ${Number(key) + 1}`)}
-                <RemoveField
-                  path={[...path, key]}
-                  onRemove={onRemoveItem}
-                  label={`${t("statePanelRemoveItem")} ${items[key]}`}
-                />
-              </div>
-            ))}
-          {Object.keys(items).length === 0 && (
-            <span>{t("stateEmptyValue")}</span>
-          )}
-        </div>
-      </section>
+      <PanelList
+        key={path.join(".")}
+        items={branch(node)}
+        path={path}
+        label={label}
+        mark={refused[path.join(".")]}
+        renderLeaf={renderLeaf}
+        onRemoveItem={onRemoveItem}
+        onSetList={onSetList}
+      />
     );
   }
   function custom(node: Record<string, StateNode>, path: string[]) {
@@ -168,6 +251,15 @@ export function DefaultStatePanel({
   const tracking = branch(tree.tracking);
   return (
     <div className="state-default-panel">
+      <CombatSection
+        tree={tree}
+        ended={combatEnded}
+        refused={refused}
+        renderLeaf={renderLeaf}
+        renderList={list}
+        onSetOrder={onSetOrder}
+        onSetTurn={onSetTurn}
+      />
       <section aria-label={t("statePanelCharacters")}>
         <h3>{t("statePanelCharacters")}</h3>
         {Object.entries(branch(tree.characters)).map(([name, node]) => {
@@ -177,7 +269,10 @@ export function DefaultStatePanel({
             <section className="state-panel-cell" key={name} aria-label={name}>
               <h4>{name}</h4>
               {renderLeaf([...path, "status"], t("statePanelStatus"))}
+              {typeof cell.hp === "string" && renderLeaf([...path, "hp"], t("statePanelHp"))}
               {list(cell.items, [...path, "items"], t("statePanelItems"))}
+              {typeof cell.conditions === "object" &&
+                list(cell.conditions, [...path, "conditions"], t("statePanelConditions"))}
               {custom(cell, path)}
             </section>
           );

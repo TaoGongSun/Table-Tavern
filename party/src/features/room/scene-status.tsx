@@ -31,6 +31,13 @@ function PanelList({ label, items }: { label: MsgKey; items: string[] }) {
   );
 }
 
+/** 戰鬥中的一句：輪到誰，或還沒設定時「戰鬥中」；沒在戰鬥回 null */
+export function combatLine(panel: StoryPart["panel"]): string | null {
+  const combat = panel?.combat;
+  if (!combat?.order.length) return null;
+  return combat.turn ? t("statusTurn", { name: combat.turn }) : t("statusInCombat");
+}
+
 /** 有鍵就換（含空字串）；缺省沿用上一筆。panel 是整份快照。 */
 export function mergedSceneStatus(
   parts: readonly StatusPart[],
@@ -64,7 +71,9 @@ export function SceneStatusLine({
   onOpen: () => void;
 }) {
   const items = visibleSceneStatus(parts);
-  if (!items.length && !mergedSceneStatus(parts).panel) return null;
+  const panel = mergedSceneStatus(parts).panel;
+  const fight = combatLine(panel);
+  if (!items.length && !panel) return null;
   return (
     <button
       type="button"
@@ -75,19 +84,20 @@ export function SceneStatusLine({
       aria-label={t("statusPanel")}
     >
       <span className="scene-status-text">
-        {items.length
-          ? items.map((item, index) => (
-              <span
-                key={item.key}
-                className="scene-status-item"
-                title={`${item.label} ${item.text}`}
-              >
-                {index > 0 && " · "}
-                <span className="k">{item.label} </span>
-                {item.text}
-              </span>
-            ))
-          : t("statusPanel")}
+        {[...(fight ? [{ key: "combat", label: "", text: fight }] : []), ...items].map(
+          (item, index) => (
+            <span
+              key={item.key}
+              className={`scene-status-item${item.key === "combat" ? " scene-status-combat" : ""}`}
+              title={`${item.label} ${item.text}`.trim()}
+            >
+              {index > 0 && " · "}
+              {item.label && <span className="k">{item.label} </span>}
+              {item.text}
+            </span>
+          ),
+        )}
+        {!items.length && !fight && t("statusPanel")}
       </span>
       <span className="scene-status-caret" aria-hidden="true">
         {open ? "▴" : "▾"}
@@ -147,13 +157,54 @@ export function SceneStatusSheet({
           </div>
         ))}
       </dl>
+      {status.panel?.combat && (
+        <section className="scene-panel-combat">
+          <h3>{t("statusInitiative")}</h3>
+          <ol>
+            {status.panel.combat.order.map((name) => (
+              <li
+                key={name}
+                className={name === status.panel?.combat?.turn ? "is-turn" : undefined}
+              >
+                {name}
+              </li>
+            ))}
+          </ol>
+          {Object.keys(status.panel.combat.foes).length > 0 && (
+            <>
+              <h3>{t("statusFoes")}</h3>
+              <ul className="scene-panel-foes">
+                {Object.entries(status.panel.combat.foes).map(([name, foe]) => (
+                  <li key={name}>
+                    <strong>{name}</strong>
+                    {foe.hp && <span>{foe.hp}</span>}
+                    {foe.conditions?.map((item, i) => (
+                      <span key={i} className="scene-panel-chip">
+                        {item}
+                      </span>
+                    ))}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </section>
+      )}
       {status.panel?.characters && (
         <div className="scene-panel-characters">
           {Object.entries(status.panel.characters).map(([name, cell]) => (
             <section key={name}>
               <h3>{name}</h3>
               {cell.status && <p>{cell.status}</p>}
+              {cell.hp && (
+                <p>
+                  <strong>{t("statusHp")}</strong> {cell.hp}
+                </p>
+              )}
               {cell.items && <PanelList label="statusItems" items={cell.items} />}
+              {cell.conditions && cell.conditions.length > 0 && (
+                <PanelList label="statusConditions" items={cell.conditions} />
+              )}
             </section>
           ))}
         </div>

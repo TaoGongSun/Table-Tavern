@@ -621,6 +621,7 @@ function App() {
       state.mechanism?.collections,
       state.mechanism?.default_panel,
       state.dice_enabled,
+      state.current_scene,
     );
     chat.hydrate(transcript);
     // 角色圖／GM 圖／玩家卡由 controller 自己的 effect 補：hydrate 先把上一桌的清掉，

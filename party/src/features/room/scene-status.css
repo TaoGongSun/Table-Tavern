@@ -57,3 +57,55 @@
   color: var(--muted);
   flex: none;
 }
+
+/* 戰鬥區：先攻一列、輪到的人標亮（ttrpg-combat-tracker §4） */
+.app .scene-panel-combat ol {
+  margin: 0 0 8px;
+  padding-inline-start: 22px;
+}
+.app .scene-panel-combat li.is-turn {
+  font-weight: 600;
+  color: var(--accent);
+}
+.app .scene-status-combat {
+  color: var(--accent);
+}
+/* 四段各自不斷行，只在段與段之間換行；單段比整行還寬時截尾加省略號 */
+.app .scene-status-item {
+  display: inline-block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+/* 一隻敵人一列：名字、HP、狀態 chip 同一行 */
+.app .scene-panel-foes {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 8px;
+  display: grid;
+  gap: 6px;
+}
+.app .scene-panel-foes li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+.app .scene-panel-chip {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 8px;
+  font-size: 0.9em;
+}
+/* 角色格各自一框，持有物屬於誰一眼看得出來 */
+.app .scene-panel-characters > section {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+.app .scene-panel-characters > section h3 {
+  margin-top: 0;
+}

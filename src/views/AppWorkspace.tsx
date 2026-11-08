@@ -348,6 +348,11 @@ export function AppWorkspace({
                 onAddPanelField={tableState.addPanelField}
                 onRemovePanelField={tableState.removePanelField}
                 onRemovePanelItem={tableState.removePanelItem}
+                onSetPanelList={(path, items) => void tableState.setPanelList(path, items)}
+                onSetLeaf={(path, value) => void tableState.setLeaf(path, value)}
+                changes={tableState.changes}
+                refused={tableState.refused}
+                combatEnded={tableState.combatEnded}
                 fields={tableState.fields}
                 tree={tableState.tree}
                 jumps={tableState.jumps}

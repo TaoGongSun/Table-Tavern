@@ -7,6 +7,7 @@ import type {
   QuotaReport,
   Capabilities,
   SceneStatus,
+  PanelFoe,
   ScenePanel,
   Speaker,
   StoryPart,
@@ -282,6 +283,21 @@ const PANEL_LIMITS = {
   item: 24,
   tracking: 6,
   entry: 48,
+  conditions: 6,
+  condition: 16,
+  order: 12,
+  combatName: 24,
+  foes: 8,
+};
+/** 戰鬥 HP：「現值/上限」整數、0 ≤ 現值 ≤ 上限、上限 1–99999（與桌面版同一組驗法） */
+const cleanHp = (v: unknown): string | undefined => {
+  const m = typeof v === "string" ? /^(\d{1,5})\/(\d{1,5})$/.exec(v) : null;
+  return m && Number(m[2]) >= 1 && Number(m[1]) <= Number(m[2]) ? (v as string) : undefined;
+};
+const cleanFoe = (cell: Record<string, unknown>): PanelFoe => {
+  const hp = cleanHp(cell.hp);
+  const conditions = panelList(cell.conditions, PANEL_LIMITS.conditions, PANEL_LIMITS.condition);
+  return { ...(hp !== undefined ? { hp } : {}), ...(conditions ? { conditions } : {}) };
 };
 const clip = (v: string, max: number) => [...v].slice(0, max).join("");
 const panelList = (v: unknown, count: number, length: number): string[] | undefined =>
@@ -299,7 +315,8 @@ export function cleanScenePanel(v: unknown): ScenePanel | null {
       if (!name || chars(name) > b.name || !isObj(cell)) return [];
       const status = typeof cell.status === "string" ? clip(cell.status, b.status) : undefined;
       const items = panelList(cell.items, b.items, b.item);
-      return status === undefined && items === undefined
+      const fight = cleanFoe(cell);
+      return status === undefined && items === undefined && !Object.keys(fight).length
         ? []
         : [
             [
@@ -307,6 +324,7 @@ export function cleanScenePanel(v: unknown): ScenePanel | null {
               {
                 ...(status !== undefined ? { status } : {}),
                 ...(items ? { items } : {}),
+                ...fight,
               },
             ] as const,
           ];
@@ -321,6 +339,22 @@ export function cleanScenePanel(v: unknown): ScenePanel | null {
       if (list) tracking[key] = list;
     }
     if (Object.keys(tracking).length) out.tracking = tracking;
+  }
+  if (isObj(v.combat)) {
+    const order = [...new Set(panelList(v.combat.order, b.order, b.combatName) ?? [])].filter(
+      (name) => name.trim(),
+    );
+    if (order.length) {
+      const turn =
+        typeof v.combat.turn === "string" && order.includes(v.combat.turn) ? v.combat.turn : "";
+      const foes = isObj(v.combat.foes)
+        ? Object.entries(v.combat.foes)
+            .filter(([name, foe]) => name && chars(name) <= b.combatName && isObj(foe))
+            .slice(0, b.foes)
+            .map(([name, foe]) => [name, cleanFoe(foe as Record<string, unknown>)] as const)
+        : [];
+      out.combat = { order, turn, foes: Object.fromEntries(foes) };
+    }
   }
   return Object.keys(out).length ? out : null;
 }

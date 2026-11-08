@@ -89,6 +89,7 @@ pub(super) fn world_with(pairs: &[(&str, &str)], mechanism: Mechanism) -> data::
             triggers: BTreeMap::new(),
             jumps: BTreeMap::new(),
             refused: Default::default(),
+            combat_ended: Default::default(),
         },
         mechanism,
         aligned_scene: None,

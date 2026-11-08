@@ -209,6 +209,7 @@ pub(super) fn fixture() -> Fixture {
         triggers: BTreeMap::from([("mood".to_owned(), "空氣很緊繃。".to_owned())]),
         jumps: BTreeMap::new(),
         refused: Default::default(),
+        combat_ended: Default::default(),
     };
     let incremental = Mechanism {
         incremental: true,

@@ -123,3 +123,37 @@ it("room.seed 與 story.sync 都走相同 panel 驗法並落地", async () => {
   expect(reply?.t).toBe("ok");
   expect(room.s.exec?.sync).toBeNull();
 });
+
+describe("cleanScenePanel 戰鬥欄", () => {
+  it("HP 只收整數現值/上限、輪到誰須在先攻內、敵人與先攻照上限", () => {
+    const foes = Object.fromEntries(
+      Array.from({ length: 10 }, (_, i) => [`狼${i}`, { hp: "5/5", ac: 12 }]),
+    );
+    const out = cleanScenePanel({
+      characters: {
+        沃恩: { status: "", hp: "18/24", conditions: ["中毒", "長".repeat(20)] },
+        雷克: { hp: "9/0" },
+        葛魯: { hp: "1.5/3", conditions: [1] },
+      },
+      combat: {
+        order: ["沃恩", "沃恩", "狼0", ...Array.from({ length: 12 }, (_, i) => `x${i}`)],
+        turn: "巨魔",
+        foes: { ...foes, ["長".repeat(30)]: { hp: "1/1" }, 哥布林A: { hp: "8/7" } },
+      },
+    })!;
+    expect(out.characters).toEqual({
+      沃恩: { status: "", hp: "18/24", conditions: ["中毒", "長".repeat(16)] },
+    });
+    expect(out.combat!.order).toHaveLength(11);
+    expect(out.combat!.order.slice(0, 2)).toEqual(["沃恩", "狼0"]);
+    expect(out.combat!.turn).toBe("");
+    expect(Object.keys(out.combat!.foes)).toHaveLength(8);
+    expect(out.combat!.foes["狼0"]).toEqual({ hp: "5/5" });
+    expect(cleanScenePanel({ combat: { order: [], turn: "", foes: {} } })).toBeNull();
+    expect(
+      cleanScenePanel({
+        combat: { order: ["沃恩"], turn: "沃恩", foes: { 哥布林A: { hp: "8/7" } } },
+      }),
+    ).toEqual({ combat: { order: ["沃恩"], turn: "沃恩", foes: { 哥布林A: {} } } });
+  });
+});

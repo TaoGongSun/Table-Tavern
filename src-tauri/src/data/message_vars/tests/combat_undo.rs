@@ -97,4 +97,23 @@ fn undo_and_restore_carry_combat_fields() {
     );
     data::restore_transcript_events(root.path(), &world_id, 0, &removed).unwrap();
     assert_eq!(after(root.path()), fought);
+    // 收場：記下幕號；收回回到戰鬥中、復原再記回來
+    let ended = |root: &Path| {
+        data::read_state(root, &world_id)
+            .unwrap()
+            .state
+            .combat_ended
+    };
+    combat_turn(
+        root.path(),
+        &world_id,
+        "t3",
+        r#"{"op":"replace","path":"/combat/order","value":[]}"#,
+    );
+    assert_eq!(ended(root.path()), Some(0));
+    let removed = data::pop_transcript_floor(root.path(), &world_id, 0).unwrap();
+    assert_eq!(ended(root.path()), None);
+    assert_eq!(after(root.path()), fought);
+    data::restore_transcript_events(root.path(), &world_id, 0, &removed).unwrap();
+    assert_eq!(ended(root.path()), Some(0));
 }

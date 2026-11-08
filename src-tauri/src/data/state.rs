@@ -28,6 +28,10 @@ pub struct TableState {
     /// 只給玩家看、不進提示詞；每次套用重算、玩家手改那一欄就刪，跟著逐則快照走。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub refused: BTreeMap<String, RefusedMark>,
+    /// 這次套用把先攻從非空清成空（GM 收場）時記下當時的幕號；每次套用重算、跟著逐則快照。前端只在幕號等於
+    /// 目前這一幕時顯示「戰鬥結束」，換幕後就不顯示。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub combat_ended: Option<u64>,
 }
 
 /// 戰鬥欄的拒收標記：`applied` 為 None＝整筆未套用；有值＝依骰面改套的實際增減。
@@ -37,6 +41,9 @@ pub struct RefusedMark {
     pub wrote: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub applied: Option<String>,
+    /// 拒收原因代碼（敵人整筆、輪到誰），前端翻成白話；沒有就顯示 GM 寫了什麼。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 /// 狀態樹節點保留自然 JSON 形狀，讓匯出的初始值仍可由人閱讀與手改。

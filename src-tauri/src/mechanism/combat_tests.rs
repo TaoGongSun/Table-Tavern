@@ -240,7 +240,8 @@ fn dice_total_from_pool_is_applied() {
         world.state.refused["characters.雷克.hp"],
         RefusedMark {
             wrote: Some("-5".into()),
-            applied: Some("-7".into())
+            applied: Some("-7".into()),
+            ..Default::default()
         }
     );
     // 治療取正號
@@ -297,6 +298,14 @@ fn dice_edge_cases_refuse_and_leave_tree() {
     assert_eq!(leaf(&world, "characters.雷克.hp"), "9/20");
 }
 
+fn reason(world: &data::WorldState, path: &str) -> Option<String> {
+    world
+        .state
+        .refused
+        .get(path)
+        .and_then(|mark| mark.reason.clone())
+}
+
 #[test]
 fn foe_insert_only_adds_new_names() {
     let mut world = combat_world();
@@ -326,12 +335,20 @@ fn foe_insert_only_adds_new_names() {
         "3/7",
         "同名 insert 不蓋掉扣過的 HP"
     );
+    assert_eq!(
+        reason(&world, "combat.foes.哥布林A").as_deref(),
+        Some("duplicate")
+    );
     for bad in [r#"{"hp":"7.5/7"}"#, r#"{"conditions":[]}"#, r#""7/7""#] {
         let outcome = patch(
             &mut world,
             &format!(r#"{{"op":"insert","path":"/combat/foes/哥布林B","value":{bad}}}"#),
         );
         assert_eq!(rejected(&outcome), ["combat.foes.哥布林B"], "{bad}");
+        assert_eq!(
+            reason(&world, "combat.foes.哥布林B").as_deref(),
+            Some("bad_hp")
+        );
     }
     for n in 0..7 {
         patch(
@@ -344,6 +361,10 @@ fn foe_insert_only_adds_new_names() {
         r#"{"op":"insert","path":"/combat/foes/狼9","value":{"hp":"5/5"}}"#,
     );
     assert_eq!(rejected(&outcome), ["combat.foes.狼9"], "最多 8 筆");
+    assert_eq!(
+        reason(&world, "combat.foes.狼9").as_deref(),
+        Some("too_many")
+    );
     let outcome = patch(
         &mut world,
         r#"{"op":"replace","path":"/combat/foes/哥布林A","value":{"hp":"7/7"}},
@@ -377,6 +398,10 @@ fn turn_must_be_in_order_and_empty_order_ends_combat() {
         r#"{"op":"replace","path":"/combat/turn","value":"巨魔"}"#,
     );
     assert_eq!(rejected(&outcome), ["combat.turn"]);
+    assert_eq!(
+        reason(&world, "combat.turn").as_deref(),
+        Some("not_in_order")
+    );
     assert_eq!(leaf(&world, "combat.turn"), "雷克");
     // 順序換掉、輪到的人不在新順序 → 清空
     patch(
@@ -398,6 +423,12 @@ fn turn_must_be_in_order_and_empty_order_ends_combat() {
         Some(&StateNode::Branch(Default::default()))
     );
     assert_eq!(leaf(&world, "characters.沃恩.hp"), "", "角色欄不受收場影響");
+    assert_eq!(world.state.combat_ended, Some(0), "非空→空記下幕號");
+    patch(
+        &mut world,
+        r#"{"op":"replace","path":"/combat/order","value":[]}"#,
+    );
+    assert_eq!(world.state.combat_ended, None, "重報 [] 不算收場");
 }
 
 #[test]
@@ -410,6 +441,23 @@ fn settle_and_membership_for_hand_edits() {
     assert!(settle(&mut world.state.tree));
     assert_eq!(leaf(&world, "combat.turn"), "");
     assert!(!settle(&mut world.state.tree), "清完沒有變動");
+}
+
+#[test]
+fn fence_closing_combat_also_marks_end() {
+    let mut world = combat_world();
+    patch(
+        &mut world,
+        r#"{"op":"replace","path":"/combat/order","value":["沃恩"]}"#,
+    );
+    world.current_scene = 3;
+    apply_block(
+        &mut world,
+        &extract_state_block("旁白。\n```state\ncombat:\n  order: []\n```"),
+        "沃恩",
+    );
+    assert!(data::node_at(&world.state.tree, &segments("combat.order.0")).is_none());
+    assert_eq!(world.state.combat_ended, Some(3));
 }
 
 #[test]
@@ -492,6 +540,10 @@ fn foes_need_order_and_whole_insert() {
         "沒先攻不收敵人"
     );
     assert!(outcome.notes.iter().any(|note| note.contains("先攻順序")));
+    assert_eq!(
+        reason(&world, "combat.foes.哥布林A").as_deref(),
+        Some("no_order")
+    );
     patch(
         &mut world,
         r#"{"op":"replace","path":"/combat/order","value":["沃恩","哥布林A"]}"#,
@@ -504,6 +556,10 @@ fn foes_need_order_and_whole_insert() {
     assert_eq!(
         rejected(&outcome),
         ["combat.foes.哥布林A.conditions", "combat.foes.哥布林A.hp"]
+    );
+    assert_eq!(
+        reason(&world, "combat.foes.哥布林A.hp").as_deref(),
+        Some("missing")
     );
     assert!(data::node_at(&world.state.tree, &segments("combat.foes.哥布林A")).is_none());
     let outcome = patch(
