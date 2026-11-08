@@ -4,6 +4,10 @@ import type { PartyMessages } from "./zh-TW";
 
 export const ko: PartyMessages = {
   ...en,
+  leaveExit: "방 나가기",
+  leaveQuit: "그만하기: 자리를 비우고 나가기",
+  leftExit: "방에서 나갔습니다.",
+  leftReturn: "방으로 돌아가기",
   seatTakenOffline: "선택됨 · 오프라인",
   seatClaimMine: "내 자리인가요?",
   seatClaimSameNick: "상대도 {name}",

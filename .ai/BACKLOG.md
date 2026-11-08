@@ -60,7 +60,6 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - room-host-world-edit — 手機房主改世界書（W1，案別未估） — 下一步：0.5.0 後
 
 **未排序**：
-- room-leave-row — 玩家按離開後名單仍留一列離線（小案未估）；刪列要同步 `member.left` 語意與前端，排除房主與出額度者，離開前確認角色會空出來〔模型判斷·未裁決；Sol、常識審查員〕 — 下一步：未排序
 - gm-direction — GM 旁白／推進帶方向輸入，單人版與房間一起做（要改協定與提示詞） — 下一步：等作者排序〔模型判斷·未裁決；常識審查員〕
 - room-delegate-duration — 到場整理標「代管 N 回合」，房主好決定要不要移除〔模型判斷·未裁決；常識審查員〕
 - [mobile-room-host](tasks/mobile-room-host.md) — Android 手機開房：APK 前景服務＋API 授權入口（OpenRouter 一鍵登入、國產模型金鑰）（案別未估） — 下一步：不急〔作者裁決 2026-11-06〕；開工先評估，疊在 cn-apk-shell 之上

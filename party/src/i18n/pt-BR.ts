@@ -4,6 +4,10 @@ import type { PartyMessages } from "./zh-TW";
 
 export const ptBR: PartyMessages = {
   ...en,
+  leaveExit: "Sair da sala",
+  leaveQuit: "Parar de jogar: liberar assento e sair",
+  leftExit: "Você saiu da sala.",
+  leftReturn: "Voltar à sala",
   seatTakenOffline: "Ocupado · offline",
   seatClaimMine: "É meu?",
   seatClaimSameNick: "Também se chama {name}",

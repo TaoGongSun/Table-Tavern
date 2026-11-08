@@ -268,6 +268,13 @@ function moveSeat(tx: Tx, from: Member, to: Member, by: Member) {
   }
 }
 
+/** 移掉名單那一列與草稿；同裝置再回來算新成員 */
+function removeRow(s: RoomState, t: Member) {
+  s.members = s.members.filter((x) => x.id !== t.id);
+  delete s.drafts[t.id];
+  if (s.returned) delete s.returned[t.id];
+}
+
 /** 把成員移出房間（已沒座位）；ban＝留裝置雜湊擋重進 */
 function dropMember(tx: Tx, t: Member, ban: boolean) {
   const s = tx.w;
@@ -275,11 +282,11 @@ function dropMember(tx: Tx, t: Member, ban: boolean) {
     s.payerId = null;
     tx.emit("pair.unbound", { memberId: t.id });
   }
-  if (ban)
+  if (ban) {
     t.banned = true; // 封鎖只記裝置雜湊
-  else s.members = s.members.filter((x) => x !== t);
-  delete s.drafts[t.id];
-  if (s.returned) delete s.returned[t.id];
+    delete s.drafts[t.id];
+    if (s.returned) delete s.returned[t.id];
+  } else removeRow(s, t);
   tx.emit("member.kicked", { memberId: t.id, ban });
   for (const [id, c] of Object.entries(s.conns))
     if (c.who === t.id) tx.shut(id, 4403, ban ? "E_BANNED" : "E_KICKED");
@@ -624,10 +631,14 @@ export const MEMBER: Record<string, Handler> = {
     need(from && to, "E_STATE_CONFLICT");
     moveSeat(tx, from, to, m);
   },
+  // 玩家明確按「離開房間」才走這裡（斷線一律當暫時離開）；房主與出額度者要留著，關房後留著唯讀畫面
   "member.leave": (tx, _p, m) => {
-    delete m.seatRequest;
-    if (tx.s.status !== "closed") unseat(tx, m);
-    tx.emit("member.left", { memberId: m.id });
+    need(tx.s.hostId !== m.id && tx.s.payerId !== m.id, "E_FORBIDDEN");
+    if (tx.s.status !== "closed") {
+      unseat(tx, m);
+      removeRow(tx.w, m);
+      tx.emit("member.left", { memberId: m.id });
+    }
     tx.ok();
     for (const [id, c] of Object.entries(tx.s.conns)) if (c.who === m.id) tx.shut(id, 1000);
     return "later" as const;

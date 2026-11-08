@@ -186,6 +186,18 @@ describe("認領座位", () => {
     expect(room.frames("e", "vol", "seat_requests").at(-1)!.p.list).toEqual([]);
   });
 
+  it("member.leave 刪列並放座位，同裝置回來算新成員；斷線、房主、出額度者不刪", async () => {
+    const room = await room3();
+    expect(member(room, "b")).toBeDefined(); // 斷線不刪列
+    expect(await code(room, "a", "member.leave", {})).toBe("E_FORBIDDEN");
+    const id = member(room, "格羅")!.id;
+    await room.send("c", "member.leave");
+    expect(member(room, "格羅")).toBeUndefined();
+    expect(room.frames("a", "ev").some((f) => f.p.e.type === "member.left")).toBe(true);
+    await room.join("c2", "格羅");
+    expect(member(room, "格羅")!.id).not.toBe(id);
+  });
+
   it("休眠醒來補的斷線不記時間；舊房間與舊快照缺欄位照常", async () => {
     const room = await playing();
     await room.run({ kind: "disconnect", conn: { id: "b", role: "member" }, stale: true });

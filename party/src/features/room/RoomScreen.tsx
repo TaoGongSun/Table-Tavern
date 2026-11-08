@@ -66,9 +66,24 @@ function MemberList({
   const [releasing, setReleasing] = useState(false);
   const desktop = c.pairForm === false;
   const seatedPlaying = !!view.me.cardId && canDelegate(view);
+  // 真正離開（刪名單那一列）只由按鈕觸發；房主、出額度者、桌面版、關房後一律只斷線
+  const canQuit =
+    !desktop &&
+    view.room.status !== "closed" &&
+    view.room.hostId !== view.me.memberId &&
+    view.room.payerId !== view.me.memberId;
+  // 沒座位就沒有角色可失去，一按就走；按鈕文案因此跟著變成「離開房間」
+  const exits = canQuit && !view.me.cardId;
+  const quit = async () => {
+    if (await run("member.leave")) c.onLeave(true);
+    else setLeaving(false);
+  };
   // 已入座、遊戲中、還沒代管：離開前問要不要先交給 AI 代管；其他情況照舊一按就走（桌面版的離開＝關房，不問）
-  const leave = () =>
-    !desktop && seatedPlaying && !view.me.delegated ? setLeaving(true) : c.onLeave();
+  const leave = () => {
+    if (!desktop && seatedPlaying && !view.me.delegated) setLeaving(true);
+    else if (exits) void quit();
+    else c.onLeave();
+  };
   const delegateAndLeave = async () => {
     if (await run("seat.delegate", { memberId: view.me.memberId, on: true })) c.onLeave();
     else setLeaving(false);
@@ -154,7 +169,7 @@ function MemberList({
           data-testid="leave"
           onClick={leave}
         >
-          {c.leaveLabel ?? t("leaveRoom")}
+          {c.leaveLabel ?? t(exits ? "leaveExit" : "leaveRoom")}
         </button>
         {/* 離座不可逆：跟另外兩顆分開，靠右紅字 */}
         {view.me.cardId && view.room.status !== "closed" && (
@@ -194,6 +209,9 @@ function MemberList({
           actions={[
             { label: t("leaveDelegate"), onClick: () => void delegateAndLeave() },
             { label: t("leaveKeep"), onClick: () => (setLeaving(false), c.onLeave()) },
+            ...(canQuit
+              ? [{ label: t("leaveQuit"), danger: true, onClick: () => void quit() }]
+              : []),
           ]}
         >
           <p>{t("leaveAsk")}</p>
@@ -215,7 +233,7 @@ export interface RoomControls {
   exportRoom: (() => Promise<boolean>) | null;
   /** null＝桌面版：不給匯入與換圖上傳 */
   upload: Upload | null;
-  onLeave: () => void;
+  onLeave: (gone?: boolean) => void;
   /** 桌面版換掉「暫時離開」的字樣 */
   leaveLabel?: string;
   /** false＝桌面版：不顯示輸入配對碼（接回房主在資訊列）、選角看得到保留給電腦的卡 */

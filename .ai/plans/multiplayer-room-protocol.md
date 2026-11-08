@@ -263,7 +263,7 @@ interface ActionItem {           // 派工批次的一格，順序即提示順�
 | `member.kick` | `{ memberId, ban }` | H | 非 closed | 發 `member.kicked`；`ban` 時記雜湊，同裝置再也加不回；關閉對方連線 4403 |
 | `member.departure` | `{ cardId, mode:"npc"\|"absent" }` | H | playing | 發 `seat.departure`，下次派工帶上 |
 | `member.reassign` | `{ from, to }` | H | lobby、playing | `to` 必須無座；發 `seat.reassigned` |
-| `member.leave` | `{}` | M | 任何 | 發 `member.left`，伺服器關連線；成員資料保留（可再用同裝置回來，成為無座成員） |
+| `member.leave` | `{}` | M（房主、出額度者除外） | 任何 | 玩家明確按「離開房間」才送（斷線不算）：放座位、刪名單列、發 `member.left`，伺服器關連線；同裝置憑邀請回來算新成員。關房後只關連線 |
 | `scene.advance` | `{ round, next?: { route, model } }` | H | 見 §3.5 | §3.5 |
 | `scene.advance_cancel` | `{}` | H | transition 且 `stalled` | 發 `job.cancel` 給執行端；房間仍等 `job.result`（§3.5） |
 | `room.close` | `{}` | H | 非 closed | §2 |

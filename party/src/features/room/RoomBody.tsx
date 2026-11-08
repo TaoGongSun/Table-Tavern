@@ -31,10 +31,18 @@ export function RoomBody({
   /** 手機：名單頁底部的顯示設定（房號、語系、字級） */
   settings?: ReactNode;
 }) {
-  const [left, setLeft] = useState(false);
+  const [left, setLeft] = useState<"away" | "gone" | null>(null);
   // 房間關了仍留著畫面唯讀（房主還能匯出，§2）；其餘致命錯誤整頁顯示原因
   const closed = room.fatal === "E_ROOM_CLOSED" && room.view;
-  if (left) return <p className="center-note">{t("leftRoom")}</p>;
+  if (left)
+    return (
+      <div className="center-note">
+        <p>{t(left === "gone" ? "leftExit" : "leftRoom")}</p>
+        <button type="button" onClick={() => window.location.reload()}>
+          {t("leftReturn")}
+        </button>
+      </div>
+    );
   if (room.fatal && !closed)
     return (
       <p className="center-note" data-testid="fatal">
@@ -62,7 +70,9 @@ export function RoomBody({
           exportRoom: desktop ? null : room.exportRoom,
           upload: desktop ? null : room.upload,
           origin,
-          onLeave: desktop ? desktop.onLeave : () => (room.leave(), setLeft(true)),
+          onLeave: desktop
+            ? desktop.onLeave
+            : (gone) => (room.leave(), setLeft(gone ? "gone" : "away")),
           leaveLabel: desktop?.leaveLabel,
           pairForm: !desktop,
           inviteUrl: desktop?.inviteUrl,

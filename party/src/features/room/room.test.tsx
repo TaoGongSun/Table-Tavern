@@ -1398,11 +1398,39 @@ describe("AI 代管（room-seat-delegate 包 3）", () => {
     B.tab("members");
     B.click("暫時離開");
     expect(B.q('[data-testid="leave-confirm"]')!.textContent).toContain(
-      "你的座位會保留。要不要先把角色交給 AI 代管？",
+      "暫時離開會保留座位，回來能接著玩。要不要先把角色交給 AI 代管？",
     );
     inside(B, "leave-confirm", "交給 AI 代管再離開");
     await until(() => B.text().includes("你已暫時離開"));
     expect(room.s.members.find((m) => m.id === b)!.delegated).toBe(true);
+  });
+
+  it("離開房間：已入座可一步不玩了；沒座位一按就走；都刪列放座位，房主只能暫時離開", async () => {
+    const { room, hub, A, B, b } = await table();
+    B.tab("members");
+    B.click("暫時離開");
+    expect(B.button("不玩了，離座並離開房間")!.className).toBe("danger");
+    B.click("不玩了，離座並離開房間");
+    await until(() => B.text().includes("你已離開房間。"));
+    expect(B.button("回到房間")).not.toBeNull();
+    expect(room.s.members.some((m) => m.id === b)).toBe(false);
+    expect(room.s.cards.find((c) => c.name === "角色2")!.claimedBy).toBeNull();
+    A.tab("members");
+    await until(() => !A.q(`[data-testid="member-${b}"]`));
+    A.click("暫時離開");
+    expect(A.button("不玩了，離座並離開房間")).toBeNull();
+    A.click("取消");
+
+    const C = phone(hub, `k=${room.joinSecret}`);
+    C.type('[data-testid="nickname"]', "小光");
+    await act(async () => C.q<HTMLFormElement>("form")!.requestSubmit());
+    await until(() => C.q('[data-testid="seat-picker"]'));
+    expect(room.s.members).toHaveLength(2);
+    C.tab("members");
+    expect(C.button("暫時離開")).toBeNull();
+    C.click("離開房間");
+    await until(() => C.text().includes("你已離開房間。"));
+    expect(room.s.members).toHaveLength(1);
   });
 
   it("房主從狀態列代管離線的人；全員代管時房主與玩家看到不同的原因，接回寫馬上能行動", async () => {

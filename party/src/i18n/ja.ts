@@ -4,6 +4,10 @@ import type { PartyMessages } from "./zh-TW";
 
 export const ja: PartyMessages = {
   ...en,
+  leaveExit: "ルームを退出",
+  leaveQuit: "プレイをやめて席を離れ、退出する",
+  leftExit: "ルームを退出しました。",
+  leftReturn: "ルームに戻る",
   seatTakenOffline: "選択済み・オフライン",
   seatClaimMine: "これは自分の？",
   seatClaimSameNick: "相手も{name}",

@@ -147,6 +147,7 @@ function onEvent(v: RoomView, e: any, at: number) {
       for (const m of v.members) if (m.memberId === e.memberId) m.nickname = e.nickname;
       if (mine) v.me.nickname = e.nickname;
       break;
+    case "member.left":
     case "member.kicked":
       v.members = v.members.filter((m) => m.memberId !== e.memberId);
       break;
