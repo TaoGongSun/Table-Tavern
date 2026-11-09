@@ -4,7 +4,7 @@
 
 ## [Unreleased]
 
-## [0.6.0] — 2026-11-09
+## [0.5.3] — 2026-11-09
 
 ### 這一版有什麼
 跑團（桌遊式冒險，用骰子決定成敗）——聊天桌的新能力，到桌設定開「擲骰」才有：
@@ -40,12 +40,12 @@
 
 ### 下載
 [![網頁版-點開就玩](https://img.shields.io/badge/網頁版-點開就玩-E8A33D?style=for-the-badge)](https://table-tavern.pages.dev)
-[![下載-Windows](https://img.shields.io/badge/下載-Windows-0078D6?style=for-the-badge&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxyZWN0IHg9IjEiIHk9IjEiIHdpZHRoPSIxMC41IiBoZWlnaHQ9IjEwLjUiLz48cmVjdCB4PSIxMi41IiB5PSIxIiB3aWR0aD0iMTAuNSIgaGVpZ2h0PSIxMC41Ii8+PHJlY3QgeD0iMSIgeT0iMTIuNSIgd2lkdGg9IjEwLjUiIGhlaWdodD0iMTAuNSIvPjxyZWN0IHg9IjEyLjUiIHk9IjEyLjUiIHdpZHRoPSIxMC41IiBoZWlnaHQ9IjEwLjUiLz48L3N2Zz4=)](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.6.0/TableTavern-Windows-Setup.exe)
-[![下載-macOS](https://img.shields.io/badge/下載-macOS-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.6.0/TableTavern-macOS.dmg)
+[![下載-Windows](https://img.shields.io/badge/下載-Windows-0078D6?style=for-the-badge&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxyZWN0IHg9IjEiIHk9IjEiIHdpZHRoPSIxMC41IiBoZWlnaHQ9IjEwLjUiLz48cmVjdCB4PSIxMi41IiB5PSIxIiB3aWR0aD0iMTAuNSIgaGVpZ2h0PSIxMC41Ii8+PHJlY3QgeD0iMSIgeT0iMTIuNSIgd2lkdGg9IjEwLjUiIGhlaWdodD0iMTAuNSIvPjxyZWN0IHg9IjEyLjUiIHk9IjEyLjUiIHdpZHRoPSIxMC41IiBoZWlnaHQ9IjEwLjUiLz48L3N2Zz4=)](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.5.3/TableTavern-Windows-Setup.exe)
+[![下載-macOS](https://img.shields.io/badge/下載-macOS-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.5.3/TableTavern-macOS.dmg)
 
 - 網頁版：<https://table-tavern.pages.dev>，點開就玩，不用安裝。
-- [Windows（64 位元）](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.6.0/TableTavern-Windows-Setup.exe)
-- [macOS（僅 Apple Silicon，M 系列晶片；不支援 Intel Mac）](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.6.0/TableTavern-macOS.dmg)
+- [Windows（64 位元）](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.5.3/TableTavern-Windows-Setup.exe)
+- [macOS（僅 Apple Silicon，M 系列晶片；不支援 Intel Mac）](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.5.3/TableTavern-macOS.dmg)
 - 下方其他檔案是 App 內更新用的，不用下載。
 
 ### 你的資料去哪裡
@@ -121,12 +121,12 @@ Visual novels:
 
 ### Downloads
 [![Play-in your browser](https://img.shields.io/badge/Play-in%20your%20browser-E8A33D?style=for-the-badge)](https://table-tavern.pages.dev)
-[![Download-Windows](https://img.shields.io/badge/Download-Windows-0078D6?style=for-the-badge&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxyZWN0IHg9IjEiIHk9IjEiIHdpZHRoPSIxMC41IiBoZWlnaHQ9IjEwLjUiLz48cmVjdCB4PSIxMi41IiB5PSIxIiB3aWR0aD0iMTAuNSIgaGVpZ2h0PSIxMC41Ii8+PHJlY3QgeD0iMSIgeT0iMTIuNSIgd2lkdGg9IjEwLjUiIGhlaWdodD0iMTAuNSIvPjxyZWN0IHg9IjEyLjUiIHk9IjEyLjUiIHdpZHRoPSIxMC41IiBoZWlnaHQ9IjEwLjUiLz48L3N2Zz4=)](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.6.0/TableTavern-Windows-Setup.exe)
-[![Download-macOS](https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.6.0/TableTavern-macOS.dmg)
+[![Download-Windows](https://img.shields.io/badge/Download-Windows-0078D6?style=for-the-badge&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxyZWN0IHg9IjEiIHk9IjEiIHdpZHRoPSIxMC41IiBoZWlnaHQ9IjEwLjUiLz48cmVjdCB4PSIxMi41IiB5PSIxIiB3aWR0aD0iMTAuNSIgaGVpZ2h0PSIxMC41Ii8+PHJlY3QgeD0iMSIgeT0iMTIuNSIgd2lkdGg9IjEwLjUiIGhlaWdodD0iMTAuNSIvPjxyZWN0IHg9IjEyLjUiIHk9IjEyLjUiIHdpZHRoPSIxMC41IiBoZWlnaHQ9IjEwLjUiLz48L3N2Zz4=)](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.5.3/TableTavern-Windows-Setup.exe)
+[![Download-macOS](https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.5.3/TableTavern-macOS.dmg)
 
 - Web version: <https://table-tavern.pages.dev> — play right in your browser, nothing to install.
-- [Windows (64-bit)](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.6.0/TableTavern-Windows-Setup.exe)
-- [macOS (Apple Silicon / M-series only; Intel Macs are not supported)](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.6.0/TableTavern-macOS.dmg)
+- [Windows (64-bit)](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.5.3/TableTavern-Windows-Setup.exe)
+- [macOS (Apple Silicon / M-series only; Intel Macs are not supported)](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.5.3/TableTavern-macOS.dmg)
 - The other files below are used by in-app updates; you don't need them.
 
 ### Where your data goes

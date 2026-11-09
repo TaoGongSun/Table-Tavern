@@ -1,6 +1,6 @@
 # release-8 — v0.5.2 之後的說明文字、截圖與發佈
 
-Status: v0.6.0 文件、版號與房間伺服器部署都完成，已合 main（網頁版隨 main 上線）；等作者親口說才推 `v0.6.0` tag。
+Status: v0.5.3 文件、版號與房間伺服器部署都完成，已合 main（網頁版隨 main 上線）；等作者親口說才推 `v0.5.3` tag。
 流程沿用 [plans/release-2-ci-windows.md](../plans/release-2-ci-windows.md)。
 
 ## 已完成
@@ -10,8 +10,8 @@ Status: v0.6.0 文件、版號與房間伺服器部署都完成，已合 main（
 - 新規則：部署發佈前 README、Change log、網頁說明現況需要 Fable 常識審查〔作者裁決 2026-11-09〕。
 
 ## 下一步
-1. 作者親口說發 → 推 `v0.6.0` tag → CI 建 8 產物、標 Latest。
-2. 發之後：release 頁 8 檔齊、`releases/latest/download/latest.json` 是 0.6.0；App 內「檢查更新」從 0.5.2 升上來；兩個帶版號安裝檔放 `~/Downloads/TableTavern-v0.6.0/` 交作者傳 pCloud；本檔搬 archive。
+1. 作者親口說發 → 推 `v0.5.3` tag → CI 建 8 產物、標 Latest。
+2. 發之後：release 頁 8 檔齊、`releases/latest/download/latest.json` 是 0.5.3；App 內「檢查更新」從 0.5.2 升上來；兩個帶版號安裝檔放 `~/Downloads/TableTavern-v0.5.3/` 交作者傳 pCloud；本檔搬 archive。
 
 分工：到 2026-11-10 22:00 前 Sol 施工、Grok 審查〔作者裁決 2026-11-09〕。
 
