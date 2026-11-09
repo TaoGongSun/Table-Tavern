@@ -1,5 +1,33 @@
 use super::store::FaceBox;
-use super::{base_is_current, parse_face_box, stale_or_failed, supersede_base};
+use super::{
+    base_is_current, parse_face_box, parse_normalized_face_box, stale_or_failed, supersede_base,
+};
+
+/// agy 回 0–1000：換算成像素後走同一套檢查，夾 markdown 也認得
+#[test]
+fn normalized_face_box_is_scaled_and_checked() {
+    assert_eq!(
+        parse_normalized_face_box(
+            "```json\n{\"ymin\":100,\"xmin\":250,\"ymax\":200,\"xmax\":750}\n```",
+            1000,
+            2000
+        ),
+        Some(FaceBox {
+            x: 250,
+            y: 150,
+            w: 500,
+            h: 250,
+        })
+    );
+    assert_eq!(
+        parse_normalized_face_box(
+            "{\"ymin\":0,\"xmin\":0,\"ymax\":1200,\"xmax\":500}",
+            1000,
+            2000
+        ),
+        None
+    );
+}
 
 /// 視覺模型的框：上緣再往上加框高 25%；前後夾雜文字也找得到
 #[test]
@@ -314,5 +342,30 @@ fn sprite_prompts_use_card_art() {
         variant.contains("festival prompt")
             && variant.contains("photorealistic")
             && !variant.contains("kemono")
+    );
+}
+
+#[test]
+fn face_vision_follows_sprite_source_not_chat_transport() {
+    let mut config = crate::data::AppConfig::default();
+    config
+        .preferences
+        .insert("transport".into(), "codex".into());
+    for (source, expected) in [
+        ("codex", Some("codex")),
+        ("agy", Some("agy")),
+        ("api", None),
+    ] {
+        config
+            .preferences
+            .insert("vn_sprite_source".into(), source.into());
+        assert_eq!(
+            crate::generated_image::cli_fetch::vision_source(super::sprite_source(&config)),
+            expected
+        );
+    }
+    assert_eq!(
+        crate::generated_image::cli_fetch::vision_source("unsupported"),
+        None
     );
 }

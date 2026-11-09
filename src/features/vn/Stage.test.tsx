@@ -76,7 +76,7 @@ describe("Stage fallback chain", () => {
     expect(host.querySelector(".vn-slot-0 img")!.getAttribute("src")).toBe("data:body");
     const tender = { ...sprite, faces: { tender: "data:tender" } };
     expect(spriteLayers(tender, undefined, "tender").face).toBe("data:tender");
-    // 名單最高者＝1，下限 0.7：0.5 的角色照 0.7 畫
+    // 名單最高者＝1，下限 0.8：0.5 的角色照 0.8 畫
     expect(host.querySelector<HTMLElement>(".vn-slot-0")!.style.getPropertyValue("--vn-scale")).toBe(String(MIN_SCALE));
     expect(host.querySelector<HTMLElement>(".vn-slot-1")!.style.getPropertyValue("--vn-scale")).toBe("");
   });

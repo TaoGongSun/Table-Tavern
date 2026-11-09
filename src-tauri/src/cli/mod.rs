@@ -31,7 +31,7 @@ pub use detect::detect_clis;
 pub(crate) use detect::find_binary;
 pub use prompt_file::PromptFile;
 pub use request::{
-    agy_args, agy_body, agy_session_args, agy_session_body, claude_args, claude_model_for,
+    agy_body, agy_job_args, agy_session_args, agy_session_body, claude_args, claude_model_for,
     claude_session_args, codex_args, codex_effort_for, codex_session_args, flatten_messages,
     grok_args, grok_envs, grok_payload, grok_session_args, tier_override,
 };

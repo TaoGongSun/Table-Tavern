@@ -121,6 +121,11 @@ pub(crate) fn expression_prompt(change: &str, transparent: bool) -> String {
     )
 }
 
+/// agy 版臉框：0–1000 相對座標
+pub(crate) fn face_box_prompt_normalized() -> String {
+    "The attached image is a character sprite. Return the bounding box of the character's face region that changes with facial expressions: from just above the eyebrows down to the bottom of the chin, including the whole mouth, and from the outer edge of one cheek to the other (ears and hair excluded). Reply with only one line of JSON: {\"ymin\":0,\"xmin\":0,\"ymax\":0,\"xmax\":0}, with every value normalized to 0-1000 relative to the image height (y) and width (x).".to_owned()
+}
+
 /// 臉框：眉上到下巴、兩頰外緣、不含耳與髮；回一行 JSON
 pub(crate) fn face_box_prompt(width: u32, height: u32) -> String {
     format!(

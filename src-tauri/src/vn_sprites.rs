@@ -194,6 +194,34 @@ pub(crate) fn parse_face_box(reply: &str, width: u32, height: u32) -> Option<Fac
     let value: serde_json::Value = serde_json::from_str(&reply[start..=end]).ok()?;
     let field = |key: &str| value.get(key)?.as_i64();
     let (x0, y0, x1, y1) = (field("x0")?, field("y0")?, field("x1")?, field("y1")?);
+    face_box_from_pixels((x0, y0, x1, y1), width, height)
+}
+
+/// Gemini 定位的慣例是 0–1000 相對座標；要它回像素時常整框偏掉（2026-11-09 實測）
+pub(crate) fn parse_normalized_face_box(reply: &str, width: u32, height: u32) -> Option<FaceBox> {
+    let start = reply.rfind('{')?;
+    let end = start + reply[start..].find('}')?;
+    let value: serde_json::Value = serde_json::from_str(&reply[start..=end]).ok()?;
+    let field = |key: &str, size: u32| {
+        let at = value.get(key)?.as_f64()?;
+        (0.0..=1000.0)
+            .contains(&at)
+            .then(|| (at * f64::from(size) / 1000.0).round() as i64)
+    };
+    let pixels = (
+        field("xmin", width)?,
+        field("ymin", height)?,
+        field("xmax", width)?,
+        field("ymax", height)?,
+    );
+    face_box_from_pixels(pixels, width, height)
+}
+
+fn face_box_from_pixels(
+    (x0, y0, x1, y1): (i64, i64, i64, i64),
+    width: u32,
+    height: u32,
+) -> Option<FaceBox> {
     let (w, h) = (i64::from(width), i64::from(height));
     if x0 < 0 || y0 < 0 || x1 > w || y1 > h || x0 >= x1 || y0 >= y1 {
         return None;
@@ -219,10 +247,22 @@ async fn locate_face(
     png: &[u8],
     (width, height): (u32, u32),
 ) -> (FaceBox, bool) {
+    let Some(source) = cli_fetch::vision_source(sprite_source(config)) else {
+        return (FaceBox::fallback(width, height), true);
+    };
     for _ in 0..2 {
-        let prompt = prompts::face_box_prompt(width, height);
-        match cli_fetch::run_cli_vision(app, config, Some(world), &prompt, png).await {
-            Ok(reply) => match parse_face_box(&reply, width, height) {
+        let normalized = source == "agy";
+        let prompt = if normalized {
+            prompts::face_box_prompt_normalized()
+        } else {
+            prompts::face_box_prompt(width, height)
+        };
+        match cli_fetch::run_cli_vision(app, config, source, Some(world), &prompt, png).await {
+            Ok(reply) => match if normalized {
+                parse_normalized_face_box(&reply, width, height)
+            } else {
+                parse_face_box(&reply, width, height)
+            } {
                 Some(face) => return (face, false),
                 None => log::warn!(
                     "臉框回覆不合格：{}",

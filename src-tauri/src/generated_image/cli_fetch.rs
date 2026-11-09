@@ -118,23 +118,44 @@ pub(crate) async fn run_cli_image(
     }
 }
 
-/// 看圖回文字（臉框）：工具鎖死、圖走 `-i`。只有 codex 支援，其他來源由呼叫端退預設值。
+/// 看圖來源不跨供應商；API 目前文字傳輸不支援圖片，直接由呼叫端用預設框。
+pub(crate) fn vision_source(source: &str) -> Option<&'static str> {
+    match source {
+        "codex" => Some("codex"),
+        "agy" => Some("agy"),
+        _ => None,
+    }
+}
+
+/// 看圖回文字：codex 維持 -i；agy 用 view_file 專用代理，不開生圖工具。
 pub(crate) async fn run_cli_vision(
     app: &tauri::AppHandle,
     config: &data::AppConfig,
+    source: &str,
     world: Option<&str>,
     prompt: &str,
     image: &[u8],
 ) -> Result<String, String> {
-    let job = CliJob::create(&cli_workspace(app)?, "codex", Some(image))?;
-    let tier = transport::gm_tier(config);
+    let job = CliJob::create(&cli_workspace(app)?, source, Some(image))?;
+    let prompt = match (source, &job.reference) {
+        ("agy", Some(path)) => format!(
+            "Use view_file to inspect the image at {}. {prompt}",
+            path.display()
+        ),
+        _ => prompt.to_owned(),
+    };
+    // agy 走快速檔：玩家有設快速檔型號時 6–13 秒；沒設則用 CLI 預設（實測中檔 34–49 秒，一樣準）
+    let tier = match source {
+        "agy" => data::Tier::Fast,
+        _ => transport::gm_tier(config),
+    };
     stream_image_via_transport(
         app,
         config,
-        Some("codex"),
+        Some(source),
         tier,
         world,
-        &[user(prompt.to_owned())],
+        &[user(prompt)],
         &job,
         false,
     )

@@ -521,7 +521,7 @@ async fn stream_turn_inner(
     emit: impl FnMut(&str),
 ) -> Result<(String, bool), String> {
     // transport_override：生圖等功能可指定與聊天不同的連線（None＝跟隨 preferences.transport）。
-    // allow_cli_tools：只有生圖呼叫為 true——CLI 生圖工具要寫檔／跑指令，聊天一律鎖死工具。
+    // allow_cli_tools：只有生圖為 true；看圖工作靠 job.reference 選唯讀代理，聊天仍不給工具。
     let transport_kind = transport_override
         .map(str::to_owned)
         .unwrap_or_else(|| chat_transport(config));
@@ -720,9 +720,13 @@ async fn stream_turn_inner(
             let model = cli::tier_override(&config.tier_models, "agy", tier);
             // 正文走 stdin（不帶 -p 就是單發模式），不佔命令列長度
             let combined = cli::agy_body(&system, &prompt);
-            let args = cli::agy_args(model, allow_cli_tools);
+            let args = cli::agy_job_args(
+                model,
+                allow_cli_tools,
+                job.is_some_and(|job| job.reference.is_some()),
+            );
             let envs = cli_envs(app, "agy")?;
-            // 文字單發一結束（含中止）就刪這次的對話；生圖不刪（回覆的圖檔路徑可能在 agy-home 內，交給回收）
+            // 文字／看圖單發一結束（含中止）就刪這次的對話；生圖不刪（回覆的圖檔路徑可能在 agy-home 內，交給回收）
             let conversation_id = std::sync::Mutex::new(None);
             let _cleanup = (!allow_cli_tools)
                 .then(|| -> Result<_, String> {

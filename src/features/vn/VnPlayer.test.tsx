@@ -311,7 +311,7 @@ describe("VnPlayer", () => {
     await render({ events: [event("g1"), event("p1")] });
     await advance();
     expect(host.querySelector(".vn-choices:not(.vn-choices-past)")).toBeNull();
-    expect(host.querySelector(".vn-choice-current")?.textContent).toContain("A");
+    expect(host.querySelector(".vn-choices-past .vn-choice")?.textContent).toContain("A");
     // 「繼續」在對話框右下角取代 ▼
     expect(button(t("vnContinue"))!.closest(".vn-dialogue")).not.toBeNull();
     expect(host.querySelector(".vn-ctc")).toBeNull();
@@ -678,9 +678,9 @@ describe("VnPlayer", () => {
       player("p1", "A"),
       gm("g2", [n("after A")]),
     ];
-    async function openPast() {
+    async function openPast(branches = [{ option: "B", tip: 3, ended: true }]) {
       backend.cells = past();
-      backend.branches = [{ option: "B", tip: 3, ended: true }];
+      backend.branches = branches;
       backend.progress = { version: 1, read: [], positions: { "0": "g2#0" }, saves: [] };
       await render({ events: [event("g1"), event("p1"), event("g2")] });
       await act(async () => button(t("vnBack"))!.click());
@@ -688,16 +688,22 @@ describe("VnPlayer", () => {
     }
     const panel = () => [...host.querySelectorAll<HTMLButtonElement>(".vn-choices-past .vn-choice")];
 
-    it("marks the current route and played branches; the current route reads on", async () => {
+    it("marks the last choice and played branches; the last choice reads on", async () => {
       await openPast();
       expect(panel().map((b) => b.textContent)).toEqual([
-        `A${t("vnChoiceCurrent")}`,
-        `B${t("vnChoicePlayed")} · ${t("vnChoiceEnded")}`,
+        `A${t("vnChoiceLast")}`,
+        `B${t("vnChoicePlayed")}・${t("vnChoiceEnded")}`,
         "C",
       ]);
       await act(async () => panel()[0].click());
       expect(text()).toBe("after A");
       expect(onBranch).not.toHaveBeenCalled();
+    });
+
+    it.each([false, true])("keeps the ending status on the last choice: %s", async (ended) => {
+      await openPast([{ option: "A", tip: 1, ended }, { option: "X", tip: 2, ended: false }]);
+      expect(panel()[0].textContent).toBe(`A${t("vnChoiceLast")}${ended ? "・" + t("vnChoiceEnded") : ""}`);
+      expect(panel()[3].textContent).toBe(`X${t("vnChoicePlayed")}`);
     });
 
     it("other routes stay locked until this choice point's branches are loaded", async () => {
@@ -989,11 +995,12 @@ describe("VnPlayer", () => {
       await settle();
       expect(backend.args["vn_replay_goto"]).toEqual({ worldId: "w1", scene: 0 });
       sceneNo = 0;
+      backend.branches = [{ option: "A", tip: 1, ended: false }];
       backend.cells = [gm("g1", [n("q"), choices("A", "B")]), player("p1", "A"), gm("g2", [n("after")])];
       await render({ events: [event("g1"), event("p1"), event("g2")] });
       expect(host.querySelector(".vn-choices-past")).not.toBeNull();
-      // 重播桌也標目前路線
-      expect(host.querySelector(".vn-choice-current")?.textContent).toContain("A");
+      // 重播桌不特別標示內部目前分支
+      expect(host.querySelector(".vn-choices-past .vn-choice")?.textContent).toBe("A" + t("vnChoicePlayedUnfinished"));
     });
 
     it("the last act's chapter cell is passed over: one click from the line reaches the ending", async () => {
@@ -1011,6 +1018,19 @@ describe("VnPlayer", () => {
       expect(host.querySelectorAll(".vn-choices")).toHaveLength(1);
       expect(host.querySelector(".vn-choices-past")?.textContent).toContain(t("vnWorkUnfinished"));
       expect(button(t("vnWorkBackToChoice"))).toBeUndefined();
+    });
+
+    it.each([false, true])("replay labels the internal current branch like other played branches: %s", async (ended) => {
+      backend.cells = [gm("g1", [n("q"), choices("A", "B", "C")]), player("p1", "A")];
+      backend.branches = ["A", "B", "X"].map((option, i) => ({ option, tip: i + 1, ended }));
+      await render({ events: [event("g1"), event("p1")] });
+      await advance();
+      const tag = ended ? `${t("vnChoicePlayed")}・${t("vnChoiceEnded")}` : t("vnChoicePlayedUnfinished");
+      expect(choiceButtons().map((b) => b.textContent)).toEqual([`A${tag}`, `B${tag}`, `C${t("vnWorkNotWalked")}`, `X${tag}`]);
+      expect(choiceButtons().map((b) => b.disabled)).toEqual([false, false, true, false]);
+      expect(host.querySelector(".vn-choice-current")).toBeNull();
+      await act(async () => choiceButtons()[0].click());
+      expect(chat.submitText).not.toHaveBeenCalled();
     });
 
     it("an open choice jumps to the author's branch and greys out the paths never taken", async () => {

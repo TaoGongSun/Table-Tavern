@@ -3,7 +3,7 @@
    字級與框寬隨播放器高度（cqh）縮放：.vn-player 是 size container，cqh 只在後代上算得到。 */
 .vn-player {
   --vn-ground: linear-gradient(180deg, #2a3142 0%, #1b1f2a 70%, #12151c 100%);
-  --vn-box: rgba(16, 19, 26, 0.88);
+  --vn-box: rgba(16, 19, 26, 0.80);
   --vn-box-line: rgba(230, 196, 110, 0.45);
   --vn-ink: #eef1f7;
   --vn-thought: #a9c4e8;
@@ -32,6 +32,17 @@
 .vn-cast {
   position: absolute;
   inset: 0;
+}
+/* 選項出現時壓暗立繪，選項疊在人物上也讀得清楚 */
+.vn-cast {
+  transition: filter 0.2s;
+}
+.vn-player:has(.vn-bottom:not(.vn-ui-hidden) .vn-choices) .vn-cast {
+  filter: brightness(0.45);
+}
+.vn-cast:has(.vn-slot-0):has(.vn-slot-2):not(:has(.vn-closeup)) {
+  scale: 0.85;
+  transform-origin: bottom center;
 }
 .vn-shake {
   animation: vn-shake 0.4s;
@@ -160,8 +171,9 @@
   /* 下緣落在對話框底邊以下（永遠藏在框後），不露出裁切邊 */
   bottom: calc(-1 * var(--vn-foot));
   /* --vn-scale：VN 卡身高比例（名單最高者＝1） */
-  height: calc(92% * var(--vn-scale, 1));
-  width: 34%;
+  height: calc(100cqh * var(--vn-scale, 1));
+  width: calc(80cqh * var(--vn-scale, 1));
+  translate: -50% 0;
   margin: 0;
   display: flex;
   justify-content: center;
@@ -225,15 +237,15 @@
   background: #0b0d12;
   opacity: 0.35;
 }
-.vn-slot-0 { left: 4%; }
-.vn-slot-1 { left: 62%; }
-.vn-slot-2 { left: 33%; }
+.vn-slot-0 { left: 24%; }
+.vn-slot-1 { left: 76%; }
+.vn-slot-2 { left: 50%; }
 .vn-dim { filter: var(--vn-dim); }
 .vn-idle { filter: brightness(0.8); }
 .vn-speaking { transform: scale(1.02); z-index: 1; }
 /* 特寫：槽位撐滿舞台、不套身高比例（小個子特寫也要放大）；以臉框中心為錨放大 1.7 倍，臉移到水平中央、舞台上 1/3。
    用獨立的 translate／scale 屬性，跟呼吸動畫的 transform 疊加不互蓋；沒有臉框（卡圖、剪影）假設臉在上方 18% */
-.vn-closeup { left: 0; bottom: 0; width: 100%; height: 100%; z-index: 2; }
+.vn-closeup { translate: 0; left: 0; bottom: 0; width: 100%; height: 100%; z-index: 2; }
 .vn-closeup > img,
 .vn-closeup .vn-layers,
 .vn-closeup .vn-silhouette {
@@ -254,6 +266,16 @@
   align-items: center;
   gap: 0.3rem;
   padding: 0 1rem 0.4rem;
+}
+/* 快捷列底下的暗帶：字好讀，立繪下緣自然沒入 */
+.vn-bottom::before {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  z-index: -1;
+  height: 12cqh;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.55));
+  pointer-events: none;
 }
 .vn-ui-hidden {
   visibility: hidden;
@@ -303,11 +325,6 @@
   color: var(--danger);
   font-size: var(--fs-ui);
 }
-/* 過去的選項面板（包 6）：本分支選的那個框線加重，玩過的分支掛小標 */
-.vn-choice-current {
-  border-color: var(--vn-ink);
-  font-weight: 600;
-}
 .vn-choice-tag {
   margin-left: 0.6rem;
   font-size: var(--fs-ui);
@@ -320,9 +337,9 @@
   box-sizing: border-box;
   user-select: none;
   width: var(--vn-box-w);
-  min-height: 8.5rem;
+  min-height: calc(var(--vn-fs) * 4.5 + 2.4rem);
   /* 長段落（GM 一格寫很長）在框內捲動，不撐出畫面 */
-  max-height: 38vh;
+  max-height: 34cqh;
   padding: 1.4rem 1.6rem 1rem;
   border: 1px solid var(--vn-box-line);
   border-radius: var(--radius-l);
@@ -496,7 +513,8 @@
 .vn-choice-unwalked:disabled {
   opacity: 1;
   border-style: dashed;
-  color: rgba(238, 241, 247, 0.5);
+  background: rgba(16, 19, 26, 0.55);
+  color: rgba(238, 241, 247, 0.8);
   cursor: not-allowed;
 }
 .vn-unfinished {
@@ -508,12 +526,9 @@
 }
 .vn-unfinished-note {
   margin: 0;
-  padding: 0.5rem 1rem;
-  border: 1px solid var(--vn-box-line);
-  border-radius: 6px;
-  background: var(--vn-box);
   color: var(--vn-ink);
   text-align: center;
+  text-shadow: 0 1px 4px #000;
 }
 
 .vn-background-retry { position: absolute; top: .75rem; right: .75rem; z-index: 6; max-width: 60%; white-space: normal; }

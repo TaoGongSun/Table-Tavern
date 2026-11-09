@@ -1,4 +1,4 @@
-// 舞台：背景層、三個槽位的立繪（VN 卡給了身高就照比例縮、下限 0.7、下緣對齊；獨自一人站中間）、說話者亮其他壓暗、
+// 舞台：背景層、三個槽位的立繪（VN 卡給了身高就照比例縮、下限 0.8、下緣對齊；獨自一人站中間）、說話者亮其他壓暗、
 // 特寫（以臉為錨放大）與震動、地點字卡（無背景圖時顯示在左上）、雨層（立繪之上，不跟著震動）。
 // 退路鏈：該變體該表情臉層 → 該變體 neutral → 預設變體＋共用臉層（SpriteFigure）→ 角色卡原圖 → 剪影＋名牌。
 import { cloneElement, useEffect, useRef, useState, type ReactElement } from "react";
@@ -9,7 +9,7 @@ import type { BackdropImage } from "./useBackgrounds";
 import type { Stage as StageState } from "./vn-cells";
 
 /** 身高比例下限：名單裡有特別高的角色時，一般人不至於縮成小人 */
-export const MIN_SCALE = 0.7;
+export const MIN_SCALE = 0.8;
 const CENTER_SLOT = 2;
 /** 換立繪（卡圖／剪影→定稿、換定稿）的交叉淡入長度，與 CSS 的 vn-swap 一致 */
 const SWAP_MS = 600;

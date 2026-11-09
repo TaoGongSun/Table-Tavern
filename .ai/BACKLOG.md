@@ -9,6 +9,9 @@
 
 **每案交辦固定帶**：動到的檔案先看行數與資料夾檔數；照 [docs/STRUCTURE.md](../docs/STRUCTURE.md)「修改既有功能要不要順便搬」——容得下的 structure-only 小搬遷同案做，大搬家另立案先做；驗收回報附動到檔案的前後行數。
 
+## 有期限
+- [grok-sprite-image-retest](tasks/grok-sprite-image-retest.md) — 小案（核心 0 行，只實測）；重測 Grok 能否當 VN 立繪來源 — 下一步：2026-11-12 主線週額度恢復後安排，11/20 Grok 訂閱到期前做完〔作者裁決 2026-11-09〕
+
 ## 優先：遊玩資料修復（2026-10-29 稽核）
 
 ## 階段 A：先拍板
@@ -47,7 +50,6 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [ai-workspace-tidy](tasks/ai-workspace-tidy.md) — .ai/tasks/ 累積到 62 檔，逐檔判斷該留該刪該封存 — 下一步：未排程；開工首步＝比對 tasks/ 與 BACKLOG.md 列出三類清單，狀態不明的逐條問使用者。
 
 ## 階段 H：VN 模式
-- [vn-stage-layout](tasks/vn-stage-layout.md) — VN 舞台放大立繪、對話框變矮、選項標籤白話化（小案估 25 行） — 下一步：發佈前做，排在 vn-image-source-flow 之後〔作者裁決 2026-11-09〕
 - [vn-cg-generation](tasks/vn-cg-generation.md) — VN 模式 CG 即時生成：外接吃到飽生圖訂閱（NAI 類）＋提示詞規範 — 下一步：前置 [vn-mode](handoffs/archive/vn-mode.md)（v1）已合 main（2026-11-04）、待作者實機試玩，本任務為其 v3 分期；最省驗證＝拿一把 NAI token 打一發看出圖品質與回傳格式
 
 ## 中國安卓（2026-11-02 立案）

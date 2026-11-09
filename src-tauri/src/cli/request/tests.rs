@@ -544,3 +544,20 @@ fn codex_args_shapes_for_oneshot_lane_and_image() {
     assert!(at("model_reasoning_effort=\"low\"") < at("resume"));
     assert_eq!(&resumed[at("resume")..], ["resume", "thread-1", "-"]);
 }
+
+#[test]
+fn agy_vision_uses_read_only_agent_and_the_same_permission_lock() {
+    for (generate, reference, agent) in [
+        (false, false, super::super::agy_home::TEXT_AGENT),
+        (false, true, super::super::agy_home::VISION_AGENT),
+        (true, true, super::super::agy_home::IMAGE_AGENT),
+    ] {
+        let args = agy_job_args(Some("test-model"), generate, reference);
+        assert!(args.windows(2).any(|p| p == ["--agent", agent]));
+        assert!(args.windows(2).any(|p| p == ["--model", "test-model"]));
+        assert!(args
+            .windows(2)
+            .any(|p| p == ["--settings", AGY_LOCKED_SETTINGS]));
+        assert!(!args.iter().any(|arg| arg.contains("skip-permissions")));
+    }
+}

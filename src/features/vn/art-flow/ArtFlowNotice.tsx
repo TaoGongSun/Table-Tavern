@@ -37,11 +37,11 @@ export function ArtFlowNotice({ worldId, onStarted, onPause, compact = false }: 
     <div className="vn-art-controls">
       <SpriteSourceSelect onChange={setSource} onSelect={status?.art.started ? retry : undefined} disabled={busy} />
       {!status?.art.started && start}
-      {status?.art.started && retryButton}
+      {status?.art.started && (status.pause || Boolean(status.failed)) && retryButton}
     </div>
     <p>{status?.pause ? t("vnArtStopped", { n: batch === null ? status.ready : Math.max(0, batch - remaining), total: batch ?? status.total + status.backgrounds }) : status?.art.started ? remaining === 0 && status.pending === 0 ? t("vnArtReady") : batch === null ? t("vnArtPreparing", { n: status.ready, total: status.total }) : t("vnArtWorking", { n: Math.max(0, batch - remaining), total: batch }) : t("vnArtNotStarted")}</p>
-    {source && <p className="field-note">{t("vnArtEstimate", { source: source === "agy" ? "Gemini CLI" : source === "api" ? "API" : "Codex CLI", n: status ? status.total - status.ready : 0, bg: status?.backgrounds ?? 0 })}</p>}
-    {source && <p className="field-note">{expressions}</p>}
+    {source && !status?.pause && <p className="field-note">{t("vnArtEstimate", { source: source === "agy" ? "Gemini CLI" : source === "api" ? "API" : "Codex CLI", n: status ? status.total - status.ready : 0, bg: status?.backgrounds ?? 0 })}</p>}
+    {source && !status?.pause && <p className="field-note">{expressions}</p>}
     {Boolean(status?.failed) && <p className="field-warn">{t("vnArtFailed", { n: status?.failed ?? 0 })}</p>}
     {status?.pause && <p className="field-warn">{status.pause.reset !== null ? t("vnArtPaused", { n: remaining, time: recovery }) : t("vnArtPausedUnknown", { n: remaining })}</p>}
     {error && <p className="field-warn">{t("vnArtActionFailed")}</p>}

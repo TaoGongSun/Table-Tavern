@@ -131,6 +131,8 @@ pub(crate) fn ensure_keychain_link(agy_home: &Path, real_home: &Path) -> Result<
 pub const TEXT_AGENT: &str = "table-tavern-text";
 /// 生圖代理（plans/agy-image-permissions.md）：只給 generate_image 與讀參考圖的 view_file。
 pub const IMAGE_AGENT: &str = "table-tavern-image";
+/// 看圖回文字：不含生圖工具。
+pub const VISION_AGENT: &str = "table-tavern-vision";
 
 /// 精簡工具集代理（plans/agy-long-survey-fail.md）：`tools: []` 加 `excludeDefaultComponents`
 /// 拿掉 agy 預設的代理系統提示與約 60 個工具（1.4.8 實測只剩內建的 manage_task）。
@@ -160,10 +162,23 @@ subagent: false
 Generate the image the user asks for, then reply as instructed.
 ";
 
-/// 確保 `agy_home/.gemini/config/agents/` 裡兩份代理檔都是上面的內容。
+/// 臉框定位只讀工作目錄內的參考圖，不提供生圖／寫檔／子代理工具。
+const VISION_AGENT_FILE: &str = "---
+name: table-tavern-vision
+description: Table Tavern image inspection (maintained by the app; do not edit)
+tools: [view_file]
+excludeDefaultComponents: true
+mainAgent: true
+subagent: false
+---
+Inspect the supplied image with view_file and reply with the requested text.
+";
+
+/// 確保 `agy_home/.gemini/config/agents/` 裡三份代理檔都是上面的內容。
 pub(crate) fn ensure_agents(agy_home: &Path) -> Result<(), String> {
     ensure_agent(agy_home, TEXT_AGENT, TEXT_AGENT_FILE)?;
-    ensure_agent(agy_home, IMAGE_AGENT, IMAGE_AGENT_FILE)
+    ensure_agent(agy_home, IMAGE_AGENT, IMAGE_AGENT_FILE)?;
+    ensure_agent(agy_home, VISION_AGENT, VISION_AGENT_FILE)
 }
 
 /// 單份代理檔：相同就不動，不同或不存在就同目錄臨時檔＋rename 寫入。原位被資料夾或連結佔住、
@@ -371,6 +386,7 @@ mod tests {
         for (name, content) in [
             (TEXT_AGENT, TEXT_AGENT_FILE),
             (IMAGE_AGENT, IMAGE_AGENT_FILE),
+            (VISION_AGENT, VISION_AGENT_FILE),
         ] {
             let file = dir.join(format!("{name}.md"));
             assert_eq!(std::fs::read_to_string(&file).unwrap(), content);
@@ -385,7 +401,18 @@ mod tests {
             assert_eq!(std::fs::read_to_string(&file).unwrap(), content);
         }
         // 沒留下臨時檔
-        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 2);
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 3);
+    }
+
+    #[test]
+    fn vision_agent_has_only_view_file_and_no_generation_tools() {
+        assert!(VISION_AGENT_FILE
+            .lines()
+            .any(|line| line == "tools: [view_file]"));
+        assert!(VISION_AGENT_FILE.contains("excludeDefaultComponents: true"));
+        assert!(VISION_AGENT_FILE.contains("subagent: false"));
+        assert!(!VISION_AGENT_FILE.contains("generate_image"));
+        assert!(!VISION_AGENT_FILE.contains("spawn_subagent"));
     }
 
     #[test]

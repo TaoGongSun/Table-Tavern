@@ -213,23 +213,32 @@ pub fn codex_session_args(model: Option<&str>, effort: &str, resume: Option<&str
 /// agy 沒有 system prompt 旗標，呼叫端把 system 併進正文。正文走 stdin（不帶 `-p`
 /// 就是單發模式），不佔命令列長度。
 /// 一律帶 app 的專用代理（`agy_home::ensure_agents`）：聊天、旁白、卡重構用沒有工具的文字代理；
-/// 生圖用只有 generate_image／view_file 的圖像代理。不帶 `--dangerously-skip-permissions`，
+/// 生圖用 generate_image／view_file；看圖單發另用只有 view_file 的代理。不帶 `--dangerously-skip-permissions`，
 /// 再用 `--settings` 把權限鎖成 request-review、清空放行規則，蓋過 agy-home 裡可能存在的設定檔
 /// ——無頭模式彈不出確認，指令、寫檔、工作目錄外讀檔會被拒；例外是 agy-home 的 `.gemini/` 照樣讀得到，
 /// 且 `--settings` 能否蓋過 project／shared scope 的權限規則未證實（plans/agy-image-permissions.md §5）。
 /// 注意：agy 對單則訊息約 195KB 以上會靜默只留開頭（2026-10-06 實測，`-p` 與 stdin 相同），
 /// 換傳遞方式解不掉，見 .ai/plans/long-prompt-scene-hint.md 發現 D。
 pub fn agy_args(model: Option<&str>, allow_tools: bool) -> Vec<String> {
+    agy_job_args(model, allow_tools, false)
+}
+
+/// 生圖、看圖與文字共用權限鎖；只有看圖工作改用 view_file 專用代理。
+pub fn agy_job_args(model: Option<&str>, generate: bool, reference: bool) -> Vec<String> {
     let mut args = Vec::new();
     if let Some(model) = model {
         args.push("--model".to_owned());
         args.push(model.to_owned());
     }
     args.push("--agent".to_owned());
-    args.push(match allow_tools {
-        true => super::agy_home::IMAGE_AGENT.to_owned(),
-        false => super::agy_home::TEXT_AGENT.to_owned(),
-    });
+    args.push(
+        match (generate, reference) {
+            (true, _) => super::agy_home::IMAGE_AGENT,
+            (false, true) => super::agy_home::VISION_AGENT,
+            (false, false) => super::agy_home::TEXT_AGENT,
+        }
+        .to_owned(),
+    );
     args.push("--settings".to_owned());
     args.push(AGY_LOCKED_SETTINGS.to_owned());
     // stream-json 才拿得到 usage（agy 1.1.8 起含 cache_read_tokens）；純 json 會把整包
