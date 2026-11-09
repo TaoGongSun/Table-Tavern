@@ -22,6 +22,8 @@
 
 ## 發版檢查清單
 
+每次部署發佈都要：README、Change log、網頁說明現況需要 Fable 常識審查，避免模型習慣使用大量術語讓玩家看不懂，維持白話。〔作者裁決 2026-11-09〕
+
 發之前：
 - [x] 版本 0.3.0 五處（`package.json`、`package-lock.json`、`Cargo.toml`、`Cargo.lock`、`tauri.conf.json`；`node scripts/check-version.mjs v0.3.0` 綠）、CHANGELOG `[0.3.0]` 段。
 - [x] 三方驗收 PASS、已合併 main，`npm run verify` 綠。

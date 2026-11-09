@@ -2,13 +2,13 @@
 
 **[繁體中文 →](README.zh-TW.md)**
 
-AI plays a whole table of characters — and the GM (game master) too. Drop in one character card and just chat; want more depth, open a full table with a world setting, a lorebook, and scene changes, where the GM narrates and decides who speaks next. Each character only knows what the GM has said out loud in the story, so secrets really stay secret until they're revealed — no relying on the AI to "pretend not to know."
+AI plays a whole table of characters — and the GM (game master) too. Drop in one character card and just chat; want more depth, open a full table with a world setting, a World Book (lorebook), and scene changes, where the GM narrates and decides who speaks next. Each character only knows what the GM has said out loud in the story, so secrets really stay secret until they're revealed — no relying on the AI to "pretend not to know."
 
 ## Coming from SillyTavern? Bring your stuff
 
-- **Character cards and lorebooks import directly** — PNG or JSON — and you can export your cards back out.
-- **Cards with their own interface and variable system (MVU, including zod rules) still work**: the status bars, buttons, and stats the card defines show up and respond as written, and HTML layout and text styling in the story display like they do in SillyTavern.
-- **Web saves carry over to the desktop app**, so you can keep playing there — conversation, variables, and lorebook state included.
+- **Character cards and World Books (lorebooks) import directly** — PNG or JSON — and you can export your cards back out.
+- **Cards with their own interface and variable system (MVU) still work**: the status bars, buttons, and stats the card defines show up and respond as written, and HTML layout and text styling in the story display like they do in SillyTavern.
+- **Web saves carry over to the desktop app**, so you can keep playing there — conversation, variables, and World Book state included.
 
 ## Play now
 
@@ -38,14 +38,16 @@ When a new version comes out, the app lets you know and updates in one click; if
 
 ## Why it's fun — and easy on your budget
 
-- **Play with friends online**: open a room on your computer and friends join from their phone's browser through an invite link — no install. Everyone controls their own character, the GM runs on the host's AI, and the host keeps playing on the computer.
-- **Visual novel mode**: the AI writes the script while drawing backgrounds and character sprites; move the story with choices, with chapters, endings and branches. Export it as a package others can replay.
+- **Play with friends online**: open a room on your computer and friends join from their phone's browser through an invite link — no install. Everyone controls their own character and, with dice on, rolls on their own phone; the GM runs on the host's AI, and the host keeps playing on the computer.
+- **Turn on dice for tabletop play**: the app really rolls the dice — the AI doesn't make up numbers — and you can see how each one is used (d20#1 in the story means the first d20 in the pool); when the GM calls for a roll, one tap rolls it. On tables whose cards have no status panel of their own (including blank and one-line tables), the status panel also tracks HP, conditions, initiative and enemies. You can add the built-in condensed version of the open D&D 5th edition rules (called "5e SRD 5.1" in the app) too.
+- **Visual novel mode**: write one line, click "Start now", and the show begins. The AI writes the script while drawing backgrounds and character sprites and adds background music (for sound effects, get a free Freesound key and enter it). Move the story with choices, with chapters, endings and branches. Export it as a package others can replay.
+- **A status panel even without a card**: on a blank or one-line table, the app still tracks each character's condition and belongings, plus goals, promises and leads. The AI only mentions what changed, so replies are faster and use less quota.
 - **Pick who speaks at multi-character tables**: **Let ○○ reply** appears under the GM's narration, and **Send + reply** sits next to the send button. Cards that provide setting but never speak (places, factions) can be made **stage cards**, so they're never asked to talk.
 - **Play completely free**: once OpenRouter is connected, the app picks a good free model for you. If that one is busy or temporarily unavailable, it switches to the next one and tells you in the chat.
-- **Use the subscription you already have**: with a Claude, ChatGPT, Gemini, or Grok subscription, you can route play through that provider's official command-line tool and spend the allowance you already pay for. The app installs it in one click, walks you through signing in, and shows **Connected** once it detects you're logged in. For Claude, Codex and Grok, the app prefers the tool version it was tested with (falling back to the latest if that can't be downloaded); Gemini always gets the latest. The app keeps the tool from updating itself while the app runs it; if a tool update breaks its output format, the app says so and offers **Check for CLI update**. Providers' rules on this kind of use differ; the app explains the risks before you switch, and the choice is yours.
+- **Use the subscription you already have**: with a Claude, ChatGPT, Gemini, or Grok subscription, you can play through that provider's official command-line tool (ChatGPT's is called Codex) and spend the allowance you already pay for. The app installs it in one click, walks you through signing in, and shows **Connected** once you're logged in. The app manages the tool version: Claude, Codex and Grok get the version it was tested with, Gemini gets the latest, and they won't update on their own. If a tool update ever stops working with the app, it says so and offers **Check for CLI update**. Providers' rules on this kind of use differ; the app explains the risks before you switch, and the choice is yours.
 - **Saves usage everywhere**:
-  - Makes the most of AI providers' prompt caching, so the setup resent each turn isn't billed at full price again and again; the usage page shows your hit rate.
-  - Card refactoring: for cards that reprint their whole interface every turn, the app takes over drawing the interface and the model only reports the values that changed — shorter replies, shorter waits.
+  - Character setup has to be resent every turn, so the app tries to get it billed at the AI provider's discounted cache price instead of full price; the usage page shows how much you saved.
+  - Card refactoring: some cards make the AI rewrite their whole status panel every turn. After you click **Refactor**, the app draws the panel and the AI only mentions numbers that changed — faster replies and less quota.
   - Scene changes condense the story so far into a summary for the next scene, instead of hauling the whole conversation along.
   - The GM and each character can run on different model tiers — the strong one for who matters, a cheaper one for the extras.
   - Runaway output stops on its own, and you can stop any reply yourself.
@@ -62,7 +64,7 @@ The app is free and open source, and you can play entirely on free models. For s
 Yes. Sponsoring on Ko-fi gets you a sponsor pack; import it to unlock five extra color themes. Every feature works without sponsoring.
 
 **Can characters peek at things they shouldn't know?**
-No. Only the GM reads the world setting and everyone's cards; a character learns something only when the GM says it in the story. You can also limit lorebook entries to specific characters.
+No. Only the GM reads the world setting and everyone's cards; a character learns something only when the GM says it in the story. You can also limit World Book entries to specific characters.
 
 **Where is my data? How do I back it up?**
 Everything is in `Documents/TableTavern/` — copy the folder and you've backed it all up. Settings and keys live separately in the system's app-config folder.
@@ -85,3 +87,5 @@ cd web && npm install && npm run dev   # web dev mode
 ## License
 
 [AGPL-3.0-only](LICENSE).
+
+The built-in rulebook includes material from the [SRD 5.1](https://dnd.wizards.com/resources/systems-reference-document) by Wizards of the Coast LLC, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/legalcode) and condensed by Table Tavern. This project isn't affiliated with Wizards of the Coast.

@@ -50,7 +50,9 @@ export function useDesktopRoom(worldId: string | null, deps: { cast: unknown; pl
   const [failed, setFailed] = useState(false);
   const [notice, setNotice] = useState("");
   const [handoff, setHandoff] = useState<string | null>(null);
-  const [nickname, setNickname] = useState(t("roomHostNickname"));
+  // 掛載時語系還沒載入：玩家沒改過就跟著當下語系取預設暱稱
+  const [typedNickname, setNickname] = useState<string | null>(null);
+  const nickname = typedNickname ?? t("roomHostNickname");
   const [mine, setMine] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const seatTried = useRef(false);

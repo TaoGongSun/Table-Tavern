@@ -4,6 +4,166 @@
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-11-09
+
+### 這一版有什麼
+跑團（桌遊式冒險，用骰子決定成敗）——聊天桌的新能力，到桌設定開「擲骰」才有：
+- **真隨機骰子**：每回合 GM 手上有一排 App 真的擲好的骰子，寫故事時會說用了哪一顆（d20#1 就是骰池第 1 顆），畫面上的「骰池」列能一顆顆對照。
+- **自己擲**：GM 點名擲骰時，骰鈕直接變成「擲 1d20+3」，按一下就擲；也可以自訂顆數、面數和加值。擲出的結果公開給 GM 與其他角色，不能重來。
+- **戰鬥**：卡沒自帶狀態欄的桌（含空桌、一句話開的桌），狀態欄的角色格多出 HP 與狀態效果，戰鬥時有先攻順序、輪到誰和敵人；GM 報的傷害和骰子對不上時，以骰子為準。都可以手動改。
+- **內建規則書**：可以把內建規則書（D&D 第五版公開規則精簡版，App 裡叫「5e SRD 5.1」）加進這桌，GM 用到時自己翻、玩家不會看到；也可以匯入自己的世界書當規則。「規則與擲骰指南」裡有說明。
+
+狀態欄：
+- 空桌、一句話開的桌、房間裡一句話開的世界，現在也有狀態欄：每個角色記現況和持有物，另外追蹤目標、承諾與線索；AI 只講有變動的部分，回得快也省額度。寬視窗展開在右側，也可以自己加欄位。
+
+多人房間：
+- **手機玩家自己擲骰**：開了擲骰的房間，朋友手機和入座的房主都有骰鈕，骰子由伺服器擲，誰都動不了手腳。擲出的結果全房馬上看得到，房主收回或重生上一回合都還算數；框裡沒字時擲完就算送出。
+- **換手機接回座位**：在選角頁點自己角色旁的「這是我的？」，房主確認後就接回原座位。
+- **真的離開**：沒選角色的人一按「離開房間」就走；遊戲中已入座、角色沒交給 AI 代管時，可以選「不玩了，離座並離開房間」，名單上不會再留著你（房主和出額度的人除外）。
+- **手機看得到狀態欄與戰鬥**；故事串會寫「某某這回合觀望」；選角頁的角色簡介整理成一行好讀的文字。
+
+大廳：
+- 房間開著的桌釘在第一張，標「房間中」和房間碼；桌多了可以用「全部／聊天／VN／開過房」篩選。入口改叫「和朋友一起玩」。
+
+視覺小說：
+- **一鍵開始**：寫好點子按「直接開始」，大綱、世界、劇本、標題畫面一路自動做完，失敗時退回能逐步修改的畫面。
+- **音樂與音效**：GM 依情緒配背景音樂（來自免費曲庫 Incompetech，不用申請）；設定裡填 Freesound 金鑰就有音效（選填）。遊戲設定可以調音量、靜音。
+- **感謝名單**：完結畫面列出音樂與音效的作者；「美術與音樂」多了音樂分頁，有曲名、作者、授權和來源連結。
+- **選單與進度頁**：遊戲選單重新整理，多了「進度」頁，可以重玩章節、看關鍵事件、已揭露的秘密與結局。還沒開始玩的桌，可以照你的指示重寫劇本；劇情用來記「發生過什麼」的開關（旗標），現在是開是關看得到。
+- **角色離場**：角色走掉時，立繪會跟著下台，不用等換場。
+- **作品包**：音效也會打包，匯出的檔案不能直接解壓縮打開（舊作品包照常能匯入）。
+- **先選來源再生成**：開桌到美術這一步，先選立繪用哪個工具生成，按「開始生成」才動工，不會一進來就花額度。
+- **只用 Gemini 也能順利生圖**：立繪、背景和表情都修好了。生圖額度用完時會暫停，告訴你大約多久恢復，App 開著就會自動接著生；也可以立刻重試或換工具。做表情時找臉的位置，也用你選的工具，不會偷用另一家的額度。
+- **換章看得到進度**：換章時會顯示背景還在準備；額度用完或背景生不出來，畫面中間有按鈕能查看或重試。
+- **立繪變大**：人物放大、站得更好，臉不再被對話框遮住。
+- **選項標籤更好懂**：重玩時選項旁寫「已玩過・已完結」或「已玩過・沒走到結局」；作者沒走過的路會寫清楚，也不能按。自己倒回時會標「上次選的」。
+
+### 下載
+[![網頁版-點開就玩](https://img.shields.io/badge/網頁版-點開就玩-E8A33D?style=for-the-badge)](https://table-tavern.pages.dev)
+[![下載-Windows](https://img.shields.io/badge/下載-Windows-0078D6?style=for-the-badge&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxyZWN0IHg9IjEiIHk9IjEiIHdpZHRoPSIxMC41IiBoZWlnaHQ9IjEwLjUiLz48cmVjdCB4PSIxMi41IiB5PSIxIiB3aWR0aD0iMTAuNSIgaGVpZ2h0PSIxMC41Ii8+PHJlY3QgeD0iMSIgeT0iMTIuNSIgd2lkdGg9IjEwLjUiIGhlaWdodD0iMTAuNSIvPjxyZWN0IHg9IjEyLjUiIHk9IjEyLjUiIHdpZHRoPSIxMC41IiBoZWlnaHQ9IjEwLjUiLz48L3N2Zz4=)](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.6.0/TableTavern-Windows-Setup.exe)
+[![下載-macOS](https://img.shields.io/badge/下載-macOS-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.6.0/TableTavern-macOS.dmg)
+
+- 網頁版：<https://table-tavern.pages.dev>，點開就玩，不用安裝。
+- [Windows（64 位元）](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.6.0/TableTavern-Windows-Setup.exe)
+- [macOS（僅 Apple Silicon，M 系列晶片；不支援 Intel Mac）](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.6.0/TableTavern-macOS.dmg)
+- 下方其他檔案是 App 內更新用的，不用下載。
+
+### 你的資料去哪裡
+- **存在你電腦**：
+  - 桌、角色卡、對話紀錄是「文件/TableTavern/」裡的純文字檔。
+  - 設定與 API 金鑰存在系統的應用程式設定資料夾（未加密的設定檔；macOS 上限本人讀寫）。
+  - 轉換格式前的桌備份放在「文件/TableTavern/」裡的隱藏資料夾；更新下載的安裝包存在本機 App 資料夾。
+  - 透過 Codex（ChatGPT 的命令列工具）、Gemini 命令列工具玩時，對話紀錄存在 App 自己的設定資料夾（Grok 本來就是），不混進你在終端機的紀錄；登入沿用你終端機那份。
+- **對話送去哪**：從你的電腦直接送到你選的 AI 服務——OpenRouter、你自己填的 API 網址，或你安裝的官方命令列工具（由那支工具送到該公司）。送出的內容包含角色卡、世界設定、世界書條目、對話紀錄和你的輸入。AI 服務怎麼處理這些資料，以該服務的條款為準。
+- **OpenRouter**：授權在瀏覽器的 openrouter.ai 完成，換到的金鑰只存本機。App 也會向 OpenRouter 查模型清單、排行與金鑰剩餘額度。
+- **矽基流動（簡體中文介面的預設）**：金鑰只存本機；對話直接送到 api.siliconflow.cn。只用它的免費模型清單，不會自動換到付費模型。
+- **生圖**：送到你選的生圖來源（OpenRouter、你自己填的 API 網址，或命令列工具）；回傳網址的圖從該網址下載。
+- **視覺小說的音樂與音效**：背景音樂的曲目清單與音檔從 incompetech.com 下載；填了 Freesound 金鑰時，GM 寫的音效描述會送到 freesound.org 搜尋並下載音效。下載後存在這張桌裡。這些網站會看到你的 IP。
+- **檢查更新**：開 App 時與每 24 小時向 GitHub 查一次新版，下載更新與回退檔也從 GitHub。GitHub 會看到你的 IP。設定裡可以關掉自動檢查。
+- **卡片自帶的介面**：有些卡的介面會從卡作者指定的網站載入字型、圖片或程式（例如 jsDelivr），那些網站會看到你的 IP。卡片介面在隔離框裡執行，裡面的外部腳本讀不到你的金鑰，但讀得到這桌的聊天內容與卡片變數。
+- **一鍵安裝與更新命令列工具**：從該公司官網下載官方安裝腳本。Claude、Codex、Grok 優先裝 App 測過的版本（下載不到就改裝最新版），Gemini 一律裝最新版；App 呼叫時會關掉工具的自動更新（你在終端機用不受影響）。
+- **開房間時**：只有開房間才會用到作者架的房間伺服器（tt-room.pirahus.com）；不開房間就不會連到它。
+  - 會經過這台伺服器、並保存在上面的：房間裡的故事、大家的暱稱、公開的角色資料和頭像、每回合的行動與擲骰結果、狀態欄內容（角色現況、持有物、目標、承諾與線索、HP、狀態效果、先攻與敵人）、桌邊聊天（公開與私訊，只送給房間成員）。
+  - 只經過、不保存的：角色卡的秘密設定、上傳的原圖（原圖最多暫留 10 分鐘）。
+  - 房間 30 天沒人用就會清掉；完整劇情一直都在房主的電腦上。
+- **沒有**：使用統計、廣告追蹤。單人遊玩不經過作者的伺服器。
+
+### 安裝時被系統擋下？
+桌面版還沒買程式碼簽章憑證、也還沒送 Apple 公證，所以系統會跳警告。請只從這個 GitHub 發佈頁下載。
+
+**Windows**
+1. 瀏覽器可能說這個檔案「不常下載」：Edge 點「…」→「保留」→「顯示更多」→「仍要保留」；Chrome 點「保留」。
+2. 執行安裝檔，出現「Windows 已保護您的電腦」：點「其他資訊」→「仍要執行」。
+3. 如果出現的是「智慧型應用程式控制已封鎖」而且沒有「仍要執行」：你的電腦開著智慧型應用程式控制，它不允許個別放行未簽章的程式，關掉之後要重灌 Windows 才能再開。不建議為此關閉——請先用網頁版，等之後的簽章版。
+4. 少數 Windows 10 舊電腦沒有 WebView2，安裝檔會自動從微軟下載安裝。
+
+**macOS**
+1. 打開 DMG，把 Table Tavern 拖進「應用程式」。
+2. 雙擊開啟。出現「Apple 無法驗證『Table Tavern』是否包含可能危害 Mac 或侵犯隱私的惡意軟體」：按「完成」（不要按「丟到垃圾桶」）。
+3. 打開「系統設定 → 隱私權與安全性」，捲到最下面「安全性」，按「仍要打開」，用密碼或 Touch ID 確認，再按一次「打開」。這個按鈕要先試開過一次才會出現。
+4. 只要做一次，之後正常雙擊就能開。
+
+---
+
+**English**
+
+### What's new
+Tabletop play (a tabletop-style adventure where dice decide the outcome). This is a new ability for chat tables; turn on "Roll dice" in the table settings:
+- **Truly random dice**: each round the GM holds a row of dice the app really rolled and says in the story which one it used (d20#1 means the first d20 in the pool); the "Dice pool" row on screen lets you check them one by one.
+- **Roll your own**: when the GM calls for a roll, the dice button becomes "Roll 1d20+3" — one tap rolls it. You can also set your own count, sides and modifier. Rolls are public to the GM and other characters and can't be redone.
+- **Combat**: on tables whose cards have no status panel of their own (including blank and one-line tables), character cells in the status panel gain HP and conditions, with initiative, whose turn it is and enemies during combat. If the GM's damage doesn't match the dice, the dice win. Everything can be edited by hand.
+- **Built-in rulebook**: add the built-in rulebook (a condensed version of the open D&D 5th edition rules, called "5e SRD 5.1" in the app) to a table. The GM looks things up when needed and players never see it. You can also import your own World Book as rules. The "Rules and dice guide" explains how.
+
+Status panel:
+- Blank tables, one-line tables and rooms opened from a one-line idea now get a status panel too: each character's condition and belongings, plus goals, promises and leads. The AI only mentions what changed, so replies are faster and use less quota. It opens as a side panel on wide windows, and you can add your own fields.
+
+Multiplayer rooms:
+- **Friends roll on their phones**: with dice on, friends' phones and a seated host get a dice button, and the server rolls the dice, so nobody can tamper with them. Rolls are visible to the whole room right away and still count after the host undoes or regenerates the last round; with an empty input box, rolling also submits your round.
+- **Reclaim your seat on a new phone**: tap "Is this mine?" next to your character on the pick screen; once the host confirms, you're back in your seat.
+- **Really leave**: without a character, "Leave room" just leaves. During a game, if you're seated and the AI isn't playing for you, "Done playing: give up seat and leave" frees the seat and takes you off the list (except the host and whoever covers the AI).
+- **Status and combat on phones**; the story now notes who watched this round; character blurbs on the pick screen are tidied into one readable line.
+
+Lobby:
+- A table with an open room is pinned first and labeled with its room code; with many tables you can filter by All / Chat / VN / Roomed. The entry is now called "Play with friends".
+
+Visual novels:
+- **One-click start**: write your idea and click "Start now"; the outline, world, script and title screen are done in one go. If a step fails, you land on the step-by-step screen to fix it.
+- **Music and sound effects**: the GM picks background music by mood (from the free Incompetech library, nothing to sign up for); add a Freesound key in Settings for sound effects (optional). Volume and mute are in the game settings.
+- **Credits**: the ending screen credits music and sound effect authors; "Art & music" gains a Music tab with titles, authors, licenses and source links.
+- **Menu and Progress page**: the game menu is reorganized, with a new "Progress" page to replay chapters and review key events, revealed secrets and endings. Unplayed tables can rewrite the script from your instructions, and you can now see whether each story switch (a flag that remembers what happened) is on or off.
+- **Characters leaving**: when a character walks off, their sprite leaves too, without waiting for a scene change.
+- **Work packages**: sound effects are now included, and exported packages can't be casually unzipped (older packages still import).
+- **Pick a tool, then start**: at the art step, you first choose which tool draws the sprites and press "Start generating". Nothing is spent just by opening the step.
+- **Gemini-only image generation works**: sprites, backgrounds, and expressions are fixed. When the image quota runs out, generation pauses, tells you roughly when it comes back, and picks up by itself while the app is open; you can also retry right away or switch tools. Finding the face for expressions also uses the tool you chose, so it won't quietly use another service's quota.
+- **See progress between chapters**: chapter changes show that the background is still being prepared. If the quota runs out or a background fails, a button in the middle lets you check or retry.
+- **Bigger sprites**: characters are larger and stand better, so the dialogue box no longer covers their faces.
+- **Clearer choice labels**: on a replay, choices say "Played・Ended" or "Played・ending not reached"; paths the author never took are labeled and can't be pressed. When you rewind your own game, your last pick says "Last chosen".
+
+### Downloads
+[![Play-in your browser](https://img.shields.io/badge/Play-in%20your%20browser-E8A33D?style=for-the-badge)](https://table-tavern.pages.dev)
+[![Download-Windows](https://img.shields.io/badge/Download-Windows-0078D6?style=for-the-badge&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxyZWN0IHg9IjEiIHk9IjEiIHdpZHRoPSIxMC41IiBoZWlnaHQ9IjEwLjUiLz48cmVjdCB4PSIxMi41IiB5PSIxIiB3aWR0aD0iMTAuNSIgaGVpZ2h0PSIxMC41Ii8+PHJlY3QgeD0iMSIgeT0iMTIuNSIgd2lkdGg9IjEwLjUiIGhlaWdodD0iMTAuNSIvPjxyZWN0IHg9IjEyLjUiIHk9IjEyLjUiIHdpZHRoPSIxMC41IiBoZWlnaHQ9IjEwLjUiLz48L3N2Zz4=)](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.6.0/TableTavern-Windows-Setup.exe)
+[![Download-macOS](https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.6.0/TableTavern-macOS.dmg)
+
+- Web version: <https://table-tavern.pages.dev> — play right in your browser, nothing to install.
+- [Windows (64-bit)](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.6.0/TableTavern-Windows-Setup.exe)
+- [macOS (Apple Silicon / M-series only; Intel Macs are not supported)](https://github.com/TaoGongSun/Table-Tavern/releases/download/v0.6.0/TableTavern-macOS.dmg)
+- The other files below are used by in-app updates; you don't need them.
+
+### Where your data goes
+- **On your computer**:
+  - Tables, character cards and chat logs are plain-text files in "Documents/TableTavern/".
+  - Settings and API keys live in the system's app settings folder (an unencrypted settings file; on macOS readable only by you).
+  - Table backups made before a format conversion are kept in hidden folders inside "Documents/TableTavern/"; downloaded update installers are kept in the app's local data folder.
+  - When you play through the Codex (ChatGPT's command-line tool) or Gemini command-line tool, the app keeps those chat logs in its own settings folder (Grok already worked this way), separate from your terminal history; sign-in is shared with your terminal.
+- **Where chats are sent**: straight from your computer to the AI service you choose: OpenRouter, an API URL you enter yourself, or an official command-line tool you installed (which sends to its own company). What gets sent includes character cards, world settings, World Book entries, the chat log and your input. How the AI service handles it is governed by that service's terms.
+- **OpenRouter**: authorization happens on openrouter.ai in your browser, and the resulting key is stored only on your computer. The app also asks OpenRouter for the model list, rankings and your key's remaining credit.
+- **SiliconFlow (default for the Simplified Chinese interface)**: the key is stored only on your computer; chats go straight to api.siliconflow.cn. Only its free models are used; the app never switches to a paid one on its own.
+- **Image generation**: requests go to the image source you choose (OpenRouter, an API URL you enter yourself, or a command-line tool); images returned as a URL are downloaded from that URL.
+- **Visual novel music and sound effects**: the music list and tracks are downloaded from incompetech.com. If you enter a Freesound key, the GM's sound descriptions are sent to freesound.org to search and download effects. Downloads are stored with the table. These sites see your IP address.
+- **Update checks**: on launch and every 24 hours the app asks GitHub for a new version, and update and rollback files are downloaded from GitHub. GitHub sees your IP address. You can turn automatic checks off in Settings.
+- **Card interfaces**: some cards' interfaces load fonts, images or scripts from sites chosen by the card author (for example jsDelivr), and those sites see your IP address. Card interfaces run in an isolated frame; external scripts inside them cannot read your keys, but they can read this table's chat content and card variables.
+- **One-click CLI install and update**: downloads the official install script from that company's website. For Claude, Codex (ChatGPT's tool) and Grok the app prefers the version it was tested with (falling back to the latest if that can't be downloaded); Gemini always gets the latest. The app turns off the tool's auto-update when the app runs it (your own terminal use is unaffected).
+- **When you open a room**: the author's room server (tt-room.pirahus.com) is used only when you open a room; otherwise the app never connects to it.
+  - Passes through this server and is kept there: the room's story, everyone's nicknames, public character info and portraits, each round's actions and dice rolls, status panel contents (character condition, belongings, goals, promises and leads, HP, conditions, initiative and enemies), and table chat (public and private messages, delivered only to room members).
+  - Only passes through, not kept: character cards' secret settings and uploaded original images (originals stay at most 10 minutes).
+  - A room nobody has used for 30 days is deleted; the full story always stays on the host's computer.
+- **None of these**: no usage statistics, no ad tracking. Solo play never goes through an author-run server.
+
+### Blocked by your system during install?
+The desktop app isn't code-signed or notarized by Apple yet, so your system will warn you. Only download it from this GitHub release page.
+
+**Windows**
+1. Your browser may say the file "isn't commonly downloaded": in Edge, click "…" → "Keep" → "Show more" → "Keep anyway"; in Chrome, click "Keep".
+2. Run the installer. If you see "Windows protected your PC", click "More info" → "Run anyway".
+3. If instead you see "Smart App Control blocked" with no "Run anyway": Smart App Control is on, and it doesn't allow exceptions for unsigned apps. Once turned off, it can only be turned back on by reinstalling Windows. We don't recommend turning it off for this; use the web version for now and wait for a signed release.
+4. A few older Windows 10 PCs lack WebView2; the installer downloads it from Microsoft automatically.
+
+**macOS**
+1. Open the DMG and drag Table Tavern into Applications.
+2. Double-click to open it. When you see "Apple could not verify 'Table Tavern' is free of malware that may harm your Mac or compromise your privacy", click "Done" (not "Move to Trash").
+3. Open System Settings → Privacy & Security, scroll down to Security, click "Open Anyway", confirm with your password or Touch ID, then click "Open". The button only appears after you've tried to open the app once.
+4. You only need to do this once; after that it opens normally.
+
 ## [0.5.2] — 2026-11-07
 
 ### 這一版有什麼

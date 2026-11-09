@@ -2,13 +2,15 @@
 
 One person is the **host** and opens a room on their computer; everyone else is a **friend** who joins from their phone by tapping a link — nothing to install. The story is run by the AI on the host's computer (we call that AI the GM), using the host's AI account (free models cost nothing).
 
+**Invited by a friend and here on your phone?** Tap "Friends" above to skip ahead.
+
 ---
 
 ## Host: open a room on your computer
 
 ### 1. Open a room
 
-- In the desktop app, click "Open a room" on the home screen. Connect an AI model first if you haven't (the gear "Settings" button, top right).
+- In the desktop app, click "Play with friends" on the home screen. Connect an AI model first if you haven't (the gear "Settings" button, top right).
 - You can pick a few character cards and open with them.
 - Or let the AI generate a world from one sentence: by default friends make their own characters when they sit down, or the AI can prepare characters for everyone to choose.
 - Or open with no cards and let the GM improvise. Either way you get a fresh table.
@@ -30,7 +32,7 @@ One person is the **host** and opens a room on their computer; everyone else is 
 
 - Once everyone has a seat, click "Start".
 - Each round, everyone writes what their character does on their own phone and taps "Submit". The row of small tags under the round bar shows who is typing and who has submitted.
-- When everyone is in, the GM tells the next part on its own. Don't want to wait for someone? Click "Resolve this round" and anyone who hasn't sent just watches that round.
+- Once everyone has submitted, the GM tells the next part on its own. Don't want to wait for someone? Click "Resolve this round" and anyone who hasn't sent just watches that round.
 - You can play too: click "Take a seat" at the bottom right of the Story tab and pick a character; from then on you write an action each round like everyone else. Prefer to just run things? Don't take a seat.
 
 ![](room-04)
@@ -52,16 +54,18 @@ One person is the **host** and opens a room on their computer; everyone else is 
 - Someone stepped away: click "Let the AI play" on their row. The AI plays their character when the story needs it, and nobody has to wait. When they're back they tap "Take back" on their phone.
 - When everyone is AI-played, the round bar says so; click "GM Advance" to keep the story going.
 - Someone's late: send the invite link again; they pick any character nobody has taken.
+- Someone switched phones: they tap "Is this mine?" next to their character on the pick screen, and once you confirm on the "Players" tab they're back in their seat.
 - Each row's "⋯" also has "Make host", "Remove" and "Ban". A banned person can't come back from the same phone.
 
 ![](room-08)
 
 ### 6. Tune the GM to how you play
 
-- On the "Host" tab: **Default round timer** — every round starts a countdown on its own and resolves when it runs out; **Shuffle action order every round** — nobody always goes first.
-- **Next scene**: when a chapter is done and you want a new setting, click "Next scene ▾" → "End this scene" on the round bar. If the GM is stuck on "This scene is full", the round bar has a "Next scene" button right there. To switch models, save "Next scene settings" on the GM quota tab first. When this scene is almost full, the round bar says so first.
+- On the "Host" tab: **Default countdown per round** — every round starts a countdown on its own and resolves when it runs out; **Shuffle action order every round** — nobody always goes first.
+- **Dice**: for tabletop play, turn on "Roll dice" in the table settings. The GM rules with dice the app rolled and says in the story which one it used; everyone's phone gets a dice button, and you can roll too if you take a seat. If a card doesn't bring its own status panel, character cells gain HP and conditions, with initiative and enemies during combat. For stricter rules, add the built-in condensed version of the open D&D 5th edition rules (called "5e SRD 5.1" in the app) in the table settings.
+- **Next scene**: when this scene is almost full, the round bar says so first; to start a new setting, click "Next scene ▾" → "End this scene". If the GM is stuck on "This scene is full", the round bar has a "Next scene" button right there. To switch models, save "Next scene settings" on the GM quota tab first.
 - **GM quota** tab: see how much AI you've used and choose the model for the next scene. If the AI provider blocks the GM (the round bar will say so), click "Retry" or "Switch model" right there.
-- Want a friend to cover the AI? In the "⋯" on the computer's top row, click "Hand over to phone" to get a pairing code, and have them enter it at the bottom of their "Players" tab. Their phone then becomes the host and the one covering the AI (the GM still runs on the computer), and their row shows "Using their quota".
+- Want a friend to cover the AI quota? See section 8 below.
 
 ![](room-10)
 
@@ -75,8 +79,9 @@ One person is the **host** and opens a room on their computer; everyone else is 
 
 ![](room-11)
 
-### 8. Hosting from your phone
-- "⋯" → "Hand over to phone" moves the host role (and paying for the AI) to your phone, so you can manage the room, let the AI play for people and pause from there.
+### 8. Hosting from your phone, or having a friend cover the AI quota
+- In the "⋯" on the computer's top row, click "Hand over to phone" to get a pairing code, and enter it at the bottom of the "Players" tab on the phone taking over.
+- That phone then becomes the host and the one covering the AI, and its row shows "Using their quota". From there you can manage the room, let the AI play for people and pause.
 - The GM still runs on the computer, so it has to stay on. Click "Take host back" on the computer any time.
 
 ---
@@ -103,9 +108,10 @@ One person is the **host** and opens a room on their computer; everyone else is 
 
 - The bar at the top tells you whether it's everyone's turn to act or the GM is writing.
 - On your turn, write what your character does in the box below and tap "Submit". You can still take it back and edit until the round resolves.
-- Don't want to do anything? Tap "Hand to GM" and the GM may give your character a small move, or just let them watch.
-- Then wait for the others. Once everyone is in (or the host resolves the round), the GM's next part shows up right on your phone.
+- Don't want to do anything? Tap "Leave it to GM" and the GM may give your character a small move, or just let them watch.
+- Then wait for the others. Once everyone has submitted (or the host resolves the round), the GM's next part shows up right on your phone.
 - The row of name chips under the round bar shows everyone's status: who's typing, who's submitted, who's offline. If the host starts a timer, a bar above your input box tells you how many minutes are left.
+- If this table has dice on, there's a dice button next to the input box. When the GM calls on you, it turns into something like "Roll 1d20+3" — one tap rolls it; the small arrow beside it offers other dice or a custom roll. With the box empty, rolling also submits your round; with text in the box, it only rolls. Rolls are public to the whole room right away and can't be redone.
 - Want to agree on who does what first? Use the **Chat** tab: say something to everyone or pick one person for a private message. Chat never enters the story and the GM can't see it.
 
 ![](room-15)
@@ -114,18 +120,22 @@ One person is the **host** and opens a room on their computer; everyone else is 
 
 - At the bottom of the "Players" tab there are three buttons:
   - **Let the AI play for me**: the AI plays your character when the story needs it, so nobody waits for you. Tap "Take back" when you return.
-  - **Step away**: your seat and character are kept; come back with the same link.
+  - **Step away**: your seat and character are kept; come back with the same link. During a game, unless the AI is playing for you, it asks once more. If you're really done, choose the red "Done playing: give up seat and leave" in that dialog (the host and whoever covers the AI don't get this option).
   - **Give up seat**: you're done with this character and the seat opens up for someone else.
+- If you haven't picked a character, there's just one "Leave room" button.
+- The "Run the GM on my own quota" section above is only for when the host hands the AI quota to you: they give you a pairing code and you enter it there. Otherwise you can ignore it.
 - Just closing the page is fine too — your seat is kept, and the same link puts you back in it.
+- Switched phones? Open the link, tap "Is this mine?" next to your character, and wait for the host to confirm.
 
 ![](room-17)
 
 ### 5. Not sure what the screen means?
 
-- The small tags "Typing", "Submitted", "Left to the GM" — who is still thinking, who has sent, and who left this round to the GM.
+- The small tags "Typing", "Submitted", "Left to GM" — who is still thinking, who has sent, and who left this round to the GM.
+- "Next round" — they joined or came back after this round started, so their turn comes next round.
 - "The host paused the room. Waiting for them to reopen it" — the host called it a night; your seat is kept, wait for their message.
 - "The provider blocked this GM reply" — the AI provider refused this part; the host is dealing with it (switching model or skipping). Nothing for you to do.
-- The "Time · Place · Present" line at the top of the Story tab — the GM's notes on when, where and who's around.
+- The "Time · Place · Present" line at the top of the Story tab — the GM's notes on when, where and who's around. Tap it for the status panel: characters' condition and belongings; on tables with dice on, combat may also show HP, initiative and enemies.
 
 ![](room-19)
 
@@ -139,7 +149,7 @@ One person is the **host** and opens a room on their computer; everyone else is 
 
 **How many people can play?** Up to 12 people per room. One seat per character card the host put in; friends can add seats by creating their own character.
 
-**Can anyone else read our story?** The story, nicknames, public character info and portraits pass through the author's room server between everyone's devices and are kept there until the room has been idle for 30 days. Character "Secret notes" and the original images you upload only pass through and aren't kept. The full story lives only on the host's computer.
+**Can anyone else read our story?** The story (including dice rolls and the status panel), nicknames, public character info and portraits pass through the author's room server between everyone's devices and are kept there until the room has been idle for 30 days. Character "Secret notes" and the original images you upload only pass through and aren't kept. The full story lives only on the host's computer.
 
 **What if the host's computer is off?** The GM runs on the host's computer, so nothing new happens until it's back. The host just reopens the app and this table.
 
