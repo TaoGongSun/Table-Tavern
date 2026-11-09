@@ -88,7 +88,7 @@ export function useBackgrounds(worldId: string) {
   );
 
   /** status＝各鍵（slug－時段）的佇列狀態，美術一覽逐格看 */
-  const retry = useCallback((backdrop: Backdrop) => pause
+  const retry = useCallback((backdrop: Pick<Backdrop, "slug" | "period">) => pause
     ? invoke("vn_art_retry", { worldId })
     : invoke("vn_background_regenerate", { worldId, slug: backdrop.slug, period: backdrop.period }), [worldId, pause]);
   return { images, status, statusOf, load, pause, retry };

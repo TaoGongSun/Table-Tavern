@@ -1,46 +1,49 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { t } from "../../../i18n";
-import type { ArtStatus } from "../../../shared/contracts/backend-contracts";
 import { updateConfig } from "../../settings/update-config";
-import { onSpriteStatus } from "../useSprites";
-import { BACKGROUND_STATUS_EVENT } from "../useBackgrounds";
-import { listen } from "@tauri-apps/api/event";
+import { useArtStatus } from "./useArtStatus";
+import { useQuotaRecovery } from "./useQuotaRecovery";
 import { SpriteSourceSelect } from "./SpriteSourceSelect";
 
-export function ArtFlowNotice({ worldId, onStarted }: { worldId: string; onStarted?: (started: boolean) => void }) {
-  const [status, setStatus] = useState<ArtStatus | null>(null);
+export function ArtFlowNotice({ worldId, onStarted, onPause, compact = false }: { worldId: string; onStarted?: (started: boolean) => void; onPause?: (paused: boolean) => void; compact?: boolean }) {
+  const { status, read } = useArtStatus(worldId);
   const [source, setSource] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
   const [batch, setBatch] = useState<number | null>(null);
-  const read = useCallback(() => invoke<ArtStatus>("vn_art_status", { worldId }).then(setStatus), [worldId]);
-  useEffect(() => {
-    let live = true;
-    const refresh = () => { if (live) void read().catch(() => {}); };
-    refresh();
-    const off = onSpriteStatus(worldId, refresh);
-    const flow = listen("vn-art-flow-status", refresh);
-    const bg = listen<{ worldId: string }>(BACKGROUND_STATUS_EVENT, ({ payload }) => { if (payload.worldId === worldId) refresh(); });
-    return () => { live = false; off(); void flow.then((stop) => stop()); void bg.then((stop) => stop()); };
-  }, [read, worldId]);
   const retry = () => {
     setBusy(true); setError(false);
     void invoke("vn_art_retry", { worldId }).then(read).catch(() => setError(true)).finally(() => setBusy(false));
   };
-  useEffect(() => { if (status) onStarted?.(status.art.started); }, [status, onStarted]);
+  useEffect(() => { if (status) { onStarted?.(status.art.started); onPause?.(Boolean(status.pause)); } }, [status, onStarted, onPause]);
   const remaining = status ? status.total - status.ready + status.backgrounds : 0;
+  const recovery = useQuotaRecovery(status?.pause?.reset ?? null);
+  const start = <button type="button" className="btn btn-primary" disabled={!status || !source || busy} onClick={() => {
+    setBusy(true); setError(false); setBatch(remaining);
+    void updateConfig({ preferences: { vn_sprite_source: source } }).then(() => invoke("vn_art_start", { worldId })).then(read).catch(() => setError(true)).finally(() => setBusy(false));
+  }}>{t("vnArtBegin")}</button>;
+  const retryButton = <button type="button" className="btn btn-sm" disabled={busy} onClick={retry}>{t("vnArtRetryNow")}</button>;
+  if (compact && (!status || (!status.pause && !status.failed && status.ready >= status.total))) return null;
+  if (compact) return <div className="vn-art-summary">
+    <span>{status!.pause ? t("vnArtQuotaShort", { time: recovery }) : status!.failed ? t("vnArtFailed", { n: status!.failed }) : status!.art.started ? t("vnArtPreparing", { n: status!.ready, total: status!.total }) : t("vnArtNoSprites", { panel: t("vnGallery") })}</span>
+    {(status?.pause || Boolean(status?.failed)) && retryButton}
+    {error && <span className="field-warn">{t("vnArtActionFailed")}</span>}
+  </div>;
+  const expressions = status?.facesPerCharacter != null
+    ? t("vnArtExpressionsEach", { each: status.facesPerCharacter })
+    : t("vnArtExpressionsTotal", { n: status?.faces ?? 0 });
   return <div className="vn-art-flow">
-    <SpriteSourceSelect onChange={setSource} onSelect={status?.art.started ? retry : undefined} disabled={busy} />
-    <p>{status?.art.started ? remaining === 0 && status.pending === 0 ? t("vnArtReady") : batch === null ? t("vnArtPreparing", { n: status.ready, total: status.total }) : t("vnArtWorking", { n: Math.max(0, batch - remaining), total: batch }) : t("vnArtNotStarted")}</p>
-    {source && <p className="field-note">{t("vnArtEstimate", { source: source === "agy" ? "Gemini CLI" : source === "api" ? "API" : "Codex CLI", n: status ? status.total - status.ready : 0, bg: status?.backgrounds ?? 0, faces: status?.faces ?? 0 })}</p>}
+    <div className="vn-art-controls">
+      <SpriteSourceSelect onChange={setSource} onSelect={status?.art.started ? retry : undefined} disabled={busy} />
+      {!status?.art.started && start}
+      {status?.art.started && retryButton}
+    </div>
+    <p>{status?.pause ? t("vnArtStopped", { n: batch === null ? status.ready : Math.max(0, batch - remaining), total: batch ?? status.total + status.backgrounds }) : status?.art.started ? remaining === 0 && status.pending === 0 ? t("vnArtReady") : batch === null ? t("vnArtPreparing", { n: status.ready, total: status.total }) : t("vnArtWorking", { n: Math.max(0, batch - remaining), total: batch }) : t("vnArtNotStarted")}</p>
+    {source && <p className="field-note">{t("vnArtEstimate", { source: source === "agy" ? "Gemini CLI" : source === "api" ? "API" : "Codex CLI", n: status ? status.total - status.ready : 0, bg: status?.backgrounds ?? 0 })}</p>}
+    {source && <p className="field-note">{expressions}</p>}
     {Boolean(status?.failed) && <p className="field-warn">{t("vnArtFailed", { n: status?.failed ?? 0 })}</p>}
-    {status?.pause && <p className="field-warn">{t(status.pause.reset ? "vnArtPaused" : "vnArtPausedUnknown", { n: status.pending, time: status.pause.reset ? new Date(status.pause.reset).toLocaleString() : "" })}</p>}
-    {status?.art.started && <button type="button" className="btn btn-sm" disabled={busy} onClick={retry}>{t("vnArtRetryNow")}</button>}
-    {!status?.art.started && <button type="button" className="btn btn-primary" disabled={!status || !source || busy} onClick={() => {
-      setBusy(true); setError(false); setBatch(remaining);
-      void updateConfig({ preferences: { vn_sprite_source: source } }).then(() => invoke("vn_art_start", { worldId })).then(read).catch(() => setError(true)).finally(() => setBusy(false));
-    }}>{t("vnArtBegin")}</button>}
+    {status?.pause && <p className="field-warn">{status.pause.reset !== null ? t("vnArtPaused", { n: remaining, time: recovery }) : t("vnArtPausedUnknown", { n: remaining })}</p>}
     {error && <p className="field-warn">{t("vnArtActionFailed")}</p>}
   </div>;
 }

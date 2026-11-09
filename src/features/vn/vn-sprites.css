@@ -227,3 +227,9 @@
     animation: none;
   }
 }
+
+.vn-art-flow { width: 100%; display: flex; flex-direction: column; gap: .5rem; }
+.vn-art-flow > p { margin: 0; line-height: 1.5; }
+.vn-art-controls, .vn-art-summary { display: flex; align-items: center; flex-wrap: wrap; gap: .6rem; }
+.vn-art-controls { justify-content: space-between; }
+.vn-art-summary { justify-content: center; }

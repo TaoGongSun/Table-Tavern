@@ -1150,6 +1150,7 @@ function App() {
           />
         ) : vnView ? (
           <VnPlayer
+            wizardOpen={vnWizard !== null}
             worldId={liveWorldId}
             scene={scene}
             tableName={tableName}

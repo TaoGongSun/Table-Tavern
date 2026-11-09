@@ -12,11 +12,13 @@ export function SpriteVariants({
   sprite,
   slot,
   statuses,
+  paused = false,
   onReroll,
 }: {
   sprite: SpriteView;
   slot: SpriteSlot;
   statuses: Record<string, SpriteSlotStatus>;
+  paused?: boolean;
   onReroll: (set: string, expressions: readonly string[]) => void;
 }) {
   const [label, setLabel] = useState("");
@@ -40,6 +42,7 @@ export function SpriteVariants({
           label={variant.label}
           own={variant.face !== null}
           disabled={disabled}
+          paused={paused}
           statuses={statuses}
           onGenerate={() => void generate(variant.key, variant.label)}
           onUpload={(file) => void upload(variant.key, variant.label, file)}
@@ -117,6 +120,7 @@ function VariantRow({
   own,
   disabled,
   statuses,
+  paused = false,
   onGenerate,
   onUpload,
   onDelete,
@@ -130,6 +134,7 @@ function VariantRow({
   own: boolean;
   disabled: boolean;
   statuses: Record<string, SpriteSlotStatus>;
+  paused?: boolean;
   onGenerate: () => void;
   onUpload: (file: File) => void;
   onDelete: () => void;
@@ -163,6 +168,7 @@ function VariantRow({
           <ExpressionRow
             sprite={sprite}
             set={variantKey}
+            paused={paused}
             statuses={statuses}
             disabled={disabled}
             onReroll={(expression) => onReroll([expression])}

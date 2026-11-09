@@ -12,6 +12,7 @@ import { SpriteGallery } from "./SpriteGallery";
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const calls: [string, Record<string, unknown>][] = [];
+const artPause = { on: false };
 const audio = { entries: [] as AudioEntry[], fail: false };
 const openUrl = vi.hoisted(() => vi.fn(async () => {}));
 const harbor: BackgroundPlace = {
@@ -39,8 +40,10 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "vn_sprites_status":
         return [
           { worldId: "w", characterId: "c1", variant: null, expression: "sad", state: "running", reason: null },
-          { worldId: "w", characterId: "c2", variant: null, expression: "base", state: "failed", reason: "x" },
+          { worldId: "w", characterId: "c2", variant: null, expression: "base", state: artPause.on ? "queued" : "failed", reason: "x" },
         ];
+      case "vn_sprite_read": return { candidates: [], sprite: null };
+      case "vn_art_status": return { art: { started: true }, ready: 0, total: 2, backgrounds: 1, pending: 3, faces: 8, pause: artPause.on ? { reset: null } : null };
       case "vn_audio_read":
         if (audio.fail) throw new Error("boom");
         return { files: [], entries: audio.entries };
@@ -235,4 +238,19 @@ describe("ArtGallery music", () => {
     ];
     expect((await openMusic()).textContent).toContain(t("vnCreditsEmpty"));
   });
+});
+
+it("has one source selector in the gallery character editor and explains queued quota waits", async () => {
+  artPause.on = true;
+  const host = document.createElement("div"); const root = createRoot(host);
+  await act(async () => root.render(<ArtGallery worldId="w" images={{}} backgrounds={{ pause: { reset: null } } as never} replay={false} onClose={() => {}} />));
+  await settle();
+  expect(host.querySelectorAll("select")).toHaveLength(1);
+  expect(host.querySelectorAll(".vn-gallery-row")[1].textContent).toContain(t("vnArtWaitQuota"));
+  await act(async () => host.querySelectorAll<HTMLButtonElement>(".vn-gallery-row .btn")[1].click());
+  await settle();
+  expect(host.querySelectorAll("select")).toHaveLength(1);
+  expect(host.querySelector(".vn-picker-empty")?.textContent).toBe(t("vnArtWaitQuota"));
+  await act(async () => root.unmount());
+  artPause.on = false;
 });

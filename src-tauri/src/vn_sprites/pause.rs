@@ -26,6 +26,13 @@ fn state() -> std::sync::MutexGuard<'static, HashMap<String, Entry>> {
 pub(crate) fn snapshot(source: &str) -> Option<Pause> {
     state().get(source).map(|e| e.pause.clone())
 }
+/// 未授權的桌不顯示其他桌造成的來源暫停；手動按鈕仍照常收到 generate_png 的錯誤。
+pub(crate) fn for_art(source: &str, started: bool) -> Option<Pause> {
+    started.then(|| snapshot(source)).flatten()
+}
+fn recheck_delay(deadline: i64, now: i64) -> std::time::Duration {
+    std::time::Duration::from_millis((deadline - now).clamp(1000, 60_000) as u64)
+}
 pub(crate) fn is_pause(error: &str) -> bool {
     error.starts_with(QUOTA) || error == PAUSED
 }
@@ -40,10 +47,16 @@ pub(crate) fn record(app: &tauri::AppHandle, source: &str, error: &str) {
         let source = source.to_owned();
         tokio::spawn(async move {
             // 避免供應商回過期時間造成忙迴圈；期限本身仍如實顯示。
-            tokio::time::sleep(std::time::Duration::from_millis(
-                (deadline - chrono::Utc::now().timestamp_millis()).max(1000) as u64,
-            ))
-            .await;
+            loop {
+                tokio::time::sleep(recheck_delay(
+                    deadline,
+                    chrono::Utc::now().timestamp_millis(),
+                ))
+                .await;
+                if chrono::Utc::now().timestamp_millis() >= deadline {
+                    break;
+                }
+            }
             {
                 let _gate = super::source_gate().lock().await;
                 let mut held = state();
@@ -84,6 +97,12 @@ pub(crate) fn resume(app: &tauri::AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn wake_checks_wall_clock_at_most_a_minute_later() {
+        assert_eq!(recheck_delay(86_400_000, 0).as_millis(), 60_000);
+        assert_eq!(recheck_delay(86_400_000, 86_399_000).as_millis(), 1000);
+        assert_eq!(recheck_delay(86_400_000, 86_400_001).as_millis(), 1000);
+    }
     #[tokio::test]
     async fn clearing_pause_cancels_its_only_timer() {
         let timer = tokio::spawn(std::future::pending::<()>());
@@ -96,6 +115,8 @@ mod tests {
             },
         );
         assert!(snapshot("test-source").unwrap().reset.is_none());
+        assert!(for_art("test-source", false).is_none());
+        assert!(for_art("test-source", true).is_some());
         clear("test-source");
         tokio::task::yield_now().await;
         assert!(abort.is_finished());

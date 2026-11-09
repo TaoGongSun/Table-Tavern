@@ -139,20 +139,19 @@
   animation-name: vn-rain-near;
   animation-duration: 0.55s;
 }
-/* 地點字卡：換地點出現 4 秒後淡出（Stage 計時）；字級與邊距跟播放器高度走 */
+/* 無背景時的地點字卡：沿用左上位置；字級與邊距跟播放器高度走 */
 .vn-location {
   position: absolute;
   top: 2.4cqh;
   left: 2.4cqh;
   padding: 0.35em 1em;
-  border-left: 3px solid var(--amber);
-  background: var(--vn-box);
+  border-radius: 999px;
+  background: rgb(8 10 14 / 75%);
+  color: #e0e5f0;
+  z-index: 2;
+  pointer-events: none;
   font-size: clamp(0.82rem, 2cqh, 1.4rem);
   animation: vn-fade 0.8s;
-  transition: opacity 0.8s;
-}
-.vn-location-out {
-  opacity: 0;
 }
 
 /* 立繪：底部對齊、下緣被對話框蓋住；槽位 0 左、1 右、2 中 */
@@ -517,5 +516,4 @@
   text-align: center;
 }
 
-.vn-backdrop-place { position: absolute; bottom: 28%; left: 0; right: 0; text-align: center; color: #d1d5df; opacity: .65; }
 .vn-background-retry { position: absolute; top: .75rem; right: .75rem; z-index: 6; max-width: 60%; white-space: normal; }

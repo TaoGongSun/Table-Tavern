@@ -99,7 +99,9 @@ export function VnPlayer({
   replay,
   tagline,
   sceneLabels,
+  wizardOpen = false,
 }: {
+  wizardOpen?: boolean;
   worldId: string;
   scene: number;
   tableName: string;
@@ -243,6 +245,8 @@ export function VnPlayer({
   }, [worldId, scene, vn.lastEventKey]);
   const backdrop = stage.backdrop;
   const backgroundState = backgrounds.pause ? "paused" : backdrop ? backgrounds.statusOf(backdrop)?.state : undefined;
+  const backgroundAction = backgrounds.pause ? () => setPanel("gallery")
+    : backdrop ? () => void backgrounds.retry(backdrop).catch(() => {}) : undefined;
   const backdropId = backdrop ? backdropKey(backdrop) : null;
   const { load } = backgrounds;
   useEffect(() => {
@@ -551,8 +555,9 @@ export function VnPlayer({
         backdrop={backdropId ? backgrounds.images[backdropId] : undefined}
         cellKey={play.current?.key ?? ""}
         hold={paused}
+        showLocation={!wizardOpen}
         backgroundState={backgroundState}
-        onBackgroundRetry={!replay && backdrop ? () => void backgrounds.retry(backdrop).catch(() => {}) : undefined}
+        onBackgroundRetry={!title && !wizardOpen && !chapter.card && !ending && !replay ? backgroundAction : undefined}
       />
       {error && (
         <div className="vn-error">
@@ -637,7 +642,8 @@ export function VnPlayer({
       {chapter.card && (
         <ChapterCardView
           card={chapter.card}
-          backgroundState={backgrounds.pause ? "paused" : Object.values(backgrounds.status).some((s) => s.state === "queued" || s.state === "running") ? "queued" : backgroundState}
+          backgroundState={backgroundState}
+          onBackgroundAction={backgroundAction}
           // 新幕的格載入前 cells 還是舊幕的，章號會等於結束的章而誤判成「尾聲」
           nextChapter={scene !== chapter.card.fromScene && vn.formalScene === scene ? vn.cells[0]?.chapter : undefined}
           onRetry={() => void chapter.retry()}
@@ -660,6 +666,7 @@ export function VnPlayer({
       )}
       {title && (
         <TitleScreen
+          replay={replay}
           worldId={worldId}
           tableName={tableName}
           tagline={tagline}

@@ -54,7 +54,7 @@ export function ArtGallery({
       {replay && <p className="vn-chapter-note">{t("vnGalleryReadOnly")}</p>}
       <div className="vn-gallery-body">
         {tab === "sprites" ? (
-          <SpriteGallery worldId={worldId} images={images} readOnly={replay} onView={setViewing} />
+          <SpriteGallery paused={Boolean(backgrounds.pause)} worldId={worldId} images={images} readOnly={replay} onView={setViewing} />
         ) : tab === "backgrounds" ? (
           <BackgroundGallery worldId={worldId} backgrounds={backgrounds} readOnly={replay} onView={setViewing} />
         ) : (

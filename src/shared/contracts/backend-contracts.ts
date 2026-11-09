@@ -550,4 +550,5 @@ export interface ArtStatus {
   total: number;
   backgrounds: number;
   faces: number;
+  facesPerCharacter: number | null;
 }

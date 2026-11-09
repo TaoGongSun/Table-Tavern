@@ -22,11 +22,13 @@ function dot(status: SpriteSlotStatus | undefined, has: boolean): Dot {
 
 export function SpriteGallery({
   worldId,
+  paused = false,
   images,
   readOnly,
   onView,
 }: {
   worldId: string;
+  paused?: boolean;
   images: Record<string, string>;
   readOnly: boolean;
   onView: (viewing: Viewing) => void;
@@ -68,7 +70,7 @@ export function SpriteGallery({
           {t("vnGalleryBack")}
         </button>
         <h3>{open.name}</h3>
-        <SpriteTab worldId={worldId} characterId={open.id} name={open.name} expressionsFirst />
+        <SpriteTab worldId={worldId} characterId={open.id} name={open.name} expressionsFirst source={false} />
       </div>
     );
 
@@ -111,7 +113,7 @@ export function SpriteGallery({
                 <span className="field-note">
                   {t(
                     base?.state === "queued"
-                      ? "vnGalleryBaseQueued"
+                      ? paused ? "vnArtWaitQuota" : "vnGalleryBaseQueued"
                       : base?.state === "running"
                         ? "vnGalleryBaseRunning"
                         : base?.state === "failed"
@@ -128,7 +130,7 @@ export function SpriteGallery({
                   <span
                     key={expression}
                     className={`vn-gallery-dot vn-gallery-dot-${state}`}
-                    title={state === "done" ? label : `${label} · ${t(`vnSpriteState_${state}`)}`}
+                    title={state === "done" ? label : `${label} · ${t(paused && state === "queued" ? "vnArtWaitQuota" : `vnSpriteState_${state}`)}`}
                   />
                 ))}
             </span>

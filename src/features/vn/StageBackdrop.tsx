@@ -1,4 +1,4 @@
-// 舞台背景層：目前背景的圖好了就淡入；還沒好＝前一張模糊頂著，第一張都還沒有＝黑幕（字卡由 Stage 疊在上面）。
+// 舞台背景層：目前背景的圖好了就淡入；還沒好＝前一張模糊頂著，第一張都還沒有＝漸層與左上地點膠囊。
 // 圖是同地點基底（實際時段與要的不同）就疊該時段的色調遮罩（plans/vn-setup-wizard.md §3）：蓋背景（立繪只在夜晚壓半強度，見 Stage），
 // 換時段時遮罩漸變；卡自訂時段沒有對應色就不套。
 // 天氣（plans/vn-weather-mask.md §3）：去飽和＋壓暗調色層在時段遮罩之下（黃昏的橘色留著），霧層也在遮罩之下（夜霧不發亮）；
@@ -97,10 +97,9 @@ export function StageBackdrop({ image, period, weather, location, state, onRetry
       ) : last ? (
         <img className="vn-backdrop vn-backdrop-waiting" src={last.src!} alt="" />
       ) : (
-        <div className="vn-backdrop vn-backdrop-placeholder" style={{ background: `linear-gradient(160deg, ${fallback}, #10131c 85%)` }}>
-          <small className="vn-backdrop-place">{location}</small>
-        </div>
+        <div className="vn-backdrop vn-backdrop-placeholder" style={{ background: `linear-gradient(160deg, ${fallback}, #10131c 85%)` }} />
       )}
+      {!shown && location && <div key={location} className="vn-location">{location}</div>}
       {(state === "failed" || state === "paused") && onRetry && <button type="button" className="btn btn-sm vn-background-retry" onClick={(event) => { event.stopPropagation(); onRetry(); }}>
         {t(state === "paused" ? "vnBackgroundQuota" : "vnBackgroundRetry")}
       </button>}

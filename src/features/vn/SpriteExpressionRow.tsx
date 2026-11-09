@@ -18,6 +18,7 @@ export function ExpressionRow({
   sprite,
   set,
   statuses,
+  paused = false,
   disabled,
   onReroll,
   onUpload,
@@ -26,6 +27,7 @@ export function ExpressionRow({
   /** 變體鍵＝該變體的獨立組；不給＝共用組 */
   set?: string;
   statuses: Record<string, SpriteSlotStatus>;
+  paused?: boolean;
   disabled: boolean;
   onReroll: (expression: string) => void;
   onUpload: (file: File, expression: string) => void;
@@ -39,6 +41,7 @@ export function ExpressionRow({
           set={set}
           expression={expression}
           status={statuses[statusKey(set, expression)]}
+          paused={paused}
           disabled={disabled}
           onReroll={() => onReroll(expression)}
           onUpload={(file) => onUpload(file, expression)}
@@ -53,6 +56,7 @@ function ExpressionCell({
   set,
   expression,
   status,
+  paused = false,
   disabled,
   onReroll,
   onUpload,
@@ -61,6 +65,7 @@ function ExpressionCell({
   set?: string;
   expression: string;
   status?: SpriteSlotStatus;
+  paused?: boolean;
   disabled: boolean;
   onReroll: () => void;
   onUpload: (file: File) => void;
@@ -96,7 +101,7 @@ function ExpressionCell({
       <figcaption>
         {sprite.expressions.find((entry) => entry.key === expression)?.label ??
           t(`vnExpression_${expression}` as "vnExpression_neutral")}
-        {state !== "done" && <span className={`vn-expr-state vn-expr-${state}`}>{t(`vnSpriteState_${state}`)}</span>}
+        {state !== "done" && <span className={`vn-expr-state vn-expr-${state}`}>{t(paused && state === "queued" ? "vnArtWaitQuota" : `vnSpriteState_${state}`)}</span>}
       </figcaption>
       {state === "failed" && status?.reason && <p className="field-warn">{spriteError(status.reason)}</p>}
       {!neutral && (

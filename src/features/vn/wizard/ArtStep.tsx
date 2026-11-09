@@ -29,7 +29,7 @@ async function finalize(slot: SpriteSlot) {
 
 function FirstBackdrop({ worldId }: { worldId: string }) {
   const [first, setFirst] = useState<Backdrop | null>(null);
-  const { images, statusOf, load } = useBackgrounds(worldId);
+  const { images, statusOf, load, pause } = useBackgrounds(worldId);
   useEffect(() => {
     invoke<Backdrop[]>("vn_backgrounds_fill", { worldId, scene: null })
       .then((used) => setFirst(used[0] ?? null))
@@ -49,7 +49,7 @@ function FirstBackdrop({ worldId }: { worldId: string }) {
       ) : (
         <div className="vn-start-preview vn-start-placeholder">
           <p className="vn-start-progress">
-            {t(first && statusOf(first)?.state === "failed" ? "vnBackgroundFailed" : first && statusOf(first) ? "vnBackgroundPreparing" : "vnArtNotStarted")}
+            {t(pause ? "vnBackgroundWaitQuota" : first && statusOf(first)?.state === "failed" ? "vnBackgroundFailed" : first && statusOf(first) ? "vnBackgroundPreparing" : "vnBackgroundEmpty")}
           </p>
         </div>
       )}
@@ -63,8 +63,10 @@ function ArtRow({
   slots,
   failed,
   onChange,
+  paused,
 }: {
   worldId: string;
+  paused: boolean;
   card: CharacterMeta;
   slots: MutableRefObject<Map<string, SpriteSlot>>;
   /** 按開始時把目前候選裝成定稿失敗的原因 */
@@ -81,7 +83,7 @@ function ArtRow({
         {card.name}
         {picked && <span className="vn-sprite-done">{t("vnSpritePicked")}</span>}
       </h3>
-      <SpriteBasePicker slot={slot} name={card.name} source={false} />
+      <SpriteBasePicker slot={slot} name={card.name} source={false} paused={paused} />
       {failed && (
         <p className="field-warn" role="alert">
           {t("vnArtInstallFailed", { reason: failed })}
@@ -104,6 +106,7 @@ export function ArtStep({
   /** 精靈按「開始遊戲」時呼叫：把沒挑定的角色裝成定稿 */
   finishRef: MutableRefObject<(() => Promise<boolean>) | null>;
 }) {
+  const [paused, setPaused] = useState(false);
   const [started, setStarted] = useState(false);
   const [cast, setCast] = useState<CharacterMeta[] | null>(null);
   const [, setTick] = useState(0);
@@ -146,7 +149,7 @@ export function ArtStep({
   return (
     <div className="vn-art-step">
       <div className="vn-art-head">
-        <ArtFlowNotice worldId={worldId} onStarted={setStarted} />
+        <ArtFlowNotice worldId={worldId} onStarted={setStarted} onPause={setPaused} />
       </div>
       <div className="vn-art-body">
         <div className="vn-sprite-step">
@@ -155,6 +158,7 @@ export function ArtStep({
               key={card.id}
               worldId={worldId}
               card={card}
+              paused={paused}
               slots={slots}
               failed={failed[card.id]}
               onChange={() => setTick((n) => n + 1)}

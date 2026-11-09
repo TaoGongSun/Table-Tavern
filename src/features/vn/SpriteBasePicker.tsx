@@ -10,10 +10,12 @@ export function SpriteBasePicker({
   slot,
   name,
   source = true,
+  paused = false,
 }: {
   slot: SpriteSlot;
   name: string;
   source?: boolean;
+  paused?: boolean;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const candidates = slot.state?.candidates ?? [];
@@ -60,7 +62,7 @@ export function SpriteBasePicker({
               <span className="vn-pending">
                 {slot.busy
                   ? t(`vnSpriteBusy_${slot.busy}`)
-                  : t(slot.auto === "queued" ? "vnSpriteQueued" : "vnSpriteBusy_generate")}
+                  : t(slot.auto === "queued" ? paused ? "vnArtWaitQuota" : "vnSpriteQueued" : "vnSpriteBusy_generate")}
               </span>
             ) : (
               t("vnSpriteNone")

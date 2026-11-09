@@ -9,6 +9,7 @@ import { SpriteBasePicker } from "./SpriteBasePicker";
 import { ExpressionRow, FaceBoxEditor, faceKeys, statusKey } from "./SpriteExpressionRow";
 import { SpriteVariants } from "./SpriteVariants";
 import { onSpriteStatus } from "./useSprites";
+import { useArtStatus } from "./art-flow/useArtStatus";
 import { useSpriteSlot } from "./useSpriteSlot";
 
 /** expressionsFirst＝表情列置頂（美術一覽：玩家是看到缺的表情才點進來）；角色編輯頁維持定稿在上 */
@@ -17,12 +18,16 @@ export function SpriteTab({
   characterId,
   name,
   expressionsFirst = false,
+  source = true,
 }: {
   worldId: string;
   characterId: string;
   name: string;
   expressionsFirst?: boolean;
+  source?: boolean;
 }) {
+  const { status: art } = useArtStatus(worldId);
+  const paused = Boolean(art?.pause);
   const slot = useSpriteSlot(worldId, characterId, true);
   const [statuses, setStatuses] = useState<Record<string, SpriteSlotStatus>>({});
   const reload = useRef(slot.reload);
@@ -56,13 +61,14 @@ export function SpriteTab({
     return (
       <div className="vn-sprite-tab">
         <p className="field-note">{t("vnSpriteTabIntro")}</p>
-        <SpriteBasePicker slot={slot} name={name} />
+        <SpriteBasePicker slot={slot} name={name} paused={paused} source={source} />
       </div>
     );
   }
   const expressionRow = (
     <ExpressionRow
       sprite={sprite}
+      paused={paused}
       statuses={statuses}
       disabled={slot.busy !== null}
       onReroll={(expression) => void regenerate(null, [expression])}
@@ -86,13 +92,14 @@ export function SpriteTab({
         <div className="vn-sprite-tab-base">
           <h3>{t("vnSpriteChangeBase")}</h3>
           <p className="field-note">{t("vnSpriteChangeBaseNote")}</p>
-          <SpriteBasePicker slot={slot} name={name} />
+          <SpriteBasePicker slot={slot} name={name} paused={paused} source={source} />
         </div>
       </div>
       {!expressionsFirst && expressionRow}
       <SpriteVariants
         sprite={sprite}
         slot={slot}
+        paused={paused}
         statuses={statuses}
         onReroll={(variant, expressions) => void regenerate(variant, expressions)}
       />

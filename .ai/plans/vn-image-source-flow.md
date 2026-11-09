@@ -60,7 +60,7 @@
 - 新 `vn_sprites/pause.rs` **只管理記憶體**的來源→pause(reset) 與 timer；不存待辦、failed、pause、revision、完成世代，不開機掃桌。唯一執行前檢查在 **`generate_png` 取得 source_gate 後、呼叫來源前**：暫停回穩定碼；本次撞額度也在放開 gate 前記 pause。其他入口只辨識返回碼、做停工收尾，不各加預檢。source_gate 不必換鎖，queue／Book 的 Mutex 不跨 await。
 - `queue::start_worker/run_face` 對兩種暫停碼統一收尾：running 工作放回 waiting、清 running／worker、停迴圈，不標 failed、不逐張 emit 失敗；背景同樣走這段。保留其餘待辦與 BgMode。enqueue 在停工交界仍按既有 queue 鎖去重／啟動；即使有一次額外排程也只在 gate 返回暫停，不呼叫模型。
 - `prepare::run/start` 遇暫停把本桌留在既有 pending（queued／待續），清 running、結束這輪；外層即使有 again 也不再立刻重掃。只增加 `resume_pending` 從現有 pending 推導需續的桌，不另存角色工作描述。run 組 todo 時跳過既有普通 failed，只有明確重試清掉該桌 failed 才再生，避免timer為一個待續角色順便重試整桌失敗。保留 generating/adopt、claim_base、install_at 與現有世代重驗；不合併 worker、不改手動採納優先序。
-- **恢復只有一般重啟**：每來源最多一個 tokio timer，到 reset 清 pause，呼叫 `queue::start_worker` 與 `prepare::resume_pending`，兩邊照常推導／跑缺圖；第一張若仍超額，gate 再暫停。無單張探路、無 revision。重試／換來源／新額度期限時取消或替換該來源舊 timer，維持「一個」；timer 清除前在同一 gate 核對目前期限確實已到，避免正常連按重試時舊 timer 把新 pause 提早解掉。未知 reset 不排 timer，玩家按重試。
+- **恢復只有一般重啟**：每來源最多一個 tokio timer，最長每分鐘比對實際UTC時間（不把闔蓋睡眠漏算），到 reset 清 pause，呼叫 `queue::start_worker` 與 `prepare::resume_pending`，兩邊照常推導／跑缺圖；第一張若仍超額，gate 再暫停。無單張探路、無 revision。重試／換來源／新額度期限時取消或替換該來源舊 timer，維持「一個」；timer 清除前在同一 gate 核對目前期限確實已到，避免正常連按重試時舊 timer 把新 pause 提早解掉。未知 reset 不排 timer，玩家按重試。
 - **換來源／重試**：保存全域來源（換來源時）後，清新來源 pause、取消它的 timer，清該桌 queue.failed 與 prepare.pending 的 failed，再重新推導定稿／appeared 臉層／目前幕背景，重啟兩邊。清背景 failed 前保留既有 BgSlot，以原 BgMode 重新排入明確強制重生／專屬時段，不因已有舊圖而吃掉這次按鈕。其他桌普通失敗不清；同來源已暫停待辦可隨共用 pause 解除續跑。
 - **重開 app**：只讀 started／appeared，重新推導沒定稿的角色、曾上台角色缺的臉、目前幕缺背景；既有記憶體待辦／failed／pause 都消失。先開進的桌第一張若還超額，會再收到一次供應商額度錯誤並重新暫停，可接受；此項不承諾供應商計費政策。未開始桌仍不自動生成；舊桌現有圖不動。未到訪桌不在背景自動跑。
 - **診斷沿用 app log**：工具錯誤 `log::warn!` 記 type/message，家目錄與帳號先遮蔽；不記整條帶 parameters／prompt 的 stream。穩定碼給玩家白話、原診斷留既有 app log，不新建桌 log，不混 transcript／用量帳本。背景 job 對額度／暫停直接返回，不再試第二次；其他原有重試行為不擴改。
@@ -82,7 +82,7 @@
 ### 4. 背景退路與共用訊息（核心約 55 行）
 
 - `useBackgrounds.ts::statusOf` 繼續用現有 failed／queued／running；共用 pause 由美術 status snapshot／事件提供。`VnPlayer`→`Stage`→`StageBackdrop` 傳目前地點、狀態與重試。沒 src／last 用時段深色漸層＋地點小字，有 last 維持模糊；failed 顯示「背景沒生出來 · 重試」，paused 優先顯示來源原因，未開始／排隊不誤報失敗。
-- 重試用既有 `vn_background_regenerate`，不因 render 自動重排；paused 時走§2明確重試再重排本張，仍只在 generate_png 檢查執行權。沿用上傳取消待辦、`Library::wants` 寫回重驗，不蓋剛上傳圖。
+- 重試用既有 `vn_background_regenerate`，不因 render 自動重排；paused 時開美術與音樂，讓玩家看恢復時間、換來源或明確重試；仍只在 generate_png 檢查執行權。沿用上傳取消待辦、`Library::wants` 寫回重驗，不蓋剛上傳圖。
 - 共用 `ArtFlowNotice` 放美術一覽與標題相同位置；預設未開始提示與開始按鈕、實際剩餘數、約略恢復時間、換來源／立刻重試。`shared/ui/ai-error.ts`、`useSpriteSlot.ts::spriteError` 對 quota／NO_IMAGE／REFUSED／橫圖用穩定碼＋十語系；故事拒絕用故事文案，不寫生圖來源。自動恢復說「酒館開著時」，無 reset 不承諾定時續生。
 - 測試：無圖／舊圖、四時段、failed／paused／queued／未開始、重試一次、晚到舊桌事件；延伸 Stage／gallery 測試與後續 harness 截圖。
 
@@ -143,3 +143,25 @@
 - 實際差異核心約834行、測試432行（加刪計，排除譯文／純契約型別／搬檔）；高於595估算，未加入已撤回的持久化、revision或worker合併。
 - 來源與共用狀態接線沿用既有偏好、vn.json與queue/prepare；已開始後底部進遊戲回主鈕，未開始為一般鈕。未授權但手動候選仍在生成時，先保留採納標記，不啟動全桌自動補圖。
 - verify與TCP受限測試完整清單、檔案前後行數、已知限制與未驗項目見[本案交接](../handoffs/vn-image-source-flow.md)。未跑GUI／真模型、未push；主線續工程與原生驗收。
+
+## 原生截圖後顯示驗收修正（2026-11-09）
+
+- 採納使用者9項常識審修改：精靈暫停／空格文字、整數相對恢復時間、來源同列開始鈕與下方說明；標題僅單行摘要與重試，來源留在美術與音樂。
+- 角標只留平時閱讀舞台，精靈／標題／章卡不露出；依作者最新裁決，章卡中央改真正按鈕：額度耗盡開美術與音樂，一般背景失敗直接重試；排隊／生成中維持準備中文字。平時角標樣式不變，額度耗盡也開面板，不直接重試。無圖地點沿既有左上字卡改膠囊，有圖便移除。
+- 十語系立繪說明改首次上台補表情省額度；每位張數從唯讀統計確認一致才顯示，否則只列全部，恢復顯示共用相對格式，不改pause／queue／prepare機制。
+- 本輪核心140行、測試109行（加刪計）；本機verify的party5個TCP受限例、補跑結果與待重拍項目已就地更新到本案交接。
+
+## 第二輪工程與截圖修正（2026-11-09）
+
+- 採納全部12項。標題只在讀回後顯示有意義的未開始／未齊／失敗／暫停狀態；完成、重播不顯示。未開始文案引用既有美術與音樂名稱，十語系一致。
+- `vn_art_status`只對started桌回傳來源pause，手動候選自身錯誤不改；failed含背景與表情，背景估計以本幕所有缺基底的不同地點計算。暫停剩餘張數與缺定稿＋缺背景說明使用同一份資料，不再混用含表情及失敗紀錄的queue快照筆數。
+- 章卡只顯示目前backdrop的背景失敗；額度按鈕仍可開面板。結局隱藏角標、精靈隱藏地點字。重用讀取／訂閱邏輯為useArtStatus，角色頁及清單排隊遇pause改為等額度恢復；美術面板內角色頁不再重複放來源下拉。
+- 相對時間改用完整單位、既有ICU單複數及小寫片段，說明分段，避免句間硬拼空格；清除LocationCard包裝、多餘Math.max、樣式及註解殘留。單一timer取消規則與生圖gate／worker均保留。
+- 本輪測試、核心行數與原生待驗項目見本案交接。
+
+## 結案前文字定稿（2026-11-09）
+
+- 章卡獨立文案「生圖額度用完 · 查看」，舞台角標不變；十語系同步。
+- 各角色缺表情數一致時只說每人約N張，沿用facesPerCharacter；不一致才說全部約N張。中文數字與單位恢復空格。
+- 相對時間以既有ICU／Intl.PluralRules顯示完整單位，英文及其他有單複數的語言同步；不改時間計算。
+- 美術說明區覆寫共用field-note的負margin，使用明確段落間距與行高；無生成機制變更。驗證見交接。

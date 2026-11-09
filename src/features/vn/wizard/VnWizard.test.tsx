@@ -7,6 +7,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { t } from "../../../i18n";
 
 const state = vi.hoisted(() => ({
+  pausedArt: false,
   sourceAvailable: false,
   calls: [] as [string, Record<string, unknown>][],
   bible: null as unknown,
@@ -20,6 +21,10 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(async (command: string, args: Record<string, unknown> = {}) => {
     state.calls.push([command, args]);
     switch (command) {
+      case "vn_art_status":
+        return { art: { started: state.pausedArt, appeared: [] }, source: "agy", ready: 0, total: 1, backgrounds: 1, faces: 4, facesPerCharacter: 4, pending: 2, failed: 0, pause: state.pausedArt ? { reset: Date.now() + 4 * 3_600_000 } : null };
+      case "vn_sprites_status":
+        return state.pausedArt ? [{ worldId: "W", characterId: "c1", expression: "base", variant: null, state: "queued", reason: null }] : [];
       case "generate_table_outline":
         return {
           parsed: { title: "霧港", world: "簡介", characters: [{ name: "莫斯", tagline: "隊長" }], player: { name: "you", tagline: "新人" } },
@@ -70,6 +75,7 @@ let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 beforeEach(() => {
   window.dispatchEvent(new Event("tt-cli-changed"));
+  state.pausedArt = false;
   state.sourceAvailable = false;
   state.calls.length = 0;
   state.bible = null;
@@ -261,4 +267,16 @@ it("stays on the script failure screen when the bible generate rejects", async (
   const failed = document.querySelector(".vn-bible-failed");
   expect(failed?.closest("[hidden]")).toBeNull();
   expect(failed?.querySelector("button")?.textContent).toBe(t("vnBibleRetry"));
+});
+
+it("shows quota wait in both art placeholders and keeps the unstarted message only at the top", async () => {
+  await mount({ worldId: "W", step: "art" });
+  expect(host.querySelector(".vn-start-progress")?.textContent?.trim()).toBe(t("vnBackgroundEmpty"));
+  expect(host.textContent?.split(t("vnArtNotStarted"))).toHaveLength(2);
+  await act(async () => root.unmount());
+  root = createRoot(host);
+  state.pausedArt = true;
+  await mount({ worldId: "W", step: "art" });
+  expect(host.querySelector(".vn-picker-empty")?.textContent).toContain(t("vnArtWaitQuota"));
+  expect(host.querySelector(".vn-start-progress")?.textContent).toContain(t("vnBackgroundWaitQuota"));
 });

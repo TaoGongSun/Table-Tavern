@@ -9,6 +9,7 @@ import type {
   SceneLabel,
   VnCell,
   VnEventCells,
+  BackgroundStatus,
 } from "../../shared/contracts/backend-contracts";
 import type { ChatController } from "../play/chat/useChatController";
 import type { VnAdvance } from "../play/scene/useSceneActions";
@@ -29,6 +30,8 @@ const backend = vi.hoisted(() => ({
   loaded: null as unknown,
   args: {} as Record<string, Record<string, unknown>>,
   chapterHead: 0,
+  art: null as unknown,
+  backgrounds: [] as BackgroundStatus[],
 }));
 
 /** 照後端共用選項邊界標選項點：其後第一則玩家句＝已選，之前又出選項＝被取代（不標） */
@@ -55,7 +58,8 @@ vi.mock("@tauri-apps/api/core", () => ({
     }
     if (command === "parse_vn_text") return backend.parse(args.text as string);
     if (command === "vn_reroll_choices") return backend.reroll();
-    if (command === "vn_backgrounds_status") return [];
+    if (command === "vn_backgrounds_status") return backend.backgrounds;
+    if (command === "vn_art_status") return backend.art;
     if (command === "vn_endings") return backend.endings;
     if (command === "vn_progress_read") return backend.progress;
     if (command === "vn_save_load") return backend.loaded;
@@ -129,6 +133,7 @@ const onAutoWait = vi.fn((_wait: AutoWait) => {});
 let replayTable = false;
 let labels: Record<string, SceneLabel> = {};
 let titleOpen = false;
+let wizardOpen = false;
 const onTitle = vi.fn((open: boolean) => {
   titleOpen = open;
 });
@@ -168,6 +173,7 @@ async function render(patch: Partial<ChatController> = {}) {
         autoWait="normal"
         onTextSpeed={onTextSpeed}
         onAutoWait={onAutoWait}
+        wizardOpen={wizardOpen}
         title={titleOpen}
         onTitle={onTitle}
         replay={replayTable}
@@ -200,6 +206,9 @@ beforeEach(() => {
   backend.parse = () => null;
   backend.calls = [];
   backend.slowRead = false;
+  backend.art = null;
+  backend.backgrounds = [];
+  wizardOpen = false;
   onAdvanceScene = vi.fn(async () => ({ stage: "entered" }) as VnAdvance);
   onReenter = vi.fn(async () => true);
   onBranch = vi.fn(async (run: () => Promise<unknown>): Promise<VnAdvance> => {
@@ -454,6 +463,59 @@ describe("VnPlayer", () => {
     expect(host.querySelector(".vn-chapter-heading")?.textContent).toBe(t("vnChapterStart", { n: 3 }));
     await act(async () => new Promise((resolve) => setTimeout(resolve, 200)));
     expect(text()).toBe("");
+  });
+
+  it("opens art over the chapter card without losing or restarting the pending opening", async () => {
+    backend.art = { art: { started: true, appeared: [] }, pause: { reset: null }, ready: 0, total: 1, pending: 1, faces: 4, backgrounds: 1 };
+    backend.cells = [{ ...gm("g1", [{ type: "bg", location: "Station", slug: "station", period: "day", time: null, weather: "clear" }, n("end"), { type: "chapter" }]), chapter: 2 }];
+    let finish = () => {};
+    chat.gmAdvance = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
+    await render({ events: [event("g1")] });
+    // During reading the same quota badge opens art, without retrying generation.
+    await act(async () => button(t("vnBackgroundQuota"))!.click());
+    expect(host.querySelector('[aria-label="' + t("vnGallery") + '"]')).not.toBeNull();
+    await act(async () => button(t("vnChapterClose"))!.click());
+    await advance(); await advance();
+    sceneNo = 1;
+    backend.cells = [{ ...gm("s1", [n("opening saved")]), chapter: 3 }];
+    await render({ events: [event("s1")] });
+    expect(chat.gmAdvance).toHaveBeenCalledOnce();
+    expect(host.querySelector(".vn-background-retry")).toBeNull();
+    await act(async () => host.querySelector<HTMLButtonElement>(".vn-chapter-card button")!.click());
+    expect(host.querySelector('[aria-label="' + t("vnGallery") + '"]')).not.toBeNull();
+    expect(host.querySelector(".vn-chapter-card")).not.toBeNull();
+    expect(chat.stopResponse).not.toHaveBeenCalled();
+    expect(chat.gmAdvance).toHaveBeenCalledOnce();
+    expect(backend.calls).not.toContain("vn_art_retry");
+    await act(async () => finish());
+    await settle();
+    expect(host.querySelector(".vn-chapter-card")).toBeNull();
+    expect(host.querySelector(".vn-gallery")).not.toBeNull();
+    await act(async () => host.querySelector<HTMLButtonElement>(".vn-gallery .vn-chapter-actions button")!.click());
+    expect(text()).toBe("opening saved");
+  });
+
+  it("ignores an old failed background at chapter change and hides location while the wizard is open", async () => {
+    backend.backgrounds = [{ worldId: "w1", slug: "old-place", period: "day", state: "failed", reason: "x" }];
+    backend.cells = [gm("g1", [{ type: "bg", location: "Station", slug: "station", period: "day", time: null, weather: "clear" }, n("end"), { type: "chapter" }])];
+    await render({ events: [event("g1")] });
+    expect(host.querySelector(".vn-location")?.textContent).toBe("Station");
+    wizardOpen = true; await render();
+    expect(host.querySelector(".vn-location")).toBeNull();
+    wizardOpen = false; await render();
+    await advance(); await advance();
+    expect(host.querySelector(".vn-chapter-card")).not.toBeNull();
+    expect(button(t("vnBackgroundRetry"))).toBeUndefined();
+    expect(backend.calls).not.toContain("vn_background_regenerate");
+  });
+  it("hides the quota badge over the ending screen", async () => {
+    backend.art = { art: { started: true }, pause: { reset: null } };
+    backend.cells = [gm("g1", [{ type: "bg", location: "Station", slug: "station", period: "day", time: null, weather: "clear" }, n("end"), { type: "ending", id: "end" }])];
+    await render({ events: [event("g1")] });
+    expect(host.querySelector(".vn-background-retry")).not.toBeNull();
+    await advance(); await advance();
+    expect(host.querySelector(".vn-ending-screen")).not.toBeNull();
+    expect(host.querySelector(".vn-background-retry")).toBeNull();
   });
 
   it("a failed advance retries the advance; a failed re-entry retries only the re-entry", async () => {
@@ -855,6 +917,13 @@ describe("VnPlayer", () => {
       replayTable = true;
     });
 
+    it("never shows title art generation status for a replay table", async () => {
+      titleOpen = true;
+      backend.art = { art: { started: true }, ready: 0, total: 3, pause: { reset: null } };
+      await render();
+      expect(host.querySelector(".vn-title-screen")).not.toBeNull();
+      expect(host.querySelector(".vn-art-summary")).toBeNull();
+    });
     it("drops generation entries: no next chapter, chat view, new playthrough or export", async () => {
       backend.cells = [gm("g1", [n("farewell"), { type: "ending", id: "true_end" }])];
       backend.endings = { endings: [{ id: "true_end", title: "Dawn", reached: true }], current: "true_end" };

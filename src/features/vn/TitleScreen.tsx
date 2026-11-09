@@ -11,6 +11,7 @@ import "./vn-story.css";
 
 export function TitleScreen({
   worldId,
+  replay = false,
   tableName,
   tagline,
   backdrop,
@@ -25,6 +26,7 @@ export function TitleScreen({
   onLobby,
 }: {
   worldId: string;
+  replay?: boolean;
   tableName: string;
   /** 主角一句話；空的不顯示 */
   tagline?: string;
@@ -56,7 +58,7 @@ export function TitleScreen({
     <div className="vn-title-screen" role="dialog" aria-label={tableName}>
       {image && <img className="vn-title-art" src={image} alt="" />}
       <div className="vn-title-body">
-        <ArtFlowNotice worldId={worldId} />
+        {!replay && <ArtFlowNotice worldId={worldId} compact />}
         <h1 className="vn-title-name">{tableName}</h1>
         {tagline && <p className="vn-title-tagline">{tagline}</p>}
         {progress !== "loading" && (

@@ -396,6 +396,7 @@ pub(crate) struct ArtStatus {
     total: usize,
     backgrounds: usize,
     faces: usize,
+    faces_per_character: Option<usize>,
     pause: Option<vn_sprites::pause::Pause>,
     pending: usize,
     failed: usize,
@@ -406,45 +407,53 @@ pub(crate) fn vn_art_status(app: tauri::AppHandle, world_id: String) -> Result<A
     let root = data_root(&app)?;
     let characters = character_ids(&root, &world_id)?;
     let mut ready = 0;
-    let mut faces = 0;
+    let mut face_counts = Vec::new();
     for character in &characters {
         let dir = SpriteDir::of(&root, &world_id, character)?;
         let keys = vn_sprites::faces_of(&root, &world_id, character);
         if dir.read().is_some() {
             ready += 1;
-            faces += dir.missing_faces(&keys).len();
+            face_counts.push(dir.missing_faces(&keys).len());
         } else {
-            faces += keys.len();
+            face_counts.push(keys.len());
         }
     }
+    let (faces, faces_per_character) = face_estimate(&face_counts);
     let scene = data::read_state(&root, &world_id)
         .map_err(|e| e.to_string())?
         .current_scene;
     let (_, used) = crate::chat_turn::read_scene(&root, &world_id, scene)?;
     let library = crate::vn_backgrounds::Library::of(&root, &world_id)?;
     let places = crate::vn_backgrounds::Places::load(&root, &world_id);
-    let backgrounds = usize::from(used.first().is_some_and(|bg| {
-        library
-            .base_period(&bg.slug, &places.periods(&bg.slug))
-            .is_none()
-    }));
-    let source = vn_sprites::sprite_source(&vn_sprites::read_config(&app)?);
-    let failed = vn_sprites_status(world_id.clone())
+    let backgrounds = used
         .iter()
-        .filter(|slot| slot.expression == "base" && slot.state == "failed")
+        .map(|bg| &bg.slug)
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .filter(|slug| library.base_period(slug, &places.periods(slug)).is_none())
         .count();
-    let pending =
-        vn_sprites_status(world_id.clone()).len() + queue::background_snapshot(&world_id).len();
+    let source = vn_sprites::sprite_source(&vn_sprites::read_config(&app)?);
+    let sprites = vn_sprites_status(world_id.clone());
+    let backgrounds_status = queue::background_snapshot(&world_id);
+    let failed = sprites.iter().filter(|slot| slot.state == "failed").count()
+        + backgrounds_status
+            .iter()
+            .filter(|slot| slot.state == "failed")
+            .count();
+    let pending = sprites.len() + backgrounds_status.len();
+    let art = data::vn::art_flow(&root, &world_id).map_err(|e| e.to_string())?;
+    let pause = vn_sprites::pause::for_art(source, art.started);
     Ok(ArtStatus {
-        art: data::vn::art_flow(&root, &world_id).map_err(|e| e.to_string())?,
+        art,
         source,
-        pause: vn_sprites::pause::snapshot(source),
+        pause,
         pending,
         failed,
         ready,
         total: characters.len(),
         backgrounds,
         faces,
+        faces_per_character,
     })
 }
 
@@ -479,4 +488,28 @@ pub(crate) async fn vn_art_retry(app: tauri::AppHandle, world_id: String) -> Res
     super::vn_backgrounds::vn_backgrounds_fill(app.clone(), world_id, None)?;
     vn_sprites::pause::resume(&app);
     Ok(())
+}
+
+/// 唯讀顯示：只有各角色缺的表情數一致，才顯示每位約幾張。
+fn face_estimate(counts: &[usize]) -> (usize, Option<usize>) {
+    (
+        counts.iter().sum(),
+        counts
+            .first()
+            .copied()
+            .filter(|n| *n > 0 && counts.iter().all(|count| count == n)),
+    )
+}
+
+#[cfg(test)]
+mod presentation_tests {
+    use super::face_estimate;
+    #[test]
+    fn per_character_estimate_requires_consistent_actual_counts() {
+        assert_eq!(face_estimate(&[4, 4]), (8, Some(4)));
+        assert_eq!(face_estimate(&[5, 5]), (10, Some(5)));
+        assert_eq!(face_estimate(&[4, 7]), (11, None));
+        assert_eq!(face_estimate(&[0, 4]), (4, None));
+        assert_eq!(face_estimate(&[]), (0, None));
+    }
 }
