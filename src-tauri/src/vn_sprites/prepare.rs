@@ -133,7 +133,14 @@ pub(crate) fn snapshot(world: &str) -> Vec<SlotStatus> {
 
 /// 排這桌的自動定稿（冪等：同桌已在跑就跑完再掃一輪，失敗的角色＝重試）。`adopt`＝按開始時正在再骰的角色，再骰完用新圖
 pub(crate) fn start(app: &tauri::AppHandle, world: &str, adopt: &[String]) -> Result<(), String> {
-    data::vn::refuse_if_replay(&data_root(app)?, world)?;
+    let root = data_root(app)?;
+    data::vn::refuse_if_replay(&root, world)?;
+    if !data::vn::art_flow(&root, world)
+        .map_err(|e| e.to_string())?
+        .started
+    {
+        return Ok(());
+    }
     for character in adopt {
         if is_generating(world, character) {
             mark_adopt(world, character);

@@ -278,6 +278,9 @@ pub(crate) fn fill(app: &tauri::AppHandle, world: &str, characters: &[String]) {
     if crate::data::vn::is_replay(&root, world) {
         return;
     }
+    if !crate::data::vn::art_flow(&root, world).is_ok_and(|art| art.started) {
+        return;
+    }
     let mut added = Vec::new();
     {
         let mut queue = queue();

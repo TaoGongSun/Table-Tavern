@@ -1,14 +1,12 @@
-// 立繪準備進度（標題畫面小字「立繪準備中 2/3」）：登場角色裡有定稿的幾位、自動定稿失敗的幾位；
-// 聽立繪狀態事件（定稿換、表情補完、自動定稿失敗）重算。美術進度只由資產與佇列推導，跟設定階段旗標無關
-// （plans/vn-setup-wizard.md §2 ③）。自動定稿只在記憶體：重開 app 後標題畫面第一次讀到「還缺、也沒在排」就再排一次
-// （冪等，玩家手動挑定的照舊優先）。
+// 標題重進只恢復已按開始的美術；失敗等玩家重試，事件只重算進度。
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
-import type { SpriteSlotStatus, SpriteView } from "../../../shared/contracts/backend-contracts";
+import type { ArtStatus, SpriteSlotStatus, SpriteView } from "../../../shared/contracts/backend-contracts";
 import type { CharacterMeta } from "../../characters/card-model";
 import { onSpriteStatus } from "../useSprites";
 
 export interface ArtProgressState {
+  started: boolean;
   ready: number;
   total: number;
   /** 自動定稿失敗、還沒有定稿的角色數 */
@@ -25,8 +23,9 @@ export function useArtProgress(worldId: string) {
         invoke<CharacterMeta[]>("list_characters", { worldId }),
         invoke<Record<string, SpriteView>>("vn_sprites_read_all", { worldId }),
         invoke<SpriteSlotStatus[]>("vn_sprites_status", { worldId }),
+        invoke<ArtStatus>("vn_art_status", { worldId }),
       ])
-        .then(([cast, sprites, statuses]) => {
+        .then(([cast, sprites, statuses, art]) => {
           const shown = cast.filter((card) => !card.archived && !card.stage);
           const bases = (statuses ?? []).filter((s) => s.expression === "base");
           const failed = new Set(bases.filter((s) => s.state === "failed").map((s) => s.characterId));
@@ -34,10 +33,11 @@ export function useArtProgress(worldId: string) {
           const pending = bases.some((s) => s.state === "queued" || s.state === "running");
           if (live && !resumed) {
             resumed = true;
-            if (ready < shown.length && !pending) invoke("vn_sprites_prepare", { worldId, adopt: [] }).catch(() => {});
+            if (art?.art.started && ready < shown.length && !pending && failed.size === 0) invoke("vn_sprites_prepare", { worldId, adopt: [] }).catch(() => {});
           }
           if (live)
             setProgress({
+              started: art?.art.started ?? false,
               ready,
               total: shown.length,
               failed: shown.filter((card) => !sprites?.[card.id] && failed.has(card.id)).length,

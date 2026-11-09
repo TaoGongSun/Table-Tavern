@@ -212,3 +212,18 @@ fn preferences_tagline_round_trips_and_legacy_vn_json_defaults_empty() {
         ("阿哲", "")
     );
 }
+
+#[test]
+fn art_defaults_to_unstarted_and_only_round_trips_two_fields() {
+    let mut file: VnFile = serde_json::from_str("{}").unwrap();
+    assert!(!file.art.started);
+    assert!(file.art.appeared.is_empty());
+    file.art.started = true;
+    file.art.appeared.push("actor".to_owned());
+    let encoded = serde_json::to_value(&file).unwrap();
+    assert_eq!(
+        encoded["art"],
+        serde_json::json!({"started":true,"appeared":["actor"]})
+    );
+    assert_eq!(serde_json::from_value::<VnFile>(encoded).unwrap(), file);
+}

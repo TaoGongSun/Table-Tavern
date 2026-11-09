@@ -353,3 +353,68 @@ pub(crate) fn vn_sprite_variant_delete(
     let _permit = data::world_write_permit(&world_id)?;
     vn_sprites::delete_variant(&data_root(&app)?, &world_id, &character_id, &key)
 }
+
+/// 美術授權與資產現況；純讀取，不啟動生成。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ArtStatus {
+    art: data::vn::ArtFlow,
+    source: &'static str,
+    ready: usize,
+    total: usize,
+    backgrounds: usize,
+    faces: usize,
+}
+
+#[tauri::command]
+pub(crate) fn vn_art_status(app: tauri::AppHandle, world_id: String) -> Result<ArtStatus, String> {
+    let root = data_root(&app)?;
+    let characters = character_ids(&root, &world_id)?;
+    let mut ready = 0;
+    let mut faces = 0;
+    for character in &characters {
+        let dir = SpriteDir::of(&root, &world_id, character)?;
+        let keys = vn_sprites::faces_of(&root, &world_id, character);
+        if dir.read().is_some() {
+            ready += 1;
+            faces += dir.missing_faces(&keys).len();
+        } else {
+            faces += keys.len();
+        }
+    }
+    let scene = data::read_state(&root, &world_id)
+        .map_err(|e| e.to_string())?
+        .current_scene;
+    let (_, used) = crate::chat_turn::read_scene(&root, &world_id, scene)?;
+    let library = crate::vn_backgrounds::Library::of(&root, &world_id)?;
+    let places = crate::vn_backgrounds::Places::load(&root, &world_id);
+    let backgrounds = usize::from(used.first().is_some_and(|bg| {
+        library
+            .base_period(&bg.slug, &places.periods(&bg.slug))
+            .is_none()
+    }));
+    Ok(ArtStatus {
+        art: data::vn::art_flow(&root, &world_id).map_err(|e| e.to_string())?,
+        source: vn_sprites::sprite_source(&vn_sprites::read_config(&app)?),
+        ready,
+        total: characters.len(),
+        backgrounds,
+        faces,
+    })
+}
+
+#[tauri::command]
+pub(crate) fn vn_art_start(app: tauri::AppHandle, world_id: String) -> Result<(), String> {
+    let root = data_root(&app)?;
+    data::vn::refuse_if_replay(&root, &world_id)?;
+    {
+        let _permit = data::world_write_permit(&world_id)?;
+        data::state_commit::with_commit(&root, &world_id, |tx| {
+            data::vn::edit_vn(tx, |file| file.art.started = true)
+        })
+        .map_err(|e| e.to_string())?;
+    }
+    vn_sprites::prepare::start(&app, &world_id, &[])?;
+    super::vn_backgrounds::vn_backgrounds_fill(app, world_id, None)?;
+    Ok(())
+}

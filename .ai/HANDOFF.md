@@ -5,6 +5,7 @@
 分類規則：仍需程式施工／規格落地才放「進行中」；施工已完成、只剩可執行環境／使用者實機／外部條件驗收則移到「等實機驗收」，並同步列入[實測佇列](reference/verification-queue.md)。
 
 ## 進行中
+- [vn-image-source-flow](handoffs/vn-image-source-flow.md) — VN 開桌先選來源再生成、agy 額度用完暫停續生、失敗講人話、拒絕不當旁白、立繪裁透明邊、換章提示（大案估 400 行，發佈前必修）
 - [room-player-dice](handoffs/room-player-dice.md) — 房間玩家自己擲骰：已進 main，待部署後實機跑一回合
 - [multiplayer-friends-test](handoffs/multiplayer-friends-test.md) — 給朋友測試的多人連線版：房間預設正式伺服器、簡中下載頁以多人連線為主軸（已上線，等朋友實機測試）
 - [card-mvu-shim](handoffs/card-mvu-shim.md) — 卡片介面沙盒墊 MVU 讀寫變數：全部已合併 main，剩實測佇列梯 1 項目（含 iframe 內按鈕實際互動）

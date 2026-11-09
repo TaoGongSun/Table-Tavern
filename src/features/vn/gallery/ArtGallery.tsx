@@ -1,3 +1,4 @@
+import { ArtFlowNotice } from "../art-flow/ArtFlowNotice";
 // 美術與音樂（plans/vn-setup-wizard.md §4、plans/vn-credits.md）：標題畫面與遊戲選單共用的面板，分頁「立繪｜背景｜音樂」。
 // 縮圖點開燈箱檢視；重播桌只能看（立繪不開編輯、背景不出生成與上傳鈕）。音樂頁重播桌照常列。
 import { useState } from "react";
@@ -35,6 +36,7 @@ export function ArtGallery({
   const [viewing, setViewing] = useState<Viewing | null>(null);
   return (
     <Panel label={t("vnGallery")} onClose={onClose} className="vn-gallery">
+      {!replay && <ArtFlowNotice worldId={worldId} />}
       <div className="vn-gallery-tabs" role="tablist">
         {TABS.map(([key, label]) => (
           <button

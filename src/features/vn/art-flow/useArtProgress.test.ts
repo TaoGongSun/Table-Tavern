@@ -9,6 +9,7 @@ import { useArtProgress } from "./useArtProgress";
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const backend = {
+  started: true,
   calls: [] as string[],
   sprites: {} as Record<string, unknown>,
   statuses: [] as SpriteSlotStatus[],
@@ -20,6 +21,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (command === "list_characters")
       return ["a", "b", "c"].map((id) => ({ id, name: id, archived: false, stage: false }));
     if (command === "vn_sprites_read_all") return backend.sprites;
+    if (command === "vn_art_status") return { art: { started: backend.started, appeared: [] } };
     if (command === "vn_sprites_status") return backend.statuses;
     return null;
   }),
@@ -41,6 +43,7 @@ async function mount() {
 const prepares = () => backend.calls.filter((command) => command === "vn_sprites_prepare").length;
 
 beforeEach(() => {
+  backend.started = true;
   backend.calls = [];
   backend.sprites = { a: {} };
   backend.statuses = [];
@@ -58,6 +61,12 @@ it("does not re-queue while a base is still queued or running, nor when all are 
   expect(prepares()).toBe(0);
   backend.statuses = [];
   backend.sprites = { a: {}, b: {}, c: {} };
+  await mount();
+  expect(prepares()).toBe(0);
+});
+
+it("does not start art on an unstarted table", async () => {
+  backend.started = false;
   await mount();
   expect(prepares()).toBe(0);
 });

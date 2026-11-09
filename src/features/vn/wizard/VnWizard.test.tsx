@@ -7,6 +7,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { t } from "../../../i18n";
 
 const state = vi.hoisted(() => ({
+  sourceAvailable: false,
   calls: [] as [string, Record<string, unknown>][],
   bible: null as unknown,
   candidates: [] as string[],
@@ -36,7 +37,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "read_character":
         return { id: "c1", name: "莫斯", avatar: "🛡️", public_md: "守衛隊長", archived: false };
       case "detect_clis":
-        return [];
+        return state.sourceAvailable ? [{ id: "agy" }] : [];
       case "vn_sprite_read":
         return {
           sprite: state.installed === undefined ? null : { body: "data:image/png;base64,", meta: { candidate: state.installed ?? undefined } },
@@ -53,7 +54,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "vn_backgrounds_status":
         return [];
       case "read_config":
-        return { preferences: {} };
+        return { preferences: { "cli_connected:agy": state.sourceAvailable } };
       default:
         return null;
     }
@@ -68,6 +69,8 @@ import { VnWizard, type VnWizardStart } from "./VnWizard";
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 beforeEach(() => {
+  window.dispatchEvent(new Event("tt-cli-changed"));
+  state.sourceAvailable = false;
   state.calls.length = 0;
   state.bible = null;
   state.candidates = [];
@@ -136,7 +139,7 @@ it("walks idea → story → art with a blank idea, keeping the draft across ste
   expect(onCreated).toHaveBeenCalledWith("W");
   // 建立後：聖經寫一次、後端自動定稿排一次（③ 隱藏掛載；前端不自己生候選），① 變灰
   expect(called("vn_bible_generate")).toHaveLength(1);
-  expect(called("vn_sprites_prepare")).toHaveLength(1);
+  expect(called("vn_sprites_prepare")).toHaveLength(0);
   expect(called("vn_sprite_generate")).toHaveLength(0);
   expect(document.querySelector(".vn-stepbar li[data-disabled]")?.textContent).toContain(t("vnStepIdea"));
   expect(called("vn_backgrounds_fill")).toHaveLength(0);
@@ -173,8 +176,7 @@ it("resumes at art: queues the backdrop, installs the shown candidate and clears
   await act(async () => button(t("vnStartGame")).click());
   await settle();
   expect(called("vn_sprite_pick")[0][1]).toMatchObject({ characterId: "c1", file: "a.png" });
-  const prepares = called("vn_sprites_prepare");
-  expect(prepares[prepares.length - 1][1]).toMatchObject({ worldId: "W", adopt: [] });
+  expect(called("vn_sprites_prepare")).toHaveLength(0);
   const setups = called("vn_setup_set");
   expect(setups[setups.length - 1][1]).toMatchObject({ stage: null });
   expect(called("vn_sprites_fill")).toHaveLength(1);
@@ -187,7 +189,7 @@ it("stays on art and shows the failure when installing the shown candidate fails
   state.pickFails = true;
   const onFinish = vi.fn();
   await mount({ worldId: "W", step: "art" }, onFinish);
-  await act(async () => button(t("vnStartPreparing", { n: 0, total: 1 })).click());
+  await act(async () => button(t("vnStartGame")).click());
   await settle();
   expect(onFinish).not.toHaveBeenCalled();
   expect(called("vn_setup_set").some(([, args]) => args.stage === null)).toBe(false);
@@ -212,6 +214,8 @@ it("knows which candidate is installed: the same one is not picked again, an upl
   // 上傳的定稿（不記候選）：不選任何候選，按開始不蓋掉上傳
   act(() => root.unmount());
   root = createRoot(host);
+  window.dispatchEvent(new Event("tt-cli-changed"));
+  state.sourceAvailable = false;
   state.calls.length = 0;
   state.installed = null;
   state.candidates = ["a.png"];
@@ -226,6 +230,7 @@ it("knows which candidate is installed: the same one is not picked again, an upl
 const bible = { logline: "一句話", chapter_max: 5, branching: "full", endings: [], chapters: [], secrets: [], flags: [] };
 
 it("starts straight through to the title once the script is already there", async () => {
+  state.sourceAvailable = true;
   state.bible = bible;
   const onFinish = vi.fn();
   await mount({ worldId: null }, onFinish);
@@ -236,12 +241,12 @@ it("starts straight through to the title once the script is already there", asyn
   const names = state.calls.map(([name]) => name);
   const outlineAt = names.indexOf("generate_table_outline");
   const expandAt = names.indexOf("generate_table_expand");
-  const backdropAt = names.indexOf("vn_backgrounds_fill");
+  const backdropAt = names.indexOf("vn_art_start");
   expect(outlineAt).toBeGreaterThanOrEqual(0);
   expect(expandAt).toBeGreaterThan(outlineAt);
   expect(backdropAt).toBeGreaterThan(expandAt);
   expect(state.calls[expandAt][1].preferences).toMatchObject({ tagline: "新人" });
-  expect(state.calls[backdropAt][1]).toMatchObject({ worldId: "W", scene: null });
+  expect(state.calls[backdropAt][1]).toMatchObject({ worldId: "W" });
   expect(called("vn_setup_set").some(([, args]) => args.stage === null)).toBe(true);
   expect(onFinish).toHaveBeenCalledWith("W");
 });

@@ -6,9 +6,10 @@ import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import { t } from "../../../i18n";
 import type { Backdrop } from "../../../shared/contracts/backend-contracts";
 import type { CharacterMeta } from "../../characters/card-model";
-import { SpriteBasePicker, SpriteSourceSelect } from "../SpriteBasePicker";
+import { SpriteBasePicker } from "../SpriteBasePicker";
 import { backdropKey, useBackgrounds } from "../useBackgrounds";
 import { spriteError, useSpriteSlot, type SpriteSlot } from "../useSpriteSlot";
+import { ArtFlowNotice } from "../art-flow/ArtFlowNotice";
 import "../vn-sprites.css";
 
 export interface ArtProgress {
@@ -107,9 +108,7 @@ export function ArtStep({
   const [failed, setFailed] = useState<Record<string, string>>({});
   const [shown, setShown] = useState(active);
   const slots = useRef(new Map<string, SpriteSlot>());
-  useEffect(() => {
-    invoke("vn_sprites_prepare", { worldId, adopt: [] }).catch(() => {});
-  }, [worldId]);
+
   useEffect(() => {
     if (active) setShown(true);
   }, [active]);
@@ -137,17 +136,15 @@ export function ArtStep({
       await finalize(slot).catch((reason) => (errors[id] = spriteError(reason)));
       await slot.reload().catch(() => {});
     }
-    await invoke("vn_sprites_prepare", { worldId, adopt: rerolling });
+    if (rerolling.length) await invoke("vn_sprites_prepare", { worldId, adopt: rerolling });
     setFailed(errors);
     return Object.keys(errors).length === 0;
   };
 
-  const pending = cast === null ? 0 : cast.length - ready;
   return (
     <div className="vn-art-step">
       <div className="vn-art-head">
-        <p>{pending > 0 ? t("vnArtQuota", { n: cast?.length ?? 0 }) : t("vnArtReady")}</p>
-        <SpriteSourceSelect />
+        <ArtFlowNotice worldId={worldId} />
       </div>
       <div className="vn-art-body">
         <div className="vn-sprite-step">

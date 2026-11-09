@@ -500,6 +500,12 @@ pub(crate) fn fill(app: &tauri::AppHandle, world: &str, used: &[Backdrop]) -> Re
     if data::vn::is_replay(&root, world) {
         return Ok(());
     }
+    if !data::vn::art_flow(&root, world)
+        .map_err(|e| e.to_string())?
+        .started
+    {
+        return Ok(());
+    }
     let library = Library::of(&root, world)?;
     let places = Places::load(&root, world);
     let mut missing: Vec<BgSlot> = Vec::new();

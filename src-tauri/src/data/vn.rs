@@ -24,6 +24,8 @@ pub const NOT_ENDED: &str = "none";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VnFile {
+    #[serde(default)]
+    pub art: ArtFlow,
     #[serde(default = "version")]
     pub version: u32,
     /// 劇透鎖，預設鎖〔作者裁決 2026-11-01〕；讀不到檔的舊桌也當鎖住。
@@ -46,6 +48,17 @@ pub struct VnFile {
     /// 精靈還沒走完停在哪一步；按「開始遊戲」成功才清掉。大廳「設定未完成」與進桌路由都讀它
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub setup: Option<SetupStage>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ArtFlow {
+    pub started: bool,
+    pub appeared: Vec<String>,
+}
+
+pub fn art_flow(root: &Path, world: &str) -> DataResult<ArtFlow> {
+    Ok(read_vn(root, world)?.art)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -127,6 +140,7 @@ fn locked() -> bool {
 impl Default for VnFile {
     fn default() -> Self {
         Self {
+            art: ArtFlow::default(),
             version: version(),
             spoiler_lock: true,
             bible: None,

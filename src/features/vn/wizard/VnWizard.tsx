@@ -15,6 +15,8 @@ import { ArtStep, type ArtProgress } from "./ArtStep";
 import { IdeaStep } from "./IdeaStep";
 import { BuildProgress, StoryBuild, type BuildState } from "./StoryBuild";
 import { EMPTY_DRAFT, genreLabels, toPreferences, type PreferenceDraft } from "./vn-preferences";
+import { imageSources } from "../art-flow/SpriteSourceSelect";
+import { updateConfig } from "../../settings/update-config";
 import "./vn-wizard.css";
 
 /** worldId＝null 從 ① 開始；有值＝桌已建好（匯入來的、或大廳點了設定未完成的桌），從 step 起 */
@@ -70,7 +72,7 @@ export function VnWizard({
   const [visitedStory, setVisitedStory] = useState(step === "story");
   const [visitedArt, setVisitedArt] = useState(step === "art");
   const [build, setBuild] = useState<BuildState>("running");
-  const [art, setArt] = useState<ArtProgress>({ ready: 0, total: 0 });
+  const [, setArt] = useState<ArtProgress>({ ready: 0, total: 0 });
   const [starting, setStarting] = useState(false);
   const finishArt = useRef<(() => Promise<boolean>) | null>(null);
   const flushStory = useRef<(() => Promise<boolean>) | null>(null);
@@ -157,7 +159,11 @@ export function VnWizard({
     setStep("story");
     setVisitedStory(true);
     void onCreated(id);
-    invoke("vn_backgrounds_fill", { worldId: id, scene: null }).catch(() => {});
+    const { source } = await imageSources();
+    if (source) {
+      await updateConfig({ preferences: { vn_sprite_source: source } });
+      await invoke("vn_art_start", { worldId: id });
+    }
     invoke("vn_audio_fill", { worldId: id, scene: null }).catch(() => {});
   }
 
@@ -203,7 +209,6 @@ export function VnWizard({
     }
     if (await saveStory()) onClose();
   }
-  const ready = art.total > 0 && art.ready < art.total;
   const autoPhase: "outline" | "world" | "bible" | "done" =
     worldId === null ? (genesis.busy === "expand" ? "world" : "outline") : build === "done" ? "done" : "bible";
   const footer =
@@ -243,8 +248,8 @@ export function VnWizard({
         {t("vnNext")}
       </button>
     ) : (
-      <button type="button" className="btn btn-primary" disabled={starting} onClick={() => void begin()}>
-        {ready ? t("vnStartPreparing", { n: art.ready, total: art.total }) : t("vnStartGame")}
+      <button type="button" className="btn" disabled={starting} onClick={() => void begin()}>
+        {t("vnStartGame")}
       </button>
     );
 

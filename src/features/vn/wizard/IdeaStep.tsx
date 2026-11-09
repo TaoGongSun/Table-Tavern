@@ -2,6 +2,7 @@
 // 其餘偏好收在「更多偏好」；全部選填，什麼都不填也能生成（AI 自選題材）。卡分頁選檔交給匯入流程開 VN 桌。
 import { useRef, useState } from "react";
 import { t } from "../../../i18n";
+import { SpriteSourceSelect } from "../art-flow/SpriteSourceSelect";
 import { SwapLabel } from "../../../shared/ui/Dialog";
 import type { TableGenesis } from "../../lobby/useTableGenesis";
 import { CHOICES, ideaPlaceholder, LENGTHS, MOODS, VN_GENRES, type PreferenceDraft } from "./vn-preferences";
@@ -175,6 +176,8 @@ export function IdeaStep({
               </label>
             </div>
           )}
+          <SpriteSourceSelect disabled={busy} />
+          <p className="field-note">{t("vnArtAutoQuota")}</p>
           <div className="gen-generate-row">
             <button type="button" className="btn btn-primary" disabled={busy} onClick={onStart}>
               {t("vnStartNow")}

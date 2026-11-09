@@ -1,10 +1,11 @@
+import { ArtFlowNotice } from "./art-flow/ArtFlowNotice";
 // 標題畫面（vn-mode 包 6 §2.8）：從大廳進 VN 桌時先到這裡。沒讀過＝開始當主鈕（有存檔加讀檔）；讀過＝繼續、開始、讀檔；
 // 都有結局一覽／美術一覽／設定／回大廳，面板疊在標題上；
 // 換幕、分岔、讀檔等重進本桌不出。背景用封面（VN 卡匯入的桌才有），沒有就用目前的背景圖。
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { t } from "../../i18n";
-import { useArtProgress } from "./wizard/useArtProgress";
+import { useArtProgress } from "./art-flow/useArtProgress";
 import "./vn-sprites.css";
 import "./vn-story.css";
 
@@ -52,11 +53,12 @@ export function TitleScreen({
   const { progress: art, retry } = useArtProgress(worldId);
   const image = cover ?? backdrop;
   // 立繪進度、失敗、背景各自獨立；行高一直保留，消失時按鈕不跳
-  const preparing = art !== null && art.ready + art.failed < art.total;
+  const preparing = art?.started && art.ready + art.failed < art.total;
   return (
     <div className="vn-title-screen" role="dialog" aria-label={tableName}>
       {image && <img className="vn-title-art" src={image} alt="" />}
       <div className="vn-title-body">
+        <ArtFlowNotice worldId={worldId} />
         <h1 className="vn-title-name">{tableName}</h1>
         {tagline && <p className="vn-title-tagline">{tagline}</p>}
         <p className="vn-title-art-progress">

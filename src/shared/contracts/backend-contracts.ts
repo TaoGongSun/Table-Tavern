@@ -538,3 +538,13 @@ export type KnownMarker =
   | { type: "player_returned"; name: string };
 export type UnknownMarker = { type: string };
 export type EventMarker = KnownMarker | UnknownMarker;
+
+/** VN 每桌僅持久化自動生成授權與首次上台名單。 */
+export interface ArtStatus {
+  art: { started: boolean; appeared: string[] };
+  source: string;
+  ready: number;
+  total: number;
+  backgrounds: number;
+  faces: number;
+}

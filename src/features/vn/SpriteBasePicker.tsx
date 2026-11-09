@@ -1,42 +1,10 @@
 // 定稿挑選：目前候選大圖＋候選縮圖列；立繪來源、生成（再骰）、挑定、上傳定稿。精靈 ③ 與立繪分頁共用
 // （精靈 ③ 的來源下拉整步只放頂部一個，`source={false}`）。
-import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useRef, useState } from "react";
+import { useRef } from "react";
 import "./vn-sprites.css";
 import { t } from "../../i18n";
-import type { AppConfig } from "../../shared/contracts/backend-contracts";
-import { CLI_LABELS, detectClis } from "../ai-connection/cli";
-import { updateConfig } from "../settings/update-config";
+import { SpriteSourceSelect } from "./art-flow/SpriteSourceSelect";
 import type { SpriteSlot } from "./useSpriteSlot";
-
-/** 立繪來源（偏好 `vn_sprite_source`，後端沒設＝codex）：裝了的 Codex／Gemini CLI 加 API */
-export function SpriteSourceSelect() {
-  const [sources, setSources] = useState(["codex", "api"]);
-  const [source, setSource] = useState("codex");
-  useEffect(() => {
-    void invoke<AppConfig>("read_config").then((config) => setSource(String(config.preferences["vn_sprite_source"] || "codex")));
-    void detectClis().then((clis) => setSources([...clis.map((cli) => cli.id).filter((id) => id === "codex" || id === "agy"), "api"]));
-  }, []);
-  return (
-    <label className="vn-source">
-      {t("vnSpriteSource")}
-      <select
-        value={source}
-        onChange={(event) => {
-          setSource(event.currentTarget.value);
-          void updateConfig({ preferences: { vn_sprite_source: event.currentTarget.value } });
-        }}
-      >
-        {[...new Set([source, ...sources])].map((id) => (
-          <option key={id} value={id}>
-            {id === "api" ? "API" : CLI_LABELS[id]}
-          </option>
-        ))}
-      </select>
-      {source !== "codex" && <span className="field-note">{t("vnSpriteMattingNote")}</span>}
-    </label>
-  );
-}
 
 export function SpriteBasePicker({
   slot,
