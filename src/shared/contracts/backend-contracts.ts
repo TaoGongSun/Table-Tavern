@@ -543,6 +543,7 @@ export type EventMarker = KnownMarker | UnknownMarker;
 export interface ArtStatus {
   pause: { reset: number | null } | null;
   pending: number;
+  failed: number;
   art: { started: boolean; appeared: string[] };
   source: string;
   ready: number;

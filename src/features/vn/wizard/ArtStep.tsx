@@ -13,6 +13,7 @@ import { ArtFlowNotice } from "../art-flow/ArtFlowNotice";
 import "../vn-sprites.css";
 
 export interface ArtProgress {
+  started: boolean;
   ready: number;
   total: number;
 }
@@ -103,6 +104,7 @@ export function ArtStep({
   /** 精靈按「開始遊戲」時呼叫：把沒挑定的角色裝成定稿 */
   finishRef: MutableRefObject<(() => Promise<boolean>) | null>;
 }) {
+  const [started, setStarted] = useState(false);
   const [cast, setCast] = useState<CharacterMeta[] | null>(null);
   const [, setTick] = useState(0);
   const [failed, setFailed] = useState<Record<string, string>>({});
@@ -121,8 +123,8 @@ export function ArtStep({
   const list = cast?.map((card) => slots.current.get(card.id)).filter((slot) => slot !== undefined) ?? [];
   const ready = list.filter(installed).length;
   useEffect(() => {
-    if (cast !== null) onProgress({ ready, total: cast.length });
-  }, [ready, cast, onProgress]);
+    if (cast !== null) onProgress({ started, ready, total: cast.length });
+  }, [started, ready, cast, onProgress]);
 
   /** 選了別張的裝成定稿、再骰中的交給後端；有失敗就留在 ③ 顯示在該列（再按開始＝重試），回 false */
   finishRef.current = async () => {
@@ -144,7 +146,7 @@ export function ArtStep({
   return (
     <div className="vn-art-step">
       <div className="vn-art-head">
-        <ArtFlowNotice worldId={worldId} />
+        <ArtFlowNotice worldId={worldId} onStarted={setStarted} />
       </div>
       <div className="vn-art-body">
         <div className="vn-sprite-step">

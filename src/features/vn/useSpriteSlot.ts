@@ -12,6 +12,8 @@ import { onSpriteStatus } from "./useSprites";
 const BASE_EVENT = "base";
 
 const SPRITE_ERRORS: Record<string, MsgKey> = {
+  LANDSCAPE: "vnSpriteLandscape",
+  EMPTY: "vnArtActionFailed",
   MISALIGNED: "vnSpriteMisaligned",
   UPLOAD_ASPECT: "vnSpriteUploadAspect",
   CHARACTER_GONE: "vnSpriteCharacterGone",

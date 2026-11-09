@@ -933,6 +933,13 @@ pub(crate) async fn run_turn(
                     aborted: false,
                 });
             }
+            Err(error)
+                if call.provider == LaneProvider::Agy && error.to_string() == cli::AGY_REFUSAL =>
+            {
+                discard_new(call, &slots, &session_id).await;
+                retire_agy_conversation(call, &key, &session_id, &mut store, &store_path)?;
+                return Err(error.to_string());
+            }
             // CLI 正在更新：程序根本沒起，續聊線完好。原樣回錯，不撤線、不重開重試
             Err(error) if cli::is_updating_error(&error.to_string()) => {
                 match prior_state {

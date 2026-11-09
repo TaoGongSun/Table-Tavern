@@ -319,3 +319,24 @@ async fn agy_image_quota_error_beats_later_success() {
         .expect("quota is an error");
     assert!(error.to_string().starts_with("AI_IMAGE_QUOTA:"));
 }
+
+#[tokio::test]
+async fn agy_refusal_in_accumulated_deltas_is_an_error_at_done() {
+    let _serial = crate::inflight::lock_real_process_tests();
+    let fx = fake_cli(
+        "agy-refusal",
+        &[
+            r#"out {"event":"step_update","step_update":{"step_type":"agent_response","text_delta":"The prompt could not "}}"#,
+            r#"out {"event":"step_update","step_update":{"step_type":"agent_response","text_delta":"be submitted. Prohibited Use policy"}}"#,
+            r#"out {"event":"result","result":{"status":"SUCCESS","response":"different result"}}"#,
+        ],
+    );
+    assert_eq!(
+        fx.run(&AGY_PROTOCOL, None, None)
+            .await
+            .err()
+            .unwrap()
+            .to_string(),
+        crate::cli::AGY_REFUSAL
+    );
+}

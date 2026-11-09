@@ -398,6 +398,7 @@ pub(crate) struct ArtStatus {
     faces: usize,
     pause: Option<vn_sprites::pause::Pause>,
     pending: usize,
+    failed: usize,
 }
 
 #[tauri::command]
@@ -428,6 +429,10 @@ pub(crate) fn vn_art_status(app: tauri::AppHandle, world_id: String) -> Result<A
             .is_none()
     }));
     let source = vn_sprites::sprite_source(&vn_sprites::read_config(&app)?);
+    let failed = vn_sprites_status(world_id.clone())
+        .iter()
+        .filter(|slot| slot.expression == "base" && slot.state == "failed")
+        .count();
     let pending =
         vn_sprites_status(world_id.clone()).len() + queue::background_snapshot(&world_id).len();
     Ok(ArtStatus {
@@ -435,6 +440,7 @@ pub(crate) fn vn_art_status(app: tauri::AppHandle, world_id: String) -> Result<A
         source,
         pause: vn_sprites::pause::snapshot(source),
         pending,
+        failed,
         ready,
         total: characters.len(),
         backgrounds,

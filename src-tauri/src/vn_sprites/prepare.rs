@@ -135,16 +135,16 @@ pub(crate) fn snapshot(world: &str) -> Vec<SlotStatus> {
 pub(crate) fn start(app: &tauri::AppHandle, world: &str, adopt: &[String]) -> Result<(), String> {
     let root = data_root(app)?;
     data::vn::refuse_if_replay(&root, world)?;
+    for character in adopt {
+        if is_generating(world, character) {
+            mark_adopt(world, character);
+        }
+    }
     if !data::vn::art_flow(&root, world)
         .map_err(|e| e.to_string())?
         .started
     {
         return Ok(());
-    }
-    for character in adopt {
-        if is_generating(world, character) {
-            mark_adopt(world, character);
-        }
     }
     {
         let mut book = book();

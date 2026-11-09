@@ -329,3 +329,60 @@ fn cleanup_home_by_provider() {
     );
     assert!(cleanup::cleanup_home(&rootless, LaneProvider::Agy).is_err());
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn refusal_retires_open_and_resumed_lanes_without_an_automatic_retry() {
+    let _serial = crate::inflight::lock_real_process_tests();
+    for resumed in [false, true] {
+        let fake = fake_agy("refusal", &[A, A, B]);
+        plant(&fake.home, A);
+        let mut events = vec![event(TranscriptKind::Player, "", "Player", "Hello")];
+        if resumed {
+            run_turn(
+                &fake.call,
+                &fake.root,
+                &fake.world_id,
+                input(&events, 0),
+                None,
+                |_| {},
+            )
+            .await
+            .unwrap();
+            events.push(event(TranscriptKind::Dialogue, "fox-id", "Actor", "Reply"));
+            events.push(event(TranscriptKind::Player, "", "Player", "Continue"));
+        }
+        let before = std::fs::read_to_string(fake.dir.join("ids.txt"))
+            .unwrap()
+            .lines()
+            .count();
+        let script = std::fs::read_to_string(&fake.call.program)
+            .unwrap()
+            .replace(
+                "'response': '回覆'",
+                "'response': 'The prompt could not be submitted. Prohibited Use policy'",
+            );
+        std::fs::write(&fake.call.program, script).unwrap();
+        let error = run_turn(
+            &fake.call,
+            &fake.root,
+            &fake.world_id,
+            input(&events, 0),
+            None,
+            |_| {},
+        )
+        .await
+        .err()
+        .unwrap();
+        assert_eq!(error, crate::cli::AGY_REFUSAL);
+        assert_eq!(
+            std::fs::read_to_string(fake.dir.join("ids.txt"))
+                .unwrap()
+                .lines()
+                .count(),
+            before - 1
+        );
+        assert!(read_store(&data::lanes_path(&fake.root, &fake.world_id).unwrap()).is_empty());
+        assert!(!planted(&fake.home, A));
+    }
+}

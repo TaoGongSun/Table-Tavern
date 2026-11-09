@@ -50,10 +50,8 @@ export function TitleScreen({
       live = false;
     };
   }, [worldId]);
-  const { progress: art, retry } = useArtProgress(worldId);
+  useArtProgress(worldId);
   const image = cover ?? backdrop;
-  // 立繪進度、失敗、背景各自獨立；行高一直保留，消失時按鈕不跳
-  const preparing = art?.started && art.ready + art.failed < art.total;
   return (
     <div className="vn-title-screen" role="dialog" aria-label={tableName}>
       {image && <img className="vn-title-art" src={image} alt="" />}
@@ -61,18 +59,6 @@ export function TitleScreen({
         <ArtFlowNotice worldId={worldId} />
         <h1 className="vn-title-name">{tableName}</h1>
         {tagline && <p className="vn-title-tagline">{tagline}</p>}
-        <p className="vn-title-art-progress">
-          {preparing && <span className="vn-pending">{t("vnArtPreparing", { n: art.ready, total: art.total })}</span>}
-          {art !== null && art.failed > 0 && (
-            <span className="vn-title-art-failed">
-              {t("vnArtFailed", { n: art.failed })}
-              <button type="button" className="btn btn-ghost btn-sm" onClick={retry}>
-                {t("vnArtRetry")}
-              </button>
-            </span>
-          )}
-          {!image && <span className="vn-pending">{t("vnArtBackdropPending")}</span>}
-        </p>
         {progress !== "loading" && (
           <div className="vn-title-menu">
             {progress === "resume" && (

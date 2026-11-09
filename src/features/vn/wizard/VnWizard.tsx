@@ -72,7 +72,7 @@ export function VnWizard({
   const [visitedStory, setVisitedStory] = useState(step === "story");
   const [visitedArt, setVisitedArt] = useState(step === "art");
   const [build, setBuild] = useState<BuildState>("running");
-  const [, setArt] = useState<ArtProgress>({ ready: 0, total: 0 });
+  const [art, setArt] = useState<ArtProgress>({ started: false, ready: 0, total: 0 });
   const [starting, setStarting] = useState(false);
   const finishArt = useRef<(() => Promise<boolean>) | null>(null);
   const flushStory = useRef<(() => Promise<boolean>) | null>(null);
@@ -246,7 +246,7 @@ export function VnWizard({
         {t("vnNext")}
       </button>
     ) : (
-      <button type="button" className="btn" disabled={starting} onClick={() => void begin()}>
+      <button type="button" className={art.started ? "btn btn-primary" : "btn"} disabled={starting} onClick={() => void begin()}>
         {t("vnStartGame")}
       </button>
     );

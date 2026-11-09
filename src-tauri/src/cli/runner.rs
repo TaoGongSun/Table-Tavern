@@ -731,6 +731,12 @@ async fn drive_child(
                 }
             }
             CliLine::Done { text, is_error } => {
+                let (text, is_error) =
+                    if protocol.id == "agy" && super::stream::agy_errors::is_refusal(&full_text) {
+                        (super::stream::agy_errors::REFUSAL.to_owned(), true)
+                    } else {
+                        (text, is_error)
+                    };
                 // 零增量時收尾全文會被當成正文採用：收到當下就檢查，不等程序退出
                 // （CLI 送完失控的 Done 後若持續吐 stderr 不退，迴圈後的 fallback 永遠輪不到）。
                 // 只在這裡計一次，迴圈後採用 fallback 時不再餵 guard。
@@ -813,6 +819,7 @@ async fn drive_child(
             }
             if text.starts_with("AI_INCOMPLETE_RESPONSE:")
                 || text.starts_with(super::stream::agy_errors::QUOTA)
+                || text == super::stream::agy_errors::REFUSAL
             {
                 return Err(crate::data::invalid_data(text));
             }

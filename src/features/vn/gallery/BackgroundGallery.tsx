@@ -175,7 +175,7 @@ function BackgroundCell({
       </figcaption>
       {/* 錯誤走 AI 錯誤分流翻成人話（認不得的才顯示翻譯後的原文、收成兩行）；遮過帳號的完整原文放 title */}
       {failed && (
-        <p className="field-warn vn-gallery-fail" title={redactAiErrorDetail(backendText(job.reason))}>
+        <p className="field-warn vn-gallery-fail" title={failureText(job.reason)}>
           {t("vnGalleryFailed", { reason: failureText(job.reason) })}
         </p>
       )}

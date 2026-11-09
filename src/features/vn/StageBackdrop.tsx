@@ -88,6 +88,7 @@ export function StageBackdrop({ image, period, weather, location, state, onRetry
     if (ready) setLast(ready);
   }, [ready]);
   const shown = ready ?? last;
+  const fallback = ({ morning: "#293449", day: "#293b46", dusk: "#48312f", night: "#18213b" } as Record<string, string>)[period] ?? "#293b46";
   const { sky, desat, tint } = weatherGrade(weather, tintOf(period, shown), period);
   return (
     <>
@@ -96,7 +97,7 @@ export function StageBackdrop({ image, period, weather, location, state, onRetry
       ) : last ? (
         <img className="vn-backdrop vn-backdrop-waiting" src={last.src!} alt="" />
       ) : (
-        <div className="vn-backdrop vn-backdrop-placeholder" style={{ background: `linear-gradient(160deg, ${TINTS[period]?.color ?? "#34404b"}, #10131c 85%)` }}>
+        <div className="vn-backdrop vn-backdrop-placeholder" style={{ background: `linear-gradient(160deg, ${fallback}, #10131c 85%)` }}>
           <small className="vn-backdrop-place">{location}</small>
         </div>
       )}

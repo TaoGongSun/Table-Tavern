@@ -481,6 +481,7 @@ mod command_classification {
     ];
 
     const READ_WORLD: &[&str] = &[
+        "vn_art_status",
         "world_info_notices",
         "branch_bindings",
         "card_interfaces",

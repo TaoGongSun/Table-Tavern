@@ -7,6 +7,7 @@ pub(crate) mod pause;
 pub(crate) mod prepare;
 pub(crate) mod queue;
 pub(crate) mod store;
+mod trim;
 
 use crate::data::vn_art::CastArt;
 use crate::generated_image::{self, cli_fetch, png_data_url, GeneratedImage};
@@ -174,6 +175,7 @@ pub(crate) async fn generate_candidate(
     let _generating = prepare::generating(world, character);
     let png = generate_png(app, &config, world, &prompt, reference.as_deref(), "2:3").await?;
     let png = matting::ensure_alpha(app, png).await?;
+    let png = trim::trim_body(&png)?;
     let file = {
         let _permit = data::world_write_permit_async(world).await?;
         if !character_exists(&root, world, character) {
@@ -311,6 +313,7 @@ pub(crate) async fn install_at(
     let root = data_root(app)?;
     let config = read_config(app)?;
     let png = matting::ensure_alpha(app, png).await?;
+    let png = trim::trim_body(&png)?;
     let size = store::png_size(&png).ok_or("AI_IMAGE_DECODE_FAILED")?;
     let (face, fallback) = locate_face(app, &config, world, &png, size).await;
     let _permit = data::world_write_permit_async(world).await?;
@@ -520,6 +523,7 @@ async fn place_variant(
     let root = data_root(app)?;
     let config = read_config(app)?;
     let png = matting::ensure_alpha(app, png).await?;
+    let png = trim::trim_body(&png)?;
     let dir = SpriteDir::of(&root, world, character)?;
     let loaded = dir.read().ok_or("VN_SPRITE_MISSING")?;
     let shared = match may_share {

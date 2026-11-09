@@ -8,7 +8,7 @@ use crate::data::vn_art::{Appearance, CardArt};
 const ONCE: &str = "Call the image generation tool exactly once; do not retry, edit, crop, composite or post-process the result with any other tool or script; return that single generated file as is.";
 
 /// 定稿規格塊：七分身、正面直立、中性閉嘴；不寫左右（三家都會畫反）。畫風另接 `style_line`、背景另接 `background`
-const BASE_SPEC: &str = "Visual novel character sprite. Framing: seven-tenths body shot, from the top of the head down to mid-calf; feet are not shown. The character faces the viewer squarely in a front-facing neutral standing pose, arms relaxed at the sides, calm neutral expression, mouth closed. Portrait orientation, the whole figure centered with a little empty margin above the head.";
+const BASE_SPEC: &str = "Visual novel character sprite. Framing: seven-tenths body shot, from the top of the head down to mid-calf; feet are not shown. The character faces the viewer squarely in a front-facing neutral standing pose, arms relaxed at the sides, calm neutral expression, mouth closed. 2:3 portrait canvas, the whole figure centered with a little empty margin above the head.";
 
 /// 卡作者文字的段頭：標明來源、只當畫面描述
 pub(crate) fn authored(title: &str, text: &str) -> String {

@@ -1,7 +1,7 @@
 // 章末字卡（vn-mode 包 5 §2.3）：「第 N 章 完」→ 換幕中 → 「第 N+1 章」；失敗顯示原因與重試。
 import { t } from "../../i18n";
 import { IconStop } from "../../shared/ui/icons";
-import { backendText } from "../../shared/ui/backend-text";
+import { AiErrorText } from "../../shared/ui/atoms";
 import type { ChapterCard } from "./useChapterEnd";
 import "./vn-story.css";
 
@@ -47,7 +47,7 @@ export function ChapterCardView({
       {card.phase === "reenter" && <p className="vn-chapter-note">{t("vnReenterFailed")}</p>}
       {card.phase === "failed" && card.error && (
         <p className="vn-chapter-note" role="alert">
-          {backendText(card.error)}
+          <AiErrorText text={card.error} />
         </p>
       )}
       {opening && onStop && (

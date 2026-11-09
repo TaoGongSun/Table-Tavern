@@ -485,6 +485,16 @@ pub fn parse_agy_line(line: &str) -> CliLine {
             }
         }
         Some("result") => {
+            if value
+                .pointer("/result/response")
+                .and_then(|v| v.as_str())
+                .is_some_and(agy_errors::is_refusal)
+            {
+                return CliLine::Done {
+                    text: agy_errors::REFUSAL.to_owned(),
+                    is_error: true,
+                };
+            }
             let status = value
                 .pointer("/result/status")
                 .and_then(|status| status.as_str())

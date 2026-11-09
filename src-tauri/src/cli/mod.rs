@@ -42,6 +42,7 @@ pub use runner::{
 pub(crate) use spawn::auto_update_off;
 #[cfg(unix)]
 pub(crate) use spawn::{spawn_helper, Spawned};
+pub(crate) use stream::agy_errors::REFUSAL as AGY_REFUSAL;
 pub use stream::{
     parse_agy_usage, parse_claude_usage, parse_codex_usage, parse_grok_usage, AGY_PROTOCOL,
     CLAUDE_PROTOCOL, CODEX_PROTOCOL, GROK_PROTOCOL,

@@ -21,6 +21,14 @@ pub(super) fn tool_error(step: &Value) -> Option<CliLine> {
             }
         }
     }
+    static ACCOUNT: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let safe = ACCOUNT
+        .get_or_init(|| {
+            regex::Regex::new(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+                .expect("account pattern")
+        })
+        .replace_all(&safe, "<account>")
+        .into_owned();
     log::warn!("agy generate_image: {safe}");
     let body = message
         .split_once("body:")
@@ -43,17 +51,13 @@ pub(super) fn tool_error(step: &Value) -> Option<CliLine> {
                 })
                 .or_else(|| {
                     detail.iter().find_map(|d| {
-                        d.get("retryDelay")?
-                            .as_str()?
-                            .trim_end_matches('s')
-                            .parse::<f64>()
-                            .ok()
-                            .filter(|s| s.is_finite() && *s > 0.0)
-                            .map(|s| {
-                                chrono::Utc::now()
-                                    .timestamp_millis()
-                                    .saturating_add((s * 1000.0) as i64)
-                            })
+                        let delay = d
+                            .get("retryDelay")
+                            .or_else(|| d.pointer("/metadata/quotaResetDelay"))?
+                            .as_str()?;
+                        chrono::Utc::now()
+                            .timestamp_millis()
+                            .checked_add(delay_ms(delay)?)
                     })
                 });
             return Some(CliLine::Done {
@@ -66,6 +70,40 @@ pub(super) fn tool_error(step: &Value) -> Option<CliLine> {
         }
     }
     Some(CliLine::SoftError(safe))
+}
+
+fn delay_ms(text: &str) -> Option<i64> {
+    static PARTS: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let parts = PARTS
+        .get_or_init(|| regex::Regex::new(r"(\d+(?:\.\d+)?)(h|m|s)").expect("duration pattern"));
+    let mut end = 0;
+    let mut seconds = 0.0;
+    for part in parts.captures_iter(text) {
+        let matched = part.get(0)?;
+        if matched.start() != end {
+            return None;
+        }
+        end = matched.end();
+        let scale = match &part[2] {
+            "h" => 3600.0,
+            "m" => 60.0,
+            _ => 1.0,
+        };
+        seconds += part[1].parse::<f64>().ok()? * scale;
+    }
+    (end == text.len()
+        && seconds > 0.0
+        && seconds.is_finite()
+        && seconds < i64::MAX as f64 / 1000.0)
+        .then_some((seconds * 1000.0).round() as i64)
+}
+
+pub(crate) const REFUSAL: &str = "AI_CONTENT_FILTERED: agy";
+pub(crate) fn is_refusal(text: &str) -> bool {
+    let text = text.trim();
+    text.len() <= 1024
+        && text.starts_with("The prompt could not be submitted.")
+        && text.contains("Prohibited Use policy")
 }
 
 #[cfg(test)]
@@ -103,5 +141,46 @@ mod tests {
                 is_error: true
             })
         );
+    }
+}
+
+#[cfg(test)]
+mod refusal_tests {
+    use super::*;
+    const SAMPLE: &str = "The prompt could not be submitted. The prompt contains sensitive words that violate Google's [Generative AI Prohibited Use policy](https://policies.google.com/terms/generative-ai/use-policy). Try rephrasing the prompt. If you think this was an error, [send feedback](https://aistudio.google.com/docs/troubleshooting).";
+    #[test]
+    fn matches_only_the_known_short_prefix_and_policy_combination() {
+        assert!(is_refusal(&format!(" \n{SAMPLE}\r\n")));
+        for text in [
+            format!("The character said: {SAMPLE}"),
+            SAMPLE.replace("Prohibited Use policy", "other policy"),
+            format!("{SAMPLE}{}", "x".repeat(1024)),
+            "I cannot help you".to_owned(),
+        ] {
+            assert!(!is_refusal(&text));
+        }
+        let line =
+            serde_json::json!({"event":"result","result":{"status":"SUCCESS","response":SAMPLE}})
+                .to_string();
+        assert_eq!(
+            super::super::parse_agy_line(&line),
+            CliLine::Done {
+                text: REFUSAL.to_owned(),
+                is_error: true
+            }
+        );
+    }
+}
+
+#[cfg(test)]
+mod duration_tests {
+    use super::*;
+    #[test]
+    fn accepts_provider_delays_without_inventing_unknown_units() {
+        assert_eq!(delay_ms("4h39m1.35s"), Some(16_741_350));
+        assert_eq!(delay_ms("12.5s"), Some(12_500));
+        assert_eq!(delay_ms("oops4h"), None);
+        assert_eq!(delay_ms("4days"), None);
+        assert_eq!(delay_ms(""), None);
     }
 }
