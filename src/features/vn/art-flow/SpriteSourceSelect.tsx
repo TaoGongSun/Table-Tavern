@@ -13,12 +13,12 @@ export async function imageSources() {
   return { sources, source: sources.includes(saved) ? saved : (sources[0] ?? "") };
 }
 
-export function SpriteSourceSelect({ onChange, disabled = false }: { onChange?: (source: string) => void; disabled?: boolean }) {
+export function SpriteSourceSelect({ onChange, onSelect, disabled = false }: { onChange?: (source: string) => void; onSelect?: () => void; disabled?: boolean }) {
   const [choice, setChoice] = useState({ sources: [] as string[], source: "" });
   const [error, setError] = useState(false);
   useEffect(() => {
     let live = true;
-    imageSources().then((next) => { if (live) { setChoice(next); onChange?.(next.source); } }).catch(() => { if (live) setError(true); });
+    imageSources().then(async (next) => { if (next.source) await updateConfig({ preferences: { vn_sprite_source: next.source } }); if (live) { setChoice(next); onChange?.(next.source); } }).catch(() => { if (live) setError(true); });
     return () => { live = false; };
   }, [onChange]);
   return <label className="vn-source">{t("vnSpriteSource")}
@@ -26,7 +26,7 @@ export function SpriteSourceSelect({ onChange, disabled = false }: { onChange?: 
       const source = event.currentTarget.value;
       setError(false);
       void updateConfig({ preferences: { vn_sprite_source: source } }).then(() => {
-        setChoice((current) => ({ ...current, source })); onChange?.(source);
+        setChoice((current) => ({ ...current, source })); onChange?.(source); onSelect?.();
       }).catch(() => setError(true));
     }}>{choice.sources.map((id) => <option key={id} value={id}>{CLI_LABELS[id] ?? "API"}</option>)}</select>
     {(!choice.source || error) && <span className="field-note">{t(error ? "vnArtActionFailed" : "vnArtNoSource")}</span>}

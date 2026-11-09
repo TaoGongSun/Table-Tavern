@@ -48,7 +48,7 @@ function FirstBackdrop({ worldId }: { worldId: string }) {
       ) : (
         <div className="vn-start-preview vn-start-placeholder">
           <p className="vn-start-progress">
-            {t(first && statusOf(first)?.state === "failed" ? "vnBackgroundFailed" : "vnBackgroundPreparing")}
+            {t(first && statusOf(first)?.state === "failed" ? "vnBackgroundFailed" : first && statusOf(first) ? "vnBackgroundPreparing" : "vnArtNotStarted")}
           </p>
         </div>
       )}

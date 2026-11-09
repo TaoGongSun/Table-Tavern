@@ -20,14 +20,21 @@ export function ArtFlowNotice({ worldId }: { worldId: string }) {
     const refresh = () => { if (live) void read().catch(() => {}); };
     refresh();
     const off = onSpriteStatus(worldId, refresh);
+    const flow = listen("vn-art-flow-status", refresh);
     const bg = listen<{ worldId: string }>(BACKGROUND_STATUS_EVENT, ({ payload }) => { if (payload.worldId === worldId) refresh(); });
-    return () => { live = false; off(); void bg.then((stop) => stop()); };
+    return () => { live = false; off(); void flow.then((stop) => stop()); void bg.then((stop) => stop()); };
   }, [read, worldId]);
+  const retry = () => {
+    setBusy(true); setError(false);
+    void invoke("vn_art_retry", { worldId }).then(read).catch(() => setError(true)).finally(() => setBusy(false));
+  };
   const remaining = status ? status.total - status.ready + status.backgrounds : 0;
   return <div className="vn-art-flow">
-    <SpriteSourceSelect onChange={setSource} disabled={busy} />
+    <SpriteSourceSelect onChange={setSource} onSelect={status?.art.started ? retry : undefined} disabled={busy} />
     <p>{status?.art.started ? t("vnArtWorking", { n: Math.max(0, (batch ?? remaining) - remaining), total: batch ?? remaining }) : t("vnArtNotStarted")}</p>
     <p className="field-note">{t("vnArtEstimate", { source: source === "agy" ? "Gemini CLI" : source === "api" ? "API" : "Codex CLI", n: status ? status.total - status.ready : 0, bg: status?.backgrounds ?? 0, faces: status?.faces ?? 0 })}</p>
+    {status?.pause && <p className="field-warn">{t(status.pause.reset ? "vnArtPaused" : "vnArtPausedUnknown", { n: status.pending, time: status.pause.reset ? new Date(status.pause.reset).toLocaleString() : "" })}</p>}
+    {status?.art.started && <button type="button" className="btn btn-sm" disabled={busy} onClick={retry}>{t("vnArtRetryNow")}</button>}
     {!status?.art.started && <button type="button" className="btn btn-primary" disabled={!source || busy} onClick={() => {
       setBusy(true); setError(false); setBatch(remaining);
       void updateConfig({ preferences: { vn_sprite_source: source } }).then(() => invoke("vn_art_start", { worldId })).then(read).catch(() => setError(true)).finally(() => setBusy(false));

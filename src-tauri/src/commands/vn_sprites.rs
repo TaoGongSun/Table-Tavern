@@ -364,6 +364,8 @@ pub(crate) struct ArtStatus {
     total: usize,
     backgrounds: usize,
     faces: usize,
+    pause: Option<vn_sprites::pause::Pause>,
+    pending: usize,
 }
 
 #[tauri::command]
@@ -393,9 +395,14 @@ pub(crate) fn vn_art_status(app: tauri::AppHandle, world_id: String) -> Result<A
             .base_period(&bg.slug, &places.periods(&bg.slug))
             .is_none()
     }));
+    let source = vn_sprites::sprite_source(&vn_sprites::read_config(&app)?);
+    let pending =
+        vn_sprites_status(world_id.clone()).len() + queue::background_snapshot(&world_id).len();
     Ok(ArtStatus {
         art: data::vn::art_flow(&root, &world_id).map_err(|e| e.to_string())?,
-        source: vn_sprites::sprite_source(&vn_sprites::read_config(&app)?),
+        source,
+        pause: vn_sprites::pause::snapshot(source),
+        pending,
         ready,
         total: characters.len(),
         backgrounds,
@@ -416,5 +423,22 @@ pub(crate) fn vn_art_start(app: tauri::AppHandle, world_id: String) -> Result<()
     }
     vn_sprites::prepare::start(&app, &world_id, &[])?;
     super::vn_backgrounds::vn_backgrounds_fill(app, world_id, None)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub(crate) async fn vn_art_retry(app: tauri::AppHandle, world_id: String) -> Result<(), String> {
+    data::vn::refuse_if_replay(&data_root(&app)?, &world_id)?;
+    let source = vn_sprites::sprite_source(&vn_sprites::read_config(&app)?);
+    {
+        let _gate = vn_sprites::source_gate().lock().await;
+        vn_sprites::pause::clear(source);
+    }
+    vn_sprites::prepare::retry_world(&world_id);
+    queue::retry_world(&app, &world_id);
+    vn_sprites::prepare::start(&app, &world_id, &[])?;
+    vn_sprites_fill(app.clone(), world_id.clone())?;
+    super::vn_backgrounds::vn_backgrounds_fill(app.clone(), world_id, None)?;
+    vn_sprites::pause::resume(&app);
     Ok(())
 }

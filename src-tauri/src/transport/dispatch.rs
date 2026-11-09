@@ -277,7 +277,7 @@ pub(crate) async fn prepare_lane_call(
 /// 已有更精確的碼就原樣放行；只認這份白名單，不用 `AI_` 開頭一概放行——
 /// 錯誤字串可能整包來自供應商，讓它自帶前綴就能繞過分流。
 pub(crate) fn ai_call_failure(error: String) -> String {
-    const CODED: [&str; 8] = [
+    const CODED: [&str; 9] = [
         "AI_STREAM_STALLED:",
         crate::transport::RUNAWAY_CODE,
         "AI_HTTP_STATUS_",
@@ -286,6 +286,7 @@ pub(crate) fn ai_call_failure(error: String) -> String {
         "AI_EMPTY_RESPONSE:",
         "AI_INCOMPLETE_RESPONSE:",
         "AI_CONTENT_FILTERED:",
+        "AI_IMAGE_QUOTA:",
     ];
     if CODED.iter().any(|code| error.starts_with(code)) {
         error

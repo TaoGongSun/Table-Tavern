@@ -301,3 +301,21 @@ fn stall_errors_are_recognised_raw_and_nested() {
     assert!(is_stall_error(&UiMsg::CliStalledAfterOutput.to_string()));
     assert!(!is_stall_error(&UiMsg::CliUnexpectedAbort.to_string()));
 }
+
+#[tokio::test]
+async fn agy_image_quota_error_beats_later_success() {
+    let _serial = crate::inflight::lock_real_process_tests();
+    let fx = fake_cli(
+        "image-quota",
+        &[
+            r#"out {"event":"step_update","step_update":{"step_type":"tool","tool_name":"generate_image","state":"ERROR","tool_info":{"error":{"message":"body: {\"error\":{\"details\":[{\"reason\":\"QUOTA_EXHAUSTED\"}]}}"}}}}"#,
+            r#"out {"event":"result","result":{"status":"SUCCESS","response":"NO_IMAGE"}}"#,
+        ],
+    );
+    let error = fx
+        .run(&AGY_PROTOCOL, None, None)
+        .await
+        .err()
+        .expect("quota is an error");
+    assert!(error.to_string().starts_with("AI_IMAGE_QUOTA:"));
+}

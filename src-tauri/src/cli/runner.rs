@@ -811,7 +811,9 @@ async fn drive_child(
             if let Some(coded) = context_overflow::cli_failure(&text) {
                 return Err(crate::data::invalid_data(coded));
             }
-            if text.starts_with("AI_INCOMPLETE_RESPONSE:") {
+            if text.starts_with("AI_INCOMPLETE_RESPONSE:")
+                || text.starts_with(super::stream::agy_errors::QUOTA)
+            {
                 return Err(crate::data::invalid_data(text));
             }
             // 需要更新 CLI 的（模型叫不到、CLI 太舊）掛自己的碼，前端接更新鈕

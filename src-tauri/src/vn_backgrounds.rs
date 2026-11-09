@@ -630,6 +630,9 @@ pub(crate) async fn job(app: &tauri::AppHandle, slot: &BgSlot) -> Result<bool, S
     let png = match generate().await {
         Ok(png) => png,
         Err(error) => {
+            if vn_sprites::pause::is_pause(&error) {
+                return Err(error);
+            }
             log::warn!("背景生成失敗，重試一次：{error}");
             generate().await?
         }

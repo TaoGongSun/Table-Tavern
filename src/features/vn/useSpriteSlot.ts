@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { t, type MsgKey } from "../../i18n";
 import type { SpriteSlotStatus, SpriteState } from "../../shared/contracts/backend-contracts";
+import { explainAiError } from "../../shared/ui/ai-error";
 import { backendText } from "../../shared/ui/backend-text";
 import { onSpriteStatus } from "./useSprites";
 
@@ -21,6 +22,8 @@ const SPRITE_ERRORS: Record<string, MsgKey> = {
 
 /** 後端 `VN_SPRITE_<碼>` 換成人話，其餘照通用錯誤 */
 export function spriteError(raw: unknown): string {
+  const explained = explainAiError(String(raw));
+  if (explained) return t(explained);
   const code = /VN_SPRITE_([A-Z_]+)/.exec(String(raw))?.[1];
   return code && SPRITE_ERRORS[code] ? t(SPRITE_ERRORS[code]) : backendText(raw);
 }

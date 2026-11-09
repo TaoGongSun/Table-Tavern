@@ -3,6 +3,7 @@
 //! 生成期間不持桌寫入許可，寫回前重驗（store::Snapshot、世代號）。
 mod compose;
 pub(crate) mod matting;
+pub(crate) mod pause;
 pub(crate) mod prepare;
 pub(crate) mod queue;
 pub(crate) mod store;
@@ -46,29 +47,40 @@ pub(crate) async fn generate_png(
     let source = sprite_source(config);
     let image = {
         let _gate = source_gate().lock().await;
-        match source {
-            "api" => {
-                let reference = reference.map(png_data_url);
-                GeneratedImage::Encoded(
-                    transport::generate_image_with(
-                        config,
-                        prompt,
-                        aspect_ratio,
-                        reference.as_deref(),
-                    )
-                    .await?,
-                )
-            }
-            kind => {
-                cli_fetch::run_cli_image(app, config, kind, Some(world), prompt, reference).await?
-            }
+        if pause::snapshot(source).is_some() {
+            return Err(pause::PAUSED.to_owned());
         }
+        let outcome: Result<GeneratedImage, String> = async {
+            Ok(match source {
+                "api" => {
+                    let reference = reference.map(png_data_url);
+                    GeneratedImage::Encoded(
+                        transport::generate_image_with(
+                            config,
+                            prompt,
+                            aspect_ratio,
+                            reference.as_deref(),
+                        )
+                        .await?,
+                    )
+                }
+                kind => {
+                    cli_fetch::run_cli_image(app, config, kind, Some(world), prompt, reference)
+                        .await?
+                }
+            })
+        }
+        .await;
+        if let Err(error) = &outcome {
+            pause::record(app, source, error);
+        }
+        outcome?
     };
     generated_image::normalize(image).await
 }
 
 /// 同一來源一次一張（定稿候選與臉層共用）
-fn source_gate() -> &'static tokio::sync::Mutex<()> {
+pub(crate) fn source_gate() -> &'static tokio::sync::Mutex<()> {
     static GATE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
     &GATE
 }

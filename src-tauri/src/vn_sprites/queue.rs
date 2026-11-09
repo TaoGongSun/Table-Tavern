@@ -327,7 +327,7 @@ pub(crate) fn forget_slot(world: &str, character: &str, set: Option<&str>, expre
     });
 }
 
-fn start_worker(app: &tauri::AppHandle) {
+pub(crate) fn start_worker(app: &tauri::AppHandle) {
     {
         let mut queue = queue();
         if queue.worker || queue.waiting.is_empty() {
@@ -354,9 +354,18 @@ fn start_worker(app: &tauri::AppHandle) {
             };
             emit(&app, &job, "running", None);
             match &job {
-                Job::Face(slot) => run_face(&app, slot).await,
+                Job::Face(slot) => {
+                    if !run_face(&app, slot).await {
+                        break;
+                    }
+                }
                 Job::Background(slot) => {
                     let outcome = crate::vn_backgrounds::job(&app, slot).await;
+                    if let Err(reason) = &outcome {
+                        if park_if_paused(&job, reason) {
+                            break;
+                        }
+                    }
                     let mut queue = queue();
                     queue.running = None;
                     if let Err(reason) = &outcome {
@@ -373,7 +382,7 @@ fn start_worker(app: &tauri::AppHandle) {
     });
 }
 
-async fn run_face(app: &tauri::AppHandle, slot: &Slot) {
+async fn run_face(app: &tauri::AppHandle, slot: &Slot) -> bool {
     let job = Job::Face(slot.clone());
     let outcome = super::face_job(
         app,
@@ -383,6 +392,11 @@ async fn run_face(app: &tauri::AppHandle, slot: &Slot) {
         &slot.expression,
     )
     .await;
+    if let Err(reason) = &outcome {
+        if park_if_paused(&job, reason) {
+            return false;
+        }
+    }
     let mut requeue = false;
     {
         let mut queue = queue();
@@ -416,8 +430,43 @@ async fn run_face(app: &tauri::AppHandle, slot: &Slot) {
             queue.push(job);
         }
     }
+    true
 }
 
+fn park_if_paused(job: &Job, error: &str) -> bool {
+    if !super::pause::is_pause(error) {
+        return false;
+    }
+    let mut held = queue();
+    held.running = None;
+    if !held.waiting.contains(job) {
+        held.waiting.push_front(job.clone());
+    }
+    held.worker = false;
+    true
+}
+
+pub(crate) fn retry_world(app: &tauri::AppHandle, world: &str) {
+    {
+        let mut held = queue();
+        let failed: Vec<_> = held
+            .failed
+            .keys()
+            .filter(|job| match job {
+                Job::Face(s) => s.world == world,
+                Job::Background(s) => s.world == world,
+            })
+            .cloned()
+            .collect();
+        for job in failed {
+            held.failed.remove(&job);
+            if held.is_new(&job) {
+                held.push(job);
+            }
+        }
+    }
+    start_worker(app);
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -441,6 +490,23 @@ mod tests {
             Backdrop::new(location, None, None, &Default::default()),
             mode,
         ))
+    }
+
+    #[test]
+    fn a_paused_job_is_retained_without_failing_the_rest() {
+        let job = face("paused");
+        {
+            let mut held = queue();
+            held.running = Some(job.clone());
+            held.worker = true;
+        }
+        assert!(park_if_paused(&job, "AI_IMAGE_QUOTA:"));
+        let mut held = queue();
+        assert!(!held.worker);
+        assert!(held.running.is_none());
+        assert!(held.waiting.contains(&job));
+        assert!(!held.failed.contains_key(&job));
+        held.waiting.retain(|j| *j != job);
     }
 
     #[test]

@@ -157,6 +157,12 @@ pub(crate) fn start(app: &tauri::AppHandle, world: &str, adopt: &[String]) -> Re
     tauri::async_runtime::spawn(async move {
         loop {
             if let Err(reason) = run(&app, &world).await {
+                if super::pause::is_pause(&reason) {
+                    let mut held = book();
+                    held.running.remove(&world);
+                    held.again.remove(&world);
+                    break;
+                }
                 log::warn!("自動定稿中止：{reason}");
             }
             let mut book = book();
@@ -183,6 +189,13 @@ async fn run(app: &tauri::AppHandle, world: &str) -> Result<(), String> {
         let Ok(dir) = SpriteDir::of(&root, world, &character) else {
             continue;
         };
+        if book()
+            .pending
+            .get(&key(world, &character))
+            .is_some_and(|(state, _)| *state == "failed")
+        {
+            continue;
+        }
         if dir.read().is_some() {
             continue;
         }
@@ -209,6 +222,10 @@ async fn run(app: &tauri::AppHandle, world: &str) -> Result<(), String> {
             None => match super::generate_candidate(app, world, &character).await {
                 Ok(file) => file,
                 Err(reason) => {
+                    if super::pause::is_pause(&reason) {
+                        emit(app, world, &character, "queued", None);
+                        return Err(reason);
+                    }
                     emit(app, world, &character, "failed", Some(reason));
                     continue;
                 }
@@ -244,6 +261,23 @@ async fn install(app: &tauri::AppHandle, world: &str, character: &str, file: &st
         }
         Err(reason) => emit(app, world, character, "failed", Some(reason)),
     }
+}
+
+pub(crate) fn resume_pending(app: &tauri::AppHandle) {
+    let worlds: HashSet<_> = book()
+        .pending
+        .iter()
+        .filter(|(_, (state, _))| *state == "queued")
+        .map(|((world, _), _)| world.clone())
+        .collect();
+    for world in worlds {
+        let _ = start(app, &world, &[]);
+    }
+}
+pub(crate) fn retry_world(world: &str) {
+    book()
+        .pending
+        .retain(|(owner, _), (state, _)| owner != world || *state != "failed");
 }
 
 #[cfg(test)]

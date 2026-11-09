@@ -115,6 +115,7 @@ export function explainAiError(
     if (code === 402 || code === 429) return "errQuotaApi";
     return code < 500 ? "errApiRequest" : "errApiUpstream";
   }
+  if (/^(?:Error:\s*)?(?:AI_CALL_FAILED:\s*)?AI_IMAGE_(?:QUOTA:|PAUSED)/.test(raw)) return "errQuota";
   // 再認傳輸層自己的失敗碼；供應商中途送的 error 塊刻意不帶碼，原話往下走既有正則
   const coded = FAILURE_CODES.find(([prefix]) => prefix.test(raw));
   if (coded) return coded[1];

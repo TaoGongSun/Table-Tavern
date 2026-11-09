@@ -56,7 +56,7 @@ export function useArtProgress(worldId: string) {
   }, [worldId]);
   /** 重試：再排一次自動定稿（失敗的角色會重生） */
   const retry = useCallback(() => {
-    invoke("vn_sprites_prepare", { worldId, adopt: [] }).catch(() => {});
+    invoke("vn_art_retry", { worldId }).catch(() => {});
   }, [worldId]);
   return { progress, retry };
 }

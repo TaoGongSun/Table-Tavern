@@ -541,6 +541,8 @@ export type EventMarker = KnownMarker | UnknownMarker;
 
 /** VN 每桌僅持久化自動生成授權與首次上台名單。 */
 export interface ArtStatus {
+  pause: { reset: number | null } | null;
+  pending: number;
   art: { started: boolean; appeared: string[] };
   source: string;
   ready: number;

@@ -103,8 +103,19 @@ pub(crate) async fn run_cli_image(
         &job,
         true,
     )
-    .await?;
-    take_image(kind, &job, &Homes::of(&config_root(app)?), &reply)
+    .await;
+    let homes = Homes::of(&config_root(app)?);
+    match reply {
+        Ok(reply) => take_image(kind, &job, &homes, &reply),
+        Err(error) => {
+            if kind == "agy" {
+                if let Some(id) = checked_id(&job.agy_conversation) {
+                    let _ = home_cleanup::remove_conversation(&homes.agy, &id);
+                }
+            }
+            Err(error)
+        }
+    }
 }
 
 /// 看圖回文字（臉框）：工具鎖死、圖走 `-i`。只有 codex 支援，其他來源由呼叫端退預設值。

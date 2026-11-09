@@ -1,3 +1,4 @@
+pub(crate) mod agy_errors;
 use super::types::{CliLine, CliProtocol, CodexUsageCounters};
 use crate::transport::PromptCacheUsage;
 use crate::ui_msg::UiMsg;
@@ -437,7 +438,7 @@ pub const AGY_PROTOCOL: CliProtocol = CliProtocol {
     parse: parse_agy_line,
     unrecognized: known::agy,
     require_done: true,
-    sticky_failed_done: false,
+    sticky_failed_done: true,
     codex_session_checks: false,
 };
 pub const GROK_PROTOCOL: CliProtocol = CliProtocol {
@@ -468,6 +469,9 @@ pub fn parse_agy_line(line: &str) -> CliLine {
     match value.get("event").and_then(|event| event.as_str()) {
         Some("step_update") => {
             let step = value.get("step_update");
+            if let Some(error) = step.and_then(agy_errors::tool_error) {
+                return error;
+            }
             let is_response = step
                 .and_then(|step| step.get("step_type"))
                 .and_then(|kind| kind.as_str())
