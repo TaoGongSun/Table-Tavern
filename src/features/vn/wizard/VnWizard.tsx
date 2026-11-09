@@ -186,8 +186,6 @@ export function VnWizard({
         return;
       }
       await invoke("vn_setup_set", { worldId, stage: null, spoilerLock: null });
-      // 開演：開始在背景補表情（播放器可能早已掛著，不能只靠它掛載時排）
-      invoke("vn_sprites_fill", { worldId }).catch(() => {});
       onFinish(worldId);
     } catch {
       setStarting(false);

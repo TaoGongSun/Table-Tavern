@@ -253,8 +253,10 @@ async fn install(app: &tauri::AppHandle, world: &str, character: &str, file: &st
     match outcome {
         Ok(installed) => {
             emit(app, world, character, "done", None);
-            let started =
-                data_root(app).is_ok_and(|root| data::vn::setup_stage(&root, world).is_none());
+            let started = data_root(app).is_ok_and(|root| {
+                data::vn::art_flow(&root, world)
+                    .is_ok_and(|art| art.started && art.appeared.iter().any(|id| id == character))
+            });
             if installed && started {
                 super::queue::fill(app, world, &[character.to_owned()]);
             }

@@ -278,13 +278,16 @@ pub(crate) fn fill(app: &tauri::AppHandle, world: &str, characters: &[String]) {
     if crate::data::vn::is_replay(&root, world) {
         return;
     }
-    if !crate::data::vn::art_flow(&root, world).is_ok_and(|art| art.started) {
+    let Ok(art) = crate::data::vn::art_flow(&root, world) else {
+        return;
+    };
+    if !art.started {
         return;
     }
     let mut added = Vec::new();
     {
         let mut queue = queue();
-        for character in characters {
+        for character in characters.iter().filter(|id| art.appeared.contains(id)) {
             let Ok(dir) = SpriteDir::of(&root, world, character) else {
                 continue;
             };
@@ -306,6 +309,30 @@ pub(crate) fn fill(app: &tauri::AppHandle, world: &str, characters: &[String]) {
     for job in &added {
         emit(app, job, "queued", None);
     }
+    start_worker(app);
+}
+
+/// 玩家明確重骰：不經自動補圖的 started/appeared 閘。
+pub(crate) fn reroll(
+    app: &tauri::AppHandle,
+    world: &str,
+    character: &str,
+    variant: Option<&str>,
+    expression: &str,
+) {
+    let job = Job::Face(Slot {
+        world: world.to_owned(),
+        character: character.to_owned(),
+        variant: variant.map(str::to_owned),
+        expression: expression.to_owned(),
+    });
+    {
+        let mut held = queue();
+        if held.is_new(&job) {
+            held.push(job.clone());
+        }
+    }
+    emit(app, &job, "queued", None);
     start_worker(app);
 }
 

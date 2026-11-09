@@ -1,4 +1,4 @@
-// 舞台用的立繪：讀這桌所有定稿與臉層，聽背景補表情的狀態事件重讀該角色；掛載時排入缺的臉層（進桌續生）。
+// 舞台用的立繪：讀這桌所有定稿與臉層，聽背景補表情的狀態事件重讀該角色；實際上台時才報需要的角色，後端保存首次上台名單。
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useState } from "react";
@@ -14,7 +14,7 @@ export function onSpriteStatus(worldId: string, handle: (status: SpriteSlotStatu
   return () => void off.then((stop) => stop());
 }
 
-export function useSprites(worldId: string): Record<string, SpriteView> {
+export function useSprites(worldId: string, visible: readonly (string | null)[] = [], active = false): Record<string, SpriteView> {
   const [sprites, setSprites] = useState<Record<string, SpriteView>>({});
   useEffect(() => {
     let alive = true;
@@ -37,11 +37,14 @@ export function useSprites(worldId: string): Record<string, SpriteView> {
         })
         .catch(() => {});
     });
-    invoke("vn_sprites_fill", { worldId }).catch(() => {});
     return () => {
       alive = false;
       stop();
     };
   }, [worldId]);
+  const appeared = JSON.stringify(visible.filter(Boolean));
+  useEffect(() => {
+    if (active) void invoke("vn_sprites_fill", { worldId, appeared: JSON.parse(appeared) }).catch(() => {});
+  }, [worldId, appeared, active]);
   return sprites;
 }

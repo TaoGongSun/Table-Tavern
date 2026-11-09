@@ -179,7 +179,7 @@ it("resumes at art: queues the backdrop, installs the shown candidate and clears
   expect(called("vn_sprites_prepare")).toHaveLength(0);
   const setups = called("vn_setup_set");
   expect(setups[setups.length - 1][1]).toMatchObject({ stage: null });
-  expect(called("vn_sprites_fill")).toHaveLength(1);
+  expect(called("vn_sprites_fill")).toHaveLength(0);
   expect(onFinish).toHaveBeenCalledWith("W");
 });
 

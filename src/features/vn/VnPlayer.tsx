@@ -234,7 +234,7 @@ export function VnPlayer({
     active: !paused && play.current !== undefined && !play.skip,
     muted,
   });
-  const sprites = useSprites(worldId);
+  const sprites = useSprites(worldId, stage.slots, !paused && !replay && play.current !== undefined);
   const backgrounds = useBackgrounds(worldId);
   // 正式格有新事件落檔就排入這幕缺的背景與曲子（串流中寫完的行由 useVnCells 提早排）
   useEffect(() => {

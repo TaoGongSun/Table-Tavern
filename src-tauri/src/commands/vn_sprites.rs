@@ -122,6 +122,7 @@ fn character_ids(root: &std::path::Path, world_id: &str) -> Result<Vec<String>, 
     Ok(data::list_characters(root, world_id)
         .map_err(|error| error.to_string())?
         .into_iter()
+        .filter(|meta| !meta.archived && !meta.stage)
         .map(|meta| meta.id)
         .collect())
 }
@@ -269,6 +270,7 @@ pub(crate) fn vn_sprite_reroll(
     let _permit = data::world_write_permit(&world_id)?;
     SpriteDir::of(&data_root(&app)?, &world_id, &character_id)?.drop_face(set, &expression)?;
     queue::forget_slot(&world_id, &character_id, set, &expression);
+    queue::reroll(&app, &world_id, &character_id, set, &expression);
     Ok(())
 }
 
@@ -288,9 +290,39 @@ pub(crate) fn vn_sprite_delete(
 
 /// 背景補表情：排入這桌有定稿但缺的臉層（冪等；開演、進桌、立繪分頁變動後呼叫）
 #[tauri::command]
-pub(crate) fn vn_sprites_fill(app: tauri::AppHandle, world_id: String) -> Result<(), String> {
-    let characters = character_ids(&data_root(&app)?, &world_id)?;
-    queue::fill(&app, &world_id, &characters);
+pub(crate) fn vn_sprites_fill(
+    app: tauri::AppHandle,
+    world_id: String,
+    appeared: Option<Vec<String>>,
+) -> Result<(), String> {
+    let root = data_root(&app)?;
+    if data::vn::is_replay(&root, &world_id) {
+        return Ok(());
+    }
+    if let Some(appeared) = appeared {
+        let allowed = character_ids(&root, &world_id)?;
+        let _permit = data::world_write_permit(&world_id)?;
+        data::state_commit::with_commit(&root, &world_id, |tx| -> data::DataResult<()> {
+            let art = data::vn::art_flow(&root, &world_id)?;
+            let new: Vec<_> = appeared
+                .into_iter()
+                .filter(|id| allowed.contains(id) && !art.appeared.contains(id))
+                .collect();
+            if new.is_empty() {
+                return Ok(());
+            }
+            data::vn::edit_vn(tx, |file| {
+                for id in new {
+                    if !file.art.appeared.contains(&id) {
+                        file.art.appeared.push(id);
+                    }
+                }
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    }
+    let art = data::vn::art_flow(&root, &world_id).map_err(|e| e.to_string())?;
+    queue::fill(&app, &world_id, &art.appeared);
     Ok(())
 }
 
@@ -437,7 +469,7 @@ pub(crate) async fn vn_art_retry(app: tauri::AppHandle, world_id: String) -> Res
     vn_sprites::prepare::retry_world(&world_id);
     queue::retry_world(&app, &world_id);
     vn_sprites::prepare::start(&app, &world_id, &[])?;
-    vn_sprites_fill(app.clone(), world_id.clone())?;
+    vn_sprites_fill(app.clone(), world_id.clone(), None)?;
     super::vn_backgrounds::vn_backgrounds_fill(app.clone(), world_id, None)?;
     vn_sprites::pause::resume(&app);
     Ok(())
