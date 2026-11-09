@@ -66,7 +66,7 @@ async function renderBackgrounds(readOnly: boolean, status: Record<string, Backg
   const host = document.createElement("div");
   await act(async () =>
     createRoot(host).render(
-      <BackgroundGallery worldId="w" backgrounds={{ images, status, statusOf: () => queuedNone, load }} readOnly={readOnly} onView={onView} />,
+      <BackgroundGallery worldId="w" backgrounds={{ pause: null, retry: async () => {}, images, status, statusOf: () => queuedNone, load }} readOnly={readOnly} onView={onView} />,
     ),
   );
   await settle();

@@ -3,6 +3,7 @@
 // 換時段時遮罩漸變；卡自訂時段沒有對應色就不套。
 // 天氣（plans/vn-weather-mask.md §3）：去飽和＋壓暗調色層在時段遮罩之下（黃昏的橘色留著），霧層也在遮罩之下（夜霧不發亮）；
 // 雨層由 Stage 疊在立繪之上。調色不看圖是基底還是專屬圖，一律套。
+import { t } from "../../i18n";
 import { useEffect, useState } from "react";
 import type { BackdropImage } from "./useBackgrounds";
 
@@ -78,7 +79,9 @@ export function RainLayer({ on, period }: { on: boolean; period: string | undefi
   );
 }
 
-export function StageBackdrop({ image, period, weather }: { image: BackdropImage | null; period: string; weather: string }) {
+export function StageBackdrop({ image, period, weather, location, state, onRetry }: {
+  image: BackdropImage | null; period: string; weather: string; location?: string; state?: string; onRetry?: () => void;
+}) {
   const [last, setLast] = useState<BackdropImage | null>(null);
   const ready = image?.src ? image : null;
   useEffect(() => {
@@ -93,8 +96,13 @@ export function StageBackdrop({ image, period, weather }: { image: BackdropImage
       ) : last ? (
         <img className="vn-backdrop vn-backdrop-waiting" src={last.src!} alt="" />
       ) : (
-        <div className="vn-backdrop vn-backdrop-black" />
+        <div className="vn-backdrop vn-backdrop-placeholder" style={{ background: `linear-gradient(160deg, ${TINTS[period]?.color ?? "#34404b"}, #10131c 85%)` }}>
+          <small className="vn-backdrop-place">{location}</small>
+        </div>
       )}
+      {(state === "failed" || state === "paused") && onRetry && <button type="button" className="btn btn-sm vn-background-retry" onClick={(event) => { event.stopPropagation(); onRetry(); }}>
+        {t(state === "paused" ? "vnBackgroundQuota" : "vnBackgroundRetry")}
+      </button>}
       <div className="vn-weather-desat" style={{ opacity: desat }} aria-hidden />
       <div
         className="vn-weather-dim"

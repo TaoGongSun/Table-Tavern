@@ -71,9 +71,13 @@ export function Stage({
   images,
   backdrop,
   cellKey,
+  backgroundState,
+  onBackgroundRetry,
   hold = false,
 }: {
   stage: StageState;
+  backgroundState?: string;
+  onBackgroundRetry?: () => void;
   /** 角色 id → 立繪（定稿＋臉層） */
   sprites: Record<string, SpriteView>;
   /** 角色 id → 角色卡原圖：沒立繪時的佔位 */
@@ -91,13 +95,13 @@ export function Stage({
   return (
     <div className="vn-stage">
       {stage.backdrop && (
-        <StageBackdrop image={backdrop ?? null} period={stage.backdrop.period} weather={stage.weather} />
+        <StageBackdrop image={backdrop ?? null} period={stage.backdrop.period} weather={stage.weather} location={stage.location ?? undefined} state={backgroundState} onRetry={onBackgroundRetry} />
       )}
       <div
         key={stage.directive === "shake" ? cellKey : undefined}
         className={`vn-cast${stage.directive === "shake" ? " vn-shake" : ""}`}
       >
-        {stage.location && <LocationCard key={stage.location} location={stage.location} hold={hold} />}
+        {stage.location && <LocationCard key={stage.location} location={stage.location ?? undefined} hold={hold} />}
         {stage.slots.map((id, slot) => {
           if (!id) return null;
           const state = closeup

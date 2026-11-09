@@ -2,6 +2,7 @@
 // i18n/index.ts 的 t() 把它併進同一個 MsgKey 空間。
 const COPY = {
   "zh-TW": {
+    vnBackgroundQuota: "生圖額度用完 · 重試",
     vnArtBegin: "開始生成",
     vnArtNotStarted: "還沒開始生成，可先上傳圖片或直接進入遊戲。",
     vnArtEstimate: "使用 {source} 額度：{n} 張立繪＋{bg} 張背景；角色上台後再補約 {faces} 張缺的表情。",
@@ -93,6 +94,7 @@ const COPY = {
     vnSpriteQueued: "排隊中",
   },
   "zh-CN": {
+    vnBackgroundQuota: "生图额度用完 · 重试",
     vnArtBegin: "开始生成",
     vnArtNotStarted: "还没开始生成，可先上传图片或直接进入游戏。",
     vnArtEstimate: "使用 {source} 额度：{n} 张立绘＋{bg} 张背景；角色上台后再补约 {faces} 张缺少的表情。",
@@ -184,6 +186,7 @@ const COPY = {
     vnSpriteQueued: "排队中",
   },
   en: {
+    vnBackgroundQuota: "Image quota used up · Retry",
     vnArtBegin: "Start generating",
     vnArtNotStarted: "Art has not started. Upload images or enter the game whenever you like.",
     vnArtEstimate: "Uses {source} quota: {n} sprites + {bg} backgrounds; about {faces} missing expressions will follow as characters appear.",
@@ -275,6 +278,7 @@ const COPY = {
     vnSpriteQueued: "Queued",
   },
   ja: {
+    vnBackgroundQuota: "画像生成の枠がありません · 再試行",
     vnArtBegin: "生成を開始",
     vnArtNotStarted: "まだ生成していません。画像をアップロードするか、そのままゲームへ進めます。",
     vnArtEstimate: "{source} の枠を使用：立ち絵 {n} 枚＋背景 {bg} 枚。登場後に不足する表情を約 {faces} 枚補います。",
@@ -366,6 +370,7 @@ const COPY = {
     vnSpriteQueued: "順番待ち",
   },
   ko: {
+    vnBackgroundQuota: "이미지 한도 소진 · 다시 시도",
     vnArtBegin: "생성 시작",
     vnArtNotStarted: "아직 생성하지 않았어요. 이미지를 올리거나 바로 게임에 들어가도 돼요.",
     vnArtEstimate: "{source} 사용량: 스탠딩 {n}장 + 배경 {bg}장. 등장할 때 부족한 표정 약 {faces}장을 채워요.",
@@ -457,6 +462,7 @@ const COPY = {
     vnSpriteQueued: "대기 중",
   },
   es: {
+    vnBackgroundQuota: "Cuota de imágenes agotada · Reintentar",
     vnArtBegin: "Empezar a generar",
     vnArtNotStarted: "Aún no se ha generado el arte. Puedes subir imágenes o entrar al juego.",
     vnArtEstimate: "Usa cuota de {source}: {n} sprites y {bg} fondos; unas {faces} expresiones pendientes se generarán cuando aparezcan los personajes.",
@@ -548,6 +554,7 @@ const COPY = {
     vnSpriteQueued: "En cola",
   },
   "pt-BR": {
+    vnBackgroundQuota: "Cota de imagens esgotada · Tentar novamente",
     vnArtBegin: "Começar a gerar",
     vnArtNotStarted: "A arte ainda não começou. Você pode enviar imagens ou entrar no jogo.",
     vnArtEstimate: "Usa a cota de {source}: {n} sprites e {bg} fundos; cerca de {faces} expressões pendentes serão feitas quando os personagens aparecerem.",
@@ -639,6 +646,7 @@ const COPY = {
     vnSpriteQueued: "Na fila",
   },
   de: {
+    vnBackgroundQuota: "Bildkontingent aufgebraucht · Erneut versuchen",
     vnArtBegin: "Bilder erzeugen",
     vnArtNotStarted: "Die Bilderzeugung hat noch nicht begonnen. Lade Bilder hoch oder starte das Spiel.",
     vnArtEstimate: "Nutzt {source}-Kontingent: {n} Sprites und {bg} Hintergründe; etwa {faces} fehlende Ausdrücke folgen beim Auftritt der Figuren.",
@@ -730,6 +738,7 @@ const COPY = {
     vnSpriteQueued: "In Warteschlange",
   },
   fr: {
+    vnBackgroundQuota: "Quota d’images épuisé · Réessayer",
     vnArtBegin: "Lancer les images",
     vnArtNotStarted: "Les images n’ont pas encore été lancées. Importez-en ou entrez dans le jeu.",
     vnArtEstimate: "Utilise le quota de {source} : {n} sprites et {bg} décors ; environ {faces} expressions manquantes suivront à l’entrée des personnages.",
@@ -821,6 +830,7 @@ const COPY = {
     vnSpriteQueued: "En attente",
   },
   ru: {
+    vnBackgroundQuota: "Квота изображений исчерпана · Повторить",
     vnArtBegin: "Начать генерацию",
     vnArtNotStarted: "Генерация ещё не началась. Загрузите изображения или переходите в игру.",
     vnArtEstimate: "Расходуется квота {source}: {n} спрайтов и {bg} фонов; около {faces} недостающих эмоций будут добавлены при появлении героев.",

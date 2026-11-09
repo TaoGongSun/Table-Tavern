@@ -242,6 +242,7 @@ export function VnPlayer({
     invoke("vn_audio_fill", { worldId, scene }).catch(() => {});
   }, [worldId, scene, vn.lastEventKey]);
   const backdrop = stage.backdrop;
+  const backgroundState = backgrounds.pause ? "paused" : backdrop ? backgrounds.statusOf(backdrop)?.state : undefined;
   const backdropId = backdrop ? backdropKey(backdrop) : null;
   const { load } = backgrounds;
   useEffect(() => {
@@ -550,6 +551,8 @@ export function VnPlayer({
         backdrop={backdropId ? backgrounds.images[backdropId] : undefined}
         cellKey={play.current?.key ?? ""}
         hold={paused}
+        backgroundState={backgroundState}
+        onBackgroundRetry={!replay && backdrop ? () => void backgrounds.retry(backdrop).catch(() => {}) : undefined}
       />
       {error && (
         <div className="vn-error">
@@ -634,6 +637,7 @@ export function VnPlayer({
       {chapter.card && (
         <ChapterCardView
           card={chapter.card}
+          backgroundState={backgroundState}
           // 新幕的格載入前 cells 還是舊幕的，章號會等於結束的章而誤判成「尾聲」
           nextChapter={scene !== chapter.card.fromScene && vn.formalScene === scene ? vn.cells[0]?.chapter : undefined}
           onRetry={() => void chapter.retry()}

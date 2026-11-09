@@ -3,7 +3,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Backdrop, BackgroundStatus, BackgroundView } from "../../shared/contracts/backend-contracts";
+import type { ArtStatus, Backdrop, BackgroundStatus, BackgroundView } from "../../shared/contracts/backend-contracts";
 
 export const BACKGROUND_STATUS_EVENT = "vn-background-status";
 
@@ -18,6 +18,7 @@ export interface BackdropImage {
 }
 
 export function useBackgrounds(worldId: string) {
+  const [pause, setPause] = useState<ArtStatus["pause"]>(null);
   const [images, setImages] = useState<Record<string, BackdropImage>>({});
   const [status, setStatus] = useState<Record<string, BackgroundStatus>>({});
   /** 讀過的鍵：slug → 時段 */
@@ -48,6 +49,10 @@ export function useBackgrounds(worldId: string) {
     requested.current = new Map();
     setImages({});
     setStatus({});
+    setPause(null);
+    const readPause = () => invoke<ArtStatus>("vn_art_status", { worldId }).then((art) => { if (alive) setPause(art?.pause ?? null); }).catch(() => {});
+    void readPause();
+    const flow = listen("vn-art-flow-status", () => void readPause());
     invoke<BackgroundStatus[]>("vn_backgrounds_status", { worldId })
       .then((list) => alive && setStatus(Object.fromEntries(list.map((item) => [backdropKey(item), item]))))
       .catch(() => {});
@@ -59,6 +64,7 @@ export function useBackgrounds(worldId: string) {
     });
     return () => {
       alive = false;
+      void flow.then((stop) => stop());
       void off.then((stop) => stop());
     };
   }, [worldId, read]);
@@ -82,5 +88,8 @@ export function useBackgrounds(worldId: string) {
   );
 
   /** status＝各鍵（slug－時段）的佇列狀態，美術一覽逐格看 */
-  return { images, status, statusOf, load };
+  const retry = useCallback((backdrop: Backdrop) => pause
+    ? invoke("vn_art_retry", { worldId })
+    : invoke("vn_background_regenerate", { worldId, slug: backdrop.slug, period: backdrop.period }), [worldId, pause]);
+  return { images, status, statusOf, load, pause, retry };
 }

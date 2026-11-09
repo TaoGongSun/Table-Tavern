@@ -516,3 +516,6 @@
   color: var(--vn-ink);
   text-align: center;
 }
+
+.vn-backdrop-place { position: absolute; bottom: 28%; left: 0; right: 0; text-align: center; color: #d1d5df; opacity: .65; }
+.vn-background-retry { position: absolute; top: .75rem; right: .75rem; z-index: 6; max-width: 60%; white-space: normal; }

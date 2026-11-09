@@ -12,8 +12,10 @@ export function ChapterCardView({
   onClose,
   onStop,
   replay = false,
+  backgroundState,
 }: {
   card: ChapterCard;
+  backgroundState?: string;
   /** 重進後新幕首則事件的章號；與結束的章相同＝轉收尾（尾聲） */
   nextChapter: number | undefined;
   onRetry: () => void;
@@ -37,9 +39,11 @@ export function ChapterCardView({
   return (
     <div className="vn-chapter-card" role="status">
       {heading && <p className="vn-chapter-heading">{heading}</p>}
-      {!replay && (card.phase === "advancing" || (opening && !heading)) && (
+      {!replay && card.phase === "advancing" && (
         <p className="vn-chapter-note">{t("vnSceneTidying")}</p>
       )}
+      {!replay && opening && <p className="vn-chapter-note">{t(backgroundState === "queued" || backgroundState === "running" ? "vnChapterOpeningBg" : "vnChapterOpening")}</p>}
+      {!replay && opening && (backgroundState === "paused" || backgroundState === "failed") && <p className="vn-chapter-note">{t(backgroundState === "paused" ? "vnBackgroundQuota" : "vnBackgroundFailed")}</p>}
       {card.phase === "reenter" && <p className="vn-chapter-note">{t("vnReenterFailed")}</p>}
       {card.phase === "failed" && card.error && (
         <p className="vn-chapter-note" role="alert">
