@@ -5,7 +5,6 @@
 分類規則：仍需程式施工／規格落地才放「進行中」；施工已完成、只剩可執行環境／使用者實機／外部條件驗收則移到「等實機驗收」，並同步列入[實測佇列](reference/verification-queue.md)。
 
 ## 進行中
-- [release-8](handoffs/release-8.md) — v0.5.3 文件、版號、房間伺服器部署完成並已合 main；作者親口說才推 tag
 - [vn-stage-layout](handoffs/vn-stage-layout.md) — VN 立繪放大、對話框與選項標籤、臉框跟著立繪來源（已合 main，等打包後實機）
 - [vn-image-source-flow](handoffs/vn-image-source-flow.md) — VN 開桌先選來源再生成、agy 額度用完暫停續生、失敗講清楚（已合 main，等打包後實機）
 - [room-player-dice](handoffs/room-player-dice.md) — 房間玩家自己擲骰：已進 main，待部署後實機跑一回合
