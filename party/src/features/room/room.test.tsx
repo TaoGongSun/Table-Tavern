@@ -1003,6 +1003,22 @@ describe("玩家卡（room-player-cards）", () => {
     expect(room.store.events.some((e) => JSON.stringify(e).includes("其實是公主"))).toBe(false);
   });
 
+  it("建立角色：圖示不合規先擋下，不入座", async () => {
+    const room = await Room.create();
+    await room.exec();
+    const hub = new Hub(room);
+    hub.wrap = (fn) => act(fn);
+    const C = phone(hub, `k=${room.joinSecret}`);
+    C.type('[data-testid="nickname"]', "小美");
+    await act(async () => C.q<HTMLFormElement>("form")!.requestSubmit());
+    await until(() => C.button("建立角色"));
+    C.click("建立角色");
+    C.type('[data-testid="card-avatar"]', "紅髮 劍士");
+    await act(async () => C.q<HTMLFormElement>('[data-testid="card-sheet"]')!.requestSubmit());
+    await until(() => C.q(".field-error")?.textContent?.includes("不能有空白"));
+    expect(room.s.jobs).toHaveLength(0);
+  });
+
   it("編輯我的角色：讀卡、只送改過的欄位、改名先確認；生圖同一房間只確認一次、預覽標新圖、用這張後標已選用、有未存修改返回先兩選確認、捨棄才撤回、丟掉、按存檔才寫入圖；存檔期間停用欄位；主機關掉生圖只留說明、沒路線整段不出現；別人看不到秘密段", async () => {
     const { room, hub, A, B } = await table();
     const confirm = vi.fn(() => true);

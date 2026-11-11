@@ -13,13 +13,11 @@ import {
 import { flushSync } from "react-dom";
 import { DicePicker } from "@desktop/features/dice/DicePicker";
 import diceCopy from "@desktop/features/dice/dice-copy.json";
-import { rankSuggestions } from "@desktop/features/dice/dice-suggestions";
+import { rankSuggestions, rolledFormula } from "@desktop/features/dice/dice-suggestions";
 import { currentLang, t, type MsgKey } from "../../i18n";
 import { errorText } from "./error-text";
 import type { RoomView } from "./room-state";
 import { useRun, type Act } from "./useRoom";
-
-const ROLLED_FORMULA = / (\d+d\d+(?:[+-]\d+)?): \[[^\]]*\](?: [+-]\d+)? = -?\d+$/;
 
 const STATUS: Record<string, MsgKey> = {
   pending: "statusPending",
@@ -119,14 +117,21 @@ export function ActionBox({
   const live = view.room.status === "playing" || view.room.status === "transition";
   const dice = diceCopy[currentLang()];
   const myName = view.cards.find((c) => c.cardId === view.me.cardId)?.name;
-  const gmText = [...view.story].reverse().find((p) => p.speaker.kind === "gm")?.text ?? "";
+  const gmAt = view.story.flatMap((p, i) => (p.speaker.kind === "gm" ? [i] : []));
+  const lastGm = gmAt.length ? gmAt[gmAt.length - 1] : -1;
+  const gmText = lastGm >= 0 ? view.story[lastGm].text : "";
+  // 這則 GM 回應的、自己的擲骰（上一則 GM 之後到這則之前）
+  const answered = view.story
+    .slice((gmAt.length > 1 ? gmAt[gmAt.length - 2] : -1) + 1, Math.max(lastGm, 0))
+    .flatMap((p) => (p.rollBy === view.me.memberId && rolledFormula(p.text)) || [])
+    .join("\n");
   const castNames = view.cards.map((c) => c.name).join("\n");
   const ranked = useMemo(
-    () => rankSuggestions(gmText, myName, castNames.split("\n")),
-    [gmText, myName, castNames],
+    () => rankSuggestions(gmText, myName, castNames.split("\n"), answered.split("\n")),
+    [gmText, myName, castNames, answered],
   );
   const myRolls = view.story.filter((p) => p.rollBy === view.me.memberId && p.round === r?.round);
-  const rolled = myRolls.flatMap((p) => ROLLED_FORMULA.exec(p.text)?.[1] ?? []);
+  const rolled = myRolls.flatMap((p) => rolledFormula(p.text) ?? []);
   // 擲過的換下一個；自己的擲完就退回通用「擲骰」，不落到別人的算式
   const primary = ranked.find((x) => !x.other && !rolled.includes(x.value))?.value ?? null;
   const rollReason = !view.executor.diceEnabled

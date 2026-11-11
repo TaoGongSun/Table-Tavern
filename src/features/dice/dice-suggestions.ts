@@ -46,8 +46,20 @@ function rankOf(clause: string, sentence: string, name: string, others: string[]
   return wide.theirs && !wide.mine ? 2 : 1;
 }
 
-/** 自己的排最前、沒指定的其次、別人的最後，多人同句點名時才不會點到別人的加值。`others`：別的角色卡名 */
-export function rankSuggestions(raw: string, name = "", others: string[] = []): Suggestion[] {
+/** 擲骰紀錄（`名字 2d6: [5, 1] = 6`、`1d20+5: [7] +5 = 12`）裡的算式 */
+export const ROLLED_FORMULA = /(?:^| )(\d+d\d+(?:[+-]\d+)?): \[[^\]]*\](?: [+-]\d+)? = -?\d+$/;
+export const rolledFormula = (text: string) => ROLLED_FORMULA.exec(text)?.[1];
+
+/**
+ * 自己的排最前、沒指定的其次、別人的最後，多人同句點名時才不會點到別人的加值。`others`：別的角色卡名。
+ * `answered`：這則 GM 回應的那幾次擲骰；GM 常回頭提到剛擲的算式（「2d6 不是命中骰」），同級裡排到後面，免得主鈕停在舊算式。
+ */
+export function rankSuggestions(
+  raw: string,
+  name = "",
+  others: string[] = [],
+  answered: string[] = [],
+): Suggestion[] {
   // 模型常寫全形加減號
   const text = Array.from(raw)
     .slice(0, MAX_CHARS)
@@ -91,10 +103,12 @@ export function rankSuggestions(raw: string, name = "", others: string[] = []): 
     found.push({ value, rank });
     if (found.length === MAX_OPTIONS) break;
   }
-  return [0, 1, 2].flatMap((rank) =>
-    found.filter((x) => x.rank === rank).map((x) => ({ value: x.value, other: rank === 2 })),
-  );
+  const old = (x: { value: string }) => answered.includes(x.value);
+  return [0, 1, 2].flatMap((rank) => {
+    const same = found.filter((x) => x.rank === rank);
+    return [...same.filter((x) => !old(x)), ...same.filter(old)].map((x) => ({
+      value: x.value,
+      other: rank === 2,
+    }));
+  });
 }
-
-export const suggestions = (raw: string, name = ""): string[] =>
-  rankSuggestions(raw, name).map((x) => x.value);

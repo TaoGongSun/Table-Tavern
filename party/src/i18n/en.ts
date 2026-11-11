@@ -334,6 +334,7 @@ export const en: PartyMessages = {
   seatImporting: "Importing…",
   cardEdit: "Edit my character",
   cardAvatar: "Icon (emoji)",
+  cardAvatarInvalid: "The icon can be up to 16 characters with no spaces. An emoji works best.",
   cardPrivate: "Secret notes",
   cardPrivateHint: "Only for the AI GM's reference; other players can't see it",
   cardPrivatePlaceholder: "e.g. Actually a spy sent by the royal court",
@@ -345,7 +346,7 @@ export const en: PartyMessages = {
   cardTooLong: "This card is too long. Edit it on the computer.",
   cardRenameConfirm: "Rename your character to “{name}”?",
   cardSecretPending:
-    "Your character was created and seated, but the secret notes weren't saved yet. Please retry.",
+    "Your character was created and seated, but some fields weren't saved yet. Please retry.",
   cardImage: "Character image",
   cardImageNone: "No image yet",
   cardImageUpload: "Upload image",

@@ -1,5 +1,7 @@
 import { expect, it } from "vitest";
-import { rankSuggestions, suggestions } from "./dice-suggestions";
+import { rankSuggestions, rolledFormula } from "./dice-suggestions";
+
+const suggestions = (raw: string, name = "") => rankSuggestions(raw, name).map((x) => x.value);
 
 it("player formulas obey bounds and never salvage partial expressions", () => {
   expect(suggestions("沃恩請擲d20、2D6 + 3，或1d20-2；再擲2d6+3。")).toEqual(["1d20", "2d6+3", "1d20-2"]);
@@ -30,4 +32,17 @@ it("marks formulas meant for another character", () => {
   expect(rank("雷克，請擲1d20+1。")).toEqual([{ value: "1d20+1", other: true }]);
   expect(rank("沃恩，請擲1d20+3。")).toEqual([{ value: "1d20+3", other: false }]);
   expect(rank("雷克擲1d6。沃恩也擲1d6。")).toEqual([{ value: "1d6", other: false }]);
+});
+
+it("GM 回頭提到剛擲的算式時，同級裡排到後面", () => {
+  const gm = "你擲出 5 與 1：2d6 不是命中骰。請擲命中 `1d20+5`，命中後擲傷害 `1d8+3`。";
+  expect(rankSuggestions(gm, "", [], ["2d6"]).map((x) => x.value)).toEqual(["1d20+5", "1d8+3", "2d6"]);
+  expect(rankSuggestions("再攻擊一次 1d20+5", "", [], ["1d20+5"]).map((x) => x.value)).toEqual(["1d20+5"]);
+});
+
+it("擲骰紀錄讀得出算式", () => {
+  expect(rolledFormula("格魯 2d6: [5, 1] = 6")).toBe("2d6");
+  expect(rolledFormula("1d20+5: [7] +5 = 12")).toBe("1d20+5");
+  expect(rolledFormula("阿 虎 1d8-1: [1] -1 = 0")).toBe("1d8-1");
+  expect(rolledFormula("隨口說 2d6")).toBeUndefined();
 });

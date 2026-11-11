@@ -1,7 +1,8 @@
 // 編卡畫面（room-player-cards §2、§3.2）：建立與編輯共用。欄位照桌面版玩家卡：角色圖（只有編輯時）、名字、圖示、公開描述、秘密情報。
-// 秘密情報不經 seat.create：建立時先入座，再接著 card.save 秘密段；這步失敗畫面不關、原文保留可重試。
+// 圖示、秘密情報、放不進的公開描述不經 seat.create：建立時先入座，再接著 card.save；這步失敗畫面不關、原文保留可重試。
+// 圖示先在這裡驗，免得已入座才被伺服器擋。
 import { useEffect, useState } from "react";
-import { cleanText } from "../../../server/core/validate";
+import { cleanIcon, cleanText } from "../../../server/core/validate";
 import { t } from "../../i18n";
 import type { RoomView } from "../room/room-state";
 import { useRun, type Act } from "../room/useRoom";
@@ -37,7 +38,7 @@ export function CardSheet({ view, act, mode, upload, onClose }: Props) {
   const [draftImage, setDraftImage] = useState<ImageDraft | undefined>(undefined);
   const [cardId, setCardId] = useState<string | null>(mode === "edit" ? view.me.cardId : null);
   const [busy, setBusy] = useState(false);
-  const [pending, setPending] = useState(false); // 已建卡入座、秘密段還沒存上
+  const [pending, setPending] = useState(false); // 已建卡入座、其餘欄位還沒存上
   const [leaving, setLeaving] = useState(false); // 有未存修改時按返回：先確認
 
   useEffect(() => {
@@ -94,6 +95,7 @@ export function CardSheet({ view, act, mode, upload, onClose }: Props) {
 
   async function submit() {
     if (!saved) return;
+    if (f.avatar.trim() && !cleanIcon(f.avatar.trim())) return setError(t("cardAvatarInvalid"));
     setBusy(true);
     if (cardId) {
       const patch = changed(saved);
@@ -195,7 +197,12 @@ export function CardSheet({ view, act, mode, upload, onClose }: Props) {
           </label>
           <label>
             {t("cardAvatar")}
-            <input value={f.avatar} maxLength={16} onChange={set("avatar")} />
+            <input
+              value={f.avatar}
+              maxLength={16}
+              onChange={set("avatar")}
+              data-testid="card-avatar"
+            />
           </label>
           <label>
             {t("seatCreateBlurb")}
