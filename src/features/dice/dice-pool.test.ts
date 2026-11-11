@@ -20,10 +20,17 @@ describe("骰池對帳", () => {
     expect(result.rows[1].dice[1]).toEqual({
       value: 3,
       used: true,
-      issues: ["face", "order", "repeat"],
+      issues: ["face", "repeat", "order"],
       reported: [20],
     });
     expect(result.unknown).toEqual(["d8#1=4"]);
+  });
+  it("照結果排序寫不算跳號，一次跳號不連累後面", () => {
+    const d20 = "d20:[5,3,18,5,9,20]";
+    const sorted = inspectPool(d20, "(d20#3=18) (d20#4=5) (d20#1=5) (d20#2=3) (d20#5=9) (d20#6=20)")!;
+    expect(sorted.rows[0].dice.every((d) => d.used && d.issues.length === 0)).toBe(true);
+    const skipped = inspectPool(d20, "(d20#1=5) (d20#3=18) (d20#4=5)")!;
+    expect(skipped.rows[0].dice.map((d) => d.issues)).toEqual([[], [], ["order"], ["order"], [], []]);
   });
   it("不加括號或合寫一個括號也認得", () => {
     const bare = inspectPool(pool, "命中 d20#1=19，傷害 d6#1=4＋2")!;

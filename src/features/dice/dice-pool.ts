@@ -32,7 +32,6 @@ export function inspectPool(pool: string, text: string) {
       dice: faces.map((value) => ({ value, used: false, issues: [] })),
     });
   }
-  const next = new Map<number, number>();
   const unknown: string[] = [];
   let references = 0;
   // 括號可有可無：模型常寫 d20#2=9 或 (d4#1=1，d4#2=3)
@@ -51,11 +50,15 @@ export function inspectPool(pool: string, text: string) {
       issues.add("face");
       die.reported = [...new Set([...(die.reported ?? []), value])];
     }
-    const expected = next.get(sides) ?? 1;
-    if (index !== expected) issues.add("order");
-    else next.set(sides, expected + 1);
     die.used = true;
     die.issues = [...issues];
+  }
+  // 跳號＝用過的不是從 #1 連續：照結果排序寫（先攻表）不算，只看最後用了哪幾號
+  for (const row of rows) {
+    const gap = row.dice.findIndex((d) => !d.used);
+    row.dice.forEach((d, i) => {
+      if (d.used && gap >= 0 && i > gap) d.issues.push("order");
+    });
   }
   return { rows, references, unknown };
 }
