@@ -12,7 +12,7 @@
 - [card-mvu-shim](handoffs/card-mvu-shim.md) — 卡片介面沙盒墊 MVU 讀寫變數：全部已合併 main，剩實測佇列梯 1 項目（含 iframe 內按鈕實際互動）
 
 ## 等實機驗收（順序見[實測佇列](reference/verification-queue.md)）
-- [ttrpg-builtin-books](handoffs/ttrpg-builtin-books.md) — 內建規則書補到五本（加 Dungeon World、Cairn、BRP、PF2 Remaster）、一桌一套可一鍵換、選書清單預設收合：已合 main（2026-11-14）、Sol 驗收 2 輪、Fable 常識審由主線兼、截圖主線親看；等作者裁決 PF2 留不留與實機
+- [ttrpg-builtin-books](handoffs/ttrpg-builtin-books.md) — 內建規則書補到五本（加 Dungeon World、Cairn、BRP、PF2 Remaster）、一桌一套可一鍵換、選書清單預設收合：已合 main（2026-11-14）、Sol 驗收 2 輪、Fable 常識審由主線兼、截圖主線親看；等作者實機
 - [vn-sprite-exit](handoffs/vn-sprite-exit.md) — VN 角色同地點離開時立繪退場：已合 main，待部署，剩真模型遵循率未驗。
 - [room-small-fixes](handoffs/room-small-fixes.md) — 房間三小事：選角簡介剝 Markdown、手機顯示某某觀望、換裝置由玩家認領＋房主確認接回座位：已合 main（2026-11-08）、Sol 方案審 2 輪＋驗收 2 輪、Fable 常識審 3 次、截圖主線親看；要先部署伺服器，等作者實機（佇列梯 3）
 - [ttrpg-combat-tracker](handoffs/ttrpg-combat-tracker.md) — 跑團戰鬥層：先攻、HP／狀態效果由 app 加減、傷害綁骰池、拒收白話標記可點開手改：已合 main（2026-11-08）、Sol 方案審 2 輪＋驗收包 1／包 2 各 2 輪、Fable 常識審 3 次、截圖主線親看；等作者實機（佇列梯 2 第 34 項）

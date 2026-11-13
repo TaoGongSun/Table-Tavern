@@ -92,8 +92,8 @@ PF2 Remaster，只取 Player Core。原始頁不進 repo。
 - 驗收：主線每包重跑 `npm run verify`（17 步全過）、四本逐句比對抓到的原文（Dungeon World 0 句、Cairn 1 句、BRP 1 句、PF2 0 句對不上，兩句都是原文夾連結標記／跨行）。Sol 驗收 2 輪：第 1 輪必改 1（刪舊書失敗仍加新書）採納前半，「加入失敗還原舊書」主線否決；第 2 輪 PASS。Fable 常識審由主線兼任，截圖 3 輪（單人桌與房間桌）親看。
 - 行數：核心約 +131／−55（立案估 120–180），測試約 +110；書 JSON 四本與十語系文案另計。
 
-## 待作者裁決
-- **PF2 Remaster 的授權鏈要不要留**〔作者 2026-11-13：「如果很不好做，也可以放棄」〕：書做出來了，內文 319 句都對得上 Archives of Nethys 標為 Player Core 的頁，但有兩個弱點——(1) Paizo 沒有免費官方原稿，摘錄來源是 AoN 的轉錄本；(2) 書內 ORC Notice 的 Reserved Material 範圍只在第三方轉載讀到，不是 Paizo 官網原文。主線判斷可留〔模型判斷·未裁決〕；要拿掉就刪 `pf2-remaster.json`、`rule-books.ts` 的一筆與 `rules-copy.json` 的 `pf2`。**下次發佈前請裁決。**
+## PF2 Remaster 保留〔作者裁決 2026-11-14〕
+書留著。授權鏈的兩個弱點照記：(1) Paizo 沒有免費官方原稿，摘錄來源是 Archives of Nethys 標為 Player Core 的轉錄頁；(2) 書內 ORC Notice 的 Reserved Material 範圍只在第三方轉載讀到，不是 Paizo 官網原文。日後要拿掉就刪 `pf2-remaster.json`、`rule-books.ts` 的一筆與 `rules-copy.json` 的 `pf2`。
 
 ## 已知限制
 - 換書時新書加入失敗（罕見），舊書已刪：再按一次加入即可，玩家改過的條目不受影響。〔主線裁定，否決 Sol 的還原方案〕
