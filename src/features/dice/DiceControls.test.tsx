@@ -172,7 +172,7 @@ it("adds the built-in rules book, then removes only its untouched entries", asyn
   document.body.append(host);
   root = createRoot(host);
   const onAdd = vi.fn(async () => {});
-  const onRemove = vi.fn(async (_uids: number[]) => {});
+  const onRemove = vi.fn(async (_uids: number[]) => true);
   const render = (entries: { uid: number; title: string; content: string }[]) =>
     root.render(
       <DiceSettings
@@ -185,7 +185,10 @@ it("adds the built-in rules book, then removes only its untouched entries", asyn
       />,
     );
   await act(async () => render([]));
-  const add = [...host.querySelectorAll(".dice-settings > .rule-books button")].find((b) => b.textContent === rulesCopy().add)!;
+  // 沒加書時清單收在小標後面，點開才列
+  expect(host.querySelector(".rule-book")).toBeNull();
+  await act(async () => host.querySelector<HTMLButtonElement>(".rule-books-switch")!.click());
+  const add = [...host.querySelectorAll(".dice-settings .rule-books button")].find((b) => b.textContent === rulesCopy().add)!;
   await act(async () => (add as HTMLButtonElement).click());
   expect(onAdd).toHaveBeenCalledOnce();
   const [json, label] = onAdd.mock.calls[0] as unknown as [string, string];
@@ -208,7 +211,7 @@ it("points to table settings when the guide cannot add books", async () => {
   host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
-  await act(async () => root.render(<RuleBookList />));
+  await act(async () => root.render(<RuleBookList catalog />));
   const button = [...host.querySelectorAll("button")].find((b) => b.textContent === rulesCopy().inSettings)!;
   expect(button.disabled).toBe(true);
   expect(host.querySelector(".rule-book-details")).toBeNull();

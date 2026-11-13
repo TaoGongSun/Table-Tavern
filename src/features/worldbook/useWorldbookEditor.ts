@@ -386,8 +386,10 @@ export function useWorldbookEditor({
       updateDraft((current) =>
         current.draft?.uid != null && uids.includes(current.draft.uid) ? { ...current, ...CLOSED } : current,
       );
+      return true;
     } catch (reason) {
       setMessage(String(reason));
+      return false;
     }
   }
 

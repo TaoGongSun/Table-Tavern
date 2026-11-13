@@ -190,7 +190,7 @@
   },
   "11": {
    "uid": 11,
-   "key": ["initiative", "先攻", "戰鬥開始", "战斗开始", "イニシアチブ", "이니셔티브", "우선권", "iniciativa", "Initiative", "инициатив"],
+   "key": ["initiative", "先攻", "戰鬥開始", "战斗开始", "イニシアチブ", "이니셔티브", "우선권", "iniciativa", "инициатив"],
    "keysecondary": [],
    "comment": "Initiative and Rounds",
    "content": "When combat starts, every participant makes a Dexterity check to determine their place in the initiative order.\nThe GM ranks the combatants in order from the one with the highest Dexterity check total to the one with the lowest.\nThe initiative order remains the same from round to round.\nIn combat and other fast-paced situations, the game relies on rounds, a 6-second span of time.",

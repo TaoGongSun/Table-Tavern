@@ -76,7 +76,4 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [release-1-mac-signing](tasks/release-1-mac-signing.md) — 發佈 1：Mac 正式簽章＋公證（Developer ID＋notarytool） — 下一步：首發不簽章〔作者裁決 2026-10-04〕，等使用者變多再考慮；Gatekeeper 繞過說明併入 release-2 發布說明
 - [cli-custom-provider](tasks/cli-custom-provider.md) — 自訂 CLI 供應商：使用者自填指令模板接任意 CLI（如 Kimi） — 下一步：暫不動工〔模型判斷·未裁決〕；確認真實需求後拍板設定 schema，v1 只做純文字模式
 - [character-to-player-card](tasks/character-to-player-card.md) — 角色卡升級成玩家卡（角色編輯頁的獨立入口） — 下一步：維持排後；兩項待拍板，建議最小版（直接互換、不做取消成零張）〔模型判斷·未裁決〕已寫進任務檔，開工時請作者確認
-- [ttrpg-builtin-pf2e](tasks/ttrpg-builtin-pf2e.md) — 內建規則書：Pathfinder 2e Remaster SRD 精簡裁決版（小案） — 下一步：等 ttrpg-rules-system C 包結案
-- [ttrpg-builtin-dungeon-world](tasks/ttrpg-builtin-dungeon-world.md) — 內建規則書：Dungeon World 精簡裁決版（小案） — 下一步：等 ttrpg-rules-system C 包結案
-- [ttrpg-builtin-cairn](tasks/ttrpg-builtin-cairn.md) — 內建規則書：Cairn 精簡裁決版（小案） — 下一步：等 ttrpg-rules-system C 包結案
-- [ttrpg-builtin-brp](tasks/ttrpg-builtin-brp.md) — 內建規則書：BRP 精簡裁決版（小案） — 下一步：等 ttrpg-rules-system C 包結案
+- [rulebook-5e-single-char-keys](tasks/rulebook-5e-single-char-keys.md) — 內建 5e 規則書 10 個單字中日韓關鍵字會誤觸發，改成兩字以上（小案，核心 0 行、只改資料） — 下一步：未排程〔模型判斷·未裁決〕

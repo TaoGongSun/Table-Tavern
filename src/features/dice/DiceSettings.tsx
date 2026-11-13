@@ -18,7 +18,7 @@ export function DiceSettings({
   /** 這桌世界書條目：判斷內建書加過沒 */
   entries?: readonly { uid: number; title: string; content: string }[];
   onAddRulesBook?: (bookJson: string, label: string) => Promise<void>;
-  onRemoveEntries?: (uids: number[]) => Promise<void>;
+  onRemoveEntries?: (uids: number[]) => Promise<boolean>;
   isTurnRunning: () => boolean;
   onChanged?: () => Promise<void>;
 }) {

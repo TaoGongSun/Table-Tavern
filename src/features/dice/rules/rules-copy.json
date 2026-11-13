@@ -8,14 +8,39 @@
     "trademark": "各規則名為其出版商所有，本 app 非官方產品。",
     "srd51": {
       "subtitle": "最多人玩的奇幻冒險規則，擲 d20 加修正值過門檻。",
-      "details": "第五版 D&D（2014 版）開放規則 SRD 的裁決精簡版，收檢定、戰鬥、狀態與休息。擲 d20 加修正值比難度，戰鬥有行動、移動與 HP。新手最好上手、AI 也最熟，第一次跑團選這個。"
+      "details": "第五版 D&D（2014 版）開放規則 SRD 的裁決精簡版，收檢定、戰鬥、狀態與休息。擲 d20 加修正值比難度，戰鬥有行動、移動與 HP。新手最好上手、AI 也最熟，第一次跑團選這個。",
+      "name": "經典奇幻冒險"
     },
     "inSettings": "到桌設定加入",
     "moreLangs": "＋{n} 種語言",
     "remove": "移除",
     "removeTitle": "移除規則書",
     "removeConfirm": "要從這桌世界書移除「{name}」嗎？會刪掉 {n} 條條目。",
-    "removeKept": "你改過內文的 {kept} 條會保留。"
+    "removeKept": "你改過內文的 {kept} 條會保留。",
+    "heading": "規則書（選一套；不加也能玩）",
+    "switch": "換成這本",
+    "switchOpen": "換一套規則",
+    "switchConfirm": "換成「{next}」會先拿掉「{old}」沒改過的 {n} 條。",
+    "dungeonWorld": {
+      "name": "說故事的奇幻冒險",
+      "subtitle": "規則最少、故事推著走：擲 2d6，10 以上成功、7–9 成功但有代價。",
+      "details": "開放規則的精簡版，收基本動作、擲骰結果、傷害、不好的狀態、休息與升級。擲兩顆六面骰加調整值：10 以上成功，7 到 9 成功但要付代價，6 以下出事並記下經驗。規則短，接下來發生什麼由桌上一起接話。"
+    },
+    "cairn": {
+      "name": "極簡老派探險",
+      "subtitle": "沒有職業和等級；擲 d20 不超過屬性就成功，攻擊不擲命中、直接擲傷害。",
+      "details": "開放規則的精簡版，收豁免、戰鬥、護甲、重傷與傷疤、休息、負重與法術。只有力量、敏捷、意志三項屬性：遇到風險擲 d20，不超過屬性值就過；攻擊直接擲武器傷害、扣掉護甲。角色脆弱、要靠腦袋避開危險，喜歡緊張探險、自己想辦法的人選這個。"
+    },
+    "brp": {
+      "name": "百分骰・調查與現代",
+      "subtitle": "技能就是百分比，擲 d100 不超過就成功；適合調查、恐怖與現代題材。",
+      "details": "開放規則的精簡版，收百分骰檢定、成功等級、對抗、戰鬥、受傷與急救、成長和理智。技能就是百分比：擲 d100 不超過技能值就成功，越低越好，擲到技能的五分之一以下是特殊成功、二十分之一以下是大成功。想跑克蘇魯風調查團、恐怖或現代題材，選這個。"
+    },
+    "pf2": {
+      "name": "重戰術奇幻冒險",
+      "subtitle": "每回合三個動作；擲 d20 比難度，差 10 以上就是大成功或大失敗。",
+      "details": "開放規則的精簡版，收檢定與四級成功、熟練與難度、三動作回合、攻擊與多重攻擊減值、傷害與抗性弱點、瀕死與受傷、常見狀態、掩蔽與躲藏、休息與治療。擲 d20 加修正值比難度：高 10 以上是大成功，低 10 以上是大失敗，骰出 20 或 1 再往好或壞推一級。喜歡在格子上算位置、跟隊友配合戰術的團選這個。"
+    }
   },
   "zh-CN": {
     "addable": "可直接加入这桌",
@@ -26,14 +51,39 @@
     "trademark": "各规则名归其出版商所有，本 app 非官方产品。",
     "srd51": {
       "subtitle": "玩家最多的奇幻冒险规则，掷 d20 加修正值过门槛。",
-      "details": "第五版 D&D（2014 版）开放规则 SRD 的裁决精简版，收检定、战斗、状态与休息。掷 d20 加修正值比难度，战斗有动作、移动与 HP。新手最好上手、AI 也最熟，第一次跑团选这个。"
+      "details": "第五版 D&D（2014 版）开放规则 SRD 的裁决精简版，收检定、战斗、状态与休息。掷 d20 加修正值比难度，战斗有动作、移动与 HP。新手最好上手、AI 也最熟，第一次跑团选这个。",
+      "name": "经典奇幻冒险"
     },
     "inSettings": "到桌设置加入",
     "moreLangs": "＋{n} 种语言",
     "remove": "移除",
     "removeTitle": "移除规则书",
     "removeConfirm": "要从这桌世界书移除「{name}」吗？会删掉 {n} 条条目。",
-    "removeKept": "你改过内文的 {kept} 条会保留。"
+    "removeKept": "你改过内文的 {kept} 条会保留。",
+    "heading": "规则书（选一套；不加也能玩）",
+    "switch": "换成这本",
+    "switchOpen": "换一套规则",
+    "switchConfirm": "换成「{next}」会先拿掉「{old}」没改过的 {n} 条。",
+    "dungeonWorld": {
+      "name": "讲故事的奇幻冒险",
+      "subtitle": "规则很少，故事往前推：掷 2d6，10 以上成功，7–9 成功但要付出代价。",
+      "details": "这套开放规则的精简版，收基本动作、掷骰结果、伤害、不好的状态、休息和升级。掷两颗六面骰再加调整值：10 以上成功，7 到 9 成功但要付代价，6 以下出事并记下经验。规则短，接下来怎么演由这一桌一起接话。"
+    },
+    "cairn": {
+      "name": "极简老派探险",
+      "subtitle": "没有职业和等级；掷 d20 不超过属性就成功，攻击不掷命中，直接掷伤害。",
+      "details": "开放规则的精简版，收豁免、战斗、护甲、重伤与伤疤、休息、负重和法术。只有力量、敏捷、意志三项属性：遇到风险掷 d20，不超过属性值就过；攻击直接掷武器伤害，再扣掉护甲。角色脆弱，要靠脑子避开危险，喜欢紧张探险、自己想办法的人选这个。"
+    },
+    "brp": {
+      "name": "百分骰・调查与现代",
+      "subtitle": "技能就是百分比，掷 d100 不超过就成功；适合调查、恐怖和现代题材。",
+      "details": "开放规则的精简版，收百分骰检定、成功等级、对抗、战斗、受伤与急救、成长和理智。技能就是百分比：掷 d100 不超过技能值就成功，越低越好，掷到技能的五分之一以下是特殊成功、二十分之一以下是大成功。想跑克苏鲁风调查团、恐怖或现代题材，选这个。"
+    },
+    "pf2": {
+      "name": "重战术奇幻冒险",
+      "subtitle": "每回合三个动作；掷 d20 比难度，差 10 以上就是大成功或大失败。",
+      "details": "开放规则的精简版，收检定与四级成功、熟练与难度、三动作回合、攻击与多重攻击减值、伤害与抗性弱点、濒死与受伤、常见状态、掩蔽与躲藏、休息与治疗。掷 d20 加修正值比难度：高 10 以上是大成功，低 10 以上是大失败，掷出 20 或 1 再往好或坏推一级。喜欢在格子上算位置、跟队友配合战术的团选这个。"
+    }
   },
   "en": {
     "addable": "Add to this table",
@@ -44,14 +94,39 @@
     "trademark": "Rule names belong to their publishers. This app is not an official product.",
     "srd51": {
       "subtitle": "The most played fantasy adventure rules: roll d20 plus modifiers to beat a target.",
-      "details": "A condensed rulings book from the open SRD of fifth edition D&D (2014): checks, combat, conditions and rest. Roll d20 plus modifiers against a DC; combat has actions, movement and HP. Easiest to learn and best known to AI, so pick this for your first game."
+      "details": "A condensed rulings book from the open SRD of fifth edition D&D (2014): checks, combat, conditions and rest. Roll d20 plus modifiers against a DC; combat has actions, movement and HP. Easiest to learn and best known to AI, so pick this for your first game.",
+      "name": "Classic fantasy adventure"
     },
     "inSettings": "Add in table settings",
     "moreLangs": "+{n} languages",
     "remove": "Remove",
     "removeTitle": "Remove rules book",
     "removeConfirm": "Remove “{name}” from this table’s lorebook? {n} entries will be deleted.",
-    "removeKept": "{kept} entries you edited will be kept."
+    "removeKept": "{kept} entries you edited will be kept.",
+    "heading": "Rules (pick one set; you can play with none)",
+    "switch": "Switch to this",
+    "switchOpen": "Switch rules",
+    "switchConfirm": "Switching to “{next}” first removes {n} untouched entries from “{old}”.",
+    "dungeonWorld": {
+      "name": "Story-first fantasy adventure",
+      "subtitle": "Few rules, and the story keeps moving: roll 2d6, 10+ succeeds, 7–9 succeeds at a cost.",
+      "details": "A short rulings book from the open rules: basic moves, dice results, harm, bad conditions, rest and leveling up. Roll two six-sided dice and add a modifier. 10 or more succeeds, 7 to 9 succeeds at a cost, 6 or less means trouble and you mark experience. The table decides what happens next by talking."
+    },
+    "cairn": {
+      "name": "Bare-bones old-school exploring",
+      "subtitle": "No classes or levels; roll d20 at or under a stat to succeed, and attacks skip the hit roll and go straight to damage.",
+      "details": "A short rulings book from the open rules: saves, combat, armor, critical damage and scars, rest, inventory and spells. There are only three stats, Strength, Dexterity and Willpower: when something is risky, roll d20 and pass if you roll at or under the stat; attacks just roll weapon damage minus armor. Characters are fragile and survive by thinking, so pick this if you like tense exploring and finding your own way out."
+    },
+    "brp": {
+      "name": "Percentile dice: investigation and modern",
+      "subtitle": "Skills are percentages: roll d100 at or under to succeed; good for investigation, horror and modern settings.",
+      "details": "A short rulings book from the open rules: percentile rolls, levels of success, opposed rolls, combat, wounds and first aid, improvement and sanity. Skills are percentages: roll d100 at or under your skill to succeed, and lower is better; a fifth of your skill or less is a special success, a twentieth or less is a critical. Pick this for a Cthulhu-style investigation, horror or a modern-day story."
+    },
+    "pf2": {
+      "name": "Tactical fantasy adventure",
+      "subtitle": "Three actions a turn; roll d20 against the DC, and beating or missing it by 10 is a critical success or failure.",
+      "details": "A short rulings book from the open rules: checks and the four degrees of success, proficiency and DCs, three-action turns, attacks and the multiple attack penalty, damage, resistances and weaknesses, dying and wounds, common conditions, cover and hiding, rest and healing. Roll d20 plus your modifier against the DC: beat it by 10 for a critical success, miss by 10 for a critical failure, and a natural 20 or 1 moves the result one step up or down. Pick this if your group likes positioning on a grid and teaming up on tactics."
+    }
   },
   "ja": {
     "addable": "この卓に追加できるルール",
@@ -62,14 +137,39 @@
     "trademark": "各ルール名はその出版社に帰属します。本アプリは公式製品ではありません。",
     "srd51": {
       "subtitle": "最も遊ばれているファンタジー冒険ルール。d20 に修正値を足して目標値を超える。",
-      "details": "第5版 D&D（2014年版）のオープンルール SRD から、判定・戦闘・状態・休息の裁定をまとめた簡易版です。d20 に修正値を足して難易度と比べ、戦闘には行動・移動・HP があります。初心者でも入りやすく AI もよく知っているので、初めての卓に最適です。"
+      "details": "第5版 D&D（2014年版）のオープンルール SRD から、判定・戦闘・状態・休息の裁定をまとめた簡易版です。d20 に修正値を足して難易度と比べ、戦闘には行動・移動・HP があります。初心者でも入りやすく AI もよく知っているので、初めての卓に最適です。",
+      "name": "定番のファンタジー冒険"
     },
     "inSettings": "卓設定で追加",
     "moreLangs": "＋{n} 言語",
     "remove": "削除",
     "removeTitle": "ルールブックを削除",
     "removeConfirm": "この卓のワールドブックから「{name}」を削除しますか？{n} 件のエントリが削除されます。",
-    "removeKept": "本文を編集した {kept} 件は残ります。"
+    "removeKept": "本文を編集した {kept} 件は残ります。",
+    "heading": "ルール（一冊だけ。入れなくても遊べます）",
+    "switch": "これに替える",
+    "switchOpen": "別のルールにする",
+    "switchConfirm": "「{next}」に替えると、先に「{old}」の未編集 {n} 件を外します。",
+    "dungeonWorld": {
+      "name": "物語で進むファンタジー冒険",
+      "subtitle": "ルールは少なめ。物語が先に進みます。2d6 を振り、10 以上で成功、7～9 は成功でも代償あり。",
+      "details": "公開ルールの短い判定集です。基本の行動、出目、ダメージ、悪い状態、休息とレベルアップを収めています。六面体を二つ振って修正を足します。10 以上は成功、7 から 9 は成功でも代償があり、6 以下はトラブルになって経験を得ます。次に何が起きるかは、卓のみんなで話して決めます。"
+    },
+    "cairn": {
+      "name": "最小限のオールドスクール探索",
+      "subtitle": "クラスもレベルもなし。d20 で能力値以下なら成功、攻撃は命中判定なしでダメージだけ振ります。",
+      "details": "公開ルールの短い判定集です。セーヴ、戦闘、鎧、致命的ダメージと傷跡、休息、持ち物、呪文を収めています。能力値は筋力・敏捷力・意志力の三つだけで、危ないときは d20 を振って能力値以下なら成功。攻撃は武器のダメージを振って鎧の分を引くだけです。キャラクターはもろく、頭を使って危険を避けるので、緊張感のある探索や自分で抜け道を考えるのが好きな人に向いています。"
+    },
+    "brp": {
+      "name": "百分率ダイス・調査と現代",
+      "subtitle": "技能は百分率。d100 を振って以下なら成功。調査、ホラー、現代ものに向いています。",
+      "details": "公開ルールの短い判定集です。百分率の判定、成功の度合い、対抗、戦闘、負傷と応急手当、成長、正気度を収めています。技能は百分率で、d100 を振って技能値以下なら成功、低いほど良い結果です。技能値の五分の一以下はスペシャル、二十分の一以下はクリティカルになります。クトゥルフ風の探索、ホラー、現代ものを遊びたいならこれを選んでください。"
+    },
+    "pf2": {
+      "name": "重戦術ファンタジー冒険",
+      "subtitle": "1ターンに3アクション。d20 で難易度と比べ、10 以上の差で大成功か大失敗。",
+      "details": "公開ルールの短い判定集です。判定と4段階の成功度、習熟と難易度、3アクションのターン、攻撃と多回攻撃ペナルティ、ダメージと抵抗・弱点、瀕死と負傷、よくある状態、遮蔽と隠れ、休息と治療を収めています。d20 に修正値を足して難易度と比べ、10 以上上回れば大成功、10 以上下回れば大失敗、出目 20 や 1 なら結果が1段階上下します。マス目の位置取りや仲間との連携戦術を楽しみたいならこれを選んでください。"
+    }
   },
   "ko": {
     "addable": "이 테이블에 바로 추가",
@@ -80,14 +180,39 @@
     "trademark": "각 규칙 이름은 해당 출판사의 소유이며, 이 앱은 공식 제품이 아닙니다.",
     "srd51": {
       "subtitle": "가장 많이 플레이하는 판타지 모험 규칙. d20에 수정치를 더해 목표치를 넘깁니다.",
-      "details": "5판 D&D(2014년판) 오픈 규칙 SRD에서 판정·전투·상태·휴식 판정을 추린 요약판입니다. d20에 수정치를 더해 난이도와 비교하고, 전투에는 행동·이동·HP가 있습니다. 입문자에게 가장 쉽고 AI도 가장 잘 알아서 첫 세션에 추천합니다."
+      "details": "5판 D&D(2014년판) 오픈 규칙 SRD에서 판정·전투·상태·휴식 판정을 추린 요약판입니다. d20에 수정치를 더해 난이도와 비교하고, 전투에는 행동·이동·HP가 있습니다. 입문자에게 가장 쉽고 AI도 가장 잘 알아서 첫 세션에 추천합니다.",
+      "name": "정석 판타지 모험"
     },
     "inSettings": "테이블 설정에서 추가",
     "moreLangs": "+{n}개 언어",
     "remove": "제거",
     "removeTitle": "규칙서 제거",
     "removeConfirm": "이 테이블의 월드북에서 「{name}」을(를) 제거할까요? 항목 {n}개가 삭제됩니다.",
-    "removeKept": "내용을 고친 {kept}개는 남겨 둡니다."
+    "removeKept": "내용을 고친 {kept}개는 남겨 둡니다.",
+    "heading": "규칙 (하나만. 없어도 플레이할 수 있어요)",
+    "switch": "이걸로 바꾸기",
+    "switchOpen": "다른 규칙으로",
+    "switchConfirm": "「{next}」(으)로 바꾸면 「{old}」에서 고치지 않은 항목 {n}개를 먼저 뺍니다.",
+    "dungeonWorld": {
+      "name": "이야기로 가는 판타지 모험",
+      "subtitle": "규칙은 적고 이야기가 먼저 갑니다. 2d6을 굴려 10 이상이면 성공, 7–9는 성공이지만 대가가 있습니다.",
+      "details": "공개 규칙을 짧게 모은 판정집입니다. 기본 행동, 주사위 결과, 피해, 나쁜 상태, 휴식과 레벨 업을 담았습니다. 육면체 두 개를 굴리고 수정치를 더합니다. 10 이상은 성공, 7에서 9는 성공이지만 대가가 있고, 6 이하는 일이 생기며 경험치를 얻습니다. 다음에 무슨 일이 있을지는 테이블에서 같이 말하며 정합니다."
+    },
+    "cairn": {
+      "name": "최소한의 올드스쿨 탐험",
+      "subtitle": "클래스도 레벨도 없습니다. d20을 굴려 능력치 이하면 성공, 공격은 명중 굴림 없이 바로 피해를 굴립니다.",
+      "details": "공개 규칙을 짧게 모은 판정집입니다. 내성, 전투, 갑옷, 치명상과 흉터, 휴식, 소지품, 주문을 담았습니다. 능력치는 근력·민첩·의지 세 가지뿐이고, 위험할 때 d20을 굴려 능력치 이하가 나오면 통과합니다. 공격은 무기 피해를 굴리고 갑옷만큼 빼면 끝입니다. 캐릭터가 약해서 머리를 써서 위험을 피해야 하니, 긴장감 있는 탐험과 스스로 방법을 찾는 걸 좋아하면 이걸 고르세요."
+    },
+    "brp": {
+      "name": "백분율 주사위・조사와 현대",
+      "subtitle": "기능은 백분율입니다. d100을 굴려 그 이하면 성공. 조사, 공포, 현대 배경에 잘 맞습니다.",
+      "details": "공개 규칙을 짧게 모은 판정집입니다. 백분율 판정, 성공 단계, 대항, 전투, 부상과 응급처치, 성장, 이성을 담았습니다. 기능은 백분율이라 d100을 굴려 기능치 이하면 성공이고 낮을수록 좋습니다. 기능치의 5분의 1 이하면 스페셜, 20분의 1 이하면 크리티컬입니다. 크툴루풍 조사, 공포, 현대 이야기를 하고 싶다면 이걸 고르세요."
+    },
+    "pf2": {
+      "name": "전술 중심 판타지 모험",
+      "subtitle": "턴마다 행동 3개. d20을 굴려 난이도와 비교하고, 10 이상 차이 나면 대성공이나 대실패.",
+      "details": "공개 규칙을 짧게 모은 판정집입니다. 판정과 4단계 성공도, 숙련과 난이도, 3행동 턴, 공격과 다중 공격 페널티, 피해와 저항·약점, 빈사와 부상, 자주 나오는 상태, 엄폐와 숨기, 휴식과 치료를 담았습니다. d20에 수정치를 더해 난이도와 비교하고, 10 이상 넘기면 대성공, 10 이상 모자라면 대실패이며, 주사위가 20이나 1이면 결과가 한 단계 오르거나 내려갑니다. 격자 위 위치 싸움과 동료와의 전술 호흡을 좋아한다면 이걸 고르세요."
+    }
   },
   "es": {
     "addable": "Se puede añadir a esta mesa",
@@ -98,14 +223,39 @@
     "trademark": "Los nombres de las reglas pertenecen a sus editoriales. Esta app no es un producto oficial.",
     "srd51": {
       "subtitle": "Las reglas de aventura fantástica más jugadas: tira d20 más modificadores y supera la dificultad.",
-      "details": "Versión resumida para arbitrar, tomada del SRD abierto de D&D quinta edición (2014): pruebas, combate, estados y descanso. Tiras d20 más modificadores contra una CD; el combate tiene acciones, movimiento y PG. Es la más fácil de aprender y la que mejor conoce la IA: ideal para tu primera partida."
+      "details": "Versión resumida para arbitrar, tomada del SRD abierto de D&D quinta edición (2014): pruebas, combate, estados y descanso. Tiras d20 más modificadores contra una CD; el combate tiene acciones, movimiento y PG. Es la más fácil de aprender y la que mejor conoce la IA: ideal para tu primera partida.",
+      "name": "Aventura de fantasía clásica"
     },
     "inSettings": "Añádelo en la configuración de la mesa",
     "moreLangs": "+{n} idiomas",
     "remove": "Quitar",
     "removeTitle": "Quitar libro de reglas",
     "removeConfirm": "¿Quitar «{name}» del lorebook de esta mesa? Se borrarán {n} entradas.",
-    "removeKept": "Se conservarán las {kept} entradas que editaste."
+    "removeKept": "Se conservarán las {kept} entradas que editaste.",
+    "heading": "Reglas (elige un conjunto; también se puede jugar sin ellas)",
+    "switch": "Cambiar a este",
+    "switchOpen": "Cambiar de reglas",
+    "switchConfirm": "Cambiar a «{next}» quita primero {n} entradas de «{old}» que no editaste.",
+    "dungeonWorld": {
+      "name": "Aventura de fantasía contada",
+      "subtitle": "Pocas reglas y la historia tira: tira 2d6, 10 o más es éxito, 7–9 es éxito con un coste.",
+      "details": "Un resumen para arbitrar, sacado de las reglas abiertas: acciones básicas, resultados de los dados, daño, malos estados, descanso y subir de nivel. Tira dos dados de seis y suma un modificador. 10 o más es éxito, de 7 a 9 es éxito con un coste, 6 o menos es problema y anotas experiencia. Lo que pasa después lo decide la mesa hablando."
+    },
+    "cairn": {
+      "name": "Exploración clásica y minimalista",
+      "subtitle": "Sin clases ni niveles: tira d20 igual o por debajo de un atributo para tener éxito; los ataques no tiran para acertar, van directo al daño.",
+      "details": "Un resumen para arbitrar, sacado de las reglas abiertas: salvaciones, combate, armadura, daño crítico y cicatrices, descanso, inventario y hechizos. Solo hay tres atributos, Fuerza, Destreza y Voluntad: si algo es arriesgado, tira d20 y pasas si sacas igual o menos que el atributo; un ataque solo tira el daño del arma y resta la armadura. Los personajes son frágiles y sobreviven pensando, así que elige este si te gusta explorar con tensión y buscar tus propias salidas."
+    },
+    "brp": {
+      "name": "Dados de porcentaje: investigación y época moderna",
+      "subtitle": "Las habilidades son porcentajes: tira d100 igual o por debajo para tener éxito; ideal para investigación, terror y época moderna.",
+      "details": "Un resumen para arbitrar, sacado de las reglas abiertas: tiradas de porcentaje, niveles de éxito, tiradas enfrentadas, combate, heridas y primeros auxilios, mejora y cordura. Las habilidades son porcentajes: tira d100 y tienes éxito si sacas tu habilidad o menos, y cuanto más bajo, mejor; una quinta parte o menos es un éxito especial, una vigésima parte o menos es un crítico. Elige este para una investigación al estilo Cthulhu, terror o una historia actual."
+    },
+    "pf2": {
+      "name": "Fantasía táctica",
+      "subtitle": "Tres acciones por turno; tira d20 contra la CD, y superarla o fallar por 10 es un éxito o fallo crítico.",
+      "details": "Un resumen para arbitrar, sacado de las reglas abiertas: pruebas y los cuatro grados de éxito, competencia y CD, turnos de tres acciones, ataques y la penalización por ataques múltiples, daño, resistencias y debilidades, moribundo y heridas, estados comunes, cobertura y esconderse, descanso y curación. Tira d20 más tu modificador contra la CD: supérala por 10 y es un éxito crítico, falla por 10 y es un fallo crítico, y un 20 o un 1 natural mueve el resultado un paso arriba o abajo. Elige este si a tu grupo le gusta colocarse en la cuadrícula y coordinar tácticas."
+    }
   },
   "pt-BR": {
     "addable": "Pode ser adicionado a esta mesa",
@@ -116,14 +266,39 @@
     "trademark": "Os nomes das regras pertencem às suas editoras. Este app não é um produto oficial.",
     "srd51": {
       "subtitle": "As regras de aventura de fantasia mais jogadas: role d20 mais modificadores para vencer a dificuldade.",
-      "details": "Versão resumida para arbitragem, tirada do SRD aberto de D&D quinta edição (2014): testes, combate, condições e descanso. Role d20 mais modificadores contra uma CD; o combate tem ações, movimento e PV. É a mais fácil de aprender e a que a IA conhece melhor: escolha esta para a sua primeira sessão."
+      "details": "Versão resumida para arbitragem, tirada do SRD aberto de D&D quinta edição (2014): testes, combate, condições e descanso. Role d20 mais modificadores contra uma CD; o combate tem ações, movimento e PV. É a mais fácil de aprender e a que a IA conhece melhor: escolha esta para a sua primeira sessão.",
+      "name": "Aventura de fantasia clássica"
     },
     "inSettings": "Adicione nas configurações da mesa",
     "moreLangs": "+{n} idiomas",
     "remove": "Remover",
     "removeTitle": "Remover livro de regras",
     "removeConfirm": "Remover “{name}” do lorebook desta mesa? {n} entradas serão apagadas.",
-    "removeKept": "As {kept} entradas que você editou serão mantidas."
+    "removeKept": "As {kept} entradas que você editou serão mantidas.",
+    "heading": "Regras (escolha um conjunto; dá para jogar sem nenhum)",
+    "switch": "Trocar para este",
+    "switchOpen": "Trocar de regras",
+    "switchConfirm": "Trocar para “{next}” primeiro tira {n} entradas de “{old}” que você não editou.",
+    "dungeonWorld": {
+      "name": "Aventura de fantasia contada",
+      "subtitle": "Poucas regras, e a história anda: role 2d6, 10 ou mais é sucesso, 7–9 é sucesso com um custo.",
+      "details": "Um resumo para arbitrar, tirado das regras abertas: ações básicas, resultados dos dados, dano, condições ruins, descanso e subir de nível. Role dois dados de seis e some um modificador. 10 ou mais é sucesso, de 7 a 9 é sucesso com um custo, 6 ou menos é problema e você marca experiência. O que acontece depois a mesa decide conversando."
+    },
+    "cairn": {
+      "name": "Exploração clássica e minimalista",
+      "subtitle": "Sem classes nem níveis: role d20 igual ou abaixo de um atributo para ter sucesso; ataques não rolam para acertar, vão direto ao dano.",
+      "details": "Um resumo para arbitrar, tirado das regras abertas: salvaguardas, combate, armadura, dano crítico e cicatrizes, descanso, inventário e magias. Há só três atributos, Força, Destreza e Vontade: se algo é arriscado, role d20 e passe se tirar igual ou menos que o atributo; um ataque só rola o dano da arma e tira a armadura. Os personagens são frágeis e sobrevivem pensando, então escolha este se gosta de explorar com tensão e achar sua própria saída."
+    },
+    "brp": {
+      "name": "Dados de porcentagem: investigação e mundo moderno",
+      "subtitle": "Perícias são porcentagens: role d100 igual ou abaixo para ter sucesso; bom para investigação, terror e cenários modernos.",
+      "details": "Um resumo para arbitrar, tirado das regras abertas: rolagens de porcentagem, níveis de sucesso, testes opostos, combate, ferimentos e primeiros socorros, evolução e sanidade. Perícias são porcentagens: role d100 e tenha sucesso se tirar sua perícia ou menos, e quanto mais baixo, melhor; um quinto ou menos é sucesso especial, um vigésimo ou menos é crítico. Escolha este para uma investigação no estilo Cthulhu, terror ou uma história nos dias de hoje."
+    },
+    "pf2": {
+      "name": "Fantasia tática",
+      "subtitle": "Três ações por turno; role d20 contra a CD, e passar ou errar por 10 é sucesso ou falha crítica.",
+      "details": "Um resumo para arbitrar, tirado das regras abertas: testes e os quatro graus de sucesso, proficiência e CD, turnos de três ações, ataques e a penalidade de ataques múltiplos, dano, resistências e fraquezas, morrendo e ferimentos, condições comuns, cobertura e se esconder, descanso e cura. Role d20 mais seu modificador contra a CD: passe por 10 e é sucesso crítico, erre por 10 e é falha crítica, e um 20 ou 1 natural move o resultado um passo para cima ou para baixo. Escolha este se seu grupo gosta de se posicionar no grid e combinar táticas."
+    }
   },
   "de": {
     "addable": "Direkt zu diesem Tisch hinzufügen",
@@ -134,14 +309,39 @@
     "trademark": "Regelnamen gehören ihren Verlagen. Diese App ist kein offizielles Produkt.",
     "srd51": {
       "subtitle": "Die meistgespielten Fantasy-Abenteuerregeln: W20 plus Modifikatoren gegen einen Zielwert.",
-      "details": "Eine Kurzfassung zum Schiedsrichtern aus dem offenen SRD der fünften D&D-Edition (2014): Proben, Kampf, Zustände und Rast. W20 plus Modifikatoren gegen einen SG; im Kampf gibt es Aktionen, Bewegung und TP. Am leichtesten zu lernen und der KI am besten bekannt, ideal für die erste Runde."
+      "details": "Eine Kurzfassung zum Schiedsrichtern aus dem offenen SRD der fünften D&D-Edition (2014): Proben, Kampf, Zustände und Rast. W20 plus Modifikatoren gegen einen SG; im Kampf gibt es Aktionen, Bewegung und TP. Am leichtesten zu lernen und der KI am besten bekannt, ideal für die erste Runde.",
+      "name": "Klassisches Fantasy-Abenteuer"
     },
     "inSettings": "In den Tischeinstellungen hinzufügen",
     "moreLangs": "+{n} Sprachen",
     "remove": "Entfernen",
     "removeTitle": "Regelbuch entfernen",
     "removeConfirm": "„{name}“ aus dem Lorebook dieses Tisches entfernen? {n} Einträge werden gelöscht.",
-    "removeKept": "{kept} von dir bearbeitete Einträge bleiben erhalten."
+    "removeKept": "{kept} von dir bearbeitete Einträge bleiben erhalten.",
+    "heading": "Regeln (ein Set wählen; ohne geht auch)",
+    "switch": "Zu diesem wechseln",
+    "switchOpen": "Andere Regeln",
+    "switchConfirm": "Wechsel zu „{next}“ entfernt zuerst {n} unberührte Einträge von „{old}“.",
+    "dungeonWorld": {
+      "name": "Erzähltes Fantasy-Abenteuer",
+      "subtitle": "Wenig Regeln, die Geschichte läuft: wirf 2W6, 10+ gelingt, 7–9 gelingt mit einem Preis.",
+      "details": "Eine kurze Schiedsrichterfassung der offenen Regeln: Grundaktionen, Würfelergebnisse, Schaden, schlechte Zustände, Rast und Stufenaufstieg. Wirf zwei sechsseitige Würfel und addiere einen Modifikator. 10 oder mehr gelingt, 7 bis 9 gelingt mit einem Preis, 6 oder weniger ist Ärger und du notierst Erfahrung. Was als Nächstes passiert, entscheidet der Tisch im Gespräch."
+    },
+    "cairn": {
+      "name": "Schlankes Old-School-Erkunden",
+      "subtitle": "Keine Klassen, keine Stufen: Wirf W20 auf oder unter einen Wert, um zu bestehen; Angriffe würfeln nicht auf Treffer, sondern gleich Schaden.",
+      "details": "Eine kurze Schiedsrichterfassung der offenen Regeln: Rettungswürfe, Kampf, Rüstung, kritischer Schaden und Narben, Rast, Inventar und Zauber. Es gibt nur drei Werte, Stärke, Geschicklichkeit und Willenskraft: Wird es riskant, wirf W20 und bestehe mit einem Ergebnis auf oder unter dem Wert; ein Angriff würfelt nur den Waffenschaden minus Rüstung. Figuren sind zerbrechlich und überleben durch Nachdenken, also nimm das, wenn du spannendes Erkunden und eigene Lösungen magst."
+    },
+    "brp": {
+      "name": "Prozentwürfel: Ermittlung und Moderne",
+      "subtitle": "Fertigkeiten sind Prozentwerte: Wirf W100 auf oder unter den Wert, um zu bestehen; gut für Ermittlungen, Horror und Moderne.",
+      "details": "Eine kurze Schiedsrichterfassung der offenen Regeln: Prozentwürfe, Erfolgsgrade, vergleichende Würfe, Kampf, Wunden und Erste Hilfe, Steigerung und geistige Stabilität. Fertigkeiten sind Prozentwerte: Wirf W100 und bestehe mit deinem Wert oder weniger, je niedriger, desto besser; ein Fünftel oder weniger ist ein Spezialerfolg, ein Zwanzigstel oder weniger ein kritischer Erfolg. Nimm das für Ermittlungen im Cthulhu-Stil, Horror oder Geschichten in der Gegenwart."
+    },
+    "pf2": {
+      "name": "Taktisches Fantasy-Abenteuer",
+      "subtitle": "Drei Aktionen pro Zug; wirf W20 gegen den SG – 10 drüber oder drunter ist ein kritischer Erfolg oder Fehlschlag.",
+      "details": "Eine kurze Schiedsrichterfassung der offenen Regeln: Proben und die vier Erfolgsgrade, Übung und SG, Züge mit drei Aktionen, Angriffe und der Mehrfachangriffsabzug, Schaden, Resistenzen und Schwächen, Sterben und Wunden, häufige Zustände, Deckung und Verstecken, Rast und Heilung. Wirf W20 plus Modifikator gegen den SG: 10 darüber ist ein kritischer Erfolg, 10 darunter ein kritischer Fehlschlag, und eine natürliche 20 oder 1 verschiebt das Ergebnis um eine Stufe. Nimm das, wenn deine Gruppe gern auf dem Raster Position bezieht und Taktiken abstimmt."
+    }
   },
   "fr": {
     "addable": "À ajouter directement à cette table",
@@ -152,14 +352,39 @@
     "trademark": "Les noms de règles appartiennent à leurs éditeurs. Cette app n’est pas un produit officiel.",
     "srd51": {
       "subtitle": "Les règles d’aventure fantastique les plus jouées : d20 plus modificateurs contre un seuil.",
-      "details": "Une version condensée pour arbitrer, tirée du SRD ouvert de D&D cinquième édition (2014) : tests, combat, états et repos. On lance un d20 plus modificateurs contre un DD ; le combat comprend actions, déplacement et PV. La plus simple à apprendre et la mieux connue de l’IA : idéale pour une première partie."
+      "details": "Une version condensée pour arbitrer, tirée du SRD ouvert de D&D cinquième édition (2014) : tests, combat, états et repos. On lance un d20 plus modificateurs contre un DD ; le combat comprend actions, déplacement et PV. La plus simple à apprendre et la mieux connue de l’IA : idéale pour une première partie.",
+      "name": "Aventure fantastique classique"
     },
     "inSettings": "À ajouter dans les réglages de la table",
     "moreLangs": "+{n} langues",
     "remove": "Retirer",
     "removeTitle": "Retirer le livre de règles",
     "removeConfirm": "Retirer « {name} » du lorebook de cette table ? {n} entrées seront supprimées.",
-    "removeKept": "Les {kept} entrées que vous avez modifiées seront conservées."
+    "removeKept": "Les {kept} entrées que vous avez modifiées seront conservées.",
+    "heading": "Règles (un seul ensemble ; on peut jouer sans)",
+    "switch": "Passer à celui-ci",
+    "switchOpen": "Changer de règles",
+    "switchConfirm": "Passer à « {next} » retire d’abord {n} entrées de « {old} » que vous n’avez pas modifiées.",
+    "dungeonWorld": {
+      "name": "Aventure fantastique en récit",
+      "subtitle": "Peu de règles, l’histoire avance : lancez 2d6, 10 ou plus réussit, 7–9 réussit avec un prix à payer.",
+      "details": "Un résumé pour arbitrer, tiré des règles ouvertes : actions de base, résultats des dés, dégâts, mauvais états, repos et montée de niveau. Lancez deux dés à six faces et ajoutez un modificateur. 10 ou plus réussit, de 7 à 9 réussit avec un prix à payer, 6 ou moins c’est un problème et vous notez de l’expérience. La suite se décide en parlant autour de la table."
+    },
+    "cairn": {
+      "name": "Exploration old-school épurée",
+      "subtitle": "Ni classes ni niveaux : lancez d20 sous une caractéristique pour réussir ; les attaques ne lancent pas pour toucher, elles passent direct aux dégâts.",
+      "details": "Un résumé pour arbitrer, tiré des règles ouvertes : sauvegardes, combat, armure, dégâts critiques et cicatrices, repos, inventaire et sorts. Il n’y a que trois caractéristiques, Force, Dextérité et Volonté : quand c’est risqué, lancez d20 et réussissez si vous faites autant ou moins que la caractéristique ; une attaque lance seulement les dégâts de l’arme, moins l’armure. Les personnages sont fragiles et survivent en réfléchissant : choisissez ceci si vous aimez l’exploration tendue et trouver vos propres solutions."
+    },
+    "brp": {
+      "name": "Dés de pourcentage : enquête et monde moderne",
+      "subtitle": "Les compétences sont des pourcentages : lancez d100 sous la valeur pour réussir ; idéal pour l’enquête, l’horreur et le moderne.",
+      "details": "Un résumé pour arbitrer, tiré des règles ouvertes : jets de pourcentage, degrés de réussite, oppositions, combat, blessures et premiers soins, progression et santé mentale. Les compétences sont des pourcentages : lancez d100 et réussissez si vous faites votre compétence ou moins, et plus c’est bas, mieux c’est ; un cinquième ou moins est une réussite spéciale, un vingtième ou moins un critique. Choisissez ceci pour une enquête à la Cthulhu, de l’horreur ou une histoire contemporaine."
+    },
+    "pf2": {
+      "name": "Fantasy tactique",
+      "subtitle": "Trois actions par tour ; lancez d20 contre le DD, et 10 de plus ou de moins donne une réussite ou un échec critique.",
+      "details": "Un résumé pour arbitrer, tiré des règles ouvertes : tests et les quatre degrés de réussite, maîtrise et DD, tours à trois actions, attaques et le malus d’attaques multiples, dégâts, résistances et faiblesses, mourant et blessures, états courants, abri et se cacher, repos et soins. Lancez d20 plus votre modificateur contre le DD : 10 de plus est une réussite critique, 10 de moins un échec critique, et un 20 ou un 1 naturel décale le résultat d’un cran. Choisissez ceci si votre groupe aime se placer sur la grille et combiner les tactiques."
+    }
   },
   "ru": {
     "addable": "Можно добавить к этому столу",
@@ -170,13 +395,38 @@
     "trademark": "Названия правил принадлежат их издателям. Это приложение не является официальным продуктом.",
     "srd51": {
       "subtitle": "Самые популярные правила фэнтези-приключений: d20 плюс модификаторы против сложности.",
-      "details": "Сокращённая версия для судейства из открытого SRD пятой редакции D&D (2014): проверки, бой, состояния и отдых. Бросьте d20 плюс модификаторы против Сл; в бою есть действия, перемещение и хиты. Проще всего освоить, и ИИ знает её лучше всего, поэтому подходит для первой игры."
+      "details": "Сокращённая версия для судейства из открытого SRD пятой редакции D&D (2014): проверки, бой, состояния и отдых. Бросьте d20 плюс модификаторы против Сл; в бою есть действия, перемещение и хиты. Проще всего освоить, и ИИ знает её лучше всего, поэтому подходит для первой игры.",
+      "name": "Классическое фэнтези-приключение"
     },
     "inSettings": "Добавьте в настройках стола",
     "moreLangs": "+{n} языков",
     "remove": "Убрать",
     "removeTitle": "Убрать книгу правил",
     "removeConfirm": "Убрать «{name}» из книги мира этого стола? Будет удалено записей: {n}.",
-    "removeKept": "Изменённые вами записи ({kept}) останутся."
+    "removeKept": "Изменённые вами записи ({kept}) останутся.",
+    "heading": "Правила (один набор; можно играть и без них)",
+    "switch": "Сменить на эту",
+    "switchOpen": "Сменить правила",
+    "switchConfirm": "Смена на «{next}» сначала убирает {n} нетронутых записей «{old}».",
+    "dungeonWorld": {
+      "name": "Фэнтези-приключение через историю",
+      "subtitle": "Правил мало, историю ведёт разговор: бросьте 2d6, 10 и выше — успех, 7–9 — успех с ценой.",
+      "details": "Короткий набор для ведущего из открытых правил: основные действия, результаты броска, урон, плохие состояния, отдых и новый уровень. Бросьте два шестигранника и прибавьте модификатор. 10 и выше — успех, от 7 до 9 — успех с ценой, 6 и ниже — неприятность, и вы отмечаете опыт. Что будет дальше, решает стол, разговаривая."
+    },
+    "cairn": {
+      "name": "Минималистичное олдскульное исследование",
+      "subtitle": "Без классов и уровней: бросьте d20 не выше характеристики — успех; атаки не бросают на попадание, сразу урон.",
+      "details": "Короткий набор для ведущего из открытых правил: спасброски, бой, доспехи, критический урон и шрамы, отдых, инвентарь и заклинания. Характеристик всего три — Сила, Ловкость и Воля: когда рискованно, бросьте d20 и пройдите, если выпало не больше характеристики; атака просто бросает урон оружия минус доспех. Персонажи хрупкие и выживают головой, так что выбирайте это, если любите напряжённое исследование и свои пути выхода."
+    },
+    "brp": {
+      "name": "Процентные кубики: расследование и современность",
+      "subtitle": "Навыки — это проценты: бросьте d100 не выше значения — успех; подходит для расследований, хоррора и современности.",
+      "details": "Короткий набор для ведущего из открытых правил: процентные броски, степени успеха, встречные проверки, бой, раны и первая помощь, рост навыков и рассудок. Навыки — это проценты: бросьте d100 и преуспейте, если выпало не больше навыка, и чем ниже, тем лучше; пятая часть навыка или меньше — особый успех, двадцатая или меньше — критический. Выбирайте это для расследований в духе Ктулху, хоррора или истории в наши дни."
+    },
+    "pf2": {
+      "name": "Тактическое фэнтези-приключение",
+      "subtitle": "Три действия за ход; бросьте d20 против КС, разница в 10 — критический успех или провал.",
+      "details": "Короткий набор для ведущего из открытых правил: проверки и четыре степени успеха, мастерство и КС, ход из трёх действий, атаки и штраф за множественные атаки, урон, сопротивления и уязвимости, смерть и раны, частые состояния, укрытие и скрытность, отдых и лечение. Бросьте d20 плюс модификатор против КС: превысили на 10 — критический успех, не добрали 10 — критический провал, а натуральные 20 или 1 сдвигают результат на ступень вверх или вниз. Выбирайте это, если группе нравится расставляться на клетках и слаженно воевать."
+    }
   }
 }

@@ -14,7 +14,7 @@ export function RulesGuide({
   /** 從桌設定開才有：指南裡的加入鈕與已加入狀態跟選書入口同步 */
   entries?: readonly { uid: number; title: string; content: string }[];
   onAddRulesBook?: (bookJson: string, label: string) => Promise<void>;
-  onRemoveEntries?: (uids: number[]) => Promise<void>;
+  onRemoveEntries?: (uids: number[]) => Promise<boolean>;
 }) {
   const [open, setOpen] = useState(false);
   const c = diceCopy();
@@ -35,7 +35,7 @@ export function RulesGuide({
           <p>{c.intro}</p>
           <p>{c.soloGuide}</p>
           <h3>{r.addable}</h3>
-          <RuleBookList entries={entries} onAddRulesBook={onAddRulesBook} onRemoveEntries={onRemoveEntries} />
+          <RuleBookList catalog entries={entries} onAddRulesBook={onAddRulesBook} onRemoveEntries={onRemoveEntries} />
           <p>{r.others}</p>
           <small className="rule-trademark">{r.trademark}</small>
         </Dialog>
