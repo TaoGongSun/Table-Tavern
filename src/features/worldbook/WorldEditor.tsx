@@ -32,6 +32,7 @@ export function WorldEditor({
   worldChange,
   onWorldChangeTaken,
   transport,
+  bibleFirst = false,
   bibleTab,
   gmGuard,
 }: {
@@ -60,6 +61,8 @@ export function WorldEditor({
   onWorldChangeTaken: (worldId: string, generation: number) => void;
   /** 聊天 transport：重構初判失敗的錯誤分流用；不傳走中性文案 */
   transport?: string;
+  /** 一開就在劇本分頁（要有 bibleTab 才有作用） */
+  bibleFirst?: boolean;
   /** VN 桌的「劇本」分頁（features/vn/bible/BibleTab）；有給才出「世界｜劇本」切換。收回報未存與否的回呼，並交出 flush（頂列儲存時一併存劇本草稿） */
   bibleTab?: (
     onDirtyChange: (dirty: boolean) => void,
@@ -68,7 +71,7 @@ export function WorldEditor({
   /** VN 桌 GM-only 條目內文的劇透遮罩 */
   gmGuard?: (content: ReactNode) => ReactNode;
 }) {
-  const [bibleShown, setBibleShown] = useState(false);
+  const [bibleShown, setBibleShown] = useState(bibleFirst);
   const [bibleDirty, setBibleDirty] = useState(false);
   const bibleFlush = useRef<(() => Promise<boolean>) | null>(null);
   const [text, setText] = useState<string | null>(null);

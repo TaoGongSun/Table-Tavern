@@ -78,6 +78,7 @@ export function VnPlayer({
   onAdvanceScene,
   onReenter,
   onShowChat,
+  onOpenScript,
   onGoLobby,
   onReplayChapter,
   onBranch,
@@ -120,6 +121,8 @@ export function VnPlayer({
   /** 換幕已提交、重進失敗時只重試重進 */
   onReenter: () => Promise<boolean>;
   onShowChat: () => void;
+  /** 「更多…」的劇本：切到世界設定的劇本分頁，返回回這裡 */
+  onOpenScript: () => void;
   onGoLobby: () => void;
   /** 從某一章重玩（包 5 §2.9）：截幕首分岔後重進本桌 */
   onReplayChapter: (chapter: number) => Promise<void>;
@@ -540,6 +543,7 @@ export function VnPlayer({
     onTitle: () => onTitle(true),
     onNextChapter: () => void askNextChapter(),
     onShowChat,
+    onOpenScript,
     onExportCard: () => void exportVnCard(worldId, tableName).catch((reason) => onError(backendText(reason))),
     onExportWork: exportWork,
     onHide: () => setHidden(true),

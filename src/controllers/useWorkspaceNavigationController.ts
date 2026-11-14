@@ -12,7 +12,8 @@ export type MainViewState =
   | { kind: "new-character"; id: string }
   | { kind: "player"; id: string }
   | { kind: "new-player"; id: string }
-  | { kind: "world" }
+  /** fromVn＝從 VN 遊戲選單的「劇本」進來：開在劇本分頁、返回回 VN 畫面 */
+  | { kind: "world"; fromVn?: boolean }
   | null;
 
 /** 這個畫面是不是正在顯示這張卡（四種卡片編輯畫面） */
@@ -245,11 +246,22 @@ export function useWorkspaceNavigationController({
   const selectGm = () => selectSpeaker(GM_TARGET);
 
   /** 回傳世界設定是否開著（玩家在未存確認選了留下就是 false） */
-  async function openWorldEditor(): Promise<boolean> {
+  async function openWorldEditor(fromVn = false): Promise<boolean> {
+    if (fromVn) {
+      // VN 畫面下聊天視圖已卸載，守門是舊編輯器留下的：問它只會跳出對不上畫面的確認
+      leaveGuard.current = null;
+      setMainView({ kind: "world", fromVn });
+      return true;
+    }
     if (mainView?.kind === "world") return true;
     if (!(await canLeaveEditor())) return false;
     setMainView({ kind: "world" });
     return true;
+  }
+
+  /** 離開聊天視圖（工具列切 VN）：編輯畫面有未存先問，放行才走 */
+  async function leaveEditorThen(go: () => void) {
+    if (await canLeaveEditor()) go();
   }
 
   // 建卡先跟後端要一個 id：草稿期生圖就落在正確的圖庫目錄，存檔用同一個 id
@@ -301,6 +313,7 @@ export function useWorkspaceNavigationController({
     selectCard,
     selectGm,
     openWorldEditor,
+    leaveEditorThen,
     openNewCard,
     openSceneReader,
     deleteCharacter,

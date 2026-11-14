@@ -59,6 +59,8 @@ interface MainViewProps {
   /** 聊天 transport：重構初判失敗的錯誤分流要指對地方；給不出就走中性文案 */
   transport?: string;
   worldOpen: boolean;
+  /** 世界設定一開就在劇本分頁（VN 遊戲選單的「劇本」） */
+  scriptFirst?: boolean;
   onEntryConverted: () => Promise<void>;
   onDiceChanged?: () => Promise<void>;
   onAddRulesBook?: (bookJson: string, label: string) => Promise<void>;
@@ -108,6 +110,7 @@ export function MainView({
   isBusy,
   transport,
   worldOpen,
+  scriptFirst = false,
   onEntryConverted,
   onDiceChanged,
   onAddRulesBook,
@@ -210,6 +213,7 @@ export function MainView({
           onWorldChangeTaken={onWorldChangeTaken}
           isTurnRunning={isBusy}
           transport={transport}
+          bibleFirst={scriptFirst}
           bibleTab={
             vnTable
               ? (onDirtyChange, flushRef) => (

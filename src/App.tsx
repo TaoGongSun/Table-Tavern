@@ -1162,7 +1162,15 @@ function App() {
             onError={setError}
             onAdvanceScene={sceneActions.advanceVn}
             onReenter={sceneActions.reenterVn}
-            onShowChat={() => setVnView(false)}
+            onShowChat={() => {
+              // 劇本頁切 VN 再按「聊天視圖」：去掉「返回回 VN」，免得在劇本與 VN 之間來回出不去
+              navigation.setMainView((view) => (view?.kind === "world" ? { kind: "world" } : view));
+              setVnView(false);
+            }}
+            onOpenScript={() => {
+              void navigation.openWorldEditor(true);
+              setVnView(false);
+            }}
             onGoLobby={() => void goLobby()}
             onReplayChapter={sceneActions.replayChapter}
             onBranch={sceneActions.vnBranch}

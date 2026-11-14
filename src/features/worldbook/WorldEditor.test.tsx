@@ -158,6 +158,38 @@ describe("WorldEditor", () => {
     expect(confirm).toHaveBeenCalled();
   });
 
+  it("opens on the script tab when asked to", async () => {
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    root = createRoot(host);
+    await act(async () => {
+      root?.render(
+        <WorldEditor
+          title={t("worldAria")}
+          world="w1"
+          worldName="Alpha"
+          onBack={() => {}}
+          leaveGuard={leaveGuard}
+          convertColor="#e07a5f"
+          onEntryConverted={async () => {}}
+          onRefactorApplied={async () => {}}
+          onRefreshReceipts={async () => {}}
+          isTurnRunning={() => false}
+          pendingRefactorCard={null}
+          onPendingRefactorCardTaken={taken}
+          worldChange={null}
+          onWorldChangeTaken={removalTaken}
+          bibleFirst
+          bibleTab={() => <p className="script-page">script</p>}
+        />,
+      );
+    });
+    const pressed = host.querySelector('.card-editor-tabs button[aria-pressed="true"]')!;
+    expect(pressed.textContent).toBe(t("vnBibleTab"));
+    expect(host.querySelector(".script-page")!.closest("[hidden]")).toBeNull();
+    expect(host.querySelector<HTMLElement>(".world-editor-page")!.hidden).toBe(true);
+  });
+
   it("saves only world.md from the top bar", async () => {
     await mount();
     await act(async () => saveButton().click());

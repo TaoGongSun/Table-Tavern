@@ -13,6 +13,7 @@ function actions(replay: boolean) {
     onTitle: vi.fn(),
     onNextChapter: vi.fn(),
     onShowChat: vi.fn(),
+    onOpenScript: vi.fn(),
     onExportCard: vi.fn(),
     onExportWork: vi.fn(),
     onHide: vi.fn(),
@@ -58,15 +59,21 @@ describe("game menu", () => {
     expect(names).not.toContain(t("vnNextChapter"));
     expect(names).not.toContain(t("vnMenuMore"));
     expect(names).not.toContain(t("vnProgressPanel"));
+    expect(names).not.toContain(t("vnBibleTab"));
     expect(sections(items)).toEqual([false, false, false, false, true, false, true, false]);
   });
 
-  it("puts hide first in the more submenu", () => {
-    expect(labels(gameMoreItems(actions(false)))).toEqual([
+  it("puts hide first in the more submenu and the script right after chat view", () => {
+    const play = actions(false);
+    const items = gameMoreItems(play);
+    expect(labels(items)).toEqual([
       t("vnHideUi"),
       t("vnShowChat"),
+      t("vnBibleTab"),
       t("vnCardExport"),
       t("vnWorkExport"),
     ]);
+    items.find((item) => item.key === "script")!.onSelect();
+    expect(play.onOpenScript).toHaveBeenCalledTimes(1);
   });
 });

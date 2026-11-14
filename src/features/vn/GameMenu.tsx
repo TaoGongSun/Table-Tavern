@@ -24,6 +24,7 @@ interface GameMenuActions {
   onTitle: () => void;
   onNextChapter: () => void;
   onShowChat: () => void;
+  onOpenScript: () => void;
   onExportCard: () => void;
   onExportWork: () => void;
   onHide: () => void;
@@ -66,11 +67,12 @@ export function gameMenuItems(o: GameMenuActions): GameMenuItem[] {
   ];
 }
 
-/** 「更多…」：隱藏介面放第一項（H 鍵不經過這裡）；其餘是聊天視圖與兩種匯出 */
+/** 「更多…」：隱藏介面放第一項（H 鍵不經過這裡）；其餘是聊天視圖、劇本（世界設定的劇本分頁）與兩種匯出 */
 export function gameMoreItems(o: GameMenuActions): GameMenuItem[] {
   return [
     { key: "hide", label: t("vnHideUi"), onSelect: closing(o, o.onHide) },
     { key: "chat", label: t("vnShowChat"), onSelect: o.onShowChat },
+    { key: "script", label: t("vnBibleTab"), onSelect: o.onOpenScript },
     { key: "export-card", label: t("vnCardExport"), disabled: o.busy, onSelect: o.onExportCard },
     { key: "export-work", label: t("vnWorkExport"), disabled: o.busy, onSelect: closing(o, o.onExportWork) },
   ];

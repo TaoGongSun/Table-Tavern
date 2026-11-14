@@ -142,6 +142,7 @@ let onAdvanceScene = vi.fn(async (_chapterEnd: boolean): Promise<VnAdvance> => (
 let onReenter = vi.fn(async () => true);
 const onReplayChapter = vi.fn(async (_chapter: number) => {});
 const onEnterTable = vi.fn((_id: string) => {});
+const onOpenScript = vi.fn();
 let onBranch = vi.fn(async (run: () => Promise<unknown>): Promise<VnAdvance> => {
   await run();
   return { stage: "entered" };
@@ -163,6 +164,7 @@ async function render(patch: Partial<ChatController> = {}) {
         onAdvanceScene={onAdvanceScene}
         onReenter={onReenter}
         onShowChat={() => {}}
+        onOpenScript={onOpenScript}
         onGoLobby={() => {}}
         onReplayChapter={onReplayChapter}
         onBranch={onBranch}
@@ -559,6 +561,7 @@ describe("VnPlayer", () => {
           onAdvanceScene={onAdvanceScene}
           onReenter={onReenter}
           onShowChat={() => {}}
+          onOpenScript={() => {}}
           onGoLobby={() => {}}
           onReplayChapter={onReplayChapter}
           onBranch={onBranch}
@@ -1197,7 +1200,10 @@ describe("VnPlayer", () => {
         t("backToLobby"),
       ]);
       await act(async () => button(t("vnMenuMore"))!.click());
-      expect(menuItems()).toEqual([t("vnHideUi"), t("vnShowChat"), t("vnCardExport"), t("vnWorkExport")]);
+      expect(menuItems()).toEqual([t("vnHideUi"), t("vnShowChat"), t("vnBibleTab"), t("vnCardExport"), t("vnWorkExport")]);
+      onOpenScript.mockClear();
+      await act(async () => button(t("vnBibleTab"))!.click());
+      expect(onOpenScript).toHaveBeenCalledTimes(1);
       await press("Escape");
       expect(menuItems()).toContain(t("vnMenuMore"));
       await act(async () => button(t("vnMenuMore"))!.click());

@@ -14,13 +14,22 @@ export function onSpriteStatus(worldId: string, handle: (status: SpriteSlotStatu
   return () => void off.then((stop) => stop());
 }
 
+// 上次讀到的立繪（只留一桌）：切聊天視圖再回來會重掛，舞台只在換格時收新立繪，
+// 從空的起算就得等玩家點下一格才看得到人，所以重掛先拿這份
+let lastRead: { worldId: string; sprites: Record<string, SpriteView> } | null = null;
+const cached = (worldId: string) => (lastRead?.worldId === worldId ? lastRead.sprites : {});
+
 export function useSprites(worldId: string, visible: readonly (string | null)[] = [], active = false): Record<string, SpriteView> {
-  const [sprites, setSprites] = useState<Record<string, SpriteView>>({});
+  const [sprites, setSprites] = useState<Record<string, SpriteView>>(() => cached(worldId));
   useEffect(() => {
     let alive = true;
-    setSprites({});
+    const keep = (next: Record<string, SpriteView>) => {
+      lastRead = { worldId, sprites: next };
+      return next;
+    };
+    setSprites(cached(worldId));
     invoke<Record<string, SpriteView>>("vn_sprites_read_all", { worldId })
-      .then((all) => alive && setSprites(all ?? {}))
+      .then((all) => alive && setSprites(keep(all ?? {})))
       .catch(() => {});
     const stop = onSpriteStatus(worldId, (status) => {
       // 排入＝定稿可能剛換（精靈 ③ 挑定後開演）；完成＝多一張臉層
@@ -32,7 +41,7 @@ export function useSprites(worldId: string, visible: readonly (string | null)[] 
             const next = { ...current };
             if (sprite) next[status.characterId] = sprite;
             else delete next[status.characterId];
-            return next;
+            return keep(next);
           });
         })
         .catch(() => {});

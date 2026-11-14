@@ -153,6 +153,7 @@ export function AppWorkspace({
     selectCard,
     selectGm,
     openWorldEditor,
+    leaveEditorThen,
     openNewCard,
     openSceneReader,
     deleteCharacter,
@@ -251,6 +252,7 @@ export function AppWorkspace({
   const errorNote = error ? (
     <ErrorNote text={error} transport={transport} onAdvanceScene={() => void advanceScene()} />
   ) : null;
+  const scriptFromVn = mainView?.kind === "world" && mainView.fromVn === true;
   const errorInComposer = gate !== "repair" && mainView === null;
   // 換幕容量（範圍 3）
   const sceneBudget = useSceneBudget(
@@ -322,7 +324,7 @@ export function AppWorkspace({
           onOpenSettings={() => onOpenSettings("appearance")}
           onOpenVersions={() => onOpenSettings("versions")}
           roomMode={roomMode}
-          onShowVn={onShowVn}
+          onShowVn={onShowVn && (() => void leaveEditorThen(onShowVn))}
         />
 
         {gate === "repair" && repairNotice ? (
@@ -414,7 +416,10 @@ export function AppWorkspace({
               roomMode={roomMode}
               seatGuard={seatGuard(cardView?.id ?? "")}
               onDeletePlayerCard={deletePlayerCard}
-              onClose={() => setMainView(null)}
+              onClose={() => {
+                setMainView(null);
+                if (scriptFromVn) onShowVn?.();
+              }}
               leaveGuard={leaveGuard}
               transport={transport}
               config={config}
@@ -422,6 +427,7 @@ export function AppWorkspace({
               onOpenAiSettings={() => onOpenSettings("ai")}
               isBusy={chat.isBusy}
               worldOpen={mainView?.kind === "world"}
+              scriptFirst={scriptFromVn}
               onEntryConverted={onEntryConverted}
               onDiceChanged={async () => { await Promise.all([tableState.refresh(), chat.reload()]); }}
               onAddRulesBook={imports.addRulesBook}
