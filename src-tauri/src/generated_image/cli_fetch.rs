@@ -35,7 +35,13 @@ impl CliJob {
             agy_conversation: Mutex::new(None),
         };
         if let Some(bytes) = reference {
-            let path = job.dir.join("reference.png");
+            // grok：透明處壓淺灰底（變體送的是透明身體圖），存 JPEG——看圖那條用 read_file 讀圖，
+            // 串流事件會把整張圖 base64 兩份塞進同一行，PNG 立繪會撞單行 1 MB 上限
+            let (name, bytes) = match kind {
+                "grok" => ("reference.jpg", grok_reference(bytes)?),
+                _ => ("reference.png", bytes.to_vec()),
+            };
+            let path = job.dir.join(name);
             std::fs::write(&path, bytes).map_err(|error| error.to_string())?;
             job.reference = Some(path);
         }
@@ -89,6 +95,11 @@ pub(crate) async fn run_cli_image(
         let path = reference.display();
         prompt = format!("Reference image file: {path} (look at it before generating). {prompt}");
     }
+    // grok headless 沒有附圖旗標，image_gen 也不收參考圖：指名用 image_edit 帶這張圖的路徑
+    if let (true, Some(reference)) = (kind == "grok", &job.reference) {
+        let path = reference.display();
+        prompt = format!("Reference image file: {path}. Use the image_edit tool with this file as its image (image_gen cannot take a reference image). {prompt}");
+    }
     prompt.push_str(REPLY_RULE);
     if kind == "codex" {
         prompt = format!("$imagegen {prompt}");
@@ -123,11 +134,12 @@ pub(crate) fn vision_source(source: &str) -> Option<&'static str> {
     match source {
         "codex" => Some("codex"),
         "agy" => Some("agy"),
+        "grok" => Some("grok"),
         _ => None,
     }
 }
 
-/// 看圖回文字：codex 維持 -i；agy 用 view_file 專用代理，不開生圖工具。
+/// 看圖回文字：codex 維持 -i；agy 用 view_file 專用代理、grok 只開 read_file，都不開生圖工具。
 pub(crate) async fn run_cli_vision(
     app: &tauri::AppHandle,
     config: &data::AppConfig,
@@ -136,10 +148,21 @@ pub(crate) async fn run_cli_vision(
     prompt: &str,
     image: &[u8],
 ) -> Result<String, String> {
-    let job = CliJob::create(&cli_workspace(app)?, source, Some(image))?;
+    // grok 進模型前本來就把圖縮到長邊約 768：先縮好，讀圖那行串流事件更小（座標用 0–1000 相對值，不受縮圖影響）
+    let image = match source {
+        "grok" => downscale_png(image, 768)?,
+        _ => image.to_vec(),
+    };
+    let mut job = CliJob::create(&cli_workspace(app)?, source, Some(&image))?;
+    // grok 看圖是一般單發：不指定 session，交給單發那條收完就刪
+    job.grok_session = None;
     let prompt = match (source, &job.reference) {
         ("agy", Some(path)) => format!(
             "Use view_file to inspect the image at {}. {prompt}",
+            path.display()
+        ),
+        ("grok", Some(path)) => format!(
+            "Use read_file to inspect the image at {}. {prompt}",
             path.display()
         ),
         _ => prompt.to_owned(),
@@ -160,6 +183,41 @@ pub(crate) async fn run_cli_vision(
         false,
     )
     .await
+}
+
+/// 長邊縮到 `long_edge` 以內的 PNG（本來就夠小就原樣回）
+fn downscale_png(png: &[u8], long_edge: u32) -> Result<Vec<u8>, String> {
+    let image = image::load_from_memory(png).map_err(|error| error.to_string())?;
+    if image.width().max(image.height()) <= long_edge {
+        return Ok(png.to_vec());
+    }
+    let mut bytes = Vec::new();
+    image
+        .resize(long_edge, long_edge, image::imageops::FilterType::Lanczos3)
+        .write_to(
+            &mut std::io::Cursor::new(&mut bytes),
+            image::ImageFormat::Png,
+        )
+        .map_err(|error| error.to_string())?;
+    Ok(bytes)
+}
+
+/// grok 的參考圖：透明處壓淺灰底（217，同 compose::request_png）的 JPEG
+fn grok_reference(bytes: &[u8]) -> Result<Vec<u8>, String> {
+    let rgba = image::load_from_memory(bytes)
+        .map_err(|error| error.to_string())?
+        .to_rgba8();
+    let mut flat = image::RgbaImage::from_pixel(
+        rgba.width(),
+        rgba.height(),
+        image::Rgba([217, 217, 217, 255]),
+    );
+    image::imageops::overlay(&mut flat, &rgba, 0, 0);
+    let mut jpeg = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, 90)
+        .encode_image(&image::DynamicImage::ImageRgba8(flat).to_rgb8())
+        .map_err(|error| error.to_string())?;
+    Ok(jpeg)
 }
 
 fn user(content: String) -> transport::ChatMessage {

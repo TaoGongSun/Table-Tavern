@@ -776,17 +776,22 @@ async fn stream_turn_inner(
             // system 頂掉 grok 內建那份（生圖那條例外，見 grok_payload）；未覆寫時使用 CLI 預設模型
             let model = cli::tier_override(&config.tier_models, "grok", tier);
             // system 走 agent profile 檔、正文走 --prompt-file；檔案活到 run_cli 收屍返回後才刪
-            let (profile, body) = cli::grok_payload(&system, &prompt, allow_cli_tools);
+            // 看圖（帶參考圖的無工具呼叫）只放行 read_file 讀那張圖；跟生圖一樣 system 併進正文
+            let vision = !allow_cli_tools && job.is_some_and(|job| job.reference.is_some());
+            let (profile, body) = cli::grok_payload(&system, &prompt, allow_cli_tools || vision);
             let profile = profile
                 .map(|profile| cli::PromptFile::create(&prompt_dir, "grok-system.md", &profile))
                 .transpose()?;
             let body = cli::PromptFile::create(&prompt_dir, "prompt.txt", &body)?;
-            let mut args = cli::grok_args(
-                model,
-                profile.as_ref().map(cli::PromptFile::path),
-                body.path(),
-                allow_cli_tools,
-            );
+            let mut args = match vision {
+                true => cli::grok_vision_args(model, body.path()),
+                false => cli::grok_args(
+                    model,
+                    profile.as_ref().map(cli::PromptFile::path),
+                    body.path(),
+                    allow_cli_tools,
+                ),
+            };
             // 呼叫端指定 session id（目前只有生圖）：之後憑它刪掉這份 session
             if let Some(id) = grok_session {
                 args.splice(0..0, ["-s".to_owned(), id.to_owned()]);

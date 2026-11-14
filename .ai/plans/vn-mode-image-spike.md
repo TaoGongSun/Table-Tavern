@@ -5,6 +5,7 @@
 ## 結論
 - **a 去背**：可行。rembg 2.0.86＋官方權重。birefnet-general（928MB，12–19 秒）最乾淨；birefnet-general-lite（224MB，5–6 秒）接近，建議 app 內建（Rust 用 ort）；isnet-anime（0.9 秒）邊緣軟、髮尾滲底色。授權：BiRefNet MIT、isnet-anime Apache-2.0（實作前再核）；BRIA RMBG-2.0 不可商用。
 - **b 原生透明**：只有 Codex 出真透明（RGBA）；透明定稿改表情仍透明，alpha IoU 0.992。agy 只出 JPG；Grok 自畫洋紅底再摳。
+- **Grok 重測（2026-11-14，CLI 1.0.77＋grok-4.7）**：改走灰底＋內建去背＋裁頭重繪後通過，已加入立繪來源；本檔以下關於 Grok 的數字是 2026-10-27 舊流程的結果。詳見 [grok-sprite-image-retest](grok-sprite-image-retest.md)。
 - **b 表情差分**（整張重繪）：脖子以下變動像素 agy 0.1%、Codex 0.5%、Grok 1.1%；品質 agy≈Codex>Grok（Grok 怒臉過度）。局部重繪三家 CLI 都不支援，以此漂移量用不到。
 - **c CG**（定稿參考圖＋規格塊）：Codex、agy 通過（臉髮瞳色與服裝大項對上）；Grok 不通過（先生空場景再貼人、像拼貼、裙長跑掉）。
 - **NAI**（僅官方文件，待作者 token）：`POST image.novelai.net/ai/generate-image` 預設回 zip、`Accept: application/json` 回 base64；Director Tools 走 `/ai/augment-image`（含 Emotion、Remove Background）。透明只有 V5，角色參考只有 V4.5（每張加扣 5 Anlas），無單一模型兼得；Opus 免費限 V4.5 以下且不帶參考圖。model ID 與 req_type 字串要實打確認。

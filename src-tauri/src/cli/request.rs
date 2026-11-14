@@ -383,6 +383,43 @@ pub fn grok_args(
     args
 }
 
+/// grok 看圖（臉框）：工具只留 read_file 讀這次的參考圖（headless 沒有附圖旗標，`--prompt-json`
+/// 的 base64 走命令列會撞參數長度上限）。`--deny *` 會連 read_file 一起擋，改成只放行它；
+/// 其餘工具照聊天整包拆掉，讀圖→回答要兩輪，留 3 輪。
+pub fn grok_vision_args(model: Option<&str>, prompt_file: &Path) -> Vec<String> {
+    let mut args: Vec<String> = [
+        "--output-format",
+        "streaming-json",
+        "--allow",
+        "read_file",
+        "--disable-web-search",
+        "--no-plan",
+        "--no-subagents",
+        "--disallowed-tools",
+        &grok_tools_except(&["read_file"]),
+        "--max-turns",
+        "3",
+        "--reasoning-effort",
+        "low",
+    ]
+    .map(str::to_owned)
+    .to_vec();
+    if let Some(model) = model {
+        args.extend(["-m".to_owned(), model.to_owned()]);
+    }
+    push_grok_prompt(&mut args, prompt_file, true);
+    args
+}
+
+/// 聊天要拆的工具全集扣掉 `keep`（`--disallowed-tools` 的值）
+fn grok_tools_except(keep: &[&str]) -> String {
+    GROK_CHAT_DISALLOWED_TOOLS
+        .split(',')
+        .filter(|tool| !keep.contains(tool))
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
 /// grok lane 續聊參數（grok-cache-miss）：與聊天單發同一組旗標，差別只在讓 session 落檔。
 /// 開線 `-s <id>` 自帶 system profile；續聊 `-r <id>` **不重帶 system**——grok 把 system
 /// 凍在 session 建立那一刻（session 目錄下的 system_prompt.txt），重帶無效且會打散前綴，
@@ -434,7 +471,7 @@ fn grok_common_args(model: Option<&str>, allow_tools: bool) -> Vec<String> {
     }
     args.extend(["--disable-web-search", "--no-plan", "--no-subagents"].map(str::to_owned));
     if !allow_tools {
-        // 工具定義整包拆掉（--deny 只擋執行不擋注入）。生圖那條當然不能設：它要用 image_gen。
+        // 工具定義整包拆掉（--deny 只擋執行不擋注入）；生圖那條留下兩個生圖工具，見下方。
         // 實測這條讓 CLI 的 tool_count 歸 0、input 從 12604 掉到 3602。
         args.push("--disallowed-tools".to_owned());
         args.push(GROK_CHAT_DISALLOWED_TOOLS.to_owned());
@@ -445,9 +482,17 @@ fn grok_common_args(model: Option<&str>, allow_tools: bool) -> Vec<String> {
         // 少推理、多寫正文。grok-4.6 的 effort 選單只有 xhigh/high/medium/low，
         // 傳 none 會被 CLI 當未知等級直接中止（實測 1.0.5），所以最低就到 low；
         // 模型若整個不支援 effort，CLI 只會忽略不會失敗。
-        // 生圖那條不設：它要靠推理把 image_gen 叫起來再回報路徑，不動既有行為。
         args.push("--reasoning-effort".to_owned());
         args.push("low".to_owned());
+    } else {
+        // 生圖只留 image_gen／image_edit：參考圖只給路徑交 image_edit 自己讀，模型若先用 read_file
+        // 看圖，串流事件會把整張圖 base64 兩份塞進同一行，撞單行 1 MB 上限（2026-11-14 實測）。
+        // 單拆 read_file 不行：search_replace 要求有讀檔工具，CLI 直接拒絕開 session。
+        args.push("--disallowed-tools".to_owned());
+        args.push(grok_tools_except(&["image_gen", "image_edit"]));
+        // 要靠推理把工具叫起來再回報路徑；4.7 預設 high，medium 就夠
+        args.push("--reasoning-effort".to_owned());
+        args.push("medium".to_owned());
     }
     if let Some(model) = model {
         args.push("-m".to_owned());

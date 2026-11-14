@@ -88,7 +88,7 @@ CSS 與提示詞字串都算核心。
 ## 9 作者裁決〔作者裁決 2026-11-01〕
 
 1. 去背權重：首次需要時下載，SHA-256 驗證，驗不過拒用。
-2. 立繪來源：Codex、agy、API（OpenRouter）可選，grok 不列；API 參考圖編輯施工時實打，不通就只能文生定稿＋上傳表情。
+2. 立繪來源：Codex、agy、Grok、API（OpenRouter）可選（Grok 於 2026-11-14 重測通過後加入〔作者裁決 2026-11-14〕，見 [grok-sprite-image-retest](grok-sprite-image-retest.md)）；API 參考圖編輯施工時實打，不通就只能文生定稿＋上傳表情。
 3. 預算：拆 7a／7b 分段施工與驗收（§8），方案一次審。
 4. ONNX Runtime：`ort` 靜態連進 app（三平台不附動態庫，執行檔約 +26 MB）。
 

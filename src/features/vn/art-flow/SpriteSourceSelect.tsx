@@ -7,7 +7,7 @@ import { updateConfig } from "../../settings/update-config";
 
 export async function imageSources() {
   const [config, clis] = await Promise.all([invoke<AppConfig>("read_config"), detectClis()]);
-  const sources = clis.filter((cli) => ["codex", "agy"].includes(cli.id) && !cli.update_state && config.preferences[cliConnectedKey(cli.id)] === true).map((cli) => cli.id);
+  const sources = clis.filter((cli) => ["codex", "agy", "grok"].includes(cli.id) && !cli.update_state && config.preferences[cliConnectedKey(cli.id)] === true).map((cli) => cli.id);
   if (config.api_keys?.openrouter?.trim()) sources.push("api");
   const saved = String(config.preferences.vn_sprite_source ?? "");
   return { sources, source: sources.includes(saved) ? saved : (sources[0] ?? "") };

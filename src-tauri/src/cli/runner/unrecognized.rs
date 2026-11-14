@@ -291,7 +291,7 @@ mod tests {
             Some(UiMsg::CliOutputUnrecognizedOlder { ref version, ref tested, .. })
                 if version == "2.1.200" && tested == "2.1.311"
         ));
-        assert!(older_message(&GROK_PROTOCOL, Some("grok 1.0.70 (x) [stable]"), "").is_none());
+        assert!(older_message(&GROK_PROTOCOL, Some("grok 1.0.77 (x) [stable]"), "").is_none());
         assert!(older_message(&GROK_PROTOCOL, Some("grok 1.1.0 (x) [stable]"), "").is_none());
         assert!(older_message(&AGY_PROTOCOL, Some("1.2.5"), "").is_none());
         assert!(older_message(&CLAUDE_PROTOCOL, None, "").is_none());

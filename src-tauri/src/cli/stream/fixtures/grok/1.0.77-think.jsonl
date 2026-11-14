@@ -1,0 +1,13 @@
+{"type":"available_commands","tools":[],"commands":["compact","always-approve","context","session-info","feedback","goal","build-with-ai","code-review","create-skill","create-workflow","design","execute-plan","game-assets","bundled:imagine","implement","learn","long-running-background-tasks","pr-babysit","resume-claude","resume-codex","resume-cursor","review","skill-design-principles","statusline","threejs-frame-conventions"]}
+{"type":"available_commands","tools":[],"commands":["compact","always-approve","context","session-info","feedback","goal","build-with-ai","code-review","create-skill","create-workflow","design","execute-plan","game-assets","bundled:imagine","implement","learn","long-running-background-tasks","pr-babysit","resume-claude","resume-codex","resume-cursor","review","skill-design-principles","statusline","threejs-frame-conventions"]}
+{"type":"thought","data":"I need to count the "}
+{"type":"thought","data":"prime numbers between"}
+{"type":"thought","data":" 100 and 200."}
+{"type":"thought","data":"\n\nI listed the primes"}
+{"type":"thought","data":" between 100 and 200"}
+{"type":"thought","data":" and began counting "}
+{"type":"thought","data":"them."}
+{"type":"text","data":"21"}
+{"type":"available_commands","tools":[],"commands":["compact","always-approve","context","session-info","feedback","goal","build-with-ai","code-review","create-skill","create-workflow","design","execute-plan","game-assets","bundled:imagine","implement","learn","long-running-background-tasks","pr-babysit","resume-claude","resume-codex","resume-cursor","review","skill-design-principles","statusline","threejs-frame-conventions"]}
+{"type":"usage","usage":{"input_tokens":3691,"output_tokens":570,"cache_read_input_tokens":1152,"cache_creation_input_tokens":0,"reasoning_tokens":569},"signature":"<redacted>"}
+{"type":"end","stopReason":"end_turn","sessionId":"00000000-0000-4000-8000-000000000003","requestId":"00000000-0000-4000-8000-000000000004","cwd":"<ROOT>/cvg/ws-grok","usage":{"input_tokens":3691,"cache_read_input_tokens":1152,"cache_creation_input_tokens":0,"output_tokens":570,"reasoning_tokens":569,"total_tokens":5413},"num_turns":1,"total_cost_usd":0.00386852,"total_cost_usd_ticks":38685200,"modelUsage":{"grok-4.7-build":{"inputTokens":3691,"outputTokens":570,"cacheReadInputTokens":1152,"cacheCreationInputTokens":0,"modelCalls":1,"costUSD":0.00386852}}}

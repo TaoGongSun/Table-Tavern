@@ -1,4 +1,6 @@
-use super::{extract_image_refs, take_image, CliJob, Homes, ImageRef};
+use super::{
+    downscale_png, extract_image_refs, grok_reference, take_image, CliJob, Homes, ImageRef,
+};
 use crate::commands::NEXT_TEMP_ID;
 use crate::generated_image::GeneratedImage;
 use std::path::{Path, PathBuf};
@@ -273,4 +275,31 @@ fn extract_image_refs_keeps_windows_path_with_spaces() {
 #[test]
 fn extract_image_refs_returns_empty_without_image() {
     assert_eq!(extract_image_refs("沒有附圖。"), Vec::new());
+}
+
+/// grok 參考圖：透明處壓成淺灰底的 JPEG；看圖前長邊縮到 768，本來就小的原樣回
+#[test]
+fn grok_reference_is_gray_jpeg_and_vision_image_is_downscaled() {
+    let png = |width, height| {
+        let mut bytes = Vec::new();
+        image::RgbaImage::new(width, height)
+            .write_to(
+                &mut std::io::Cursor::new(&mut bytes),
+                image::ImageFormat::Png,
+            )
+            .unwrap();
+        bytes
+    };
+    let jpeg = grok_reference(&png(40, 60)).unwrap();
+    assert_eq!(
+        image::guess_format(&jpeg).unwrap(),
+        image::ImageFormat::Jpeg
+    );
+    let pixel = image::load_from_memory(&jpeg).unwrap().to_rgb8()[(20, 30)];
+    assert!(pixel.0.iter().all(|v| v.abs_diff(217) <= 2), "{pixel:?}");
+    let small = downscale_png(&png(1000, 1500), 768).unwrap();
+    let small = image::load_from_memory(&small).unwrap();
+    assert_eq!((small.width(), small.height()), (512, 768));
+    let tiny = png(300, 300);
+    assert_eq!(downscale_png(&tiny, 768).unwrap(), tiny);
 }

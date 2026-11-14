@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { t } from "../../../i18n";
+import { CLI_LABELS } from "../../ai-connection/cli";
 import { updateConfig } from "../../settings/update-config";
 import { useArtStatus } from "./useArtStatus";
 import { useQuotaRecovery } from "./useQuotaRecovery";
@@ -40,7 +41,7 @@ export function ArtFlowNotice({ worldId, onStarted, onPause, compact = false }: 
       {status?.art.started && (status.pause || Boolean(status.failed)) && retryButton}
     </div>
     <p>{status?.pause ? t("vnArtStopped", { n: batch === null ? status.ready : Math.max(0, batch - remaining), total: batch ?? status.total + status.backgrounds }) : status?.art.started ? remaining === 0 && status.pending === 0 ? t("vnArtReady") : batch === null ? t("vnArtPreparing", { n: status.ready, total: status.total }) : t("vnArtWorking", { n: Math.max(0, batch - remaining), total: batch }) : t("vnArtNotStarted")}</p>
-    {source && !status?.pause && <p className="field-note">{t("vnArtEstimate", { source: source === "agy" ? "Gemini CLI" : source === "api" ? "API" : "Codex CLI", n: status ? status.total - status.ready : 0, bg: status?.backgrounds ?? 0 })}</p>}
+    {source && !status?.pause && <p className="field-note">{t("vnArtEstimate", { source: CLI_LABELS[source] ?? "API", n: status ? status.total - status.ready : 0, bg: status?.backgrounds ?? 0 })}</p>}
     {source && !status?.pause && <p className="field-note">{expressions}</p>}
     {Boolean(status?.failed) && <p className="field-warn">{t("vnArtFailed", { n: status?.failed ?? 0 })}</p>}
     {status?.pause && <p className="field-warn">{status.pause.reset !== null ? t("vnArtPaused", { n: remaining, time: recovery }) : t("vnArtPausedUnknown", { n: remaining })}</p>}

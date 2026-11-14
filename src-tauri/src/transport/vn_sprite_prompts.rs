@@ -44,6 +44,9 @@ pub(crate) enum SpriteReference {
     CoverStyle,
 }
 
+/// 參考圖補成 2:3 灰畫布時（Grok 改圖照參考圖比例出圖）接在最前面
+pub(crate) const CANVAS_NOTE: &str = "The attached image has been centered on a plain light gray 2:3 canvas; the gray margins are empty space, not part of the reference. Fill the whole 2:3 canvas with the new picture described below.\n";
+
 /// Codex 出得了真透明；agy／API 寫透明會畫假棋盤格（補測），改素色淺灰底再去背
 fn background(transparent: bool) -> &'static str {
     match transparent {
@@ -124,6 +127,11 @@ pub(crate) fn expression_prompt(change: &str, transparent: bool) -> String {
 /// agy 版臉框：0–1000 相對座標
 pub(crate) fn face_box_prompt_normalized() -> String {
     "The attached image is a character sprite. Return the bounding box of the character's face region that changes with facial expressions: from just above the eyebrows down to the bottom of the chin, including the whole mouth, and from the outer edge of one cheek to the other (ears and hair excluded). Reply with only one line of JSON: {\"ymin\":0,\"xmin\":0,\"ymax\":0,\"xmax\":0}, with every value normalized to 0-1000 relative to the image height (y) and width (x).".to_owned()
+}
+
+/// Grok 版臉框：圖是立繪頂端正方形疊上帶刻度的格線（vn_sprites::grid），對著格線讀 0–1000 座標
+pub(crate) fn face_box_prompt_grid() -> String {
+    "The attached image is the top part of a character sprite with a magenta reference grid drawn over it: grid lines every 100 units on a 0-1000 scale, labeled along the top (x) and left (y) edges. Return the bounding box of the character's face region that changes with facial expressions: from just above the eyebrows down to the bottom of the chin, including the whole mouth, and from the outer edge of one cheek to the other (ears and hair excluded). Read the positions against the grid. Reply with only one line of JSON: {\"ymin\":0,\"xmin\":0,\"ymax\":0,\"xmax\":0}, with every value on that 0-1000 scale relative to the image height (y) and width (x).".to_owned()
 }
 
 /// 臉框：眉上到下巴、兩頰外緣、不含耳與髮；回一行 JSON

@@ -3,21 +3,22 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, expect, it, vi } from "vitest";
 import { t } from "../../../i18n";
+import { CLI_CHANGED_EVENT } from "../../../shared/ui/cli-update";
 import { ArtFlowNotice } from "./ArtFlowNotice";
 
-const backend = vi.hoisted(() => ({ calls: [] as string[], started: false, pause: null as { reset: number | null } | null, each: 4 as number | null, ready: 1, failed: 0, loading: false }));
+const backend = vi.hoisted(() => ({ calls: [] as string[], started: false, pause: null as { reset: number | null } | null, each: 4 as number | null, ready: 1, failed: 0, loading: false, source: "agy" }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async (command) => {
   backend.calls.push(command);
-  if (command === "read_config") return { preferences: { vn_sprite_source: "codex", "cli_connected:agy": true } };
-  if (command === "detect_clis") return [{ id: "agy" }];
+  if (command === "read_config") return { preferences: { vn_sprite_source: "codex", [`cli_connected:${backend.source}`]: true } };
+  if (command === "detect_clis") return [{ id: backend.source }];
   if (command === "vn_art_start") backend.started = true;
   if (command === "vn_art_status" && backend.loading) return new Promise(() => {});
-  if (command === "vn_art_status") return { art: { started: backend.started, appeared: [] }, source: "agy", ready: backend.ready, failed: backend.failed, total: 3, backgrounds: 1, faces: 8, facesPerCharacter: backend.each, pause: backend.pause, pending: 7 };
+  if (command === "vn_art_status") return { art: { started: backend.started, appeared: [] }, source: backend.source, ready: backend.ready, failed: backend.failed, total: 3, backgrounds: 1, faces: 8, facesPerCharacter: backend.each, pause: backend.pause, pending: 7 };
   return null;
 }) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-beforeEach(() => { backend.calls = []; backend.started = false; backend.pause = null; backend.each = 4; backend.ready = 1; backend.failed = 0; backend.loading = false; });
+beforeEach(() => { backend.calls = []; backend.started = false; backend.pause = null; backend.each = 4; backend.ready = 1; backend.failed = 0; backend.loading = false; backend.source = "agy"; });
 it("preselects the only connected source without generating, then starts only on click", async () => {
   const host = document.createElement("div"); const root = createRoot(host);
   await act(async () => root.render(<ArtFlowNotice worldId="w" />));
@@ -93,5 +94,15 @@ it("does not flash title counts before the status read", async () => {
   const host = document.createElement("div"); const root = createRoot(host);
   await act(async () => root.render(<ArtFlowNotice worldId="w" compact />));
   expect(host.textContent).toBe("");
+  await act(async () => root.unmount());
+});
+
+it("offers a connected Grok CLI as a sprite source and names it in the estimate", async () => {
+  backend.source = "grok";
+  window.dispatchEvent(new Event(CLI_CHANGED_EVENT));
+  const host = document.createElement("div"); const root = createRoot(host);
+  await act(async () => root.render(<ArtFlowNotice worldId="w" />));
+  expect(host.querySelector("select")?.value).toBe("grok");
+  expect(host.textContent).toContain(t("vnArtEstimate", { source: "Grok CLI", n: 2, bg: 1 }));
   await act(async () => root.unmount());
 });

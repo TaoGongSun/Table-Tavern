@@ -10,7 +10,6 @@
 **每案交辦固定帶**：動到的檔案先看行數與資料夾檔數；照 [docs/STRUCTURE.md](../docs/STRUCTURE.md)「修改既有功能要不要順便搬」——容得下的 structure-only 小搬遷同案做，大搬家另立案先做；驗收回報附動到檔案的前後行數。
 
 ## 有期限
-- [grok-sprite-image-retest](tasks/grok-sprite-image-retest.md) — 小案（核心 0 行，只實測）；重測 Grok 能否當 VN 立繪來源 — 下一步：2026-11-12 主線週額度恢復後安排，11/20 Grok 訂閱到期前做完〔作者裁決 2026-11-09〕
 
 ## 優先：遊玩資料修復（2026-10-29 稽核）
 

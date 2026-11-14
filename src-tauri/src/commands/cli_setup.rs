@@ -426,7 +426,7 @@ mod tests {
         ));
         // 安裝那行不帶：安裝腳本要把 binary 裝進使用者真正的家目錄
         assert!(script.contains(
-            "  'bash' '-o' 'pipefail' '-c' 'curl -fsSL https://x.ai/cli/install.sh | bash -s 1.0.70' ||"
+            "  'bash' '-o' 'pipefail' '-c' 'curl -fsSL https://x.ai/cli/install.sh | bash -s 1.0.77' ||"
         ));
     }
 

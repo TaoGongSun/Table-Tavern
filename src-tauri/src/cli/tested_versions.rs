@@ -10,7 +10,7 @@ pub(crate) fn tested(cli: &str) -> Option<&'static str> {
         "claude" => Some("2.1.311"),
         "codex" => Some("0.164.0"),
         "agy" => Some("1.4.12"),
-        "grok" => Some("1.0.70"),
+        "grok" => Some("1.0.77"),
         _ => None,
     }
 }

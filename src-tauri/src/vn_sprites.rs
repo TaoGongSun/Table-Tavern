@@ -1,7 +1,8 @@
 //! VN 立繪管線（plans/vn-mode-pkg7.md）：透明七分身定稿 → 臉框 → 裁頭重繪四張表情臉層；
-//! 變體身體（共用或獨立表情組）。來源 Codex（原生透明）、agy／API（灰底，經 matting 去背）。
+//! 變體身體（共用或獨立表情組）。來源 Codex（原生透明）、agy／Grok／API（灰底，經 matting 去背）。
 //! 生成期間不持桌寫入許可，寫回前重驗（store::Snapshot、世代號）。
 mod compose;
+mod grid;
 pub(crate) mod matting;
 pub(crate) mod pause;
 pub(crate) mod prepare;
@@ -18,14 +19,14 @@ use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use store::{FaceBox, SpriteDir};
 
-/// 立繪來源：偏好 `vn_sprite_source`（codex／agy／api），沒設或不認得（例如 grok）＝codex
+/// 立繪來源：偏好 `vn_sprite_source`（codex／agy／grok／api），沒設或不認得＝codex
 pub(crate) fn sprite_source(config: &data::AppConfig) -> &'static str {
     let wanted = config
         .preferences
         .get("vn_sprite_source")
         .and_then(|value| value.as_str())
         .unwrap_or_default();
-    ["codex", "agy", "api"]
+    ["codex", "agy", "grok", "api"]
         .into_iter()
         .find(|source| *source == wanted)
         .unwrap_or("codex")
@@ -172,6 +173,14 @@ pub(crate) async fn generate_candidate(
         kind,
         transparent(source),
     );
+    // Grok 改圖照參考圖比例出圖：參考圖先補成 2:3 灰畫布，提示詞說明灰邊是要畫滿的空白
+    let (reference, prompt) = match (source, reference) {
+        ("grok", Some(png)) => (
+            Some(compose::portrait_canvas(&png)?),
+            format!("{}{prompt}", prompts::CANVAS_NOTE),
+        ),
+        (_, reference) => (reference, prompt),
+    };
     let _generating = prepare::generating(world, character);
     let png = generate_png(app, &config, world, &prompt, reference.as_deref(), "2:3").await?;
     let png = matting::ensure_alpha(app, png).await?;
@@ -197,7 +206,8 @@ pub(crate) fn parse_face_box(reply: &str, width: u32, height: u32) -> Option<Fac
     face_box_from_pixels((x0, y0, x1, y1), width, height)
 }
 
-/// Gemini 定位的慣例是 0–1000 相對座標；要它回像素時常整框偏掉（2026-11-09 實測）
+/// Gemini 定位的慣例是 0–1000 相對座標；要它回像素時常整框偏掉（2026-11-09 實測）。
+/// Grok 看的是頂端正方形，`height` 傳正方形的高（從原圖頂端起算，換算結果就是原圖座標）
 pub(crate) fn parse_normalized_face_box(reply: &str, width: u32, height: u32) -> Option<FaceBox> {
     let start = reply.rfind('{')?;
     let end = start + reply[start..].find('}')?;
@@ -239,6 +249,15 @@ fn face_box_from_pixels(
     })
 }
 
+/// Grok 的框下緣常停在嘴線或下巴上（狼、虎、人臉實測），張嘴時下顎掉出框外被對齊門檻擋下：
+/// 往下再加框高 25%（重放：虎的驚從 +20% 起才過，人臉下巴要 +25% 才包到）
+fn lower_chin(face: FaceBox, height: u32) -> FaceBox {
+    FaceBox {
+        h: (face.h + face.h.div_ceil(4)).min(height - face.y),
+        ..face
+    }
+}
+
 /// 臉框：視覺模型一次，不合格重問一次，再不行用預設框（回 true＝預設框，立繪分頁提示手調）
 async fn locate_face(
     app: &tauri::AppHandle,
@@ -250,19 +269,32 @@ async fn locate_face(
     let Some(source) = cli_fetch::vision_source(sprite_source(config)) else {
         return (FaceBox::fallback(width, height), true);
     };
+    // Grok 看頂端正方形加刻度格線（見 grid.rs），座標換算用正方形的高
+    let (image, region_height) = match source {
+        "grok" => match compose::decode(png).and_then(|body| {
+            let (image, side) = grid::top_square_with_grid(&body);
+            Ok((compose::encode_png(&image)?, side))
+        }) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                log::warn!("臉框看圖輸入做不出來：{error}");
+                return (FaceBox::fallback(width, height), true);
+            }
+        },
+        _ => (png.to_vec(), height),
+    };
+    let prompt = match source {
+        "codex" => prompts::face_box_prompt(width, height),
+        "grok" => prompts::face_box_prompt_grid(),
+        _ => prompts::face_box_prompt_normalized(),
+    };
     for _ in 0..2 {
-        let normalized = source == "agy";
-        let prompt = if normalized {
-            prompts::face_box_prompt_normalized()
-        } else {
-            prompts::face_box_prompt(width, height)
-        };
-        match cli_fetch::run_cli_vision(app, config, source, Some(world), &prompt, png).await {
-            Ok(reply) => match if normalized {
-                parse_normalized_face_box(&reply, width, height)
-            } else {
-                parse_face_box(&reply, width, height)
+        match cli_fetch::run_cli_vision(app, config, source, Some(world), &prompt, &image).await {
+            Ok(reply) => match match source {
+                "codex" => parse_face_box(&reply, width, height),
+                _ => parse_normalized_face_box(&reply, width, region_height),
             } {
+                Some(face) if source == "grok" => return (lower_chin(face, height), false),
                 Some(face) => return (face, false),
                 None => log::warn!(
                     "臉框回覆不合格：{}",
@@ -446,7 +478,7 @@ async fn render_face(
         let Some(after) = compose::fit_back(&result, crop.side) else {
             continue;
         };
-        if compose::aligned(&before, &after, inner) {
+        if let Some(after) = compose::aligned(&before, &after, inner) {
             return compose::encode_png(&compose::face_layer(&after, &before, inner));
         }
     }

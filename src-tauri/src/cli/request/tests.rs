@@ -139,12 +139,22 @@ fn grok_args_disable_every_tool_and_read_prompt_from_file() {
     assert!(!args.contains(&"-p".to_owned()));
     assert!(!args.contains(&"--system-prompt-override".to_owned()));
 
-    // 生圖要跑「呼叫工具→拿結果→回一句」，帶 max-turns 1 會斷在工具回傳那步；
-    // 推理等級也維持原樣，免得把叫工具那步壓掉；保留原生 agent（不帶 profile、不加 verbatim）
+    // 生圖要跑「呼叫工具→拿結果→回一句」，帶 max-turns 1 會斷在工具回傳那步；推理固定 medium；
+    // 只留兩個生圖工具（read_file 看參考圖會撞單行上限）；保留原生 agent（不帶 profile、不加 verbatim）
     let image_args = grok_args(Some("grok-4.5"), None, &prompt_file, true);
-    assert!(!image_args.contains(&"--disallowed-tools".to_owned()));
+    let image_tools = image_args
+        .windows(2)
+        .find(|pair| pair[0] == "--disallowed-tools")
+        .map(|pair| pair[1].clone())
+        .expect("生圖要帶 --disallowed-tools");
+    assert!(image_tools.split(',').any(|tool| tool == "read_file"));
+    assert!(!image_tools
+        .split(',')
+        .any(|tool| tool == "image_gen" || tool == "image_edit"));
     assert!(!image_args.contains(&"--max-turns".to_owned()));
-    assert!(!image_args.contains(&"--reasoning-effort".to_owned()));
+    assert!(image_args
+        .windows(2)
+        .any(|pair| pair == ["--reasoning-effort", "medium"]));
     assert!(!image_args.contains(&"--agent".to_owned()));
     assert!(!image_args.contains(&"--verbatim".to_owned()));
     assert_eq!(
@@ -165,6 +175,26 @@ fn grok_args_disable_every_tool_and_read_prompt_from_file() {
     assert!(list.contains("run_terminal_command,"));
     // grok 1.0.46 新增的工具：漏列會讓 tool_count 停在 1
     assert!(list.ends_with(",send_feedback"));
+}
+
+#[test]
+fn grok_vision_args_only_allow_read_file() {
+    let args = grok_vision_args(Some("grok-4.7"), &PathBuf::from("/tmp/p/prompt.txt"));
+    assert!(args.windows(2).any(|pair| pair == ["--allow", "read_file"]));
+    assert!(!args.contains(&"--deny".to_owned()));
+    assert!(!args.contains(&"--always-approve".to_owned()));
+    let tools = args
+        .windows(2)
+        .find(|pair| pair[0] == "--disallowed-tools")
+        .map(|pair| pair[1].clone())
+        .unwrap();
+    assert_eq!(tools.split(',').count(), 26);
+    assert!(!tools.split(',').any(|tool| tool == "read_file"));
+    assert!(args.windows(2).any(|pair| pair == ["--max-turns", "3"]));
+    assert_eq!(
+        args[args.len() - 2..],
+        ["--prompt-file", "/tmp/p/prompt.txt"]
+    );
 }
 
 #[test]

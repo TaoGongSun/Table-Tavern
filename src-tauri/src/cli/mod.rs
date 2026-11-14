@@ -33,7 +33,7 @@ pub use prompt_file::PromptFile;
 pub use request::{
     agy_body, agy_job_args, agy_session_args, agy_session_body, claude_args, claude_model_for,
     claude_session_args, codex_args, codex_effort_for, codex_session_args, flatten_messages,
-    grok_args, grok_envs, grok_payload, grok_session_args, tier_override,
+    grok_args, grok_envs, grok_payload, grok_session_args, grok_vision_args, tier_override,
 };
 pub use runner::{
     is_stall_error, is_updating_error, run_cli, run_cli_cancellable, run_cli_watched, CliFinish,

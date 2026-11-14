@@ -1,6 +1,7 @@
 use super::store::FaceBox;
 use super::{
-    base_is_current, parse_face_box, parse_normalized_face_box, stale_or_failed, supersede_base,
+    base_is_current, lower_chin, parse_face_box, parse_normalized_face_box, stale_or_failed,
+    supersede_base,
 };
 
 /// agy 回 0–1000：換算成像素後走同一套檢查，夾 markdown 也認得
@@ -27,6 +28,28 @@ fn normalized_face_box_is_scaled_and_checked() {
         ),
         None
     );
+}
+
+/// Grok 看的是頂端正方形：照正方形的高換算；下緣再加框高 25%，不超出圖
+#[test]
+fn grok_face_box_uses_square_height_and_lowers_chin() {
+    let face = parse_normalized_face_box(
+        "{\"ymin\":200,\"xmin\":250,\"ymax\":400,\"xmax\":750}",
+        1000,
+        1000,
+    )
+    .unwrap();
+    assert_eq!(
+        face,
+        FaceBox {
+            x: 250,
+            y: 150,
+            w: 500,
+            h: 250
+        }
+    );
+    assert_eq!(lower_chin(face, 1500).h, 313);
+    assert_eq!(lower_chin(face, 410).h, 260);
 }
 
 /// 視覺模型的框：上緣再往上加框高 25%；前後夾雜文字也找得到
@@ -354,6 +377,7 @@ fn face_vision_follows_sprite_source_not_chat_transport() {
     for (source, expected) in [
         ("codex", Some("codex")),
         ("agy", Some("agy")),
+        ("grok", Some("grok")),
         ("api", None),
     ] {
         config

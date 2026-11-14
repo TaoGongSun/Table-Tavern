@@ -12,6 +12,7 @@
 - [card-mvu-shim](handoffs/card-mvu-shim.md) — 卡片介面沙盒墊 MVU 讀寫變數：全部已合併 main，剩實測佇列梯 1 項目（含 iframe 內按鈕實際互動）
 
 ## 等實機驗收（順序見[實測佇列](reference/verification-queue.md)）
+- [grok-sprite-image-retest](handoffs/grok-sprite-image-retest.md) — Grok 加入 VN 立繪來源（灰底＋內建去背＋裁頭改表情）、表情對齊改成小位移自動補正：已合 main（2026-11-14）、Sol 方案審與驗收各 1 輪無必改、截圖主線親看；等作者實機（Grok 訂閱 11/20 到期前）
 - [ttrpg-builtin-books](handoffs/ttrpg-builtin-books.md) — 內建規則書補到五本（加 Dungeon World、Cairn、BRP、PF2 Remaster）、一桌一套可一鍵換、選書清單預設收合：已合 main（2026-11-14）、Sol 驗收 2 輪、Fable 常識審由主線兼、截圖主線親看；等作者實機
 - [vn-sprite-exit](handoffs/vn-sprite-exit.md) — VN 角色同地點離開時立繪退場：已合 main，待部署，剩真模型遵循率未驗。
 - [room-small-fixes](handoffs/room-small-fixes.md) — 房間三小事：選角簡介剝 Markdown、手機顯示某某觀望、換裝置由玩家認領＋房主確認接回座位：已合 main（2026-11-08）、Sol 方案審 2 輪＋驗收 2 輪、Fable 常識審 3 次、截圖主線親看；要先部署伺服器，等作者實機（佇列梯 3）
