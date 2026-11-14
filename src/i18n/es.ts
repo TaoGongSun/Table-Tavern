@@ -509,6 +509,7 @@ export const es: Record<MsgKey, string> = {
   genRoomCastAi: "The AI prepares characters for friends to choose",
   genExpanding: "Abriendo mesa…",
   genParseFail: "La respuesta del modelo no tenía el formato esperado. Aquí está el texto original; vuelve a intentarlo.",
+  vnExpandIncomplete: "Esta vez la IA no terminó de escribir, así que la mesa no se creó. Tu esquema sigue aquí: pulsa «Empezar esta mesa» para intentarlo de nuevo.",
   newTableName: "Nueva mesa",
   tableListAria: "Lista de mesas",
   stateFieldTime: "Hora",

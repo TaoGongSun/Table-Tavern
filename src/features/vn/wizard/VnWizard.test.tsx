@@ -16,6 +16,8 @@ const state = vi.hoisted(() => ({
   installed: undefined as string | null | undefined,
   pickFails: false,
   bibleFail: false,
+  /** 展開沒建桌（後端擋下少了開場白的結果）的次數 */
+  expandRefusals: 0,
 }));
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(async (command: string, args: Record<string, unknown> = {}) => {
@@ -31,6 +33,10 @@ vi.mock("@tauri-apps/api/core", () => ({
           raw: "raw",
         };
       case "generate_table_expand":
+        if (state.expandRefusals > 0) {
+          state.expandRefusals -= 1;
+          return { worldId: null, raw: "## WORLD: 霧港" };
+        }
         return { worldId: "W", raw: "" };
       case "vn_bible_read":
         return { spoiler_lock: true, bible: state.bible, flagValues: {}, revealed: [], played: false, names: {}, cover: false };
@@ -83,6 +89,7 @@ beforeEach(() => {
   state.installed = undefined;
   state.pickFails = false;
   state.bibleFail = false;
+  state.expandRefusals = 0;
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
@@ -275,6 +282,22 @@ it("stays on the script failure screen when the bible generate rejects", async (
   const failed = document.querySelector(".vn-bible-failed");
   expect(failed?.closest("[hidden]")).toBeNull();
   expect(failed?.querySelector("button")?.textContent).toBe(t("vnBibleRetry"));
+});
+
+it("stops at the outline with a plain message when the table was not built, and building again retries", async () => {
+  state.expandRefusals = 1;
+  const onFinish = vi.fn();
+  await mount({ worldId: null }, onFinish);
+  await act(async () => button(t("vnStartNow")).click());
+  for (let i = 0; i < 6; i += 1) await settle();
+  expect(onFinish).not.toHaveBeenCalled();
+  expect(called("generate_table_expand")).toHaveLength(1);
+  expect(document.querySelector(".gen-result-error")?.textContent).toBe(t("vnExpandIncomplete"));
+  expect(document.querySelector(".gen-result-error pre")).toBeNull();
+  await act(async () => button(t("genCreateBtn")).click());
+  for (let i = 0; i < 6; i += 1) await settle();
+  expect(called("generate_table_expand")).toHaveLength(2);
+  expect(document.querySelector(".gen-result-error")).toBeNull();
 });
 
 it("shows quota wait in both art placeholders and keeps the unstarted message only at the top", async () => {

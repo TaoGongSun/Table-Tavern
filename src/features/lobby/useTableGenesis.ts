@@ -51,7 +51,7 @@ export function useTableGenesis(tableKind: TableKind, room: RoomGenesis | null =
   const [outline, setOutline] = useState<GeneratedOutline | null>(null);
   const [outlineRaw, setOutlineRaw] = useState<string | null>(null);
   const [resultRaw, setResultRaw] = useState<string | null>(null);
-  const [resultMessage, setResultMessage] = useState<"outline" | "character">("outline");
+  const [resultMessage, setResultMessage] = useState<"outline" | "character" | "expand">("outline");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<GenesisBusy>(null);
   const [hint, setHint] = useState("");
@@ -131,7 +131,7 @@ export function useTableGenesis(tableKind: TableKind, room: RoomGenesis | null =
     setBusy("expand");
     setError("");
     setResultRaw(null);
-    setResultMessage("outline");
+    setResultMessage("expand");
     try {
       const roomNow = roomRef.current;
       const draft = roomNow?.cast === false ? { ...outline, characters: [] } : outline;

@@ -524,6 +524,7 @@ export const en: Record<MsgKey, string> = {
   genRoomCastAi: "The AI prepares characters for friends to choose",
   genExpanding: "Starting table…",
   genParseFail: "The model's output wasn't in the expected format. Here is the original text — just reroll.",
+  vnExpandIncomplete: "The AI didn't finish writing this time, so the table wasn't created. Your outline is still here — press \"Start This Table\" to try again.",
   newTableName: "New table",
   tableListAria: "Table list",
   stateFieldTime: "Time",

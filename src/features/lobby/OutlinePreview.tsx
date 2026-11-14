@@ -127,10 +127,16 @@ export function GenesisError({ genesis, transport }: { genesis: TableGenesis; tr
         </p>
       ) : (
         <>
-          <p>{t(genesis.resultMessage === "character" ? "genCharParseFail" : "genParseFail")}</p>
+          {/* VN 不給看原文；VN 建桌少了開場白也走這裡（後端不建桌），大綱還在、按開桌就是重試 */}
+          <p>{t(genesisFailKey(genesis))}</p>
           {genesis.tableKind !== "vn" && <pre>{genesis.resultRaw}</pre>}
         </>
       )}
     </section>
   );
+}
+
+function genesisFailKey(genesis: TableGenesis) {
+  if (genesis.resultMessage === "character") return "genCharParseFail";
+  return genesis.tableKind === "vn" && genesis.resultMessage === "expand" ? "vnExpandIncomplete" : "genParseFail";
 }

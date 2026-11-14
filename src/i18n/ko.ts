@@ -509,6 +509,7 @@ export const ko: Record<MsgKey, string> = {
   genRoomCastAi: "The AI prepares characters for friends to choose",
   genExpanding: "테이블 시작 중…",
   genParseFail: "모델 출력이 예상한 형식이 아닙니다. 원문은 아래와 같습니다—그냥 다시 생성해 주세요.",
+  vnExpandIncomplete: "이번에는 AI가 끝까지 쓰지 못해 테이블이 아직 만들어지지 않았어요. 개요는 그대로 남아 있으니 「이 테이블로 시작」을 다시 눌러 주세요.",
   newTableName: "새 테이블",
   tableListAria: "테이블 목록",
   stateFieldTime: "시간",

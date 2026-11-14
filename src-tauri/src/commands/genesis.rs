@@ -190,7 +190,7 @@ pub(crate) async fn generate_table_expand(
         spoiler_lock: spoiler_lock.unwrap_or(true),
         style: art_style.unwrap_or_default(),
     });
-    let world_id = genesis::parse_expand(&raw)
+    let world_id = genesis::parse_expand_for_table(&raw, setup.is_some())
         .map(|expanded| {
             let expanded = genesis::expanded_for_cast(expanded, cast);
             genesis::materialize(&data_root(&app)?, title, &expanded, table_kind, setup)

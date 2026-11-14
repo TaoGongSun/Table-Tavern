@@ -326,6 +326,12 @@ pub fn parse_expand(raw: &str) -> Option<Expanded> {
     })
 }
 
+/// 展開結果能不能建桌。VN 桌（`vn`）少了開場白也不建：標題畫面會全黑、首幕背景排不到，
+/// 退回解析失敗，由玩家按「照這份開桌」重試（不自動重打，免得替玩家多花額度）。
+pub fn parse_expand_for_table(raw: &str, vn: bool) -> Option<Expanded> {
+    parse_expand(raw).filter(|expanded| !vn || !expanded.opening.trim().is_empty())
+}
+
 /// 玩家草稿的標題：trim 後非空才算數。開桌前（呼叫模型、寫檔之前）先過這關。
 pub fn draft_title(title: &str) -> Option<&str> {
     let mut title = title.trim();

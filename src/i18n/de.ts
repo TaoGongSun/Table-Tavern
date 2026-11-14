@@ -511,6 +511,7 @@ export const de: Record<MsgKey, string> = {
   genRoomCastAi: "The AI prepares characters for friends to choose",
   genExpanding: "Tisch wird gestartet…",
   genParseFail: "Die Ausgabe des Modells hatte nicht das erwartete Format. Hier ist der Originaltext – würfle einfach neu.",
+  vnExpandIncomplete: "Die KI hat diesmal nicht fertig geschrieben, deshalb wurde der Tisch nicht angelegt. Dein Entwurf ist noch da – drück „Tisch starten“, um es noch einmal zu versuchen.",
   newTableName: "Neuer Tisch",
   tableListAria: "Tischliste",
   stateFieldTime: "Zeit",

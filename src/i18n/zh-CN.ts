@@ -507,6 +507,7 @@ export const zhCN: Record<MsgKey, string> = {
   genRoomCastAi: "AI 先写好角色给朋友选",
   genExpanding: "开桌中…",
   genParseFail: "模型这次的输出格式不对，原文如下——直接重抽就好。",
+  vnExpandIncomplete: "AI 这次没写完整，桌还没建。大纲都还在，按「按这份开桌」再试一次。",
   newTableName: "新的一桌",
   tableListAria: "游戏桌列表",
   stateFieldTime: "时间",

@@ -1,7 +1,7 @@
 use super::{
     character_messages, draft_title, expand_messages, expanded_for_cast, materialize,
-    outline_messages, parse_character, parse_expand, parse_outline, Expanded, ExpandedCharacter,
-    VnSetup,
+    outline_messages, parse_character, parse_expand, parse_expand_for_table, parse_outline,
+    Expanded, ExpandedCharacter, VnSetup,
 };
 use crate::data;
 use crate::data::vn::{Branching, Length, Mood, Preferences, SetupStage};
@@ -130,6 +130,19 @@ fn expand_defaults_missing_parts_and_accepts_fullwidth_markers() {
 #[test]
 fn bad_expand_is_none() {
     assert!(parse_expand("## OPENING\n你好").is_none());
+}
+
+/// VN 桌少了開場白（或只剩空白）不建桌；聊天桌照舊放行
+#[test]
+fn vn_expand_without_opening_is_refused() {
+    let no_opening = "## WORLD: 霧港\n迷霧籠罩碼頭。\n## CHARACTER: 伊利亞\nPUBLIC:\n走私者。";
+    let blank_opening = format!("{no_opening}\n## OPENING\n   \n");
+    assert!(parse_expand_for_table(no_opening, true).is_none());
+    assert!(parse_expand_for_table(&blank_opening, true).is_none());
+    assert!(parse_expand_for_table(no_opening, false).is_some());
+    let with_opening = format!("{no_opening}\n## OPENING\n[bg: 碼頭 | 夜晚]\n霧裡傳來鐘聲。");
+    let expanded = parse_expand_for_table(&with_opening, true).unwrap();
+    assert!(expanded.opening.starts_with("[bg: 碼頭 | 夜晚]"));
 }
 
 #[test]

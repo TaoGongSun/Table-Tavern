@@ -509,6 +509,7 @@ export const fr: Record<MsgKey, string> = {
   genRoomCastAi: "The AI prepares characters for friends to choose",
   genExpanding: "Démarrage…",
   genParseFail: "La réponse du modèle n'a pas le format attendu. Voici le texte original — relance simplement.",
+  vnExpandIncomplete: "Cette fois, l'IA n'a pas tout écrit, la table n'a donc pas été créée. Ton synopsis est toujours là : appuie sur « Démarrer la table » pour réessayer.",
   newTableName: "Nouvelle table",
   tableListAria: "Liste des tables",
   stateFieldTime: "Heure",

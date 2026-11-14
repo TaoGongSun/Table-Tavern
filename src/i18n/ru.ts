@@ -509,6 +509,7 @@ export const ru: Record<MsgKey, string> = {
   genRoomCastAi: "The AI prepares characters for friends to choose",
   genExpanding: "Открываем стол…",
   genParseFail: "Ответ модели не соответствует ожидаемому формату. Вот исходный текст — просто перебрось ещё раз.",
+  vnExpandIncomplete: "В этот раз ИИ не дописал до конца, поэтому стол не создан. Набросок сохранился — нажми «Открыть этот стол», чтобы попробовать ещё раз.",
   newTableName: "Новый стол",
   tableListAria: "Список столов",
   stateFieldTime: "Время",

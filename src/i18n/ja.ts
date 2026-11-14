@@ -509,6 +509,7 @@ export const ja: Record<MsgKey, string> = {
   genRoomCastAi: "The AI prepares characters for friends to choose",
   genExpanding: "卓を開始中…",
   genParseFail: "モデルの出力が想定形式ではありませんでした。元のテキストはこちらです——そのまま振り直してください。",
+  vnExpandIncomplete: "今回は AI が最後まで書き切れなかったため、卓はまだ作られていません。あらすじはそのまま残っています。「この卓を開始」をもう一度押してください。",
   newTableName: "新しい卓",
   tableListAria: "卓一覧",
   stateFieldTime: "時間",

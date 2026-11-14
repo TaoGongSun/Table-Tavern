@@ -528,6 +528,7 @@ export const zh = {
   genRoomCastAi: "AI 先生好角色給朋友選",
   genExpanding: "開桌中…",
   genParseFail: "模型這次的輸出不成格式，原文如下——直接重骰就好。",
+  vnExpandIncomplete: "AI 這次沒寫完整，桌還沒建。大綱都還在，按「照這份開桌」再試一次。",
   newTableName: "新的一桌",
   tableListAria: "桌列表",
   stateFieldTime: "時間",
