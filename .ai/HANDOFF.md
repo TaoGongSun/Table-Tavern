@@ -14,7 +14,6 @@
 ## 等實機驗收（順序見[實測佇列](reference/verification-queue.md)）
 - [vn-player-art-style](handoffs/vn-player-art-style.md) — VN 立繪與背景可填「這張桌的畫風」、生圖被模型拒絕時明確顯示並給三個選擇、不自動重試：已合 main（2026-11-14）、Sol 方案審 1 輪＋驗收 2 輪、UX 由主線審、截圖主線親看；等作者實機
 - [sprite-matting-defringe](handoffs/sprite-matting-defringe.md) — 灰底來源的立繪去背後還原邊緣顏色，深色背景上髮梢不再有淺邊：已合 main（2026-11-14）、Sol 驗收 1 輪 PASS、對照圖主線親看；等作者實機
-- [grok-sprite-image-retest](handoffs/grok-sprite-image-retest.md) — Grok 加入 VN 立繪來源（灰底＋內建去背＋裁頭改表情）、表情對齊改成小位移自動補正：已合 main（2026-11-14）、Sol 方案審與驗收各 1 輪無必改、截圖主線親看；等作者實機（Grok 訂閱 11/20 到期前）
 - [ttrpg-builtin-books](handoffs/ttrpg-builtin-books.md) — 內建規則書補到五本（加 Dungeon World、Cairn、BRP、PF2 Remaster）、一桌一套可一鍵換、選書清單預設收合：已合 main（2026-11-14）、Sol 驗收 2 輪、Fable 常識審由主線兼、截圖主線親看；等作者實機
 - [vn-sprite-exit](handoffs/vn-sprite-exit.md) — VN 角色同地點離開時立繪退場：已合 main，待部署，剩真模型遵循率未驗。
 - [room-small-fixes](handoffs/room-small-fixes.md) — 房間三小事：選角簡介剝 Markdown、手機顯示某某觀望、換裝置由玩家認領＋房主確認接回座位：已合 main（2026-11-08）、Sol 方案審 2 輪＋驗收 2 輪、Fable 常識審 3 次、截圖主線親看；要先部署伺服器，等作者實機（佇列梯 3）
