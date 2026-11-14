@@ -29,7 +29,7 @@ export function ChoicePanel({
         </button>
       ))}
       {onReroll && (
-        <button type="button" className="btn btn-ghost" disabled={disabled} onClick={onReroll}>
+        <button type="button" className="btn btn-sm vn-reroll" disabled={disabled} onClick={onReroll}>
           {t("vnReroll")}
         </button>
       )}

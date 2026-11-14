@@ -3,7 +3,7 @@ import { rankSuggestions, rolledFormula } from "./dice-suggestions";
 
 const suggestions = (raw: string, name = "") => rankSuggestions(raw, name).map((x) => x.value);
 
-it("player formulas obey bounds and never salvage partial expressions", () => {
+it("player formulas obey bounds and never salvage partial dice expressions", () => {
   expect(suggestions("沃恩請擲d20、2D6 + 3，或1d20-2；再擲2d6+3。")).toEqual(["1d20", "2d6+3", "1d20-2"]);
   for (const bad of ["0d6", "101d6", "1d1", "1d1001", "1d6+10000", "1d6-10000", "2d20kh1", "1d6+1d4", "1d6 + 1d4", "abc1d20", "1d6!", "999999999999999d6"])
     expect(suggestions(bad), bad).toEqual([]);
@@ -13,6 +13,14 @@ it("player formulas obey bounds and never salvage partial expressions", () => {
   expect(suggestions("1d6**2 與 2**1d6")).toEqual([]);
   expect(suggestions("1d2 1d3 1d4 1d5 1d6 1d7 1d8 1d9 1d10")).toHaveLength(8);
   expect(suggestions(`${"沃".repeat(32768)}1d20`)).toEqual([]);
+});
+
+it("加值寫成文字時取骰子部分，寫了結果的算式不當成要擲的", () => {
+  const gm = "攻擊擲骰：你的 1d20+5 = 21，命中。請你擲傷害：1d8+你的力量調整值（長劍）。";
+  expect(rankSuggestions(gm, "", [], ["1d20+5"]).map((x) => x.value)).toEqual(["1d8"]);
+  expect(suggestions("先攻：1d20 + 敏捷調整值；傷害 2d6+STR")).toEqual(["1d20", "2d6"]);
+  expect(suggestions("你擲出 1d8+3＝5")).toEqual([]);
+  expect(suggestions("1d6+d4、1d6 + 1d4、1d6-*")).toEqual([]);
 });
 
 it("puts the formula from the player's own clause first", () => {

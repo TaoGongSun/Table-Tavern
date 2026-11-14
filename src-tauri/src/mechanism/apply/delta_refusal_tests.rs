@@ -259,3 +259,45 @@ fn list_and_text_with_local_or_reject_answer_with_readonly_wording() {
         .all(|r| r.kind == RecordKind::Rejected));
     assert_eq!(leaf(&tree, "清單甲").as_deref(), Some("a|1"));
 }
+
+#[test]
+fn counter_without_initial_value_starts_from_its_min() {
+    let mut tree = tree_from(&[("劇情階段", "初到"), ("角色.狀態", "好")]);
+    let mut mechanism = mechanism_with(&[
+        ("駐守天數", rule(FieldKind::Counter, Some(1.0), None)),
+        ("角色.好感", rule(FieldKind::Counter, Some(0.0), None)),
+        ("缺.天數", rule(FieldKind::Counter, Some(1.0), None)),
+        ("角色.天數", rule(FieldKind::Counter, Some(1.0), None)),
+        ("分數", rule(FieldKind::Number, Some(0.0), None)),
+    ]);
+    mechanism.incremental = true;
+    let outcome = apply_updates(
+        &mut tree,
+        &mechanism,
+        &[
+            delta("駐守天數", serde_json::json!(1)),
+            delta("角色.好感", serde_json::json!(2)),
+            delta("缺.天數", serde_json::json!(1)),
+            delta("分數", serde_json::json!(1)),
+        ],
+    );
+    assert_eq!(leaf(&tree, "駐守天數").as_deref(), Some("2"));
+    assert_eq!(leaf(&tree, "角色.好感").as_deref(), Some("2"));
+    assert_eq!(
+        outcome.changes.get("駐守天數").map(String::as_str),
+        Some("+1")
+    );
+    // 上一層不存在、或不是計數器：照舊拒收，不生新分支
+    assert!(data::node_at(&tree, &["缺".to_owned()]).is_none());
+    assert_eq!(leaf(&tree, "分數"), None);
+    assert_eq!(outcome.records.len(), 2);
+    // 增減量寫錯被拒收：欄位仍不存在，不留下最小值
+    let outcome = apply_updates(
+        &mut tree,
+        &mechanism,
+        &[delta("角色.天數", serde_json::json!("+1天"))],
+    );
+    assert_eq!(outcome.records.len(), 1);
+    assert_eq!(leaf(&tree, "角色.天數"), None);
+    assert!(outcome.changes.is_empty());
+}

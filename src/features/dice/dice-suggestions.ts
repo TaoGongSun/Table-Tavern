@@ -2,6 +2,8 @@
 const FORMULA = /([0-9]*)d([0-9]+)(?:\s*([+-])\s*([0-9]+))?/gi;
 const WORD = /[A-Za-z0-9_]/;
 const OPERATOR = /[+\-*/!]/;
+/** 加減的是文字（「+你的力量調整值」「+STR」）：算式只取前面的骰子部分 */
+const WORDY_MODIFIER = /^[+-]\s*(?![0-9]|[0-9]*d[0-9])[^\s+\-*/!=]/i;
 const CLAUSE_END = /[。！？!?；;，,\n]/;
 const SENTENCE_END = /[。！？!?\n]/;
 const MAX_CHARS = 32768;
@@ -65,7 +67,8 @@ export function rankSuggestions(
     .slice(0, MAX_CHARS)
     .join("")
     .replace(/＋/g, "+")
-    .replace(/[－−]/g, "-");
+    .replace(/[－−]/g, "-")
+    .replace(/＝/g, "=");
   const found: Array<{ value: string; rank: 0 | 1 | 2 }> = [];
   const who = name.trim();
   const rest = others.map((other) => other.trim()).filter((other) => other && other !== who);
@@ -83,7 +86,9 @@ export function rankSuggestions(
       isWord(left[left.length - 1]) ||
       isWord(right[0]) ||
       (before && OPERATOR.test(before[before.length - 1])) ||
-      (after && OPERATOR.test(after[0])) ||
+      (after && OPERATOR.test(after[0]) && !WORDY_MODIFIER.test(after)) ||
+      // 「1d20+5 = 21」是擲完的結果，不是要玩家擲的
+      after.startsWith("=") ||
       after.startsWith("#")
     )
       continue;

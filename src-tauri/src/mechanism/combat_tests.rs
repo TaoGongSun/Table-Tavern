@@ -379,6 +379,25 @@ fn foe_insert_only_adds_new_names() {
 }
 
 #[test]
+fn removed_foe_leaves_the_order_too() {
+    let mut world = combat_world();
+    patch(
+        &mut world,
+        r#"{"op":"replace","path":"/combat/order","value":["沃恩","哥布林A","雷克"]},
+           {"op":"insert","path":"/combat/foes/哥布林A","value":{"hp":"7/7"}},
+           {"op":"replace","path":"/combat/turn","value":"哥布林A"}"#,
+    );
+    let outcome = patch(
+        &mut world,
+        r#"{"op":"remove","path":"/combat/foes/哥布林A"}"#,
+    );
+    assert!(!in_order(&world.state.tree, "哥布林A"));
+    assert_eq!(leaf(&world, "combat.order.1"), "雷克");
+    assert_eq!(leaf(&world, "combat.turn"), "", "輪到的人倒下就清空");
+    assert!(outcome.changes.contains_key("combat.order"));
+}
+
+#[test]
 fn turn_must_be_in_order_and_empty_order_ends_combat() {
     let mut world = combat_world();
     patch(

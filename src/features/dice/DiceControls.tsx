@@ -15,6 +15,7 @@ export function DiceControls({
   playerName,
   onRoll,
   onExpand,
+  onOpenDiceSetting,
 }: {
   events: TranscriptEvent[];
   diceEnabled: boolean;
@@ -25,6 +26,8 @@ export function DiceControls({
   hasTarget: boolean;
   onRoll: (formula: string) => Promise<void>;
   onExpand?: () => void;
+  /** 擲骰沒開時，理由那行點了開到擲骰開關所在的頁 */
+  onOpenDiceSetting?: () => void;
 }) {
   const c = diceCopy();
   const narrations = events.flatMap((e, i) => (e.kind === "narration" ? [i] : []));
@@ -61,6 +64,7 @@ export function DiceControls({
       buttonClass="btn btn-sm"
       onRoll={onRoll}
       onExpand={onExpand}
+      onFixReason={reason === c.off ? onOpenDiceSetting : undefined}
     />
   );
 }

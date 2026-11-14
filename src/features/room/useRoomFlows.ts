@@ -78,6 +78,8 @@ export function useRoomFlows(deps: Deps) {
       deps.openAiSettings();
       return;
     }
+    // 上次沒連 AI 時留下的「開房間前要先連接 AI 模型」不該還掛在大廳
+    deps.setError("");
     const status = await readRoomStatus().catch(() => null);
     setDialog({ server: status?.server ?? "", world: worldId, name });
   }

@@ -41,21 +41,28 @@ export function Panel({
   children,
   onClose,
   className,
+  closeFirst,
 }: {
   label: string;
   children: React.ReactNode;
   onClose: () => void;
   className?: string;
+  /** 內容會長到要捲動的面板：關閉鈕放標題正下方，不必捲到底 */
+  closeFirst?: boolean;
 }) {
+  const close = (
+    <div className="vn-chapter-actions">
+      <button type="button" className="btn" onClick={onClose}>
+        {t("vnChapterClose")}
+      </button>
+    </div>
+  );
   return (
     <div className={`vn-story-panel${className ? ` ${className}` : ""}`} role="dialog" aria-label={label}>
       <p className="vn-chapter-heading">{label}</p>
+      {closeFirst && close}
       {children}
-      <div className="vn-chapter-actions">
-        <button type="button" className="btn" onClick={onClose}>
-          {t("vnChapterClose")}
-        </button>
-      </div>
+      {!closeFirst && close}
     </div>
   );
 }

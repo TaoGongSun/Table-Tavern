@@ -76,13 +76,14 @@ export function PastChoicePanel({
           </button>
         );
       })}
+      {/* 不在這組選項裡的路：換一組前的選項，或玩家在聊天視圖自己打的那句（可能就是本分支選的） */}
       {others.map((branch) => (
         <button
           key={`other:${branch.option}`}
           type="button"
-          className="btn btn-ghost vn-choice"
+          className="btn vn-choice"
           disabled={disabled}
-          onClick={() => onSwitch(branch)}
+          onClick={() => (branch.option === answered ? onCurrent() : onSwitch(branch))}
         >
           {branch.option}
           <span className="vn-choice-tag">{tag(branch.option, branch)}</span>

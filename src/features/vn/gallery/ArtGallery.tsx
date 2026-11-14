@@ -35,7 +35,7 @@ export function ArtGallery({
   const [tab, setTab] = useState<(typeof TABS)[number][0]>("sprites");
   const [viewing, setViewing] = useState<Viewing | null>(null);
   return (
-    <Panel label={t("vnGallery")} onClose={onClose} className="vn-gallery">
+    <Panel label={t("vnGallery")} onClose={onClose} className="vn-gallery" closeFirst>
       {!replay && <ArtFlowNotice worldId={worldId} />}
       <div className="vn-gallery-tabs" role="tablist">
         {TABS.map(([key, label]) => (

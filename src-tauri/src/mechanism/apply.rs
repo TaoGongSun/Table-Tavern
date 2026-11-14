@@ -410,10 +410,13 @@ fn apply_delta(
 ) {
     let path_str = patch.path.join(".");
     let current = match data::node_at(tree, &patch.path) {
-        None => {
-            records.push(hint::missing(tree, mechanism, &patch.path, PatchOp::Delta));
-            return;
-        }
+        None => match counter_floor(tree, mechanism, &patch.path) {
+            Some(floor) => floor,
+            None => {
+                records.push(hint::missing(tree, mechanism, &patch.path, PatchOp::Delta));
+                return;
+            }
+        },
         Some(StateNode::Branch(children)) => {
             records.push(hint::branch(mechanism, &patch.path, children, "做增減"));
             return;
@@ -518,6 +521,22 @@ fn apply_delta(
         | FieldKind::ReadOnly
         | FieldKind::Derived => {}
     }
+}
+
+/// 有最小值的計數器還沒有值（開場沒給初值）：回傳起算值（最小值），增減驗證通過才由後面寫進樹。
+/// 只認這條路徑自己的規則、上一層已存在，不替萬用規則或缺的分支生出新欄。
+fn counter_floor(
+    tree: &BTreeMap<String, StateNode>,
+    mechanism: &Mechanism,
+    path: &[String],
+) -> Option<String> {
+    let rule = mechanism.rules.get(&path.join("."))?;
+    let min = rule.min.filter(|_| rule.kind == FieldKind::Counter)?;
+    let (_, parent) = path.split_last()?;
+    if !parent.is_empty() && !matches!(data::node_at(tree, parent), Some(StateNode::Branch(_))) {
+        return None;
+    }
+    Some(format_num(min))
 }
 
 /// 這一欄不收 delta 時回傳要回饋給模型的拒收句（`shown`＝提示用路徑）：骰值、唯讀（含衍生值）沿用既有訊息，

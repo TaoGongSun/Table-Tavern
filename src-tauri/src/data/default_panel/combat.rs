@@ -138,6 +138,24 @@ pub fn settle(tree: &mut BTreeMap<String, StateNode>) -> bool {
     *combat != before
 }
 
+/// 敵人移除時連帶從先攻順序拿掉同名（模型常只 remove 敵人、忘了改順序）；回傳有沒有拿掉。
+pub fn drop_from_order(tree: &mut BTreeMap<String, StateNode>, name: &str) -> bool {
+    let Some(StateNode::Branch(combat)) = tree.get_mut(COMBAT) else {
+        return false;
+    };
+    let order = list_values(combat.get(ORDER));
+    let kept: Vec<String> = order
+        .iter()
+        .filter(|item| !crate::data::glyph_equal(item, name))
+        .cloned()
+        .collect();
+    if kept.len() == order.len() {
+        return false;
+    }
+    combat.insert(ORDER.to_owned(), list_node(&kept));
+    true
+}
+
 /// 輪到誰的成員檢查：名字在目前的先攻順序裡。
 pub fn in_order(tree: &BTreeMap<String, StateNode>, name: &str) -> bool {
     let combat = match tree.get(COMBAT) {

@@ -2,7 +2,8 @@
 //! 進凍結快照。指引是靜態文字，措辭定稿後不改（改一字整條快取全滅）；範例只讀規則與角色格對照，格變動才變。
 //! 上限數字與 `data::default_panel` 的常數同一份。
 use crate::data::default_panel::{
-    CHARACTERS, ITEMS_MAX, ITEM_CHARS, STATUS_CHARS, TRACKING, TRACKING_CHARS, TRACKING_MAX,
+    CHARACTERS, CUSTOM_CHARS, ITEMS_MAX, ITEM_CHARS, STATUS_CHARS, TRACKING, TRACKING_CHARS,
+    TRACKING_MAX,
 };
 use crate::data::Mechanism;
 
@@ -25,7 +26,10 @@ pub(super) fn guide(lang: &str) -> String {
              - List fields always take replace with the whole array of strings: to add one item, rewrite the whole \
              array (copy the unchanged items). Never use insert, remove, or per-item paths like `/0` or `/-`.\n\
              - Character entries are created by the system: do not add new names or other keys. Skip fields that did \
-             not change. Anything over a limit is cut off by the system."
+             not change. Anything over a limit is cut off by the system.\n\
+             - Fields the player added (keys other than the ones above, already in the state tree) are yours to keep up \
+             too: if one is empty, fill it from the story; when it changes, replace the whole value. At most \
+             {CUSTOM_CHARS} characters."
         )
     } else {
         format!(
@@ -37,7 +41,9 @@ pub(super) fn guide(lang: &str) -> String {
              - `/tracking/goals`（目標）、`/tracking/promises`（承諾）、`/tracking/clues`（線索）：還在進行中的事，各最多 \
              {TRACKING_MAX} 項、每項最多 {TRACKING_CHARS} 字；解決了就不再寫進去。\n\
              - 清單欄一律用 replace 寫整串字串陣列：加一項也重寫整串（沒變的項照抄），不要用 insert、remove 或 `/0`、`/-` 這類逐項路徑。\n\
-             - 角色格由系統建立，不要新增角色名或其他鍵；沒變的欄位不要寫。超過上限的部分系統會直接截掉。"
+             - 角色格由系統建立，不要新增角色名或其他鍵；沒變的欄位不要寫。超過上限的部分系統會直接截掉。\n\
+             - 玩家自己加的欄位（上面沒列的鍵，已在狀態樹裡）也由你維護：空著就依劇情填上，之後有變就 replace 整句；最多 \
+             {CUSTOM_CHARS} 字。"
         )
     }
 }
@@ -94,7 +100,8 @@ pub(super) fn combat_guide(lang: &str) -> String {
         format!(
             "## Combat fields (arithmetic done by the system)\n\n\
              - `/characters/<name>/hp` and `/combat/foes/<foe>/hp` (HP): \"current/max\" as two whole numbers, max at most \
-             {HP_MAX}. The first time, replace it with the full value (e.g. \"24/24\"). After that, always report the change \
+             {HP_MAX}. The first time, replace it with the full value (e.g. \"24/24\"); if a character's HP is still empty, pick a \
+             fitting value from their description and write it yourself instead of asking the player. After that, always report the change \
              with delta (damage negative, healing positive); the system adds it up and keeps it between 0 and max. Never \
              replace HP with a result. To change only the max, replace with the current value copied and the new max.\n\
              - When the amount comes from this turn's dice pool, add `\"dice\"` with the dice references and any constant, \
@@ -116,7 +123,7 @@ pub(super) fn combat_guide(lang: &str) -> String {
         format!(
             "## 戰鬥欄（數字由系統算）\n\n\
              - `/characters/<角色名>/hp`、`/combat/foes/<敵人>/hp`（HP）：「現值/上限」兩個整數，上限最多 {HP_MAX}。第一次用 \
-             replace 寫完整值（例 \"24/24\"）；之後一律用 delta 報增減量（扣血負數、補血正數），系統加總並夾在 0 到上限之間。\
+             replace 寫完整值（例 \"24/24\"）；角色的 HP 還是空的就依角色設定自己定一個合理值寫入，不要停下來要玩家補；之後一律用 delta 報增減量（扣血負數、補血正數），系統加總並夾在 0 到上限之間。\
              不要用 replace 報結果；只改上限時現值照抄、寫新上限。\n\
              - 增減量來自本輪骰池時加 `\"dice\"` 寫骰號與常數，例 {{\"op\":\"delta\",\"path\":\"/combat/foes/哥布林A/hp\",\"value\":-7,\"dice\":\"d8#1+3\"}}。\
              骰面由系統從池裡取，數字對不上時以骰面總和為準；每顆骰只能用一次。每次命中各報一筆 delta，不要把幾次命中併成一筆。傷害有減半等調整時不要帶 dice。\n\

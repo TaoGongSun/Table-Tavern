@@ -76,8 +76,13 @@
   gap: 0.8rem;
   padding: 1rem;
   overflow-y: auto;
-  background: rgba(8, 10, 14, 0.94);
+  background: rgba(8, 10, 14, 0.97);
+  backdrop-filter: blur(10px);
   color: var(--vn-ink);
+}
+/* 靜音時音量滑桿變淡（仍可調，取消靜音後生效） */
+.vn-setting-off {
+  opacity: 0.45;
 }
 /* 內容短時置中、超高時從頂端排並可捲到底：flex 的 justify-content: center 會把頂端溢出的內容推到捲不到的地方 */
 .vn-story-panel > :first-child {

@@ -64,6 +64,20 @@ it("keeps a disabled dice button visible and submits only the chosen formula", a
   expect(onRoll).toHaveBeenCalledExactlyOnceWith("2d6+3");
   expect(host.querySelector(".dice-options")).toBeNull();
 });
+it("擲骰沒開時，理由那行點了開到擲骰開關", async () => {
+  host = document.createElement("div");
+  document.body.append(host);
+  root = createRoot(host);
+  const open = vi.fn();
+  const props = { events: [event("narration")], busy: false, locked: false, room: false, hasTarget: true, onRoll: vi.fn(async () => {}), onOpenDiceSetting: open };
+  await act(async () => root.render(<DiceControls {...props} diceEnabled={false} />));
+  const link = host.querySelector<HTMLButtonElement>(".dice-reason-link")!;
+  expect(link.textContent).toBe(diceCopy().off);
+  await act(async () => link.click());
+  expect(open).toHaveBeenCalledOnce();
+  await act(async () => root.render(<DiceControls {...props} diceEnabled busy />));
+  expect(host.querySelector(".dice-reason-link")).toBeNull();
+});
 it("opens the other suggestions and custom fields from the arrow, or the plain button without suggestions", async () => {
   host = document.createElement("div");
   document.body.append(host);

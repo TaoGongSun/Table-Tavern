@@ -77,7 +77,7 @@ export function SettingsPanel({
         <input type="checkbox" checked={muted} onChange={(event) => onMuted(event.target.checked)} />
         {t("vnMute")}
       </label>
-      <label className="vn-setting">
+      <label className={`vn-setting${muted ? " vn-setting-off" : ""}`}>
         {t("vnBgmVolume")}
         <input
           type="range"
@@ -87,7 +87,7 @@ export function SettingsPanel({
           onChange={(event) => onBgmVolume(Number(event.target.value))}
         />
       </label>
-      <label className="vn-setting">
+      <label className={`vn-setting${muted ? " vn-setting-off" : ""}`}>
         {t("vnSfxVolume")}
         <input
           type="range"

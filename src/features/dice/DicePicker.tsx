@@ -14,6 +14,7 @@ export function DicePicker({
   optionClass = buttonClass,
   onRoll,
   onExpand,
+  onFixReason,
 }: {
   copy: (typeof copy)["en"];
   options: string[];
@@ -29,6 +30,8 @@ export function DicePicker({
   optionClass?: string;
   onRoll: (formula: string) => Promise<void>;
   onExpand?: () => void;
+  /** 有就把不能擲的理由做成可點的連結，直接開到能解決它的地方 */
+  onFixReason?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [tapped, setTapped] = useState("");
@@ -99,7 +102,13 @@ export function DicePicker({
           ⚄ {c.roll}
         </button>
       )}
-      {(quiet ? tapped === reason && reason : blocked) && <small role="status">{blocked}</small>}
+      {onFixReason && reason && !quiet ? (
+        <button type="button" className="dice-reason-link" onClick={onFixReason}>
+          {reason}
+        </button>
+      ) : (
+        (quiet ? tapped === reason && reason : blocked) && <small role="status">{blocked}</small>
+      )}
       {open && (
         <div className="dice-options">
           {rest.map((value) => (

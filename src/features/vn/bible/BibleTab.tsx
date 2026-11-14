@@ -34,6 +34,7 @@ export function BibleTab({
   const view = bible.view;
   const [draft, setDraft] = useState<Bible | null>(null);
   const [busy, setBusy] = useState(false);
+  const [rewriting, setRewriting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [instruction, setInstruction] = useState("");
   // 以內容為鍵重設草稿：開關鎖、別處重讀換了物件但聖經沒變時不洗掉未存的改動
@@ -58,13 +59,16 @@ export function BibleTab({
   const regenerate = () =>
     view?.played ? Promise.reject(new Error("VN_BIBLE_PLAYED")) : bible.generate();
   // 照指示重寫：有未存的草稿先存，指示才會套在玩家改過的版本上
-  const rewrite = () =>
-    act(async () => {
+  const rewrite = async () => {
+    setRewriting(true);
+    await act(async () => {
       if (view?.played) throw new Error("VN_BIBLE_PLAYED");
       if (dirty && draft) await bible.save(draft);
       await bible.generate(undefined, instruction.trim());
       setInstruction("");
     });
+    setRewriting(false);
+  };
   // VN 卡建的桌：重骰改成恢復卡內原版（後端 vn_bible_generate 同一支，不呼叫模型）
   const restore = restoresCardBible(view);
   async function confirmRegenerate() {
@@ -184,7 +188,7 @@ export function BibleTab({
             disabled={busy || view.played || instruction.trim() === ""}
             onClick={() => void rewrite()}
           >
-            {t("vnBibleRewrite")}
+            {rewriting ? t("vnBibleDrafting") : t("vnBibleRewrite")}
           </button>
         </div>
       )}

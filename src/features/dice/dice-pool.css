@@ -40,6 +40,7 @@
 .dice-main { display: inline-flex; gap: .25rem; }
 .dice-more { padding-inline: .5rem; }
 .dice-off button:not(:disabled)[aria-disabled] { opacity: .55; }
+.dice-reason-link { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: .85em; text-decoration: underline; cursor: pointer; }
 .dice-option { border-radius: 999px; border-color: var(--accent); }
 .dice-custom .btn { min-height: var(--control-h); }
 .rule-books { flex-basis: 100%; display: flex; flex-direction: column; gap: .5rem; margin: 0; padding: 0; list-style: none; }

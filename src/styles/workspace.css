@@ -659,7 +659,9 @@ button.scene-chip,
   border-radius: var(--radius-m);
   padding: 0.2rem;
 }
-.state-panel-chip > button {
+/* 自訂欄的刪除鈕跟 chip 的 × 同份量，不要撐成一顆大方鈕 */
+.state-panel-chip > button,
+.state-panel-custom > button {
   height: auto;
   padding: 0 0.25rem;
 }

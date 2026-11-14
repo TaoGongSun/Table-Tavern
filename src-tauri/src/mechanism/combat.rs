@@ -2,8 +2,8 @@
 //! HP 增量綁本輪骰池、敵人整筆只准新增／移除、輪到誰須在先攻順序裡，以及戰鬥欄的拒收標記。
 //! 先攻順序與狀態效果是一般清單欄，照預設狀態欄的守門與預算走。
 use crate::data::default_panel::combat::{
-    in_order, list_values, COMBAT, CONDITIONS, CONDITIONS_MAX, CONDITION_CHARS, FOES, FOES_MAX, HP,
-    HP_MAX, NAME_CHARS, ORDER, TURN,
+    drop_from_order, in_order, list_values, COMBAT, CONDITIONS, CONDITIONS_MAX, CONDITION_CHARS,
+    FOES, FOES_MAX, HP, HP_MAX, NAME_CHARS, ORDER, TURN,
 };
 use crate::data::default_panel::CHARACTERS;
 use crate::data::{self, Mechanism, RefusedMark, StateNode};
@@ -197,6 +197,9 @@ fn foe_entry(
         PatchOp::Remove => {
             if foes.remove(name).is_some() {
                 changes.insert(patch.path.join("."), "移除".to_owned());
+                if drop_from_order(tree, name) {
+                    changes.insert(format!("{COMBAT}.{ORDER}"), "更新".to_owned());
+                }
             } else {
                 records.push(refuse_why(
                     patch,
@@ -398,7 +401,7 @@ fn hp(
     }
     let Some(hp) = current_hp else {
         let detail = if current.trim().is_empty() {
-            format!("{shown} 還沒有 HP，先用 replace 寫「現值/上限」（例 24/24）再報增減。")
+            format!("{shown} 還沒有 HP，先依角色設定自己定一個合理值，用 replace 寫「現值/上限」（例 24/24）再報增減；不要停下來問玩家。")
         } else {
             format!(
                 "{shown} 現值「{}」不是「現值/上限」格式，請玩家修正後再報增減；未套用。",

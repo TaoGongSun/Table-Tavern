@@ -66,6 +66,12 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [mobile-room-host](tasks/mobile-room-host.md) — Android 手機開房：APK 前景服務＋API 授權入口（OpenRouter 一鍵登入、國產模型金鑰）（案別未估） — 下一步：不急〔作者裁決 2026-11-06〕；開工先評估，疊在 cn-apk-shell 之上
 - [room-server-own-domain](tasks/room-server-own-domain.md) — 房間伺服器從暫用的 tt-room.pirahus.com 換成專用網域（小案，幾行＋部署打包） — 下一步：不急〔作者裁決 2026-11-03〕；朋友測試順利、作者買好網域後，跟下一次打包一起換
 
+## 實測挖到的（2026-11-14 清理待實測清單）
+- greeting-pick-later — 匯入卡時按「先不要」跳過開場白後，沒有地方能再選；還沒開始玩的桌補一個「選擇開場白」入口，讀桌目錄留下的原卡重開同一個選單（小案，估核心 60 行） — 下一步：未排程〔模型判斷·未裁決〕
+- vn-opening-missing-fallback — VN 一鍵開桌時模型沒寫出開場白（Haiku 兩次有一次），標題畫面全黑、按「開始」只有空對話框；建桌時檢查並補救（重要求一次或擋下提示重試）（小案，估核心 50 行） — 下一步：未排程〔模型判斷·未裁決〕
+- refactor-duplicate-panel-fields — 重構桌右側欄出現跟內建「地點／在場人物」重複的卡片欄（当前环境、驻留角色）；重構時把語意相同的欄併到內建欄或不列（案別未估） — 下一步：未排程〔模型判斷·未裁決〕
+- vn-script-entry — VN 的劇本分頁要「選單→更多→聊天視圖→GM 鉛筆→劇本」五層才到，VN 畫面裡看不到「劇本」；在遊戲選單「更多…」放直達入口（小案，估核心 30 行） — 下一步：未排程〔模型判斷·未裁決〕
+
 ## 排後
 原訂 16 件（發佈平台 5、API 限定 5、供應商設定 3、其他功能 2、碰運氣 1）；以下為目前 BACKLOG 裡不屬於上面各階段的案子，逐件歸類待作者確認〔模型判斷·未裁決〕。
 - [initvar-entry-yaml-semantics](tasks/initvar-entry-yaml-semantics.md) — [initvar] 條目挑選與 YAML 語意（$meta、# 註解）對齊上游 — 下一步：縮小〔模型判斷·未裁決〕：第 3 項照作者裁決，第 1、2 項只做合併條目＋剝圍欄＋# 當註解，$meta 分支留限制；排在 initvar-yaml-list 之後

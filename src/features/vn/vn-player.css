@@ -7,7 +7,7 @@
   --vn-box-line: rgba(230, 196, 110, 0.45);
   --vn-ink: #eef1f7;
   --vn-thought: #a9c4e8;
-  --vn-dim: brightness(0.7) saturate(0.85);
+  --vn-dim: brightness(0.5) saturate(0.7);
   --vn-fs: clamp(1rem, 2.4cqh, 1.8rem);
   --vn-box-w: min(92%, 110cqh);
   /* 快捷列一行的字級與對話框底邊以下的高度（快捷列＋間距＋下緣留白，多留一點）：立繪下緣藏在這段之下 */
@@ -240,8 +240,8 @@
 .vn-slot-0 { left: 24%; }
 .vn-slot-1 { left: 76%; }
 .vn-slot-2 { left: 50%; }
+/* 同台有人說話時其他人壓暗；旁白格（idle）與獨自在台上都照原亮度 */
 .vn-dim { filter: var(--vn-dim); }
-.vn-idle { filter: brightness(0.8); }
 .vn-speaking { transform: scale(1.02); z-index: 1; }
 /* 特寫：槽位撐滿舞台、不套身高比例（小個子特寫也要放大）；以臉框中心為錨放大 1.7 倍，臉移到水平中央、舞台上 1/3。
    用獨立的 translate／scale 屬性，跟呼吸動畫的 transform 疊加不互蓋；沒有臉框（卡圖、剪影）假設臉在上方 18% */
@@ -311,11 +311,22 @@
 /* 選項字與對話同級、置中 */
 .vn-choice {
   width: 100%;
+  height: auto;
   min-height: 2.4rem;
+  padding-block: 0.4rem;
+  line-height: 1.4;
+  white-space: normal;
+  overflow-wrap: anywhere;
   justify-content: center;
   text-align: center;
   font-family: var(--font-story);
   font-size: var(--vn-fs);
+  background: var(--vn-box);
+  border-color: var(--vn-box-line);
+  color: var(--vn-ink);
+}
+/* 「換一組」：跟選項鈕同一種半透明底，亮背景上也讀得到，份量比選項小 */
+.vn-reroll {
   background: var(--vn-box);
   border-color: var(--vn-box-line);
   color: var(--vn-ink);
@@ -326,6 +337,8 @@
   font-size: var(--fs-ui);
 }
 .vn-choice-tag {
+  flex-shrink: 0;
+  white-space: nowrap;
   margin-left: 0.6rem;
   font-size: var(--fs-ui);
   opacity: 0.7;
