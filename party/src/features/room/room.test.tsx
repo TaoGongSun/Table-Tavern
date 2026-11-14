@@ -300,6 +300,35 @@ describe("手機客戶端對真伺服器核心", () => {
     expect(A.q('[data-testid="story"]')!.textContent).toContain("角色2這回合交給 GM 安排");
   });
 
+  it("切到別的分頁再回故事：沒送的字照留；送出後的字與收回後改過的字都不被舊字蓋掉", async () => {
+    const { room, A, a } = await table();
+    const box = () => A.q<HTMLTextAreaElement>('[data-testid="action-text"]')!.value;
+    A.type('[data-testid="action-text"]', "我拔劍");
+    await until(() => room.s.drafts[a] === "我拔劍");
+    A.tab("chat");
+    A.tab("story");
+    expect(box()).toBe("我拔劍");
+
+    // 送出後、回覆到之前切走：回覆成功再切回，送出的字不復活
+    A.socket().held = true;
+    A.click("送出");
+    A.tab("chat");
+    await until(() => room.s.round?.roster.find((e) => e.memberId === a)?.status === "submitted");
+    A.socket().held = false;
+    act(() => A.socket().pump());
+    await until(() => true); // 回覆的 promise 跑完才切回
+    A.tab("story");
+    await until(() => A.button("收回修改"));
+    expect(box()).toBe("");
+
+    A.click("收回修改");
+    await until(() => box() === "我拔劍");
+    A.type('[data-testid="action-text"]', "我拔劍砍向門口");
+    A.tab("members");
+    A.tab("story");
+    expect(box()).toBe("我拔劍砍向門口");
+  });
+
   it("換裝置認領：新裝置按「這是我的？」、房主名單卡片確認；拒絕時玩家看得到、不卡住", async () => {
     const { room, hub, A } = await table();
     await room.join("z", "格羅");

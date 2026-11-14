@@ -113,16 +113,31 @@ fn list_node(items: &[String]) -> StateNode {
     )
 }
 
-/// 先攻的成員驗證與連帶清理（§2.6）：順序去重去空；順序空了清掉輪到誰與敵人；輪到誰不在順序裡就清空。
-/// 每個寫入口在存最後一則快照前呼叫。回傳有沒有變動。
+/// 先攻的成員驗證與連帶清理（§2.6）：順序去重去空；HP 歸 0 的敵人移出順序（敵人列留著）；
+/// 順序空了清掉輪到誰與敵人；輪到誰不在順序裡就清空。每個寫入口在存最後一則快照前呼叫。回傳有沒有變動。
 pub fn settle(tree: &mut BTreeMap<String, StateNode>) -> bool {
     let Some(StateNode::Branch(combat)) = tree.get_mut(COMBAT) else {
         return false;
     };
     let before = combat.clone();
+    let fallen: Vec<String> = match combat.get(FOES) {
+        Some(StateNode::Branch(foes)) => foes
+            .iter()
+            .filter(|(_, foe)| match foe {
+                StateNode::Branch(fields) => matches!(fields.get(HP),
+                    Some(StateNode::Leaf(hp)) if hp.split_once('/').is_some_and(|(now, _)| now.trim() == "0")),
+                _ => false,
+            })
+            .map(|(name, _)| name.clone())
+            .collect(),
+        _ => Vec::new(),
+    };
     let mut order: Vec<String> = Vec::new();
     for name in list_values(combat.get(ORDER)) {
-        if !name.trim().is_empty() && !order.contains(&name) {
+        let down = fallen
+            .iter()
+            .any(|foe| crate::data::glyph_equal(foe, &name));
+        if !name.trim().is_empty() && !down && !order.contains(&name) {
             order.push(name);
         }
     }

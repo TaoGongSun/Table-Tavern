@@ -103,7 +103,8 @@ export function MoreMenu({
   const openSource = useRef<FocusSource>("keyboard");
   const menuId = useId();
 
-  // 右緣對齊觸發鈕、水平夾在視窗內（右緣對齊會出界就改成左緣對齊，不蓋住觸發鈕）。
+  // 右緣對齊觸發鈕、水平夾在視窗內（右緣對齊會出界就改成左緣對齊，不蓋住觸發鈕）；
+  // 掛進別的容器（嵌在桌面版的房間）就夾在那個容器內，不長進旁邊的欄。
   // 下方放得下就向下開；放不下而上方比較大就向上開。高度給到該側剩餘空間為止，放不下就內捲
   const reposition = useCallback(() => {
     const trigger = triggerRef.current;
@@ -118,10 +119,13 @@ export function MoreMenu({
     const openUp = natural > below && above > below;
     const maxHeight = openUp ? above : below;
     const top = openUp ? rect.top - 4 - Math.min(natural, maxHeight) : rect.bottom + 4;
-    const preferred = rect.right - width < EDGE ? rect.left : rect.right - width;
-    const left = Math.max(EDGE, Math.min(preferred, window.innerWidth - width - EDGE));
+    const box = portalTo?.getBoundingClientRect();
+    const minX = Math.max(0, box?.left ?? 0) + EDGE;
+    const maxX = Math.min(window.innerWidth, box?.right ?? window.innerWidth) - EDGE;
+    const preferred = rect.right - width < minX ? rect.left : rect.right - width;
+    const left = Math.max(minX, Math.min(preferred, maxX - width));
     setPlace({ top, left, maxHeight });
-  }, []);
+  }, [portalTo]);
 
   useLayoutEffect(() => {
     if (!open) {
