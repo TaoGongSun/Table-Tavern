@@ -470,14 +470,18 @@ async fn render_face(
     let crop = compose::Crop::around(face);
     let inner = crop.inner(face);
     let before = compose::cut(&base, crop);
-    // 灰底來源回來的方塊不透明：臉層以定稿 alpha 裁剪，不必去背
+    // 灰底來源回來的方塊不透明：臉層以定稿 alpha 裁剪，不必去背；邊緣顏色照定稿 alpha 還原，跟身體同色再比對齊
     let request = compose::request_png(&base, crop, !transparent)?;
+    let alpha: Vec<u8> = before.pixels().map(|pixel| pixel[3]).collect();
     for _ in 0..2 {
         let png = generate_png(app, &config, world, &prompt, Some(&request), "1:1").await?;
         let result = compose::decode(&png)?;
-        let Some(after) = compose::fit_back(&result, crop.side) else {
+        let Some(mut after) = compose::fit_back(&result, crop.side) else {
             continue;
         };
+        if !transparent {
+            matting::defringe(&mut after, &alpha);
+        }
         if let Some(after) = compose::aligned(&before, &after, inner) {
             return compose::encode_png(&compose::face_layer(&after, &before, inner));
         }

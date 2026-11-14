@@ -144,14 +144,74 @@ fn infer(path: &Path, image: &RgbaImage) -> Result<GrayImage, String> {
     Ok(mask_from_logits(logits))
 }
 
-/// 遮罩縮回原圖尺寸當 alpha
+/// 遮罩縮回原圖尺寸當 alpha，再還原半透明邊緣的顏色
 fn apply_mask(mut image: RgbaImage, mask: &GrayImage) -> RgbaImage {
     let (width, height) = image.dimensions();
     let mask = imageops::resize(mask, width, height, FilterType::Triangle);
     for (x, y, pixel) in image.enumerate_pixels_mut() {
         pixel[3] = mask.get_pixel(x, y)[0];
     }
+    let alpha: Vec<u8> = image.pixels().map(|pixel| pixel[3]).collect();
+    defringe(&mut image, &alpha);
     image
+}
+
+/// 前景色估計（Forte & Pitié 2021 blur fusion，同 BiRefNet 官方 `refine_foreground`：r=90 一次、r=6 再一次）：
+/// `alpha` 半透明處的 RGB 混著底色，用 alpha 加權模糊估出局部前景與底色後扣掉底色。
+/// 只改 0 < alpha < 255 的 RGB；alpha 本身不動。灰底來源的表情方塊也拿定稿 alpha 走這裡，臉層邊緣才跟身體同色
+pub(crate) fn defringe(image: &mut RgbaImage, alpha: &[u8]) {
+    let colors: Vec<[f32; 3]> = image
+        .pixels()
+        .map(|pixel| [0, 1, 2].map(|channel| f32::from(pixel[channel]) / 255.0))
+        .collect();
+    let alpha: Vec<f32> = alpha
+        .iter()
+        .map(|&value| f32::from(value) / 255.0)
+        .collect();
+    let size = image.dimensions();
+    let (front, back) = blur_fusion(size, &colors, &alpha, (&colors, &colors), 90.0);
+    let (front, _) = blur_fusion(size, &colors, &alpha, (&front, &back), 6.0);
+    for ((pixel, color), weight) in image.pixels_mut().zip(front).zip(&alpha) {
+        if *weight > 0.0 && *weight < 1.0 {
+            for channel in 0..3 {
+                pixel[channel] = (color[channel] * 255.0).round() as u8;
+            }
+        }
+    }
+}
+
+/// F = 模糊(F·α)/模糊(α) + α·(I − α·模糊F − (1−α)·模糊B)；回 (F, 模糊B)。視窗 `size` 的均值模糊以同變異數的近似高斯代替
+fn blur_fusion(
+    (width, height): (u32, u32),
+    image: &[[f32; 3]],
+    alpha: &[f32],
+    (front, back): (&[[f32; 3]], &[[f32; 3]]),
+    size: f32,
+) -> (Vec<[f32; 3]>, Vec<[f32; 3]>) {
+    let blurred = |colors: &[[f32; 3]], weight: &dyn Fn(f32) -> f32| {
+        let weighted = image::Rgba32FImage::from_fn(width, height, |x, y| {
+            let index = (y * width + x) as usize;
+            let w = weight(alpha[index]);
+            let [r, g, b] = colors[index].map(|value| value * w);
+            image::Rgba([r, g, b, w])
+        });
+        imageops::fast_blur(&weighted, size / 12f32.sqrt())
+            .pixels()
+            .map(|sum| [0, 1, 2].map(|channel| sum[channel] / (sum[3] + 1e-5)))
+            .collect::<Vec<_>>()
+    };
+    let blurred_front = blurred(front, &|a| a);
+    let blurred_back = blurred(back, &|a| 1.0 - a);
+    let estimate = (0..image.len())
+        .map(|index| {
+            let a = alpha[index];
+            [0, 1, 2].map(|channel| {
+                let (f, b) = (blurred_front[index][channel], blurred_back[index][channel]);
+                (f + a * (image[index][channel] - a * f - (1.0 - a) * b)).clamp(0.0, 1.0)
+            })
+        })
+        .collect();
+    (estimate, blurred_back)
 }
 
 #[cfg(test)]
@@ -198,5 +258,34 @@ mod tests {
         assert_eq!(cut.get_pixel(4, 0)[3], 255);
         assert_eq!(cut.get_pixel(4, 7)[3], 0);
         assert_eq!(cut.get_pixel(4, 7)[0], 1);
+    }
+
+    /// 已知前景在灰底上做 12 px 軟邊：邊緣還原回前景色、不比前景暗；實心區、全透明區、alpha 都不動
+    #[test]
+    fn defringe_recovers_foreground_on_soft_edge() {
+        for (front, back) in [([40u8, 30, 20], 200u8), ([230, 225, 215], 181)] {
+            let alpha: Vec<u8> = (0..96 * 96)
+                .map(|index| ((60 - index % 96) * 255 / 12).clamp(0, 255) as u8)
+                .collect();
+            let mut image = RgbaImage::from_fn(96, 96, |x, y| {
+                let a = f32::from(alpha[(y * 96 + x) as usize]) / 255.0;
+                let mix =
+                    front.map(|f| (f32::from(f) * a + f32::from(back) * (1.0 - a)).round() as u8);
+                Rgba([mix[0], mix[1], mix[2], alpha[(y * 96 + x) as usize]])
+            });
+            let original = image.clone();
+            defringe(&mut image, &alpha);
+            for (now, was) in image.pixels().zip(original.pixels()) {
+                assert_eq!(now[3], was[3]);
+                if was[3] == 0 || was[3] == 255 {
+                    assert_eq!(now, was);
+                } else if was[3] > 50 {
+                    for channel in 0..3 {
+                        let gap = i32::from(now[channel]) - i32::from(front[channel]);
+                        assert!((-4..=12).contains(&gap), "{front:?} on {back}: {now:?}");
+                    }
+                }
+            }
+        }
     }
 }
