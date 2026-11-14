@@ -42,6 +42,15 @@ it("marks formulas meant for another character", () => {
   expect(rank("雷克擲1d6。沃恩也擲1d6。")).toEqual([{ value: "1d6", other: false }]);
 });
 
+it("卡名帶括號註記時，GM 只寫短名也認得是誰的", () => {
+  const cast = ["雷恩（花豹）", "岩角(牛頭人)"];
+  const gm = "這一下需要判定。請雷恩擲察覺檢定：1d20+2（察覺加值暫定為 +2）。";
+  expect(rankSuggestions(gm, "岩角(牛頭人)", cast)).toEqual([{ value: "1d20+2", other: true }]);
+  expect(rankSuggestions(gm, "雷恩（花豹）", cast)).toEqual([{ value: "1d20+2", other: false }]);
+  expect(rankSuggestions("岩角請擲1d20+1，雷恩請擲1d20+3。", "岩角(牛頭人)", cast)[0]).toEqual({ value: "1d20+1", other: false });
+  expect(rankSuggestions("請擲1d20。", "（無名）", ["（無名）"])).toEqual([{ value: "1d20", other: false }]);
+});
+
 it("GM 回頭提到剛擲的算式時，同級裡排到後面", () => {
   const gm = "你擲出 5 與 1：2d6 不是命中骰。請擲命中 `1d20+5`，命中後擲傷害 `1d8+3`。";
   expect(rankSuggestions(gm, "", [], ["2d6"]).map((x) => x.value)).toEqual(["1d20+5", "1d8+3", "2d6"]);

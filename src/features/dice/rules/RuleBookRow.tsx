@@ -15,6 +15,7 @@ export function RuleBookRow({
   onAdd,
   onRemove,
   onSwitch,
+  onOpenSettings,
 }: {
   book: RuleBook;
   added?: boolean;
@@ -23,6 +24,8 @@ export function RuleBookRow({
   onAdd?: () => void;
   onRemove?: () => void;
   onSwitch?: () => void;
+  /** 指南沒有加入回呼時：「到世界設定加入」帶玩家去選書的那頁 */
+  onOpenSettings?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const c = rulesCopy();
@@ -31,7 +34,7 @@ export function RuleBookRow({
     ? { label: c.remove, disabled: false, run: onRemove }
     : otherAdded && onSwitch
       ? { label: c.switch, disabled: false, run: onSwitch }
-      : { label: added ? c.added : onAdd ? c.add : c.inSettings, disabled: added || !onAdd, run: onAdd };
+      : { label: added ? c.added : onAdd ? c.add : c.inSettings, disabled: added || !(onAdd ?? onOpenSettings), run: onAdd ?? onOpenSettings };
   return (
     <li className="rule-book">
       <div className="rule-book-head">
@@ -92,11 +95,13 @@ export function RuleBookList({
   entries = [],
   onAddRulesBook,
   onRemoveEntries,
+  onOpenSettings,
   catalog = false,
 }: {
   entries?: readonly ListedEntry[];
   onAddRulesBook?: (bookJson: string, label: string) => Promise<void>;
   onRemoveEntries?: Remove;
+  onOpenSettings?: () => void;
   catalog?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -114,6 +119,7 @@ export function RuleBookList({
       book={book}
       added={book === current}
       otherAdded={Boolean(current && book !== current)}
+      onOpenSettings={onOpenSettings}
       onAdd={onAddRulesBook && once(() => onAddRulesBook(book.json, book.name).then(() => setOpen(false)))}
       onRemove={onRemoveEntries && book === current ? once(() => removeBook(book, entries, onRemoveEntries)) : undefined}
       onSwitch={

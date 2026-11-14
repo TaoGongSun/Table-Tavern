@@ -129,6 +129,16 @@ it("建議取自最新 GM 文字：自己的當主鈕，擲過換下一個，自
   await until(() => room.s.pendingRolls?.length === 3);
 });
 
+it("GM 旁白裡的 <br> 當換行、結尾的不留空行，其他標籤照字面", async () => {
+  const { room, hub, b } = await table();
+  await room.send(hub.sockets[0].id, "round.resolve", { round: room.s.round!.round });
+  await room.finishGen("林間靜了下來。<br/>車夫回頭。<Br>\n\n請角色2擲1d20+2<b>。\n\n<BR>");
+  hub.flush();
+  await until(() => rollButton(b).textContent?.includes("1d20+2"));
+  const gm = [...b.querySelectorAll(".part-gm .part-text")].at(-1)!;
+  expect(gm.textContent).toBe("林間靜了下來。\n車夫回頭。\n\n請角色2擲1d20+2<b>。");
+});
+
 it("擲果行總和加粗（切最後一個等號）", async () => {
   const { b } = await table();
   typeAction(b, "想一下");

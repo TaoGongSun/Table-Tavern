@@ -35,11 +35,19 @@ export interface Suggestion {
   other: boolean;
 }
 
+/** 卡名與去掉結尾括號註記的短名：卡叫「雷恩（花豹）」，GM 多半只寫「雷恩」 */
+function namesOf(name: string): string[] {
+  const short = name.replace(/\s*[（(][^（）()]*[）)]$/, "").trim();
+  return short && short !== name ? [name, short] : name ? [name] : [];
+}
+
 /** 算式的歸屬：小句點名就看小句；沒有再看整句，只點別人才算別人的，其餘算沒指定 */
 function rankOf(clause: string, sentence: string, name: string, others: string[]): 0 | 1 | 2 {
+  const mine = namesOf(name);
+  const theirs = others.flatMap(namesOf);
   const of = (scope: string) => ({
-    mine: !!name && scope.includes(name),
-    theirs: others.some((other) => scope.includes(other)),
+    mine: mine.some((n) => scope.includes(n)),
+    theirs: theirs.some((n) => scope.includes(n)),
   });
   const near = of(clause);
   if (near.mine) return 0;

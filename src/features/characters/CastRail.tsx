@@ -292,7 +292,7 @@ export function CastRail(props: CastRailProps) {
               items={addItems}
             />
           )}
-          {props.diceEnabled && <RulesGuide compact={narrow} />}
+          {props.diceEnabled && <RulesGuide compact={narrow} onOpenSettings={onOpenWorldEditor} />}
           <input
             ref={importInputRef}
             type="file"

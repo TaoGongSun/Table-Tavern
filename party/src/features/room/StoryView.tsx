@@ -44,13 +44,19 @@ function Part({
   const color =
     "cardId" in speaker ? view.cards.find((c) => c.cardId === speaker.cardId)?.color : null;
   const dice = speaker.kind === "system" && speaker.marker === "dice_roll";
+  // 模型照酒館習慣寫的 <br> 當換行（仍是純文字，不開放其他標籤）；同 Markdown，緊跟的一個換行併進去，
+  // 結尾多出的空行不留
+  const shown =
+    speaker.kind === "gm" || speaker.kind === "npc"
+      ? text.replace(/<br\s*\/?>(\r?\n)?/gi, "\n").trimEnd()
+      : text;
   return (
     <div
       className={`part part-${speaker.kind}${dice ? " part-dice" : ""}`}
       style={color ? { borderColor: color } : undefined}
     >
       <div className="part-name">{name}</div>
-      <div className="part-text">{dice ? <DiceRollText text={text} /> : text}</div>
+      <div className="part-text">{dice ? <DiceRollText text={text} /> : shown}</div>
       {speaker.kind === "gm" && (
         <DicePoolView pool={dicePool} text={text} language={currentLang()} />
       )}

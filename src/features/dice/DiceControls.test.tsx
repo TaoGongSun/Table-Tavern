@@ -229,4 +229,10 @@ it("points to table settings when the guide cannot add books", async () => {
   const button = [...host.querySelectorAll("button")].find((b) => b.textContent === rulesCopy().inSettings)!;
   expect(button.disabled).toBe(true);
   expect(host.querySelector(".rule-book-details")).toBeNull();
+  const open = vi.fn();
+  await act(async () => root.render(<RuleBookList catalog onOpenSettings={open} />));
+  const link = [...host.querySelectorAll("button")].find((b) => b.textContent === rulesCopy().inSettings)!;
+  expect(link.disabled).toBe(false);
+  await act(async () => link.click());
+  expect(open).toHaveBeenCalledOnce();
 });
