@@ -1,5 +1,7 @@
 # vn-credits — VN 感謝名單（音訊素材署名）
 
+> **現況（2026-11-15）**：VN 感謝名單：音樂署名已驗；剩音效署名（要 Freesound 金鑰，列在 vn-audio 那一列）。細項與「為什麼這台機器測不到」見 `reference/verification-queue.md`；本檔以下若還寫著其他「待實機／待部署／清單編號」，以這一行為準。
+
 Status: 已合 main（2026-11-07）、分支已刪；Sol 驗收 1 輪 DONE、截圖主線親看；等作者實機試玩（實測佇列梯 3）。規格與結果見 [plans/vn-credits.md](../plans/vn-credits.md)。
 
 ## 範圍〔作者裁決 2026-11-07〕

@@ -1,5 +1,7 @@
 # Handoff: claude-compat-endpoint
 
+> **現況（2026-11-15）**：Claude 相容端點：實作完成；剩真相容端點實測（要端點與金鑰）。細項與「為什麼這台機器測不到」見 `reference/verification-queue.md`；本檔以下若還寫著其他「待實機／待部署／清單編號」，以這一行為準。
+
 ## Current state
 實作完成、雙驗證綠，等使用者實測後結案。
 

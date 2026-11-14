@@ -1,5 +1,7 @@
 # 重構卡 PNG 匯出：單檔圖卡＋含角色圖版＋套用映射地基
 
+> **現況（2026-11-15）**：重構卡 PNG 匯出：macOS 與 SillyTavern 拒收已驗；剩 Windows Explorer 縮圖。細項與「為什麼這台機器測不到」見 `reference/verification-queue.md`；本檔以下若還寫著其他「待實機／待部署／清單編號」，以這一行為準。
+
 Status: awaiting-verification
 
 ## Summary

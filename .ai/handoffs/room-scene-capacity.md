@@ -1,5 +1,7 @@
 # room-scene-capacity — 幕容量提醒
 
+> **現況（2026-11-15）**：幕容量提醒：提醒本身已驗；剩舊版桌面接新伺服器（要舊版安裝包）。細項與「為什麼這台機器測不到」見 `reference/verification-queue.md`；本檔以下若還寫著其他「待實機／待部署／清單編號」，以這一行為準。
+
 Status: 已合併 main（2026-11-06；Sol 方案審 1 輪＋驗收 1 輪 PASS、截圖主線親看；Grok 寫碼、Sonnet 截圖、主線設計與總審〔作者 2026-11-06 本輪指示〕）
 Created: 2026-11-06
 案別：小案偏中，核心估約 90 行（執行端 Rust 40、伺服器 20、客戶端 30）。規格見 [plans/room-scene-capacity.md](../plans/room-scene-capacity.md)。

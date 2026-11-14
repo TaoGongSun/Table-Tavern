@@ -1,5 +1,7 @@
 # Handoff: refactor-survey-spans
 
+> **現況（2026-11-15）**：盤點四分類＋照搬零輸出：剩 API 模式退 GM 模型（要 API 額度）；T1–T3 盤點品質補測另立 BACKLOG。細項與「為什麼這台機器測不到」見 `reference/verification-queue.md`；本檔以下若還寫著其他「待實機／待部署／清單編號」，以這一行為準。
+
 ## ⚠ 對話紀律（2026-08-12 使用者嚴令）
 - **驗 Rust 改動先認 Compiling 行**：這台機器 tauri dev 冷啟動不重編 Rust（cargo fingerprint 誤判 0.2–0.5s Finished 沿用舊 binary），只有 watch 偵測檔案變更才真的編（會印 Compiling）。改完 Rust 要嘛看到 watch 的 Compiling＋relaunch，要嘛 survey 快取 miss（hit<100%）才算新碼上場——13:21／13:30 兩輪都是舊 binary 白跑。
 - **禁止長思考**：驗收＝一項一條指令一行過/不過；查帳題直答；異常先一行列出問使用者要不要追，禁自行開挖（uid 考古、快取歸因這類旁支全禁）。思考超過一分鐘會被打斷。

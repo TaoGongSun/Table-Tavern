@@ -1,5 +1,7 @@
 # Handoff: i18n-more-languages（介面擴充多語系，十國語言）
 
+> **現況（2026-11-15）**：十國語言：版面與殘留字十語系已驗（2026-11-15）；剩母語者審校。細項與「為什麼這台機器測不到」見 `reference/verification-queue.md`；本檔以下若還寫著其他「待實機／待部署／清單編號」，以這一行為準。
+
 ## Current state：十語系三處全部上齊、機械驗證全綠，等實機驗收
 
 十國語言＝繁體中文、简体中文、English、日本語、한국어、Español、Português (Brasil)、Deutsch、Français、Русский。

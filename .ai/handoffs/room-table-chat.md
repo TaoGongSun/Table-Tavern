@@ -1,5 +1,7 @@
 # room-table-chat — 桌邊聊天
 
+> **現況（2026-11-15）**：桌邊聊天：送出與私訊已驗；剩中文輸入法選字時按 Enter 不誤送（要真輸入法）。細項與「為什麼這台機器測不到」見 `reference/verification-queue.md`；本檔以下若還寫著其他「待實機／待部署／清單編號」，以這一行為準。
+
 Status: 已合併 main（2026-11-06；Sol 方案審 2 輪、驗收 2 輪 PASS、截圖主線親看；Grok 寫碼）
 Created: 2026-11-06
 案別：中案偏大，核心估約 290 行；信任邊界輸入，方案先審。規格見 [plans/room-table-chat.md](../plans/room-table-chat.md)。

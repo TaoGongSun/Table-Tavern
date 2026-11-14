@@ -1,5 +1,7 @@
 # Handoff: refactor-dispatch
 
+> **現況（2026-11-15）**：AI 重構提速省費：只剩 P8（API 模式跑重構，列在 refactor-survey-spans 那一列）。細項與「為什麼這台機器測不到」見 `reference/verification-queue.md`；本檔以下若還寫著其他「待實機／待部署／清單編號」，以這一行為準。
+
 ## Current state
 2026-08-11 包 1–3 實作完成，代理自驗＋主線複驗全綠（cargo **442**／vitest **94**／npm build 0／check:i18n 0），三個 commit：包 1 `cce182d`、包 2 `60c58f2`、包 3 見 git log。同日實機開跑 orc-cave：檔位與快取生效（P1／P3 綠），但總時長仍 ~24 分（P2 紅）且盤點分類不合格（P7 紅）——提速與品質改由 [refactor-survey-spans](refactor-survey-spans.md) 接手（設計與證據在該任務檔），本案僅剩取消類驗收（P4–P6、P8）等新案完成後合併驗。
 

@@ -1,5 +1,7 @@
 # vn-pack-opaque — 作品包不透明容器＋音效進包
 
+> **現況（2026-11-15）**：作品包不透明容器：匯出匯入已驗；剩音效進包（要 Freesound 金鑰，列在 vn-audio 那一列）。細項與「為什麼這台機器測不到」見 `reference/verification-queue.md`；本檔以下若還寫著其他「待實機／待部署／清單編號」，以這一行為準。
+
 ## Status
 已合 main（2026-11-07）、分支已刪；Sol 方案審 1 輪＋驗收 1 輪皆無必改、verify 17 步綠；等作者實機（實測佇列梯 3）。方案與結果：[plans/vn-pack-opaque.md](../plans/vn-pack-opaque.md)。
 

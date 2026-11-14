@@ -1,5 +1,7 @@
 # room-status-strip — 桌邊狀態列＋房主提醒
 
+> **現況（2026-11-15）**：桌邊狀態列＋房主提醒：畫面已驗；剩提示音要人耳聽、iOS 提示音與熄螢幕未讀要真手機。細項與「為什麼這台機器測不到」見 `reference/verification-queue.md`；本檔以下若還寫著其他「待實機／待部署／清單編號」，以這一行為準。
+
 Status: 已合併 main（2026-11-06；Sol 驗收 2 輪、截圖主線親看；Grok 寫碼、Sonnet 截圖、主線設計與總審〔作者 2026-11-06 本輪指示〕）
 Created: 2026-11-06
 案別：中案，核心估約 150 行（純客戶端）。規格見 [plans/room-status-strip.md](../plans/room-status-strip.md)。

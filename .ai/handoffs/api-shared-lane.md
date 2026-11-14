@@ -1,5 +1,7 @@
 # API 路徑改走 chars 共線：讓換角色不再打散前綴快取
 
+> **現況（2026-11-15）**：API 路徑改走共線：剩 API 快取成對測試（要會回報快取的付費模型）。細項與「為什麼這台機器測不到」見 `reference/verification-queue.md`；本檔以下若還寫著其他「待實機／待部署／清單編號」，以這一行為準。
+
 ## Summary
 
 claude 以外的四條路（api／codex／agy／grok）每換一個角色就整包重算前綴快取。拍板結論、實測證據與 A→B→C 分包見 [.ai/plans/api-shared-lane.md](../plans/api-shared-lane.md)。

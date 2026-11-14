@@ -4,12 +4,24 @@
 
 還沒開工的案子，按執行順序排（2026-10-27 作者排定；目標＝VN 模式，基礎先穩）。手寫維護，一條一行；立案說明在各自的 [tasks/](tasks/)`<id>.md`。
 開工＝把該檔搬進 [handoffs/](handoffs/) 並在 [HANDOFF.md](HANDOFF.md) 登記一條，本檔那行刪掉。
-已在進行中的看 [HANDOFF.md](HANDOFF.md)，等實機驗收的看 [實測佇列](reference/verification-queue.md)。
+已在進行中的看 [HANDOFF.md](HANDOFF.md)，這台機器驗不到的實測看 [待實測清單](reference/verification-queue.md)。
 競品研究：[Marinara Engine 參考策略](plans/marinara_reference_notes.md)（借鏡清單 §14、強化順序 §15、研究待辦 §20 尚未立案）。
 
 **每案交辦固定帶**：動到的檔案先看行數與資料夾檔數；照 [docs/STRUCTURE.md](../docs/STRUCTURE.md)「修改既有功能要不要順便搬」——容得下的 structure-only 小搬遷同案做，大搬家另立案先做；驗收回報附動到檔案的前後行數。
 
 ## 有期限
+
+## 實測挖到的（2026-11-15 清理待實測清單時）
+
+- [room-fixes-deploy](tasks/room-fixes-deploy.md) — 房間手機端修正待部署（小案（不寫程式，只部署）） — 下一步：等作者說要部署／發佈時一起做（不自動部署）
+- [refactor-survey-quality-retest](tasks/refactor-survey-quality-retest.md) — 重構盤點品質補測（原 refactor-survey-spans T1–T3）（未估（先確認還需不需要）） — 下一步：先對照現行重構流程，判斷原驗收單哪些項還成立，再決定補測或作廢〔模型判斷·未裁決〕
+- [undo-tail-trim](tasks/undo-tail-trim.md) — 收回時的快取截尾優化（小案，未估） — 下一步：未排程〔模型判斷·未裁決〕
+- [update-dialog-wording-l10n](tasks/update-dialog-wording-l10n.md) — 更新與重試按鈕的四語譯詞重定（小案（只改譯文）） — 下一步：未排程；要找各語慣用詞再改〔模型判斷·未裁決〕
+- [sponsor-locked-modal-sample](tasks/sponsor-locked-modal-sample.md) — 贊助未解鎖介紹窗補範例圖（小案（補素材）） — 下一步：未排程〔模型判斷·未裁決〕
+- [rulebook-ja-keyword-fix](tasks/rulebook-ja-keyword-fix.md) — 日文規則書關鍵字用了簡體寫法（小案（只改資料）） — 下一步：未排程〔模型判斷·未裁決〕
+- [pf2-natural-1-20-always-on](tasks/pf2-natural-1-20-always-on.md) — PF2 規則書「自然 1／自然 20」條目改常駐（小案（只改資料）） — 下一步：未排程；照 ttrpg-book-core-rules 的做法把這條加進常駐核心〔模型判斷·未裁決〕
+- [room-host-bar-observations](tasks/room-host-bar-observations.md) — 房間回合列三個小問題（小案，未估） — 下一步：未排程〔模型判斷·未裁決〕
+- [vn-bgm-multi-mood-tag](tasks/vn-bgm-multi-mood-tag.md) — VN 配樂標記寫兩個情緒時被當成新曲（小案，未估） — 下一步：未排程〔模型判斷·未裁決〕
 
 ## 優先：遊玩資料修復（2026-10-29 稽核）
 

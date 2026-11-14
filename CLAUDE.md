@@ -12,7 +12,8 @@
 - **要等作者回覆才能往下做的問題一律用提問工具（AskUserQuestion）問**，不要只寫在回覆文字裡，否則作者不會注意到。〔作者裁決 2026-10-11〕
 - **回覆標記只用於 Claude 協作**：只有收到 Claude 轉交的訊息時，回覆才以 `DONE` 或 `QUESTION:` 收尾；使用者直接傳來的訊息不使用這兩個標記，照一般對話自然回覆。
 - 規格細節（拍板結論、分包、驗收）放 `.ai/plans/<id>.md`，由交接檔連回；交接檔本身只寫還成立的狀態，章節怎麼分自由。
-- 待辦清單 [.ai/BACKLOG.md](.ai/BACKLOG.md) 手寫維護，立案說明放 `.ai/tasks/<id>.md`；開工＝把該檔搬進 `.ai/handoffs/`、在 HANDOFF.md 登記一條、BACKLOG 那行刪掉。等實機驗收的排 [.ai/reference/verification-queue.md](.ai/reference/verification-queue.md)。
+- 待辦清單 [.ai/BACKLOG.md](.ai/BACKLOG.md) 手寫維護，立案說明放 `.ai/tasks/<id>.md`；開工＝把該檔搬進 `.ai/handoffs/`、在 HANDOFF.md 登記一條、BACKLOG 那行刪掉。這台機器驗不到的實測排 [.ai/reference/verification-queue.md](.ai/reference/verification-queue.md)。
+- **實測在結案前做完**：測試通道驗得到的項目，結案前測完、主線看過截圖才合 main，不排進待實測清單。清單只收這台機器驗不到的（非作者本人不可、真手機、Windows、外部帳號或付費條件），每列寫明「為什麼這裡測不到」與「還沒測的那一步」，寫不出原因不得排入。測過的部分不留在列上；整列測完由測的人在同一筆 commit 刪除。模型不給出要測的輸出時用假端點造，仍造不出來就記已知限制結案。`npm run verify` 會檢查清單格式。〔作者裁決 2026-11-14〕
 - [.ai/DONE.md](.ai/DONE.md) 與 `.ai/history/` 是舊 CLI 時代的存檔，凍結只讀。
 - **測試卡固定放 `TestCards/`**（repo 根目錄下，已 gitignore、本機限定）：角色卡 `.png`／`.json`、世界書 `main_*_world_info.json`、重構卡 `*-重構卡*.json` 都在裡面。要卡直接去這裡拿，不要全機搜尋。
 - **GUI 實測一律走測試通道（test-harness）**：`npm run harness:build` 後用 `node scripts/harness.mjs` 帶獨立 `--root` 操作真 app（開檔對話窗、卡片介面 iframe、截圖都有指令），用法見 [.ai/handoffs/archive/test-harness.md](.ai/handoffs/archive/test-harness.md)；不用 computer-use 點擊，通道真做不到的步驟才停下問使用者。〔作者裁決 2026-10-03〕
