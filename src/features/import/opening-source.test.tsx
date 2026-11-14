@@ -89,6 +89,7 @@ function Harness({ world }: { world: string }) {
     playerName: undefined,
     castCount: 0,
     onArrived: () => {},
+    reloadAppearances: async () => {},
     refreshState: noop,
     refreshWorlds: noop,
     noteChatStarted: () => {},

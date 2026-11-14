@@ -107,8 +107,8 @@ pub(super) fn combat_guide(lang: &str) -> String {
              - When the amount comes from this turn's dice pool, add `\"dice\"` with the dice references and any constant, \
              e.g. {{\"op\":\"delta\",\"path\":\"/combat/foes/Goblin A/hp\",\"value\":-7,\"dice\":\"d8#1+3\"}}. The system \
              takes the faces from the pool; if your number differs, the dice total is applied. Each die is used once. Report \
-             one delta per hit; never merge several hits into one. If the damage is halved or otherwise adjusted, leave \
-             out `dice`.\n\
+             one delta per hit; never merge several hits into one. With resistance, halving or any other adjustment, \
+             report only the final amount as value and leave out `dice`; still tag the dice in the narration as usual.\n\
              - `/characters/<name>/conditions`, `/combat/foes/<foe>/conditions` (Conditions): whole array of strings, at \
              most {CONDITIONS_MAX} items of {CONDITION_CHARS} characters; remove ended effects yourself.\n\
              - When a fight starts: replace `/combat/order` with everyone in turn order (decide the order the way this table's rulebook says; only when it says nothing, \
@@ -126,7 +126,7 @@ pub(super) fn combat_guide(lang: &str) -> String {
              replace 寫完整值（例 \"24/24\"）；角色的 HP 還是空的就依角色設定自己定一個合理值寫入，不要停下來要玩家補；之後一律用 delta 報增減量（扣血負數、補血正數），系統加總並夾在 0 到上限之間。\
              不要用 replace 報結果；只改上限時現值照抄、寫新上限。\n\
              - 增減量來自本輪骰池時加 `\"dice\"` 寫骰號與常數，例 {{\"op\":\"delta\",\"path\":\"/combat/foes/哥布林A/hp\",\"value\":-7,\"dice\":\"d8#1+3\"}}。\
-             骰面由系統從池裡取，數字對不上時以骰面總和為準；每顆骰只能用一次。每次命中各報一筆 delta，不要把幾次命中併成一筆。傷害有減半等調整時不要帶 dice。\n\
+             骰面由系統從池裡取，數字對不上時以骰面總和為準；每顆骰只能用一次。每次命中各報一筆 delta，不要把幾次命中併成一筆。有抗性、減半等調整時，value 只報調整後的實際量、不帶 dice；旁白照樣標骰號。\n\
              - `/characters/<角色名>/conditions`、`/combat/foes/<敵人>/conditions`（狀態效果）：整串字串陣列，最多 \
              {CONDITIONS_MAX} 項、每項 {CONDITION_CHARS} 字；效果結束自己拿掉。\n\
              - 開打時：用 replace 把 `/combat/order` 寫成照行動順序排好的全部名字（順序怎麼定照本桌規則書；規則書沒寫才各擲 d20 比大小。有擲骰就從骰池取，旁白照擲的順序標骰號，不要照排好的順序；最多 {ORDER_MAX} 個、每個 \

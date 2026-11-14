@@ -111,6 +111,7 @@ describe("next speaker call", () => {
         playerName: undefined,
         castCount: 1,
         onArrived: () => {},
+        reloadAppearances: async () => {},
         refreshState,
         refreshWorlds: async () => {},
         noteChatStarted: () => {},

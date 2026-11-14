@@ -549,6 +549,7 @@ export const ko: Record<MsgKey, string> = {
   statePanelWhyDuplicate: "같은 이름의 적이 있음",
   statePanelWhyTooMany: "적이 8명 초과",
   statePanelWhyBadHp: "HP가 잘못됨",
+  statePanelHpFormat: "HP는 \"현재/최대\"로 적어 주세요(예: 7/11)",
   statePanelWhyBadName: "이름이 잘못됨",
   statePanelWhyMissing: "그런 적 없음",
   statePanelWhyBadOp: "GM이 잘못 씀",

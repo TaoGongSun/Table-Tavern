@@ -568,6 +568,7 @@ export const zh = {
   statePanelWhyDuplicate: "同名敵人已存在",
   statePanelWhyTooMany: "超過 8 隻",
   statePanelWhyBadHp: "HP 不合法",
+  statePanelHpFormat: "HP 要寫成「現值/上限」，例 7/11",
   statePanelWhyBadName: "名字不合規定",
   statePanelWhyMissing: "沒有這個敵人",
   statePanelWhyBadOp: "GM 寫法不對",

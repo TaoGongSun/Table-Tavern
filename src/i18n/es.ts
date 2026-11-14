@@ -549,6 +549,7 @@ export const es: Record<MsgKey, string> = {
   statePanelWhyDuplicate: "ya existe un enemigo con ese nombre",
   statePanelWhyTooMany: "más de 8 enemigos",
   statePanelWhyBadHp: "PG no válidos",
+  statePanelHpFormat: "PG con el formato «actual/máx.», p. ej. 7/11",
   statePanelWhyBadName: "nombre no válido",
   statePanelWhyMissing: "no existe ese enemigo",
   statePanelWhyBadOp: "el GM lo escribió mal",

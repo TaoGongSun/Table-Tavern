@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { type BranchBinding, type StateNode, type WorldState } from "../../shared/contracts/backend-contracts";
-import { parseWithFormat, prefixFor, stripPrefix } from "./state-format";
+import { isHpPath, isHpText, parseWithFormat, prefixFor, stripPrefix } from "./state-format";
 
 // 路徑指到的葉子值；中途撞到分支或缺節點都當空字串（面板只讀，取不到就是沒東西可改）
 export function treeValueAt(tree: Record<string, StateNode>, path: string[]): string {
@@ -258,6 +258,8 @@ export function useTableStateController(input: {
       const value = tree && !panelItem
         ? parseWithFormat(stripPrefix(input, prefixFor(displayPrefixes, path)), displayFormats[path.join(".")])
         : input;
+      // HP 格手改不合「現值/上限」：輸入框留著（旁邊有格式提示），不存；不然 GM 下一次扣血會被拒
+      if (defaultPanel && tree && isHpPath(path) && value.trim() !== "" && !isHpText(value)) return;
       setEditingStateField(null);
       if (!(panelItem && value === "") && value === (tree ? treeValueAt(tableTree, path) : (tableState[path[0]] ?? ""))) return;
       stateFieldSaveBusy.current = true;

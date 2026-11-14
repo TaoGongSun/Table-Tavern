@@ -162,6 +162,8 @@ it("沒有先攻時拒收仍看得到，寫成名字＋白話原因、不露原�
           "combat.foes.哥布林A": { wrote: '{"hp":"7/7"}', reason: "no_order" },
           "combat.foes.巨魔.hp": { wrote: "-3", reason: "missing" },
           "combat.foes.巨魔.conditions": { wrote: "中毒", reason: "missing" },
+          // 同一則先被拒、後被移除的敵人：沒格可改，不列
+          "combat.foes.豺狼D.hp": { wrote: "-3", reason: "bad_current" },
           "combat.turn": { wrote: "哥布林A", reason: "not_in_order" },
         },
       },
@@ -174,6 +176,22 @@ it("沒有先攻時拒收仍看得到，寫成名字＋白話原因、不露原�
     "⚠ 巨魔 沒更新：沒有這個敵人",
     "⚠ 輪到 哥布林A 沒設上：不在行動順序裡",
   ]);
+});
+
+it("HP 手改不合「現值/上限」不存、輸入框留著並提示格式；舊的非法值被拒時標記講格式", async () => {
+  await load(world({ order: {}, turn: "", foes: {} }, { refused: { "characters.沃恩.hp": { wrote: "-4", reason: "bad_current" } } }));
+  const badge = host.querySelector<HTMLButtonElement>("button.state-refused")!;
+  expect(badge.textContent).toBe("⚠ HP 要寫成「現值/上限」，例 7/11");
+  await act(async () => badge.click());
+  act(() => ctl.changeEditValue("還很有精神"));
+  expect(host.querySelector(".state-bar-field-form .state-refused")?.textContent).toBe("HP 要寫成「現值/上限」，例 7/11");
+  await act(async () => ctl.save(["characters", "沃恩", "hp"], true, "還很有精神"));
+  expect(invoke).not.toHaveBeenCalledWith("set_state_path", expect.anything());
+  expect(host.querySelector(".state-bar-input")).not.toBeNull();
+  act(() => ctl.changeEditValue("7/11"));
+  expect(host.querySelector(".state-bar-field-form .state-refused")).toBeNull();
+  await act(async () => ctl.save(["characters", "沃恩", "hp"], true, "7/11"));
+  expect(invoke).toHaveBeenCalledWith("set_state_path", { worldId: "table", path: ["characters", "沃恩", "hp"], value: "7/11" });
 });
 
 it("狀態效果拒收點開整串編輯，空清單也能補，存檔走 set_panel_list", async () => {

@@ -39,6 +39,7 @@ const ADD_REASONS = new Set(["no_order", "duplicate", "too_many", "bad_hp", "bad
 
 /** 拒收的白話句：敵人與輪到誰寫名字＋原因，其餘寫 GM 寫了什麼 */
 function refusedText(path: string, mark: RefusedMark): string {
+  if (mark.reason === "bad_current") return t("statePanelHpFormat");
   const reason = t(mark.reason && mark.reason in WHY ? WHY[mark.reason as keyof typeof WHY] : "statePanelWhyBadOp");
   const foe = /^combat\.foes\.([^.]+)/.exec(path)?.[1];
   if (foe)
@@ -98,14 +99,15 @@ export function CombatSection({
   const combat = branch(tree.combat);
   const order = listValues(combat.order);
   const turn = typeof combat.turn === "string" ? combat.turn : "";
-  // 沒有格可掛的拒收（先攻、輪到誰、敵人整筆、不存在的敵人）：不論在不在戰鬥都要看得到；同一隻敵人同一句只留一行
+  // 沒有格可掛的拒收（先攻、輪到誰、敵人整筆、不存在的敵人）：不論在不在戰鬥都要看得到；同一隻敵人同一句只留一行。
+  // 已移除的敵人，它子欄的拒收不再列（沒格可改）；GM 對不存在的敵人報更新（missing）照列
   const foes = branch(combat.foes);
   const seen = new Set<string>();
   const loose = Object.entries(refused)
     .filter(([path]) => {
       const parts = path.split(".");
       if (parts[0] !== "combat") return false;
-      if (parts[1] === "foes" && parts.length > 3 && parts[2] in foes) return false;
+      if (parts[1] === "foes" && parts.length > 3 && (parts[2] in foes || refused[path].reason !== "missing")) return false;
       const key = `${parts[2] ?? path}|${refused[path].reason ?? path}`;
       if (seen.has(key)) return false;
       seen.add(key);

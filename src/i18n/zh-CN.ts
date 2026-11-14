@@ -547,6 +547,7 @@ export const zhCN: Record<MsgKey, string> = {
   statePanelWhyDuplicate: "同名敌人已存在",
   statePanelWhyTooMany: "超过 8 只",
   statePanelWhyBadHp: "HP 不合法",
+  statePanelHpFormat: "HP 要写成「现值/上限」，例 7/11",
   statePanelWhyBadName: "名字不合规定",
   statePanelWhyMissing: "没有这个敌人",
   statePanelWhyBadOp: "GM 写法不对",

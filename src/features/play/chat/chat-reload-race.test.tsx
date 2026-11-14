@@ -67,6 +67,7 @@ describe("chat reload 競態", () => {
         playerName: undefined,
         castCount: 1,
         onArrived: () => {},
+        reloadAppearances: async () => {},
         refreshState: async () => {},
         refreshWorlds: async () => {},
         noteChatStarted: () => {},

@@ -317,6 +317,7 @@ function App() {
     playerName: characters.player?.name,
     castCount: characters.speaking.length,
     onArrived: characters.onArrived,
+    reloadAppearances: characters.reloadAppearances,
     refreshState: tableState.refresh,
     refreshWorlds,
     noteChatStarted: noteChatRequest,

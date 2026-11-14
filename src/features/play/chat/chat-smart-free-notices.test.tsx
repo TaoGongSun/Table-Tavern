@@ -87,6 +87,7 @@ describe("chat smart-free notices", () => {
         playerName: undefined,
         castCount: 1,
         onArrived: () => {},
+        reloadAppearances: async () => {},
         refreshState: async () => {},
         refreshWorlds: async () => {},
         noteChatStarted: () => {},

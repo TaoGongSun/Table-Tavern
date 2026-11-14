@@ -44,6 +44,8 @@ export interface CharacterController {
   setRoomSeat: (cardId: string | null | undefined) => void;
   /** 這輪劇情帶出場的卡：併入本幕出場集合，auto_hidden 卡立刻從隱藏區移回主區 */
   onArrived: (ids: string[]) => void;
+  /** 逐字稿被收回／復原後重算本幕出場集合（整份取代）：登場塊收回去，那張卡就回隱藏區 */
+  reloadAppearances: () => Promise<void>;
   reorder: (ordered: CharacterMeta[]) => Promise<void>;
   restore: (id: string) => Promise<void>;
   restoreAutoHidden: (id: string) => Promise<void>;
@@ -291,6 +293,12 @@ export function useCharacterController(input: {
     setSceneAppearances((previous) => new Set([...previous, ...ids]));
   }, []);
 
+  const reloadAppearances = useCallback(async () => {
+    const here = sameTable();
+    const appearances = await invoke<{ character_ids: string[] }>("scene_appearances", { worldId }).catch(() => null);
+    if (appearances && here()) setSceneAppearances(new Set(appearances.character_ids));
+  }, [worldId, sameTable]);
+
   // 側欄拖曳排序：先樂觀套用，寫檔失敗才回捲
   // 用 archived（非 characters.filter(archived)）補回其餘卡片：
   // 這幕沒出場的 auto_hidden 卡不在 archived 旗標裡，漏掉會在拖曳當下從 state 消失
@@ -455,6 +463,7 @@ export function useCharacterController(input: {
       reloadPlayer,
       setRoomSeat,
       onArrived,
+      reloadAppearances,
       reorder,
       restore,
       restoreAutoHidden,
@@ -481,6 +490,7 @@ export function useCharacterController(input: {
       reloadGmImage,
       reloadPlayer,
       onArrived,
+      reloadAppearances,
       reorder,
       restore,
       restoreAutoHidden,

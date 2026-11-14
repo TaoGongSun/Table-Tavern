@@ -564,6 +564,7 @@ export const en: Record<MsgKey, string> = {
   statePanelWhyDuplicate: "a foe with that name exists",
   statePanelWhyTooMany: "more than 8 foes",
   statePanelWhyBadHp: "invalid HP",
+  statePanelHpFormat: "HP must be \"current/max\", e.g. 7/11",
   statePanelWhyBadName: "invalid name",
   statePanelWhyMissing: "no such foe",
   statePanelWhyBadOp: "GM wrote it wrong",

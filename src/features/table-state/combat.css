@@ -51,7 +51,9 @@
 .state-refused {
   display: inline-block;
   margin-inline-start: 0.35rem;
+  height: auto;
   padding: 0;
+  line-height: 1.4;
   border: 0;
   background: none;
   color: var(--danger);
@@ -62,6 +64,21 @@
   cursor: pointer;
 }
 span.state-refused {
+  cursor: default;
+}
+/* HP 旁的拒收標記與依骰面灰字自成一行：值與增減維持橫排，不被長標記擠成直排 */
+.state-bar-value-row:has(> .state-refused, > .state-dice-applied) {
+  flex-wrap: wrap;
+}
+.state-bar-value-row > .state-refused,
+.state-bar-value-row > .state-dice-applied,
+.state-bar-field-form > .state-refused {
+  flex: 0 0 100%;
+  display: block;
+  margin-inline-start: 0;
+}
+.state-bar-field-form > .state-refused {
+  margin-top: 0.2rem;
   cursor: default;
 }
 .state-bar-delta {

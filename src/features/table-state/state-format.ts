@@ -52,3 +52,14 @@ export function stripPrefix(input: string, prefix: string | undefined): string {
   const rest = input.slice(head.length).trimStart();
   return rest ? rest : input;
 }
+
+/** app 管的 HP 格（角色格、敵人格），手改時要守「現值/上限」 */
+export const isHpPath = (path: string[]) =>
+  path[path.length - 1] === "hp" &&
+  ((path.length === 3 && path[0] === "characters") || (path.length === 4 && path[0] === "combat" && path[1] === "foes"));
+
+/** 跟後端 `Hp::parse` 同一套：兩個至多五位的整數、上限 1–99999、現值不超過上限 */
+export function isHpText(text: string): boolean {
+  const match = /^\s*(\d{1,5})\s*\/\s*(\d{1,5})\s*$/.exec(text);
+  return !!match && Number(match[2]) >= 1 && Number(match[1]) <= Number(match[2]);
+}

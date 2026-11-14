@@ -551,6 +551,7 @@ export const de: Record<MsgKey, string> = {
   statePanelWhyDuplicate: "Gegner mit diesem Namen existiert",
   statePanelWhyTooMany: "mehr als 8 Gegner",
   statePanelWhyBadHp: "ungültige TP",
+  statePanelHpFormat: "TP als „aktuell/max“ angeben, z. B. 7/11",
   statePanelWhyBadName: "ungültiger Name",
   statePanelWhyMissing: "kein solcher Gegner",
   statePanelWhyBadOp: "vom SL falsch geschrieben",

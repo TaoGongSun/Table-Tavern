@@ -549,6 +549,7 @@ export const ru: Record<MsgKey, string> = {
   statePanelWhyDuplicate: "враг с таким именем уже есть",
   statePanelWhyTooMany: "больше 8 врагов",
   statePanelWhyBadHp: "неверные ОЗ",
+  statePanelHpFormat: "ОЗ пишутся как «текущие/макс.», например 7/11",
   statePanelWhyBadName: "неверное имя",
   statePanelWhyMissing: "такого врага нет",
   statePanelWhyBadOp: "ГМ записал неверно",

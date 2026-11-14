@@ -113,6 +113,7 @@ export function useChatController({
   playerName,
   castCount,
   onArrived,
+  reloadAppearances,
   refreshState,
   refreshWorlds,
   noteChatStarted,
@@ -135,6 +136,8 @@ export function useChatController({
   /** 主區角色數：一個都沒有就沒得接力 */
   castCount: number;
   onArrived: (ids: string[]) => void;
+  /** 收回／復原後重算本幕出場集合：登場塊跟著收回或放回，左欄隱藏區同步 */
+  reloadAppearances: () => Promise<void>;
   refreshState: () => Promise<void>;
   refreshWorlds: () => Promise<void>;
   noteChatStarted: () => void;
@@ -305,14 +308,14 @@ export function useChatController({
         endWrite();
         await reload();
       }
-      await refreshState();
+      await Promise.all([refreshState(), reloadAppearances()]);
     } catch (reason) {
       onError(String(reason));
     } finally {
       endWrite();
       busyRef.current = false;
     }
-  }, [generating, events, worldId, scene, refreshState, onError, reload, beginWrite]);
+  }, [generating, events, worldId, scene, refreshState, reloadAppearances, onError, reload, beginWrite]);
 
   // 復原一次放回一樓（後端一次提交整組寫回），可連按把整輪收回逐樓倒回去。
   // 放回舊句不該把剩下那幾樓一起作廢，只消耗疊頂那一組。
@@ -344,14 +347,14 @@ export function useChatController({
         setEvents((previous) => [...previous, ...restored]);
         endWrite();
       }
-      await refreshState();
+      await Promise.all([refreshState(), reloadAppearances()]);
     } catch (reason) {
       onError(String(reason));
     } finally {
       endWrite();
       busyRef.current = false;
     }
-  }, [undone, generating, worldId, scene, refreshState, onError, reload, beginWrite]);
+  }, [undone, generating, worldId, scene, refreshState, reloadAppearances, onError, reload, beginWrite]);
 
   // 回合沒完成：先把失敗交給彈窗，再（有追加回錯時）重讀逐字稿對齊畫面——重讀可能失敗，
   // 失敗資訊得先落地。世代已變就不重讀，免得蓋掉新桌的畫面（reload 自己也會再核一次）

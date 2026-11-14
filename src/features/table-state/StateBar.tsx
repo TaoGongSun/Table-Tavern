@@ -6,7 +6,7 @@ import { BranchBinding, StateNode } from "../../shared/contracts/backend-contrac
 import { CharacterCard, CharacterMeta } from "../characters/card-model";
 import { EditingStateField, treeValueAt } from "./useTableStateController";
 import { IconExpand } from "../../shared/ui/icons";
-import { displayWithFormat, prefixFor, withPrefix } from "./state-format";
+import { displayWithFormat, isHpPath, isHpText, prefixFor, withPrefix } from "./state-format";
 import { presentItems, useGlyphFold, usePresentDisplay } from "./present-glyphs";
 import { DefaultStatePanel } from "./DefaultStatePanel";
 import { combatSummary, RefusedBadge } from "./CombatSection";
@@ -176,6 +176,11 @@ export function StateBar({
             }
           }}
         />
+        {defaultPanel && isTree && isHpPath(path) && value.trim() !== "" && !isHpText(value) && (
+          <small className="state-refused" role="status">
+            {t("statePanelHpFormat")}
+          </small>
+        )}
       </form>
     );
   }

@@ -549,6 +549,7 @@ export const ja: Record<MsgKey, string> = {
   statePanelWhyDuplicate: "同名の敵がすでにいる",
   statePanelWhyTooMany: "敵が 8 体を超える",
   statePanelWhyBadHp: "HP が不正",
+  statePanelHpFormat: "HP は「現在値/最大値」で書いてください（例 7/11）",
   statePanelWhyBadName: "名前が不正",
   statePanelWhyMissing: "その敵はいない",
   statePanelWhyBadOp: "GM の書き方が誤り",

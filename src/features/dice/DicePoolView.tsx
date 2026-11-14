@@ -15,9 +15,16 @@ export const DicePoolView = memo(function DicePoolView({
   if (pool === undefined) return null;
   const labels = copy[language as keyof typeof copy] ?? copy.en;
   const result = inspectPool(pool, text);
+  // 收合時也看得出 GM 寫的骰值有不符：數的是展開後的 ⚠ 行數
+  const issues = result
+    ? result.rows.reduce((sum, row) => sum + row.dice.reduce((n, die) => n + die.issues.length, 0), 0) + result.unknown.length
+    : 0;
   return (
     <details className={`dice-pool${result?.references === 0 ? " dice-idle" : ""}`}>
-      <summary>{labels.title}</summary>
+      <summary>
+        {labels.title}
+        {issues > 0 && <span className="dice-error"> ⚠ {issues}</span>}
+      </summary>
       {!result ? (
         <p role="status">{labels.invalid}</p>
       ) : (

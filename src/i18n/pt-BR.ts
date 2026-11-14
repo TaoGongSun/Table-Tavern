@@ -549,6 +549,7 @@ export const ptBR: Record<MsgKey, string> = {
   statePanelWhyDuplicate: "já existe um inimigo com esse nome",
   statePanelWhyTooMany: "mais de 8 inimigos",
   statePanelWhyBadHp: "PV inválidos",
+  statePanelHpFormat: "PV no formato \"atual/máx.\", ex.: 7/11",
   statePanelWhyBadName: "nome inválido",
   statePanelWhyMissing: "esse inimigo não existe",
   statePanelWhyBadOp: "o GM escreveu errado",

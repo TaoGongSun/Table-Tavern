@@ -549,6 +549,7 @@ export const fr: Record<MsgKey, string> = {
   statePanelWhyDuplicate: "un ennemi porte déjà ce nom",
   statePanelWhyTooMany: "plus de 8 ennemis",
   statePanelWhyBadHp: "PV invalides",
+  statePanelHpFormat: "PV au format « actuels/max », ex. 7/11",
   statePanelWhyBadName: "nom invalide",
   statePanelWhyMissing: "aucun ennemi de ce nom",
   statePanelWhyBadOp: "le MJ a mal écrit",

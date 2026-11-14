@@ -400,15 +400,19 @@ fn hp(
         spent = dice;
     }
     let Some(hp) = current_hp else {
-        let detail = if current.trim().is_empty() {
-            format!("{shown} 還沒有 HP，先依角色設定自己定一個合理值，用 replace 寫「現值/上限」（例 24/24）再報增減；不要停下來問玩家。")
+        if current.trim().is_empty() {
+            records.push(refuse(patch, format!("{shown} 還沒有 HP，先依角色設定自己定一個合理值，用 replace 寫「現值/上限」（例 24/24）再報增減；不要停下來問玩家。")));
         } else {
-            format!(
-                "{shown} 現值「{}」不是「現值/上限」格式，請玩家修正後再報增減；未套用。",
-                snippet(&current, 20)
-            )
-        };
-        records.push(refuse(patch, detail));
+            // 玩家手改留下的非法值：玩家看的標記講格式，不說成 GM 寫錯
+            records.push(refuse_why(
+                patch,
+                format!(
+                    "{shown} 現值「{}」不是「現值/上限」格式，請玩家修正後再報增減；未套用。",
+                    snippet(&current, 20)
+                ),
+                "bad_current",
+            ));
+        }
         return;
     };
     let raw = hp.current + delta;
@@ -428,7 +432,7 @@ fn hp(
         let mut record = Record::new(
             RecordKind::Rejected,
             path_str.clone(),
-            format!("{shown}：你報 {reported:+}，依骰面套 {applied:+}（已套用）；dice 的骰面總和就是增減量，有減半等調整就不要帶 dice。"),
+            format!("{shown}：你報 {reported:+}，依骰面套 {applied:+}（已套用）；dice 的骰面總和就是增減量；有抗性、減半等調整時，value 只報調整後的實際量、不帶 dice，旁白照樣標骰號。"),
         );
         record.mark = Some(RefusedMark {
             wrote: Some(format!("{reported:+}")),

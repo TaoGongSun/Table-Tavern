@@ -187,6 +187,11 @@ fn illegal_current_values_refuse_safely() {
             current,
             "手改的值原樣留著"
         );
+        assert_eq!(
+            reason(&world, "characters.沃恩.hp").as_deref(),
+            Some("bad_current"),
+            "玩家看的標記講格式，不說成 GM 寫錯"
+        );
     }
 }
 

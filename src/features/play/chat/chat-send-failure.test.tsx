@@ -85,6 +85,7 @@ describe("chat turn failures", () => {
         playerName: undefined,
         castCount: 1,
         onArrived: options.onArrived ?? (() => {}),
+        reloadAppearances: async () => {},
         refreshState,
         refreshWorlds,
         noteChatStarted: () => {},

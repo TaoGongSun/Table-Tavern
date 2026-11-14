@@ -36,7 +36,7 @@ describe("chat controller with marker events", () => {
     invokeMock.mockReset();
   });
 
-  function mount(playerName: string | undefined) {
+  function mount(playerName: string | undefined, reloadAppearances: () => Promise<void> = async () => {}) {
     const config = { preferences: { max_round_speakers: 1 } } as unknown as AppConfig;
     const errors: string[] = [];
     let chat!: ChatController;
@@ -52,6 +52,7 @@ describe("chat controller with marker events", () => {
         playerName,
         castCount: 1,
         onArrived: () => {},
+        reloadAppearances,
         refreshState: async () => {},
         refreshWorlds: async () => {},
         noteChatStarted: () => {},
@@ -96,7 +97,9 @@ describe("chat controller with marker events", () => {
       }
       return null;
     });
-    const { current, errors } = mount(undefined);
+    // 收回、復原各重算一次本幕出場集合（登場塊跟著走，左欄隱藏區同步）
+    const reloadAppearances = vi.fn(async () => {});
+    const { current, errors } = mount(undefined, reloadAppearances);
 
     await act(async () => current().gmAdvance());
     expect(errors).toEqual([]);
@@ -111,6 +114,7 @@ describe("chat controller with marker events", () => {
     await act(async () => current().undoLast());
     expect(current().events).toHaveLength(0);
     expect(current().canRestore).toBe(true);
+    expect(reloadAppearances).toHaveBeenCalledTimes(1);
 
     await act(async () => current().restoreUndone());
     expect(restoredSent).toHaveLength(1);
@@ -121,6 +125,7 @@ describe("chat controller with marker events", () => {
     ]);
     expect(current().events.map((event) => event.id)).toEqual(["e0", "e1", "e2"]);
     expect(current().canRestore).toBe(false);
+    expect(reloadAppearances).toHaveBeenCalledTimes(2);
   });
 
   it("a failed restore keeps the whole floor on the stack and the retry sends it once", async () => {
