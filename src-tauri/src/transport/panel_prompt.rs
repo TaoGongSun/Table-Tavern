@@ -104,8 +104,8 @@ pub(super) fn combat_guide(lang: &str) -> String {
              out `dice`.\n\
              - `/characters/<name>/conditions`, `/combat/foes/<foe>/conditions` (Conditions): whole array of strings, at \
              most {CONDITIONS_MAX} items of {CONDITION_CHARS} characters; remove ended effects yourself.\n\
-             - When a fight starts: replace `/combat/order` with everyone in initiative order (roll initiative from the \
-             pool, citing dice in the order rolled, not the sorted order; at most {ORDER_MAX} names of {NAME_CHARS} characters), and add each foe without a character entry with \
+             - When a fight starts: replace `/combat/order` with everyone in turn order (decide the order the way this table's rulebook says; only when it says nothing, \
+             roll a d20 each, highest first. Any roll comes from the pool, citing dice in the order rolled, not the sorted order; at most {ORDER_MAX} names of {NAME_CHARS} characters), and add each foe without a character entry with \
              insert `/combat/foes/<foe>` value {{\"hp\":\"7/7\"}} (at most {FOES_MAX}). Give foes of the same kind \
              different names (Goblin A, Goblin B); an existing name cannot be inserted again. Remove a foe that falls or \
              flees with remove.\n\
@@ -122,7 +122,7 @@ pub(super) fn combat_guide(lang: &str) -> String {
              骰面由系統從池裡取，數字對不上時以骰面總和為準；每顆骰只能用一次。每次命中各報一筆 delta，不要把幾次命中併成一筆。傷害有減半等調整時不要帶 dice。\n\
              - `/characters/<角色名>/conditions`、`/combat/foes/<敵人>/conditions`（狀態效果）：整串字串陣列，最多 \
              {CONDITIONS_MAX} 項、每項 {CONDITION_CHARS} 字；效果結束自己拿掉。\n\
-             - 開打時：用 replace 把 `/combat/order` 寫成照先攻排好的全部名字（先攻從骰池擲，旁白照擲的順序標骰號，不要照排好的順序；最多 {ORDER_MAX} 個、每個 \
+             - 開打時：用 replace 把 `/combat/order` 寫成照行動順序排好的全部名字（順序怎麼定照本桌規則書；規則書沒寫才各擲 d20 比大小。有擲骰就從骰池取，旁白照擲的順序標骰號，不要照排好的順序；最多 {ORDER_MAX} 個、每個 \
              {NAME_CHARS} 字），沒有角色格的敵人逐一 insert `/combat/foes/<敵人>`，值 {{\"hp\":\"7/7\"}}（最多 {FOES_MAX} 筆）。\
              同種敵人要取不同名字（哥布林A、哥布林B），已有的名字不能再 insert；倒下或逃走的敵人用 remove。\n\
              - 每則回覆用 replace 把 `/combat/turn` 寫成順序裡現在輪到的人。\n\

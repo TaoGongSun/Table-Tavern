@@ -110,4 +110,4 @@
 | [room-player-dice](../handoffs/room-player-dice.md) 房間玩家自己擲骰 | 要部署伺服器與真手機：桌設定開擲骰後開房，手機按骰鈕一鍵擲；全房看到擲果、GM 採用玩家擲果不從骰池另取；擲後關房重開、收回上一回合，擲果都還在 |
 | [vn-image-source-flow](../handoffs/vn-image-source-flow.md) VN 開桌先選來源再生成 | 打包後作者實機：額度暫停時按「換來源」「立刻重試」；背景一般失敗的角標與章卡重試；結局畫面沒有角標；英文介面的恢復時間單複數 |
 | [vn-stage-layout](../handoffs/vn-stage-layout.md) VN 舞台版面與選項標籤 | 打包後作者實機：1600×900 視窗（通道只模擬過 16:9）；雙人與三人同台、特寫與換位；自己玩倒回看到「上次選的」 |
-| [ttrpg-builtin-books](../handoffs/ttrpg-builtin-books.md) 內建規則書五本 | 打包後作者實機：桌設定點開「規則書」五本都在、加入後收成一本、「換一套規則」換書只留一套、移除；開著房間的桌同一流程；各套跟真模型跑幾回合看 GM 裁決像不像該套（2d6 的 7–9、d100 擲低、Cairn 不擲命中）。測試通道截圖已主線親看（單人與房間），差真模型與真機 |
+| [ttrpg-builtin-books](../handoffs/ttrpg-builtin-books.md) 內建規則書五本 | 2026-11-14 測試通道過（合 main 後重建的測試包，截圖主線親看）：單人桌與開著房間的桌，五本都在、加入後收成一本、換書只留一套、移除後 0 條；手機尺寸玩家端故事進行中沒有規則書畫面。真模型（claude-sonnet-5-5）：條目進了提示就照該套裁決，但第一句口語行動觸發 0 條、開戰一律擲 d20 排先攻，轉 [ttrpg-book-core-rules](../handoffs/archive/ttrpg-book-core-rules.md) 修好並重測過（2026-11-14 合 main）。剩：真手機與正式包、PF2 差 10 的四級成功度（沒遇到觸發機會） |

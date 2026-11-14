@@ -130,6 +130,51 @@ fn rule_entries_never_reach_character_lane() {
         .all(|placed| !titles.contains(&placed.title)));
 }
 
+/// 核心裁決條目是常駐的：玩家第一句口語行動沒講到任何關鍵字，GM 也拿得到該套怎麼擲骰；角色線照樣拿不到。
+#[test]
+fn core_rule_entries_reach_gm_without_keywords() {
+    const CAIRN: &str = include_str!("../../../src/features/dice/rules/cairn.json");
+    let root = crate::smart_free::test_root("rulebook-core-constant");
+    let world_id = data::create_world(&root, "灰岩酒館").unwrap();
+    let vaughn = card("沃恩", "雄性獸人戰士。");
+    let rake = card("雷克", "雄性獸人盜賊。");
+    data::write_character(&root, &world_id, &vaughn).unwrap();
+    data::write_character(&root, &world_id, &rake).unwrap();
+    data::set_player_card(&root, &world_id, Some(vaughn.id.clone())).unwrap();
+    data::import_worldbook_as(&root, &world_id, CAIRN, &data::BookOwner::Gm).unwrap();
+    append(&root, &world_id, "player", "沃恩", "我衝過吊橋。");
+    let materials = gm_materials(&root, &world_id).unwrap();
+    let core = ["Saves", "Attacking & Damage", "Turns (Cairn)"];
+    let scan = test_gm_scan(&root, &world_id, &materials, "zh-TW");
+    let gm: Vec<&str> = scan
+        .placed
+        .iter()
+        .map(|placed| placed.title.as_str())
+        .collect();
+    assert!(
+        core.iter().all(|title| gm.contains(title)),
+        "GM 拿到的條目：{gm:?}"
+    );
+    let scan = character_scan(
+        &materials.book,
+        &rake,
+        &materials.cards,
+        None,
+        materials.player.as_ref(),
+        &materials.events,
+        Default::default(),
+        None,
+        MacroInputs::empty(),
+        Randomness::Measure,
+        "zh-TW",
+    );
+    assert!(scan
+        .placed
+        .iter()
+        .chain(scan.snapshot_entries.iter())
+        .all(|placed| !core.contains(&placed.title.as_str())));
+}
+
 /// 一次 GM 請求的全文：(無狀態訊息串接, lane 凍結 system＋回合尾段)
 fn request(
     root: &std::path::Path,
