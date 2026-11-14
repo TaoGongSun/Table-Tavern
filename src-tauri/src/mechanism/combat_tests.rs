@@ -403,6 +403,45 @@ fn removed_foe_leaves_the_order_too() {
 }
 
 #[test]
+fn foe_at_zero_hp_leaves_the_order_but_keeps_its_row() {
+    let mut world = combat_world();
+    patch(
+        &mut world,
+        r#"{"op":"replace","path":"/combat/order","value":["哥布林A","沃恩"]},
+           {"op":"insert","path":"/combat/foes/哥布林A","value":{"hp":"7/7"}},
+           {"op":"replace","path":"/combat/turn","value":"哥布林A"}"#,
+    );
+    patch(
+        &mut world,
+        r#"{"op":"delta","path":"/combat/foes/哥布林A/hp","value":-9}"#,
+    );
+    assert_eq!(leaf(&world, "combat.foes.哥布林A.hp"), "0/7", "敵人列留著");
+    assert!(!in_order(&world.state.tree, "哥布林A"));
+    assert_eq!(leaf(&world, "combat.order.0"), "沃恩");
+    assert_eq!(leaf(&world, "combat.turn"), "", "輪到的人倒下就清空");
+}
+
+#[test]
+fn hand_edit_to_zero_hp_drops_the_foe_from_order() {
+    let mut world = combat_world();
+    set(&mut world, "combat.order.0", "雷克");
+    set(&mut world, "combat.order.1", "哥布林B");
+    set(&mut world, "combat.foes.哥布林B.hp", "0/5");
+    assert!(settle(&mut world.state.tree));
+    assert_eq!(list_order(&world), ["雷克"]);
+    set(&mut world, "combat.foes.哥布林B.hp", "3/5");
+    assert!(!settle(&mut world.state.tree), "補回正值不自動放回順序");
+    assert_eq!(list_order(&world), ["雷克"]);
+}
+
+fn list_order(world: &WorldState) -> Vec<String> {
+    crate::data::default_panel::combat::list_values(data::node_at(
+        &world.state.tree,
+        &segments("combat.order"),
+    ))
+}
+
+#[test]
 fn turn_must_be_in_order_and_empty_order_ends_combat() {
     let mut world = combat_world();
     patch(

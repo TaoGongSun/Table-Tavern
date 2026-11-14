@@ -73,7 +73,7 @@
 - **傷害／治療**：`{"op":"delta","path":"/combat/foes/哥布林A/hp","value":-7,"dice":"d8#1+3"}`；`dice` 選填。
 - **狀態效果**：`replace /characters/雷克/conditions ["中毒"]`（加一項也重寫整串）。
 - **換人**：`replace /combat/turn "雷克"`。
-- **收場**：`replace /combat/order []` → app 一併清空 `turn` 與 `foes`；敵人中途倒下或逃走可 `remove /combat/foes/<名>`。
+- **收場**：`replace /combat/order []` → app 一併清空 `turn` 與 `foes`；敵人中途倒下或逃走可 `remove /combat/foes/<名>`。HP 歸 0 的敵人由 `settle` 移出先攻順序、敵人列留著（輪到它就清空輪到誰），補回正值不自動放回，由 GM 自己排〔模型判斷·未裁決〕。
 
 ### 2.4 「app 做加減」的確切語意（戰鬥 HP 專用驗證）
 
