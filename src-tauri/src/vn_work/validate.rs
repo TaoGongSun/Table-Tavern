@@ -83,6 +83,8 @@ pub(crate) fn check(
     notices: &mut Vec<Notice>,
 ) -> Result<Vec<Asset>, String> {
     clip_title(&mut manifest.title);
+    clip_line(&mut manifest.tagline, TITLE_CHARS);
+    manifest.tagline = manifest.tagline.trim().to_owned();
     let ids = characters(cast, limits)?;
     let endings = story_tables(script)?;
     scenes(script, &ids, &endings, limits, notices)?;

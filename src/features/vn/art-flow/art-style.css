@@ -13,3 +13,5 @@
 .vn-art-style-fold > summary { color: inherit; }
 .vn-art-style-fold[open] > summary { margin-bottom: 0.4rem; }
 .vn-art-style-fold > summary { font-size: 0.9em; }
+/* 「換立繪來源」移過來的焦點：外框只看 data-focus-ring（失焦即清），視窗不在前景時也照樣畫 */
+.vn-art-flow select[data-focus-ring] { outline: 2px solid var(--accent); outline-offset: 1px; }

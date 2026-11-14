@@ -768,7 +768,7 @@ describe("lobby and table navigation", () => {
       await typeInto(document.querySelector<HTMLTextAreaElement>("textarea[data-autofocus]")!, "fog");
       // SwapLabel 兩個字都在 DOM：用開頭比對「先看大綱」，不要點到第一顆「直接開始」
       await click(
-        [...document.querySelectorAll(".gen-generate-row button")].find((b) =>
+        [...document.querySelectorAll(".dialog-foot button")].find((b) =>
           b.textContent?.trim().startsWith(t("vnSeeOutline")),
         )!,
       );

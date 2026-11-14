@@ -3,7 +3,7 @@
 const COPY = {
   "zh-TW": {
     vnWorkExport: "匯出成 VN 作品",
-    vnWorkExportWarn: "玩家名與選項文字會原樣進包，請確認沒有個資。拿到檔案的人不需要 AI 就能看完所有玩過的分支。",
+    vnWorkExportWarn: "玩家名、主角一句話與選項文字會原樣進包，請確認沒有個資。拿到檔案的人不需要 AI 就能看完所有玩過的分支。",
     vnWorkExportFile: "VN 作品",
     vnWorkExportCover: "選一張 PNG 當封面（取消＝用第一張背景）",
     vnWorkNoticesTitle: "VN 作品提示",
@@ -29,7 +29,7 @@ const COPY = {
   },
   "zh-CN": {
     vnWorkExport: "导出为 VN 作品",
-    vnWorkExportWarn: "玩家名与选项文字会原样进包，请确认没有个人信息。拿到文件的人不需要 AI 就能看完所有玩过的分支。",
+    vnWorkExportWarn: "玩家名、主角一句话与选项文字会原样进包，请确认没有个人信息。拿到文件的人不需要 AI 就能看完所有玩过的分支。",
     vnWorkExportFile: "VN 作品",
     vnWorkExportCover: "选一张 PNG 作为封面（取消＝用第一张背景）",
     vnWorkNoticesTitle: "VN 作品提示",
@@ -55,7 +55,7 @@ const COPY = {
   },
   en: {
     vnWorkExport: "Export as VN work",
-    vnWorkExportWarn: "Player names and choice text go into the file as-is, so make sure there's nothing personal. Anyone with the file can read every route you played, no AI needed.",
+    vnWorkExportWarn: "Player names, the protagonist's one-liner and choice text go into the file as-is, so make sure there's nothing personal. Anyone with the file can read every route you played, no AI needed.",
     vnWorkExportFile: "VN work",
     vnWorkExportCover: "Pick a PNG for the cover (cancel = use the first background)",
     vnWorkNoticesTitle: "VN work notes",
@@ -81,7 +81,7 @@ const COPY = {
   },
   ja: {
     vnWorkExport: "VN 作品として書き出す",
-    vnWorkExportWarn: "プレイヤー名と選択肢の文字はそのまま入ります。個人情報がないか確認してください。ファイルを受け取った人は AI なしで遊んだすべてのルートを読めます。",
+    vnWorkExportWarn: "プレイヤー名、主人公のひとことと選択肢の文字はそのまま入ります。個人情報がないか確認してください。ファイルを受け取った人は AI なしで遊んだすべてのルートを読めます。",
     vnWorkExportFile: "VN 作品",
     vnWorkExportCover: "表紙にする PNG を選ぶ（キャンセル＝最初の背景）",
     vnWorkNoticesTitle: "VN 作品のお知らせ",
@@ -107,7 +107,7 @@ const COPY = {
   },
   ko: {
     vnWorkExport: "VN 작품으로 내보내기",
-    vnWorkExportWarn: "플레이어 이름과 선택지 문구가 그대로 들어갑니다. 개인정보가 없는지 확인하세요. 파일을 받은 사람은 AI 없이 플레이한 모든 루트를 읽을 수 있습니다.",
+    vnWorkExportWarn: "플레이어 이름, 주인공 한 줄 소개와 선택지 문구가 그대로 들어갑니다. 개인정보가 없는지 확인하세요. 파일을 받은 사람은 AI 없이 플레이한 모든 루트를 읽을 수 있습니다.",
     vnWorkExportFile: "VN 작품",
     vnWorkExportCover: "표지로 쓸 PNG 선택(취소＝첫 배경 사용)",
     vnWorkNoticesTitle: "VN 작품 알림",
@@ -133,7 +133,7 @@ const COPY = {
   },
   es: {
     vnWorkExport: "Exportar como obra VN",
-    vnWorkExportWarn: "Los nombres de jugador y el texto de las opciones entran tal cual; asegúrate de que no haya datos personales. Quien tenga el archivo podrá leer todas las rutas que jugaste, sin IA.",
+    vnWorkExportWarn: "Los nombres de jugador, la frase del protagonista y el texto de las opciones entran tal cual; asegúrate de que no haya datos personales. Quien tenga el archivo podrá leer todas las rutas que jugaste, sin IA.",
     vnWorkExportFile: "Obra VN",
     vnWorkExportCover: "Elige un PNG de portada (cancelar = usar el primer fondo)",
     vnWorkNoticesTitle: "Avisos de la obra VN",
@@ -159,7 +159,7 @@ const COPY = {
   },
   "pt-BR": {
     vnWorkExport: "Exportar como obra VN",
-    vnWorkExportWarn: "Nomes de jogador e o texto das escolhas entram como estão; confira se não há dados pessoais. Quem tiver o arquivo lê todas as rotas que você jogou, sem IA.",
+    vnWorkExportWarn: "Nomes de jogador, a frase do protagonista e o texto das escolhas entram como estão; confira se não há dados pessoais. Quem tiver o arquivo lê todas as rotas que você jogou, sem IA.",
     vnWorkExportFile: "Obra VN",
     vnWorkExportCover: "Escolha um PNG para a capa (cancelar = usar o primeiro fundo)",
     vnWorkNoticesTitle: "Avisos da obra VN",
@@ -185,7 +185,7 @@ const COPY = {
   },
   de: {
     vnWorkExport: "Als VN-Werk exportieren",
-    vnWorkExportWarn: "Spielernamen und Auswahltexte landen unverändert in der Datei – prüfe, dass nichts Persönliches dabei ist. Wer die Datei hat, kann alle gespielten Routen ohne KI lesen.",
+    vnWorkExportWarn: "Spielernamen, der Satz zur Hauptfigur und Auswahltexte landen unverändert in der Datei – prüfe, dass nichts Persönliches dabei ist. Wer die Datei hat, kann alle gespielten Routen ohne KI lesen.",
     vnWorkExportFile: "VN-Werk",
     vnWorkExportCover: "PNG als Cover wählen (Abbrechen = erster Hintergrund)",
     vnWorkNoticesTitle: "Hinweise zum VN-Werk",
@@ -211,7 +211,7 @@ const COPY = {
   },
   fr: {
     vnWorkExport: "Exporter en œuvre VN",
-    vnWorkExportWarn: "Les noms de joueur et le texte des choix sont inclus tels quels : vérifie qu'il n'y a rien de personnel. Avec le fichier, on peut lire toutes les routes jouées, sans IA.",
+    vnWorkExportWarn: "Les noms de joueur, la phrase du protagoniste et le texte des choix sont inclus tels quels : vérifie qu'il n'y a rien de personnel. Avec le fichier, on peut lire toutes les routes jouées, sans IA.",
     vnWorkExportFile: "Œuvre VN",
     vnWorkExportCover: "Choisis un PNG pour la couverture (annuler = premier décor)",
     vnWorkNoticesTitle: "Notes de l'œuvre VN",
@@ -237,7 +237,7 @@ const COPY = {
   },
   ru: {
     vnWorkExport: "Экспорт VN-произведения",
-    vnWorkExportWarn: "Имена игроков и тексты выборов попадут в файл как есть — проверьте, что там нет личных данных. Любой с этим файлом сможет без ИИ прочитать все сыгранные ветки.",
+    vnWorkExportWarn: "Имена игроков, фраза о герое и тексты выборов попадут в файл как есть — проверьте, что там нет личных данных. Любой с этим файлом сможет без ИИ прочитать все сыгранные ветки.",
     vnWorkExportFile: "VN-произведение",
     vnWorkExportCover: "Выберите PNG для обложки (отмена = первый фон)",
     vnWorkNoticesTitle: "Заметки VN-произведения",

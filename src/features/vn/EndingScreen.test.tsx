@@ -31,11 +31,11 @@ function clip(kind: "bgm" | "sfx", author: string, license: string, source_url: 
   return { kind, key: author, title: author, author, license, source_url };
 }
 
-async function render() {
+async function render(endingId = "good") {
   const host = document.createElement("div");
   await act(async () => {
     createRoot(host).render(
-      <EndingScreen worldId="w" endingId="good" disabled={false} onReplay={() => {}} onNewPlaythrough={() => {}} onExport={() => {}} onEndings={() => {}} onTitle={() => {}} />,
+      <EndingScreen worldId="w" endingId={endingId} disabled={false} onReplay={() => {}} onNewPlaythrough={() => {}} onExport={() => {}} onEndings={() => {}} onTitle={() => {}} />,
     );
   });
   await settle();
@@ -48,6 +48,7 @@ describe("EndingScreen credits", () => {
   beforeEach(() => {
     backend.entries = [];
     backend.fail = false;
+    backend.endings = { endings: [{ id: "good", title: "好結局", reached: true }], current: "good" };
   });
 
   it("shows one line per kind under the reached count and above the buttons", async () => {
@@ -71,6 +72,18 @@ describe("EndingScreen credits", () => {
     expect(lineText(host)).toEqual([
       t("vnCreditsLineMusic", { authors: "Kevin MacLeod", hosts: "incompetech.com", licenses: "CC BY" }),
     ]);
+  });
+
+  it("drops the reached count right after the fallback ending, which it does not count", async () => {
+    backend.endings = {
+      endings: [
+        { id: "default", title: "霧仍未散", reached: true },
+        { id: "good", title: "", reached: false },
+      ],
+      current: "default",
+    };
+    expect((await render("default")).querySelector(".vn-chapter-note")).toBeNull();
+    expect((await render("good")).querySelector(".vn-chapter-note")?.textContent).toBe(t("vnEndingsReached", { x: 0, y: 1 }));
   });
 
   it("omits the block when there are no entries or the read fails", async () => {

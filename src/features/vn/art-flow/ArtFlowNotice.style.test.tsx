@@ -112,6 +112,8 @@ it("offers edit style, retry without my style and change source when a style is 
   expect(document.activeElement).toBe(host.querySelector("textarea"));
   await act(async () => button(host, t("vnArtChangeSource"))!.click());
   expect(document.activeElement).toBe(host.querySelector("select"));
+  // 滑鼠點的按鈕也要畫焦點框，玩家才看得出焦點跳到來源選單
+  expect(host.querySelector("select")!.hasAttribute("data-focus-ring")).toBe(true);
   await act(async () => button(host, t("vnArtRetryPlain"))!.click());
   const retry = backend.calls.find((call) => call.command === "vn_art_retry");
   expect(retry?.args).toEqual({ worldId: "w", withoutStyle: true });

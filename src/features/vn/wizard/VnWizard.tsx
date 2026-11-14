@@ -12,7 +12,7 @@ import { Dialog, SwapLabel } from "../../../shared/ui/Dialog";
 import { GenesisError, OutlinePreview } from "../../lobby/OutlinePreview";
 import { useTableGenesis } from "../../lobby/useTableGenesis";
 import { ArtStep, type ArtProgress } from "./ArtStep";
-import { IdeaStep } from "./IdeaStep";
+import { IdeaStep, type IdeaTab } from "./IdeaStep";
 import { BuildProgress, StoryBuild, type BuildState } from "./StoryBuild";
 import { EMPTY_DRAFT, genreLabels, toPreferences, type PreferenceDraft } from "./vn-preferences";
 import { imageSources } from "../art-flow/SpriteSourceSelect";
@@ -65,6 +65,7 @@ export function VnWizard({
   const autoRef = useRef(false);
   autoRef.current = auto;
   const [draft, setDraft] = useState<PreferenceDraft>(EMPTY_DRAFT);
+  const [ideaTab, setIdeaTab] = useState<IdeaTab>("idea");
   // ① 的畫風：還沒有桌，留在精靈裡，建桌時一起寫進去
   const [artStyle, setArtStyle] = useState<PlayerStyle>({ style: "", avoid: "" });
   const [spoilerLock, setSpoilerLock] = useState(start.spoilerLock ?? true);
@@ -213,12 +214,31 @@ export function VnWizard({
   }
   const autoPhase: "outline" | "world" | "bible" | "done" =
     worldId === null ? (genesis.busy === "expand" ? "world" : "outline") : build === "done" ? "done" : "bible";
+  // ① 點子分頁的動作也放底部動作列（跟 ②③ 一致），點開畫風、更多偏好時不會被擠出畫面；看過大綱後「下一步」才是主鈕
   const footer =
     step === "idea" ? (
-      genesis.outline && (
-        <button type="button" className="btn btn-primary" disabled={busy} onClick={() => setStep("story")}>
-          {t("vnNext")}
-        </button>
+      ideaTab === "idea" && (
+        <>
+          <button type="button" className="btn" disabled={busy} onClick={() => void generate()}>
+            <SwapLabel
+              labels={[t(genesis.hasOutline ? "vnRewriteOutline" : "vnSeeOutline"), t("genGenerating")]}
+              current={genesis.busy === "outline" ? 1 : 0}
+            />
+          </button>
+          <button
+            type="button"
+            className={genesis.outline ? "btn" : "btn btn-primary"}
+            disabled={busy}
+            onClick={() => void startAuto()}
+          >
+            {t("vnStartNow")}
+          </button>
+          {genesis.outline && (
+            <button type="button" className="btn btn-primary" disabled={busy} onClick={() => setStep("story")}>
+              {t("vnNext")}
+            </button>
+          )}
+        </>
       )
     ) : step === "story" && worldId === null ? (
       <>
@@ -284,11 +304,15 @@ export function VnWizard({
       }
       start={
         !auto &&
-        back && (
-          <button type="button" className="btn" disabled={busy} onClick={() => setStep(back)}>
-            {t("vnPrevStep")}
-          </button>
-        )
+        (step === "idea" && ideaTab === "idea" ? (
+          <small className="vn-foot-note">{t("genQuotaNote")}</small>
+        ) : (
+          back && (
+            <button type="button" className="btn" disabled={busy} onClick={() => setStep(back)}>
+              {t("vnPrevStep")}
+            </button>
+          )
+        ))
       }
       end={auto ? undefined : footer}
     >
@@ -300,8 +324,8 @@ export function VnWizard({
           setDraft={setDraft}
           artStyle={artStyle}
           setArtStyle={setArtStyle}
-          onGenerate={() => void generate()}
-          onStart={() => void startAuto()}
+          tab={ideaTab}
+          setTab={setIdeaTab}
           spoilerLock={spoilerLock}
           setSpoilerLock={setSpoilerLock}
           onImportCard={onImportCard}

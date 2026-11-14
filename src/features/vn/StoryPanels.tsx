@@ -25,8 +25,11 @@ export function useEndings(worldId: string, key: string) {
   return endings;
 }
 
+/** 保底結局的 id（後端 `vn::DEFAULT_ENDING`） */
+export const DEFAULT_ENDING = "default";
+
 /** 已達成 x／y 與結局一覽只算正式結局：保底結局（`default`）不算〔作者裁決 2026-11-02〕 */
-export const countedEndings = (endings: VnEndings) => endings.endings.filter((ending) => ending.id !== "default");
+export const countedEndings = (endings: VnEndings) => endings.endings.filter((ending) => ending.id !== DEFAULT_ENDING);
 
 /** 「已達成 x／y」；沒有正式結局（沒有聖經）回 null 不顯示 */
 export function reachedText(endings: VnEndings): string | null {

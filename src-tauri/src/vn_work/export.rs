@@ -89,6 +89,12 @@ pub fn export_work(
         version: VERSION,
         app_version: env!("CARGO_PKG_VERSION").to_owned(),
         title: snap.state.name.clone(),
+        tagline: snap
+            .vn
+            .preferences
+            .as_ref()
+            .map(|preferences| preferences.tagline.trim().to_owned())
+            .unwrap_or_default(),
         lang: snap
             .vn
             .card

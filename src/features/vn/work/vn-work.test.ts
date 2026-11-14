@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { VnWorkProbe } from "../../../shared/contracts/backend-contracts";
 
-const backend = vi.hoisted(() => ({ calls: [] as [string, unknown][], confirm: true }));
+const backend = vi.hoisted(() => ({ calls: [] as [string, unknown][], confirm: true, reached: [false] }));
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(async (command: string, args: unknown) => {
     backend.calls.push([command, args]);
@@ -10,6 +10,8 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (command === "import_vn_work") return { world_id: "W2", notices: [{ kind: "clipped", target: "scene 2" }] };
     if (command === "vn_bible_read") return { cover: true };
     if (command === "export_vn_work") return { notices: [] };
+    if (command === "vn_endings")
+      return { endings: backend.reached.map((reached, i) => ({ id: `e${i}`, title: "", reached })), current: null };
     return null;
   }),
 }));
@@ -30,6 +32,7 @@ import {
   isWorkPath,
   probeVnWork,
   vnWorkConfirmText,
+  workExportable,
 } from "./vn-work";
 
 const probe: VnWorkProbe = {
@@ -87,5 +90,12 @@ describe("vn-work", () => {
       "export_vn_work",
       { worldId: "W", path: "/out/霧港.ttvn", cover: null, settings: true },
     ]);
+  });
+
+  it("allows exporting once any ending, the fallback one included, was reached", async () => {
+    backend.reached = [false, false];
+    expect(await workExportable("W")).toBe(false);
+    backend.reached = [true, false];
+    expect(await workExportable("W")).toBe(true);
   });
 });

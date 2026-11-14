@@ -651,3 +651,23 @@ fn replay_tables_refuse_generation_and_writes_but_allow_navigation() {
     // 一般桌不能 goto
     assert!(data::replay_goto(root, &table.world, 0).is_err());
 }
+
+#[test]
+fn the_protagonist_tagline_travels_with_the_pack() {
+    let table = played("vn-work-tagline");
+    let plain = import_work(&table.root, &export(&table), ImportMode::Replay, false).unwrap();
+    assert_eq!(data::vn::player_tagline(&table.root, &plain.world_id), None);
+    data::state_commit::with_commit(&table.root, &table.world, |tx| {
+        data::vn::edit_vn(tx, |file| {
+            file.preferences
+                .get_or_insert_with(Default::default)
+                .tagline = "  霧港的熊獸人攝影師 ".to_owned()
+        })
+    })
+    .unwrap();
+    let imported = import_work(&table.root, &export(&table), ImportMode::Replay, false).unwrap();
+    assert_eq!(
+        data::vn::player_tagline(&table.root, &imported.world_id).as_deref(),
+        Some("霧港的熊獸人攝影師")
+    );
+}

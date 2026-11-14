@@ -5,7 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { confirm, message, open, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { t } from "../../../i18n";
-import type { VnWorkImport, VnWorkNotice, VnWorkProbe } from "../../../shared/contracts/backend-contracts";
+import type { VnEndings, VnWorkImport, VnWorkNotice, VnWorkProbe } from "../../../shared/contracts/backend-contracts";
 
 export type VnWorkMode = "replay" | "continue";
 
@@ -43,6 +43,12 @@ export function vnWorkConfirmText(probe: VnWorkProbe, choice = false): string {
 /** 包內附了設定、又不是變數模式桌匯出的：可以當可續寫的桌 */
 export function canContinueWork(probe: VnWorkProbe): boolean {
   return probe.settings && !probe.vars_mode;
+}
+
+/** 任一路線走到過結局（保底結局也算）才能匯出：按下就先查，免得玩家選完存檔位置與封面才被後端擋 */
+export async function workExportable(worldId: string): Promise<boolean> {
+  const overview = await invoke<VnEndings>("vn_endings", { worldId });
+  return overview.endings.some((ending) => ending.reached);
 }
 
 /** 匯出（提醒與附設定在對話框裡確認過）：另存 → 桌上沒封面時讓玩家挑一張（取消＝第一張背景）→ 出包 →

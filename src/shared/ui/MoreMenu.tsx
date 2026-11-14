@@ -63,8 +63,9 @@ function clearFocusRing(this: HTMLElement) {
   delete this.dataset.focusRing;
 }
 
-// 不認 focusVisible 的舊引擎靠 data-focus-ring 兜底（base.css 與 :focus-visible 同一條外框規則），失焦即清
-function focusFrom(node: HTMLElement | null | undefined, source: FocusSource) {
+// 不認 focusVisible 的舊引擎靠 data-focus-ring 兜底（base.css 與 :focus-visible 同一條外框規則），失焦即清。
+// 別處的按鈕把焦點移到另一個控制項、要玩家看得出移到哪時也用它（keyboard＝一定畫外框）
+export function focusFrom(node: HTMLElement | null | undefined, source: FocusSource) {
   if (!node) return;
   const visible = source === "keyboard";
   if (visible) {

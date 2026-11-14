@@ -224,6 +224,11 @@ impl Build<'_> {
                 file.spoiler_lock = spoiler_lock;
                 file.bible = bible;
                 file.card = card;
+                if !manifest.tagline.is_empty() {
+                    file.preferences
+                        .get_or_insert_with(Default::default)
+                        .tagline = manifest.tagline.clone();
+                }
             })
         })
         .map_err(text)?;

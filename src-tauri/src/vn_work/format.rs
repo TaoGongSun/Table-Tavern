@@ -81,6 +81,9 @@ pub(crate) struct Manifest {
     pub version: u32,
     pub app_version: String,
     pub title: String,
+    /// 標題畫面的主角一句話（原桌 `preferences.tagline`）；舊包沒有＝空
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub tagline: String,
     pub lang: String,
     pub chapters: u32,
     pub endings: u32,

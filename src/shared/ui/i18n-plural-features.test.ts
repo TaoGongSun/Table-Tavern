@@ -19,4 +19,13 @@ describe("features 字典經 t() 展開單複數", () => {
     expect(t("smartFreeDailyLeft", { remaining: 1 })).toBe("1 call left");
     expect(t("smartFreeDailyLeft", { remaining: 2 })).toBe("2 calls left");
   });
+
+  it("VN 生圖的張數照單複數（實測挖到的 1 images／1 sprites）", () => {
+    setLang("en");
+    expect(t("vnArtEstimate", { source: "Codex CLI", n: 1, bg: 0 })).toBe("Uses Codex CLI quota: 1 sprite + 0 backgrounds.");
+    expect(t("vnArtPaused", { time: "soon", n: 1 })).toContain("1 image remains and");
+    expect(t("vnArtPaused", { time: "soon", n: 2 })).toContain("2 images remain and");
+    setLang("ru");
+    expect(t("vnArtPausedUnknown", { n: 2 })).toContain("Осталось 2 изображения");
+  });
 });

@@ -294,3 +294,24 @@ fn assets_must_be_well_formed_owned_and_present() {
     .unwrap_err()
     .contains("missing"));
 }
+
+#[test]
+fn the_tagline_is_clipped_to_one_trimmed_line() {
+    let mut manifest = Manifest {
+        tagline: format!(" 熊獸人船長\n{}", "霧".repeat(TITLE_CHARS)),
+        ..Default::default()
+    };
+    let mut script = tree(vec![scene(0, None, vec![line(Kind::Narration, "a")])]);
+    check(
+        &mut manifest,
+        &mut script,
+        &mut Characters::default(),
+        LIMITS,
+        |_| true,
+        &mut Vec::new(),
+    )
+    .unwrap();
+    assert!(!manifest.tagline.contains('\n') && !manifest.tagline.starts_with(' '));
+    assert!(manifest.tagline.starts_with("熊獸人船長 霧"));
+    assert!(manifest.tagline.chars().count() <= TITLE_CHARS);
+}

@@ -77,6 +77,13 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ confirm: vi.fn(async () => true) }));
+const audio = vi.hoisted(() => ({ bgm: undefined as string[] | null | undefined }));
+vi.mock("./audio/useVnAudio", () => ({
+  useVnAudio: ({ bgm }: { bgm: string[] | null }) => {
+    audio.bgm = bgm;
+    return { previewSfx: () => {} };
+  },
+}));
 
 import { VnPlayer } from "./VnPlayer";
 import { cellHash, type AutoWait, type TextSpeed } from "./vn-cells";
@@ -869,6 +876,16 @@ describe("VnPlayer", () => {
     });
 
     const wait = (ms: number) => act(async () => new Promise((resolve) => setTimeout(resolve, ms)));
+
+    it("the title screen plays the theme and hands over to the scene's music once it closes", async () => {
+      backend.cells = [gm("g1", [{ type: "bgm", moods: ["Dark"] }, n("hello")])];
+      titleOpen = true;
+      await render({ events: [event("g1")] });
+      expect(audio.bgm).toBeNull();
+      titleOpen = false;
+      await render({ events: [event("g1")] });
+      expect(audio.bgm).toEqual(["Dark"]);
+    });
 
     it("the title screen holds reading, auto and the chapter end until it closes", async () => {
       backend.cells = [gm("g1", [n("a"), { type: "chapter" }])];

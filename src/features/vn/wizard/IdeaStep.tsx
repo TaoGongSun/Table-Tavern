@@ -1,13 +1,15 @@
-// 精靈 ① 點子與偏好：兩個分頁「從點子生成｜用我的角色卡」。點子分頁第一眼只有一句話、題材、直接開始，
+// 精靈 ① 點子與偏好：兩個分頁「從點子生成｜用我的角色卡」。點子分頁第一眼只有一句話、題材，
 // 其餘偏好收在「更多偏好」；全部選填，什麼都不填也能生成（AI 自選題材）。卡分頁選檔交給匯入流程開 VN 桌。
+// 「直接開始」「看大綱」在精靈底部固定的動作列（VnWizard），內容再長也看得到。
 import { useRef, useState } from "react";
 import { t } from "../../../i18n";
 import { ArtStyleFields } from "../art-flow/ArtStyleFields";
 import { SpriteSourceSelect } from "../art-flow/SpriteSourceSelect";
 import type { PlayerStyle } from "../../../shared/contracts/backend-contracts";
-import { SwapLabel } from "../../../shared/ui/Dialog";
 import type { TableGenesis } from "../../lobby/useTableGenesis";
 import { CHOICES, ideaPlaceholder, LENGTHS, MOODS, VN_GENRES, type PreferenceDraft } from "./vn-preferences";
+
+export type IdeaTab = "idea" | "card";
 
 function Choice<T extends string>({
   label,
@@ -46,8 +48,8 @@ export function IdeaStep({
   setDraft,
   artStyle,
   setArtStyle,
-  onGenerate,
-  onStart,
+  tab,
+  setTab,
   spoilerLock,
   setSpoilerLock,
   onImportCard,
@@ -58,14 +60,12 @@ export function IdeaStep({
   /** 這張桌的畫風：建桌時一起寫進去 */
   artStyle: PlayerStyle;
   setArtStyle: (style: PlayerStyle) => void;
-  onGenerate: () => void;
-  /** 不審大綱，串起生成、建桌、寫劇本，進標題畫面 */
-  onStart: () => void;
+  tab: IdeaTab;
+  setTab: (tab: IdeaTab) => void;
   spoilerLock: boolean;
   setSpoilerLock: (locked: boolean) => void;
   onImportCard: (file: File, spoilerLock: boolean) => void;
 }) {
-  const [tab, setTab] = useState<"idea" | "card">("idea");
   const [more, setMore] = useState(false);
   const cardInput = useRef<HTMLInputElement>(null);
   const busy = genesis.busy !== null;
@@ -186,18 +186,6 @@ export function IdeaStep({
           <SpriteSourceSelect disabled={busy} />
           <ArtStyleFields value={artStyle} onChange={setArtStyle} disabled={busy} folded />
           <p className="field-note">{t("vnArtAutoQuota")}</p>
-          <div className="gen-generate-row">
-            <button type="button" className="btn btn-primary" disabled={busy} onClick={onStart}>
-              {t("vnStartNow")}
-            </button>
-            <button type="button" className="btn" disabled={busy} onClick={onGenerate}>
-              <SwapLabel
-                labels={[t(genesis.hasOutline ? "vnRewriteOutline" : "vnSeeOutline"), t("genGenerating")]}
-                current={genesis.busy === "outline" ? 1 : 0}
-              />
-            </button>
-            <small>{t("genQuotaNote")}</small>
-          </div>
         </>
       )}
     </div>

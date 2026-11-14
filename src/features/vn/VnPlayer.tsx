@@ -12,6 +12,7 @@ import { ErrorNote } from "../../shared/ui/atoms";
 import { backendText } from "../../shared/ui/backend-text";
 import { exportVnCard } from "./card/vn-card";
 import { ExportWorkDialog } from "./work/ExportWorkDialog";
+import { workExportable } from "./work/vn-work";
 import { Backlog } from "./Backlog";
 import { ChapterCardView } from "./ChapterCardView";
 import { EndingScreen } from "./EndingScreen";
@@ -229,7 +230,8 @@ export function VnPlayer({
   const stage = useMemo(() => stageAt(vn.cells, play.flatIndex, trailingExits), [vn.cells, play.flatIndex, trailingExits]);
   const { previewSfx } = useVnAudio({
     worldId,
-    bgm: stage.bgm,
+    // 標題畫面一律放主題曲（null＝主題曲），開始／繼續後才換成當下那格的配樂
+    bgm: title ? null : stage.bgm,
     cells: vn.cells,
     flatIndex: play.flatIndex,
     lastEventKey: vn.lastEventKey,
@@ -371,7 +373,11 @@ export function VnPlayer({
         onError(backendText(reason));
       }
     });
-  const exportWork = () => setExporting(true);
+  const exportWork = () =>
+    void workExportable(worldId).then(
+      (ok) => (ok ? setExporting(true) : onError(t("be_vn_work_no_ending"))),
+      (reason) => onError(backendText(reason)),
+    );
   const openPanel = (next: NonNullable<typeof panel>) => {
     if (next === "saves") setSaveError(null);
     setPanel(next);

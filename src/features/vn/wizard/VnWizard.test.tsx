@@ -249,6 +249,11 @@ it("starts straight through to the title once the script is already there", asyn
   await mount({ worldId: null }, onFinish);
   expect(button(t("vnStartNow")).classList.contains("btn-primary")).toBe(true);
   expect(button(t("vnSeeOutline")).className).toBe("btn");
+  // 開始鈕在底部固定的動作列（點開畫風、更多偏好也不會被擠出畫面）；角色卡分頁不出
+  expect(button(t("vnStartNow")).closest(".dialog-foot")).not.toBeNull();
+  await act(async () => button(t("vnTabCard")).click());
+  expect(document.querySelector(".dialog-foot")?.textContent ?? "").not.toContain(t("vnStartNow"));
+  await act(async () => button(t("vnTabIdea")).click());
   // ① 填的畫風隨建桌一起送（建桌之後才有生圖，第一張就吃得到）
   const style = document.querySelector<HTMLTextAreaElement>(".vn-art-style textarea")!;
   await act(async () => {

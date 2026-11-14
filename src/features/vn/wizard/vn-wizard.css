@@ -191,3 +191,8 @@
 .vn-start-placeholder .vn-start-progress {
   margin: 0;
 }
+/* ① 底部動作列左側的額度提醒 */
+.vn-foot-note {
+  color: var(--ink-3);
+  font-size: var(--fs-meta);
+}

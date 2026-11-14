@@ -2,7 +2,7 @@
 // 開新周目、匯出成 VN 作品、結局一覽。重播桌（包 8）不出開新周目與匯出，重玩改叫章節選擇。
 import { t } from "../../i18n";
 import { creditLines, useCreditEntries, type CreditLine } from "./audio/credits";
-import { reachedText, useEndings } from "./StoryPanels";
+import { DEFAULT_ENDING, reachedText, useEndings } from "./StoryPanels";
 import "./vn-story.css";
 
 function creditText(line: CreditLine): string {
@@ -43,7 +43,10 @@ export function EndingScreen({
     <div className="vn-ending-screen" role="dialog" aria-label={t("vnTheEnd")}>
       <p className="vn-chapter-heading">{t("vnTheEnd")}</p>
       {title && <p className="vn-ending-title">{title}</p>}
-      {endings && reachedText(endings) && <p className="vn-chapter-note">{reachedText(endings)}</p>}
+      {/* 保底結局不計入 x／y〔作者裁決 2026-11-02〕：剛看完保底結局時不出這行，免得讀成「一個都沒達成」 */}
+      {endingId !== DEFAULT_ENDING && endings && reachedText(endings) && (
+        <p className="vn-chapter-note">{reachedText(endings)}</p>
+      )}
       {lines.length > 0 && (
         <div className="vn-credits-lines">
           {lines.map((line) => (

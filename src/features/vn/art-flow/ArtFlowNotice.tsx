@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import { t } from "../../../i18n";
 import { CLI_LABELS } from "../../ai-connection/cli";
+import { focusFrom } from "../../../shared/ui/MoreMenu";
 import { updateConfig } from "../../settings/update-config";
 import { flushArtStyle } from "./art-style-save";
 import { ArtStyleFields } from "./ArtStyleFields";
@@ -51,7 +52,8 @@ export function ArtFlowNotice({ worldId, onStarted, onPause, onOpenGallery, comp
   // 已開始、沒暫停、佇列裡只剩失敗或被拒的：沒有圖在畫，不顯示「準備中」
   const stuck = (status?.failed ?? 0) + refused;
   const stalled = Boolean(status?.art.started && !status.pause && stuck > 0 && status.pending <= stuck);
-  const focusSource = () => sourceBox.current?.querySelector("select")?.focus();
+  // 按鈕是滑鼠點的，引擎不會替 select 畫焦點框；明講要外框，玩家才看得出焦點跳到來源選單
+  const focusSource = () => focusFrom(sourceBox.current?.querySelector("select"), "keyboard");
   return <div className="vn-art-flow">
     <div className="vn-art-controls">
       <div ref={sourceBox}><SpriteSourceSelect onChange={setSource} onSelect={status?.art.started ? retry : undefined} disabled={busy} /></div>
