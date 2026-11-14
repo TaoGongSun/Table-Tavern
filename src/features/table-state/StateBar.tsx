@@ -197,8 +197,10 @@ export function StateBar({
         ? displayUserMacro(shown, playerName)
         : displayValue(path[0], shown)
       : t("stateEmptyValue");
-    // 鏡像欄跟著固定鍵走：照樣顯示、不給點開改（改地點／在場那一格就會帶過來）
-    if (isTree && mirrors[path.join(".")]) {
+    // 鏡像欄跟著固定鍵走：固定鍵有值、或兩邊都空就不重複列；固定鍵還沒值時留卡的初值唯讀顯示（改地點／在場那一格就會帶過來）
+    const mirrorOf = isTree ? mirrors[path.join(".")] : undefined;
+    if (mirrorOf) {
+      if (fields[mirrorOf] || !value) return null;
       return (
         <div className="state-bar-field" key={path.join("\0")}>
           <span className="state-bar-label">{label}</span>

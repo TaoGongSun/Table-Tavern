@@ -207,12 +207,12 @@ describe("StateBar present 顯示字形", () => {
 });
 
 describe("StateBar 鏡像欄", () => {
-  it("跟著固定鍵走的卡欄位照樣顯示但不給點開改，其他葉子照舊可改", () => {
+  function renderMirror(place: string, mirrored = "北坡") {
     act(() =>
       root.render(
         <StateBar
-          fields={{ place: "北坡" }}
-          tree={{ 当前环境: "北坡", 剧情阶段: "初始" } as never}
+          fields={place ? { place } : {}}
+          tree={{ 当前环境: mirrored, 剧情阶段: "初始" } as never}
           jumps={{}}
           mirrors={{ 当前环境: "place" }}
           bindings={[]}
@@ -229,12 +229,22 @@ describe("StateBar 鏡像欄", () => {
         />,
       ),
     );
-    const rows = [...host.querySelectorAll(".state-tree-children .state-bar-field, .state-bar-field")];
-    const row = (label: string) =>
-      rows.find((el) => el.querySelector(".state-bar-label")?.textContent === label);
+    const rows = [...host.querySelectorAll(".state-bar-field")];
+    return (label: string) => rows.find((el) => el.querySelector(".state-bar-label")?.textContent === label);
+  }
+
+  it("固定鍵有值時不重複列跟著它走的卡欄位，其他葉子照舊可改", () => {
+    const row = renderMirror("北坡");
+    expect(row("当前环境")).toBeUndefined();
+    expect(row(t("stateFieldPlace"))?.textContent).toContain("北坡");
+    expect(row("剧情阶段")?.querySelector("button.state-bar-value")).not.toBeNull();
+  });
+
+  it("固定鍵還沒值時卡欄位以唯讀列顯示卡的初值，兩邊都空就不列", () => {
+    const row = renderMirror("");
     expect(row("当前环境")?.querySelector("button")).toBeNull();
     expect(row("当前环境")?.textContent).toContain("北坡");
-    expect(row("剧情阶段")?.querySelector("button.state-bar-value")).not.toBeNull();
+    expect(renderMirror("", "")("当前环境")).toBeUndefined();
   });
 });
 
