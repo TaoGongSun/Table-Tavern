@@ -119,12 +119,17 @@ export function DesktopRoom({ ctl, seat }: { ctl: DesktopRoomCtl; seat: DesktopS
   const v = ctl.view;
   const iAmHost = v !== null && v.room.hostId === v.me.memberId;
   const popover = open || handoff !== null;
-  // 彈層：點外面或 Esc 收起（交給手機的連結出來時留著，等配對完）
+  // 彈層：點外面或 Esc 收起（交給手機的連結出來時留著，等配對完）。Esc 掛在 document：WebKit 滑鼠點按鈕不給焦點，焦點常不在列內
   useEffect(() => {
     if (!open) return;
     const away = (event: PointerEvent) => !bar.current?.contains(event.target as Node) && setOpen(false);
+    const escape = (event: KeyboardEvent) => event.key === "Escape" && setOpen(false);
     document.addEventListener("pointerdown", away);
-    return () => document.removeEventListener("pointerdown", away);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", away);
+      document.removeEventListener("keydown", escape);
+    };
   }, [open]);
   const copy = () => {
     if (!status?.inviteUrl) return;
@@ -177,7 +182,7 @@ export function DesktopRoom({ ctl, seat }: { ctl: DesktopRoomCtl; seat: DesktopS
 
   return (
     <section className="desktop-room" aria-label={t("roomTitle")}>
-      <div className="room-bar" data-testid="room-bar" ref={bar} onKeyDown={(event) => event.key === "Escape" && setOpen(false)}>
+      <div className="room-bar" data-testid="room-bar" ref={bar}>
         <div className="room-row">
           <span className={status?.online ? "room-dot on" : "room-dot"} title={t(status?.online ? "roomOnline" : "roomOffline")} />
           {status?.roomCode && <strong>{status.roomCode}</strong>}

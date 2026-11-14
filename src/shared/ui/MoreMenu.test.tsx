@@ -369,5 +369,27 @@ describe("MoreMenu", () => {
       expect(menu()?.style.top).toBe("64px");
       expect(menu()?.style.maxHeight).toBe("728px");
     });
+
+    it("stays inside the container it portals to instead of growing over the column beside it", () => {
+      const originalWidth = window.innerWidth;
+      Object.defineProperty(window, "innerWidth", { value: 1600, configurable: true });
+      const widthOf = vi.spyOn(HTMLElement.prototype, "offsetWidth", "get");
+      widthOf.mockImplementation(function (this: HTMLElement) {
+        return this.getAttribute("role") === "menu" ? 600 : 0;
+      });
+      const box = document.body.appendChild(document.createElement("div"));
+      rectOf.mockImplementation(function (this: HTMLElement) {
+        if (this === box) return { top: 0, bottom: 800, left: 450, right: 1560 } as DOMRect;
+        return (this.getAttribute("aria-haspopup") === "menu"
+          ? { top: 700, bottom: 730, left: 650, right: 680 }
+          : { top: 0, bottom: 0, left: 0, right: 0 }) as DOMRect;
+      });
+      mount(threeItems().items, undefined, { portalTo: box });
+      openMenu();
+      // 右緣對齊會長到 80px（左欄上）：改成左緣對齊觸發鈕
+      expect(menu()?.style.left).toBe("650px");
+      widthOf.mockRestore();
+      Object.defineProperty(window, "innerWidth", { value: originalWidth, configurable: true });
+    });
   });
 });

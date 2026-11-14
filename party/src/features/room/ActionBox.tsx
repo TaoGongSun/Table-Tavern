@@ -19,6 +19,9 @@ import { errorText } from "./error-text";
 import type { RoomView } from "./room-state";
 import { useRun, type Act } from "./useRoom";
 
+/** 切分頁時行動格會卸下：輸入框原文與當時看過的伺服器草稿記在房間畫面，回來照接 */
+export type KeptText = { text: string; draft: string | null };
+
 const STATUS: Record<string, MsgKey> = {
   pending: "statusPending",
   drafting: "statusDrafting",
@@ -39,6 +42,7 @@ export function ActionBox({
   urgent = false,
   onTyping,
   below,
+  keep,
 }: {
   view: RoomView;
   act: Act;
@@ -50,6 +54,7 @@ export function ActionBox({
   onTyping?: (typing: boolean) => void;
   /** 動作列正下方（房主：已送出的行動會保留那行小字） */
   below?: ReactNode;
+  keep?: { current: KeptText | null };
 }) {
   const area = useRef<HTMLTextAreaElement>(null);
   // 每個觸發每回合最多一次；同一回合又手動收起就留著
@@ -61,7 +66,12 @@ export function ActionBox({
     nudge: 0, // 已處理過的催促次數（view.nudged.n）
     timer: -1, // 已震過的回合（房主當場開倒數，每回合一次）
   });
-  const [text, setText] = useState(view.me.draft ?? "");
+  // 離開期間伺服器草稿變了（收回、換幕退回、送出清掉）以伺服器為準，否則接回離開前框裡的字
+  const kept = keep?.current;
+  const [text, setText] = useState(
+    kept && kept.draft === view.me.draft ? kept.text : (view.me.draft ?? ""),
+  );
+  const seenDraft = useRef(view.me.draft);
   const [tucked, setTucked] = useState(false); // 只在記憶體：進房一律展開
   const [taken, setTaken] = useState(false); // 房主收回、原文已直接放回輸入框：送出前提示一行
   const [tooLong, setTooLong] = useState(false);
@@ -70,8 +80,13 @@ export function ActionBox({
   const [rollError, setRollError] = useState<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    if (view.me.draft === seenDraft.current) return; // 掛上時不蓋掉接回的字
+    seenDraft.current = view.me.draft;
     if (view.me.draft !== null) setText(view.me.draft); // 收回、換幕退回的原文
   }, [view.me.draft]);
+  useEffect(() => {
+    if (keep) keep.current = { text, draft: seenDraft.current };
+  }, [keep, text, view.me.draft]);
   const returned = view.me.returned;
   useEffect(() => {
     // 房主收回的原文：輸入框空著就直接放回去（重連、重開頁面同一條規則）；有草稿就留在下面那格讓他自己帶回或丟掉

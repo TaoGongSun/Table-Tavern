@@ -123,6 +123,14 @@
   display: none;
 }
 
+/* 還沒入座就打開狀態抽屜：選角區先讓位，抽屜放高（關掉抽屜選角區就回來） */
+.app.party-phone .room-screen:has(.scene-status-sheet) .seat-picker {
+  display: none;
+}
+.app.party-phone .room-screen:has(.seat-picker) .panel.scene-status-sheet {
+  max-height: 75%;
+}
+
 /* 手動收合的細列，跟「回到最新」同一套：置中、浮在故事下方 */
 .app.party-phone .dock-strip {
   display: flex;

@@ -28,7 +28,7 @@ import { CardSheet } from "../my-card/CardSheet";
 import { ChatNotice } from "../chat/ChatNotice";
 import { ChatPanel } from "../chat/ChatPanel";
 import { useUnread } from "../chat/useUnread";
-import { ActionBox } from "./ActionBox";
+import { ActionBox, type KeptText } from "./ActionBox";
 import { Confirm } from "./Confirm";
 import { DelegateButton } from "./DelegateButton";
 import { DelegatedBanner } from "./DelegatedBanner";
@@ -300,6 +300,7 @@ export function RoomScreen({ view, c: controls }: { view: RoomView; c: RoomContr
   const [picking, setPicking] = useState(false);
   const folded = isHost && view.room.status === "playing" && !picking;
   const [statusOpen, setStatusOpen] = useState(false);
+  const keptText = useRef<KeptText | null>(null); // 行動格只掛在故事頁：切頁回來接回沒送的字
   useEffect(() => {
     if (tab !== "story") setStatusOpen(false);
   }, [tab]);
@@ -497,6 +498,7 @@ export function RoomScreen({ view, c: controls }: { view: RoomView; c: RoomContr
                 compact={phone}
                 urgent={urgent}
                 onTyping={phone ? onTyping : undefined}
+                keep={keptText}
               />
             ) : (
               canSit &&
