@@ -170,9 +170,9 @@ it("沒有先攻時拒收仍看得到，寫成名字＋白話原因、不露原�
   expect(host.querySelector(".state-combat")).toBeNull();
   const lines = [...host.querySelectorAll(".state-combat-idle .state-refused")].map((e) => e.textContent);
   expect(lines).toEqual([
-    "⚠ 哥布林A 沒加上：還沒排先攻",
+    "⚠ 哥布林A 沒加上：還沒排行動順序",
     "⚠ 巨魔 沒更新：沒有這個敵人",
-    "⚠ 輪到 哥布林A 沒設上：不在先攻裡",
+    "⚠ 輪到 哥布林A 沒設上：不在行動順序裡",
   ]);
 });
 

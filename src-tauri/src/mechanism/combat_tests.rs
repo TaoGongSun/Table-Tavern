@@ -539,7 +539,7 @@ fn foes_need_order_and_whole_insert() {
         ["combat.foes.哥布林A"],
         "沒先攻不收敵人"
     );
-    assert!(outcome.notes.iter().any(|note| note.contains("先攻順序")));
+    assert!(outcome.notes.iter().any(|note| note.contains("行動順序")));
     assert_eq!(
         reason(&world, "combat.foes.哥布林A").as_deref(),
         Some("no_order")

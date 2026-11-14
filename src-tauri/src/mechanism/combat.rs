@@ -141,7 +141,7 @@ pub(super) fn patch(
                 records.push(refuse_why(
                     patch,
                     format!(
-                        "{} 只能寫先攻順序（/combat/order）裡的名字；「{}」不在順序裡，未套用。",
+                        "{} 只能寫行動順序（/combat/order）裡的名字；「{}」不在順序裡，未套用。",
                         shown_pointer(&patch.path),
                         snippet(&name, 24)
                     ),
@@ -215,7 +215,7 @@ fn foe_entry(
         }
     }
     let refusal = if no_order {
-        Some(("no_order", "還沒有先攻順序，敵人加不進來；開打時先 replace /combat/order 排好順序（含敵人名字），再 insert 敵人。".to_owned()))
+        Some(("no_order", "還沒有行動順序，敵人加不進來；開打時先 replace /combat/order 排好順序（含敵人名字），再 insert 敵人。".to_owned()))
     } else if name.trim().is_empty()
         || name.chars().count() > NAME_CHARS as usize
         || name.contains(['.', '*'])

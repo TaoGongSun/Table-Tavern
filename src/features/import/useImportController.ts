@@ -410,7 +410,7 @@ export function useImportController(input: {
     const state = await invoke<WorldState>("read_state", { worldId });
     if (state.dice_enabled || state.table_kind !== "chat" || state.replay) return;
     const c = diceCopy();
-    if (await confirm(c.prompt, { title: c.roll, kind: "info" })) {
+    if (await confirm(c.prompt, { title: c.roll, kind: "info", okLabel: c.enable, cancelLabel: t("dialogCancel") })) {
       await turnBackend(() => invoke("set_dice_enabled", { worldId, enabled: true }));
     }
   }, [turnBackend]);
@@ -476,7 +476,7 @@ export function useImportController(input: {
       await reloadGmImage(worldId);
       const coverNotice = book.image_dropped ? "\n\n" + t("worldbookCoverNotSaved") : "";
       await showMessage(worldbookImportedMessage(book) + coverNotice, {
-        title: t("importCard"),
+        title: t("worldbookTitle"),
         okLabel: t("dialogAck"),
       });
       // 世界書更容易不知道怎麼開始：匯完一律把對話目標指到 GM

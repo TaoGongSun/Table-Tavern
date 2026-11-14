@@ -107,7 +107,7 @@ pub(crate) async fn set_state_path(
                     ]
                 && !data::default_panel::combat::in_order(&state.state.tree, &value)
             {
-                return Err(format!("「{value}」不在先攻順序裡。").into());
+                return Err(format!("「{value}」不在行動順序裡。").into());
             }
             let mut changed = match data::default_panel::clear_field(state, &path, &value) {
                 Some(changed) => changed,

@@ -15,5 +15,5 @@ README 授權段、三語房間說明書與下載頁文案、CHANGELOG（細項�
 ## 沒驗到的
 - 真手機（iOS／Android）與正式包：只用測試包與手機尺寸視窗模擬。
 - PF2「差 10 以上大成功／大失敗」4 回合都沒出現觸發機會。
-- 加入規則書後接連跳出的兩個原生對話窗（匯入結果、要不要開擲骰）截圖拍不到，文案沒逐字記下。
+- 加入規則書後接連跳出的兩個原生對話窗截圖拍不到；標題與按鈕已另案改好（[ttrpg-turn-order-wording](archive/ttrpg-turn-order-wording.md)），改後沒實機看過。
 - 截圖、逐字稿與每回合觸發表在暫存目錄 `<scratchpad>/ttrpg-books/`，沒進 repo。

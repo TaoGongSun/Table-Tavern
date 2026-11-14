@@ -76,7 +76,7 @@ pub fn label(path: &[String], en: bool) -> Option<&'static str> {
         [CHARACTERS, _, combat::CONDITIONS]
         | [combat::COMBAT, combat::FOES, _, combat::CONDITIONS] => ("狀態效果", "Conditions"),
         [combat::COMBAT] => ("戰鬥", "Combat"),
-        [combat::COMBAT, combat::ORDER] => ("先攻", "Initiative"),
+        [combat::COMBAT, combat::ORDER] => ("行動順序", "Turn order"),
         [combat::COMBAT, combat::TURN] => ("輪到", "Turn"),
         [combat::COMBAT, combat::FOES] => ("敵人", "Foes"),
         _ => return None,
