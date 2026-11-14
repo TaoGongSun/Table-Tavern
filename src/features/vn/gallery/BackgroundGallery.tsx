@@ -5,7 +5,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import { t } from "../../../i18n";
 import type { BackgroundPlace, BackgroundStatus } from "../../../shared/contracts/backend-contracts";
-import { explainAiError, redactAiErrorDetail } from "../../../shared/ui/ai-error";
+import { flushArtStyle } from "../art-flow/art-style-save";
+import { explainAiError, isImageRefused, redactAiErrorDetail } from "../../../shared/ui/ai-error";
 import { backendText } from "../../../shared/ui/backend-text";
 import { tintOf } from "../StageBackdrop";
 import { backdropKey, type BackdropImage, type useBackgrounds } from "../useBackgrounds";
@@ -20,6 +21,7 @@ export const periodLabel = (period: string) =>
 
 /** 失敗原因給玩家看的那句：命中 AI 錯誤分流用人話，否則翻譯代碼後的原文（遮掉帳號識別碼） */
 function failureText(reason: string | null) {
+  if (isImageRefused(reason)) return t("vnArtRefusedOne");
   const key = explainAiError(reason ?? "");
   return key ? t(key) : redactAiErrorDetail(backendText(reason));
 }
@@ -60,7 +62,9 @@ export function BackgroundGallery({
 
   const act = (command: string, args: Record<string, unknown>) => {
     setError(null);
-    invoke(command, { worldId, ...args }).catch((reason) => setError(backendText(reason)));
+    (command === "vn_background_cancel" ? Promise.resolve() : flushArtStyle(worldId))
+      .then(() => invoke(command, { worldId, ...args }))
+      .catch((reason) => setError(backendText(reason)));
   };
 
   if (places === null) return error ? <p className="field-warn">{error}</p> : null;

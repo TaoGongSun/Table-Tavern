@@ -311,6 +311,10 @@ fn materialize_vn_writes_preferences_setup_and_player_card() {
     let setup = |name: &str| VnSetup {
         preferences: prefs(name),
         spoiler_lock: false,
+        style: data::vn::PlayerStyle {
+            style: format!("  水彩\u{7}手繪 {name} "),
+            avoid: String::new(),
+        },
     };
     let named = materialize(
         &root.0,
@@ -334,6 +338,8 @@ fn materialize_vn_writes_preferences_setup_and_player_card() {
     assert_eq!(file.preferences, Some(prefs("阿哲")));
     assert_eq!(file.setup, Some(SetupStage::Story));
     assert!(!file.spoiler_lock);
+    // ① 的畫風在建桌同一筆寫入、已清洗
+    assert_eq!(file.art.style, "水彩 手繪 阿哲");
     let listed = data::list_worlds(&root.0).unwrap();
     assert_eq!(listed[0].setup, Some(SetupStage::Story));
 

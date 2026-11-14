@@ -227,3 +227,24 @@ fn art_defaults_to_unstarted_and_only_round_trips_two_fields() {
     );
     assert_eq!(serde_json::from_value::<VnFile>(encoded).unwrap(), file);
 }
+
+/// 玩家畫風存檔前清洗：控制字元換空白、去頭尾空白、截到與卡作者欄位相同的上限；空的不寫進檔
+#[test]
+fn player_style_is_cleaned_and_capped() {
+    let mut art = ArtFlow::default();
+    let saved = PlayerStyle {
+        style: format!(" 水彩\n手繪{} ", "長".repeat(700)),
+        avoid: "\t文字 ".to_owned(),
+    }
+    .apply(&mut art);
+    assert!(art.style.starts_with("水彩 手繪"));
+    assert_eq!(art.style.chars().count(), super::super::vn_art::STYLE_CAP);
+    assert_eq!(art.avoid, "文字");
+    assert_eq!(
+        (saved.style, saved.avoid),
+        (art.style.clone(), art.avoid.clone())
+    );
+    PlayerStyle::default().apply(&mut art);
+    let encoded = serde_json::to_value(&art).unwrap();
+    assert!(encoded.get("style").is_none() && encoded.get("avoid").is_none());
+}

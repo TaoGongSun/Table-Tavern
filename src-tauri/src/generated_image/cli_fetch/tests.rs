@@ -1,5 +1,6 @@
 use super::{
-    downscale_png, extract_image_refs, grok_reference, take_image, CliJob, Homes, ImageRef,
+    downscale_png, extract_image_refs, grok_reference, missing_reason, take_image, CliJob, Homes,
+    ImageRef,
 };
 use crate::commands::NEXT_TEMP_ID;
 use crate::generated_image::GeneratedImage;
@@ -141,7 +142,7 @@ fn malformed_thread_id_is_ignored() {
         take_image("codex", &job, &fx.homes, "REFUSED")
             .err()
             .as_deref(),
-        Some("REFUSED")
+        Some("AI_IMAGE_REFUSED")
     );
 }
 
@@ -204,7 +205,7 @@ fn grok_session_is_kept_when_no_image() {
         take_image("grok", &job, &fx.homes, "REFUSED")
             .err()
             .as_deref(),
-        Some("REFUSED")
+        Some("AI_IMAGE_REFUSED")
     );
     assert!(session.exists());
 }
@@ -302,4 +303,28 @@ fn grok_reference_is_gray_jpeg_and_vision_image_is_downscaled() {
     assert_eq!((small.width(), small.height()), (512, 768));
     let tiny = png(300, 300);
     assert_eq!(downscale_png(&tiny, 768).unwrap(), tiny);
+}
+
+/// 拒絕三種回法都歸成 AI_IMAGE_REFUSED：暗號、沒照暗號的拒絕說明（agy 實測，截斷前整段比對）；
+/// NO_IMAGE 與一般沒圖不算
+#[test]
+fn refusals_map_to_one_code() {
+    assert_eq!(missing_reason("REFUSED"), "AI_IMAGE_REFUSED");
+    let prose = format!(
+        "I cannot fulfill this request. {} My safety constraints prevent it.",
+        "x".repeat(300)
+    );
+    assert!(missing_reason(&prose).starts_with("AI_IMAGE_REFUSED: I cannot fulfill"));
+    assert_eq!(missing_reason("NO_IMAGE"), "NO_IMAGE");
+    assert_eq!(missing_reason("Sorry.\nREFUSED."), "AI_IMAGE_REFUSED");
+    assert!(
+        !missing_reason("The tool failed: ECONNREFUSED 127.0.0.1").starts_with("AI_IMAGE_REFUSED")
+    );
+    assert!(!missing_reason("Done, but the file was lost.").starts_with("AI_IMAGE_REFUSED"));
+    assert!(crate::generated_image::is_refused(
+        "AI_IMAGE_REFUSED: AI_CONTENT_FILTERED: agy"
+    ));
+    assert!(!crate::generated_image::is_refused(
+        "AI_CALL_FAILED: ECONNREFUSED"
+    ));
 }

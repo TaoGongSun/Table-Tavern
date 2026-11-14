@@ -4,9 +4,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { t, type MsgKey } from "../../i18n";
 import type { SpriteSlotStatus, SpriteState } from "../../shared/contracts/backend-contracts";
-import { explainAiError } from "../../shared/ui/ai-error";
+import { explainAiError, isImageRefused } from "../../shared/ui/ai-error";
 import { backendText } from "../../shared/ui/backend-text";
 import { onSpriteStatus } from "./useSprites";
+import { flushArtStyle } from "./art-flow/art-style-save";
 
 /** 自動定稿事件的 expression 欄（後端 `prepare::BASE_EXPRESSION`） */
 const BASE_EVENT = "base";
@@ -24,6 +25,7 @@ const SPRITE_ERRORS: Record<string, MsgKey> = {
 
 /** 後端 `VN_SPRITE_<碼>` 換成人話，其餘照通用錯誤 */
 export function spriteError(raw: unknown): string {
+  if (isImageRefused(raw)) return t("vnArtRefusedOne");
   const explained = explainAiError(String(raw));
   if (explained) return t(explained);
   const code = /VN_SPRITE_([A-Z_]+)/.exec(String(raw))?.[1];
@@ -120,6 +122,7 @@ export function useSpriteSlot(worldId: string, characterId: string, fill = false
     reload,
     generate: () =>
       run("generate", async () => {
+        await flushArtStyle(worldId);
         setSelected(await invoke<string>("vn_sprite_generate", ids));
       }),
     pick: () =>

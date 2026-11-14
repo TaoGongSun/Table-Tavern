@@ -188,7 +188,7 @@ pub(crate) async fn vn_sprite_generate(
     character_id: String,
 ) -> Result<String, String> {
     crate::data::vn::refuse_if_replay(&data_root(&app)?, &world_id)?;
-    vn_sprites::generate_candidate(&app, &world_id, &character_id).await
+    vn_sprites::generate_candidate(&app, &world_id, &character_id, true).await
 }
 
 #[tauri::command]
@@ -399,7 +399,9 @@ pub(crate) struct ArtStatus {
     faces_per_character: Option<usize>,
     pause: Option<vn_sprites::pause::Pause>,
     pending: usize,
+    /// 一般失敗；被模型拒絕的另計在 `refused`
     failed: usize,
+    refused: usize,
 }
 
 #[tauri::command]
@@ -435,11 +437,22 @@ pub(crate) fn vn_art_status(app: tauri::AppHandle, world_id: String) -> Result<A
     let source = vn_sprites::sprite_source(&vn_sprites::read_config(&app)?);
     let sprites = vn_sprites_status(world_id.clone());
     let backgrounds_status = queue::background_snapshot(&world_id);
-    let failed = sprites.iter().filter(|slot| slot.state == "failed").count()
-        + backgrounds_status
-            .iter()
-            .filter(|slot| slot.state == "failed")
-            .count();
+    let reasons: Vec<Option<&str>> = sprites
+        .iter()
+        .filter(|slot| slot.state == "failed")
+        .map(|slot| slot.reason.as_deref())
+        .chain(
+            backgrounds_status
+                .iter()
+                .filter(|slot| slot.state == "failed")
+                .map(|slot| slot.reason.as_deref()),
+        )
+        .collect();
+    let refused = reasons
+        .iter()
+        .filter(|reason| reason.is_some_and(generated_image::is_refused))
+        .count();
+    let failed = reasons.len() - refused;
     let pending = sprites.len() + backgrounds_status.len();
     let art = data::vn::art_flow(&root, &world_id).map_err(|e| e.to_string())?;
     let pause = vn_sprites::pause::for_art(source, art.started);
@@ -449,6 +462,7 @@ pub(crate) fn vn_art_status(app: tauri::AppHandle, world_id: String) -> Result<A
         pause,
         pending,
         failed,
+        refused,
         ready,
         total: characters.len(),
         backgrounds,
@@ -473,21 +487,43 @@ pub(crate) fn vn_art_start(app: tauri::AppHandle, world_id: String) -> Result<()
     Ok(())
 }
 
+/// 重排這桌失敗的圖；`without_style`＝被模型拒絕的定稿與背景這一次不帶玩家畫風（不改存檔）
 #[tauri::command]
-pub(crate) async fn vn_art_retry(app: tauri::AppHandle, world_id: String) -> Result<(), String> {
+pub(crate) async fn vn_art_retry(
+    app: tauri::AppHandle,
+    world_id: String,
+    without_style: Option<bool>,
+) -> Result<(), String> {
     data::vn::refuse_if_replay(&data_root(&app)?, &world_id)?;
     let source = vn_sprites::sprite_source(&vn_sprites::read_config(&app)?);
     {
         let _gate = vn_sprites::source_gate().lock().await;
         vn_sprites::pause::clear(source);
     }
-    vn_sprites::prepare::retry_world(&world_id);
-    queue::retry_world(&app, &world_id);
+    let without_style = without_style == Some(true);
+    vn_sprites::prepare::retry_world(&world_id, without_style);
+    queue::retry_world(&app, &world_id, without_style);
     vn_sprites::prepare::start(&app, &world_id, &[])?;
     vn_sprites_fill(app.clone(), world_id.clone(), None)?;
     super::vn_backgrounds::vn_backgrounds_fill(app.clone(), world_id, None)?;
     vn_sprites::pause::resume(&app);
     Ok(())
+}
+
+/// 存這桌的畫風（美術面板、精靈 ③）：清洗後寫入，回實際存下的值。不觸發任何重生或重試
+#[tauri::command]
+pub(crate) fn vn_art_style_set(
+    app: tauri::AppHandle,
+    world_id: String,
+    style: data::vn::PlayerStyle,
+) -> Result<data::vn::PlayerStyle, String> {
+    let root = data_root(&app)?;
+    data::vn::refuse_if_replay(&root, &world_id)?;
+    let _permit = data::world_write_permit(&world_id)?;
+    data::state_commit::with_commit(&root, &world_id, |tx| {
+        data::vn::set_player_style(tx, &style)
+    })
+    .map_err(|e| e.to_string())
 }
 
 /// 唯讀顯示：只有各角色缺的表情數一致，才顯示每位約幾張。

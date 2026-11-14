@@ -3,6 +3,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { t } from "../../../i18n";
+import { isImageRefused } from "../../../shared/ui/ai-error";
 import type { SpriteSlotStatus, SpriteView } from "../../../shared/contracts/backend-contracts";
 import type { CharacterMeta } from "../../characters/card-model";
 import { FACES, faceKeys, statusKey } from "../SpriteExpressionRow";
@@ -117,7 +118,7 @@ export function SpriteGallery({
                       : base?.state === "running"
                         ? "vnGalleryBaseRunning"
                         : base?.state === "failed"
-                          ? "vnGalleryBaseFailed"
+                          ? isImageRefused(base.reason) ? "vnArtRefusedShort" : "vnGalleryBaseFailed"
                           : "vnGalleryNoBase",
                   )}
                 </span>

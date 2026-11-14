@@ -15,6 +15,13 @@ const MAX_DOWNLOAD_BYTES: usize = 32 * 1024 * 1024;
 const UNSUPPORTED: &str = "AI_IMAGE_UNSUPPORTED_FORMAT";
 const DECODE_FAILED: &str = "AI_IMAGE_DECODE_FAILED";
 const DOWNLOAD_FAILED: &str = "AI_IMAGE_DOWNLOAD_FAILED";
+/// 生圖被模型拒絕：CLI 暗號、agy 送出前過濾、回覆裡的拒絕措辭都歸成這個碼（plans/vn-player-art-style.md §3）。
+/// 前端只認這個開頭；後面可接模型原話
+pub(crate) const IMAGE_REFUSED: &str = "AI_IMAGE_REFUSED";
+
+pub(crate) fn is_refused(error: &str) -> bool {
+    error.starts_with(IMAGE_REFUSED)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Format {

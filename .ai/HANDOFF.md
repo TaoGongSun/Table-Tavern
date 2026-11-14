@@ -12,6 +12,7 @@
 - [card-mvu-shim](handoffs/card-mvu-shim.md) — 卡片介面沙盒墊 MVU 讀寫變數：全部已合併 main，剩實測佇列梯 1 項目（含 iframe 內按鈕實際互動）
 
 ## 等實機驗收（順序見[實測佇列](reference/verification-queue.md)）
+- [vn-player-art-style](handoffs/vn-player-art-style.md) — VN 立繪與背景可填「這張桌的畫風」、生圖被模型拒絕時明確顯示並給三個選擇、不自動重試：已合 main（2026-11-14）、Sol 方案審 1 輪＋驗收 2 輪、UX 由主線審、截圖主線親看；等作者實機
 - [sprite-matting-defringe](handoffs/sprite-matting-defringe.md) — 灰底來源的立繪去背後還原邊緣顏色，深色背景上髮梢不再有淺邊：已合 main（2026-11-14）、Sol 驗收 1 輪 PASS、對照圖主線親看；等作者實機
 - [grok-sprite-image-retest](handoffs/grok-sprite-image-retest.md) — Grok 加入 VN 立繪來源（灰底＋內建去背＋裁頭改表情）、表情對齊改成小位移自動補正：已合 main（2026-11-14）、Sol 方案審與驗收各 1 輪無必改、截圖主線親看；等作者實機（Grok 訂閱 11/20 到期前）
 - [ttrpg-builtin-books](handoffs/ttrpg-builtin-books.md) — 內建規則書補到五本（加 Dungeon World、Cairn、BRP、PF2 Remaster）、一桌一套可一鍵換、選書清單預設收合：已合 main（2026-11-14）、Sol 驗收 2 輪、Fable 常識審由主線兼、截圖主線親看；等作者實機

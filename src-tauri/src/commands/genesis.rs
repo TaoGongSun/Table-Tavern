@@ -149,6 +149,7 @@ pub(crate) async fn generate_table_expand(
     table_kind: data::TableKind,
     preferences: Option<Preferences>,
     spoiler_lock: Option<bool>,
+    art_style: Option<data::vn::PlayerStyle>,
     room: Option<RoomGenesis>,
 ) -> Result<ExpandOutcome, String> {
     crate::data::refuse_if_updating()?;
@@ -187,6 +188,7 @@ pub(crate) async fn generate_table_expand(
     let setup = preferences.map(|preferences| genesis::VnSetup {
         preferences,
         spoiler_lock: spoiler_lock.unwrap_or(true),
+        style: art_style.unwrap_or_default(),
     });
     let world_id = genesis::parse_expand(&raw)
         .map(|expanded| {

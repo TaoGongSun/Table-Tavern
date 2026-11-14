@@ -7,7 +7,7 @@ import { confirm } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { t } from "../../../i18n";
-import type { VnSetupStage } from "../../../shared/contracts/backend-contracts";
+import type { PlayerStyle, VnSetupStage } from "../../../shared/contracts/backend-contracts";
 import { Dialog, SwapLabel } from "../../../shared/ui/Dialog";
 import { GenesisError, OutlinePreview } from "../../lobby/OutlinePreview";
 import { useTableGenesis } from "../../lobby/useTableGenesis";
@@ -65,6 +65,8 @@ export function VnWizard({
   const autoRef = useRef(false);
   autoRef.current = auto;
   const [draft, setDraft] = useState<PreferenceDraft>(EMPTY_DRAFT);
+  // ① 的畫風：還沒有桌，留在精靈裡，建桌時一起寫進去
+  const [artStyle, setArtStyle] = useState<PlayerStyle>({ style: "", avoid: "" });
   const [spoilerLock, setSpoilerLock] = useState(start.spoilerLock ?? true);
   const [worldId, setWorldId] = useState(start.worldId);
   const [step, setStep] = useState<Step>(start.worldId === null ? "idea" : (start.step ?? "story"));
@@ -126,6 +128,7 @@ export function VnWizard({
     const id = await genesis.createTable(labels, {
       preferences: toPreferences(draft, genesis.outline?.player?.tagline ?? ""),
       spoilerLock,
+      artStyle,
     });
     if (id === null) return;
     setWorldId(id);
@@ -149,6 +152,7 @@ export function VnWizard({
     const id = await genesisRef.current.createTable(labels, {
       preferences: toPreferences(draft, genesisRef.current.outline?.player?.tagline ?? ""),
       spoilerLock,
+      artStyle,
     });
     if (id === null) {
       setAuto(false);
@@ -294,6 +298,8 @@ export function VnWizard({
           genesis={genesis}
           draft={draft}
           setDraft={setDraft}
+          artStyle={artStyle}
+          setArtStyle={setArtStyle}
           onGenerate={() => void generate()}
           onStart={() => void startAuto()}
           spoilerLock={spoilerLock}

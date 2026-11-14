@@ -1,0 +1,15 @@
+/* 畫風輸入框（plans/vn-player-art-style.md §4）：沒填只佔一行，「不想出現的東西」收合在下面 */
+.vn-art-style { display: flex; flex-direction: column; gap: 0.3rem; width: 100%; margin-block: 0.3rem 0.8rem; }
+.vn-art-style-field { display: flex; flex-direction: column; gap: 0.25rem; }
+.vn-art-style textarea { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; line-height: 1.4; }
+.vn-art-style details { font-size: 0.9em; }
+.vn-art-style summary { cursor: pointer; color: var(--ink-3); width: fit-content; }
+.vn-art-style details[open] summary { margin-bottom: 0.25rem; }
+.vn-art-style p { margin: 0; }
+.vn-art-refused { display: flex; flex-direction: column; gap: 0.4rem; }
+.vn-art-refused p { margin: 0; }
+.vn-art-refused-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.vn-art-style details.vn-art-style-fold { font-size: inherit; }
+.vn-art-style-fold > summary { color: inherit; }
+.vn-art-style-fold[open] > summary { margin-bottom: 0.4rem; }
+.vn-art-style-fold > summary { font-size: 0.9em; }

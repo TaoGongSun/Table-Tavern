@@ -36,7 +36,12 @@ const IMAGE_CODES = [
   [/^(?:Error:\s*)?AI_IMAGE_UNSUPPORTED_FORMAT:/, "errImageUnsupportedFormat"],
   [/^(?:Error:\s*)?AI_IMAGE_DECODE_FAILED:/, "errImageDecodeFailed"],
   [/^(?:Error:\s*)?AI_IMAGE_DOWNLOAD_FAILED:/, "errImageDownloadFailed"],
+  // 生圖被模型拒絕：後端已把暗號、agy 過濾、拒絕措辭歸成這個碼（只認開頭，ECONNREFUSED 不算）
+  [/^(?:Error:\s*)?(?:AI_CALL_FAILED:\s*)?AI_IMAGE_REFUSED\b/, "errRefused"],
 ] as const;
+
+/** 生圖被模型拒絕（VN 美術用專屬那句） */
+export const isImageRefused = (raw: unknown) => IMAGE_CODES[IMAGE_CODES.length - 1][0].test(String(raw ?? ""));
 
 // 話送出去了、模型沒能回話，而且沒有更精確的碼（連不上、CLI 中途死掉…）。由 lib.rs 的
 // stream_via_transport 掛在真正的呼叫結果上；讀卡、寫逐字稿、找不到 CLI 都不帶這個碼。
@@ -122,10 +127,8 @@ export function explainAiError(
   // 需要更新 CLI 的錯誤（後端分類過的結構化碼）排在所有「往原文找字樣」的判斷之前：
   // 訊息本身已說清楚下一步（旁邊有更新鈕），原文剛好帶到限流、登入字樣也不再蓋一句「重新登入」「再試一次」
   if (backendChain(raw).some((msg) => NEEDS_CLI_UPDATE.has(msg.code))) return null;
-  // REFUSED／NO_IMAGE 是生圖 prompt 跟 CLI 約好的暗號：不肯生這一張（內容規範）
-  // 與根本生不出圖（多半是生圖額度或方案），玩家的下一步不同。這兩個是模型回話裡的
-  // 暗號、不一定在開頭，只能用 includes——所以更要排在 HTTP 碼後面
-  if (raw.includes("REFUSED")) return "errRefused";
+  // NO_IMAGE 是生圖 prompt 跟 CLI 約好的暗號：根本生不出圖（多半是生圖額度或方案）。不肯生（拒絕）
+  // 由後端換成 AI_IMAGE_REFUSED 開頭，見 IMAGE_CODES。暗號不一定在開頭，只能用 includes——所以排在 HTTP 碼後面
   if (raw.includes("NO_IMAGE")) return "errNoImage";
   if (QUOTA_ERROR.test(raw)) return transport === "api" ? "errQuotaApi" : "errQuota";
   // 缺 OpenRouter key 是設定問題，跟供應商回的認證失敗走同一條路（改碼前的中文句靠

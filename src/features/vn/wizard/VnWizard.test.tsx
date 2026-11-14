@@ -242,6 +242,12 @@ it("starts straight through to the title once the script is already there", asyn
   await mount({ worldId: null }, onFinish);
   expect(button(t("vnStartNow")).classList.contains("btn-primary")).toBe(true);
   expect(button(t("vnSeeOutline")).className).toBe("btn");
+  // ① 填的畫風隨建桌一起送（建桌之後才有生圖，第一張就吃得到）
+  const style = document.querySelector<HTMLTextAreaElement>(".vn-art-style textarea")!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(style, "像素風");
+    style.dispatchEvent(new Event("input", { bubbles: true }));
+  });
   await act(async () => button(t("vnStartNow")).click());
   for (let i = 0; i < 6; i += 1) await settle();
   const names = state.calls.map(([name]) => name);
@@ -252,6 +258,8 @@ it("starts straight through to the title once the script is already there", asyn
   expect(expandAt).toBeGreaterThan(outlineAt);
   expect(backdropAt).toBeGreaterThan(expandAt);
   expect(state.calls[expandAt][1].preferences).toMatchObject({ tagline: "新人" });
+  expect(state.calls[expandAt][1].artStyle).toEqual({ style: "像素風", avoid: "" });
+  expect(names).not.toContain("vn_art_style_set");
   expect(state.calls[backdropAt][1]).toMatchObject({ worldId: "W" });
   expect(called("vn_setup_set").some(([, args]) => args.stage === null)).toBe(true);
   expect(onFinish).toHaveBeenCalledWith("W");

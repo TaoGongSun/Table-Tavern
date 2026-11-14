@@ -1,7 +1,7 @@
 //! CLI 生圖的取圖層（plans/vn-mode-pkg7.md §4）：每個工作一個子工作目錄；圖先從各家自己的落點讀
 //! （codex `generated_images/<thread>/`、agy `brain/<對話>/`），找不到才退回回覆裡的路徑，且只收
-//! 落在本次目錄內的圖——並行中的別的工作的圖不會被錯抓。NO_IMAGE／REFUSED 只在沒圖時採信。
-use super::GeneratedImage;
+//! 落在本次目錄內的圖——並行中的別的工作的圖不會被錯抓。NO_IMAGE／REFUSED（換成 AI_IMAGE_REFUSED）只在沒圖時採信。
+use super::{GeneratedImage, IMAGE_REFUSED};
 use crate::cli::home_cleanup::{self, is_uuid, real_dir, remove_entry};
 use crate::transport::dispatch::{cli_workspace, grok_home_dir, stream_image_via_transport};
 use crate::ui_msg::UiMsg;
@@ -124,7 +124,11 @@ pub(crate) async fn run_cli_image(
                     let _ = home_cleanup::remove_conversation(&homes.agy, &id);
                 }
             }
-            Err(error)
+            // agy 送出前的內容過濾＝拒絕
+            match error == crate::cli::AGY_REFUSAL {
+                true => Err(format!("{IMAGE_REFUSED}: {error}")),
+                false => Err(error),
+            }
         }
     }
 }
@@ -327,18 +331,45 @@ fn reply_image(
         })
 }
 
-/// 沒圖時的錯誤：暗號換成前端認得的碼，都沒對上時附最後一句原話（模型不照暗號時拒絕理由多半在那）
+/// 沒圖時的錯誤：暗號換成前端認得的碼。沒照暗號、但整段回覆讀得出是拒絕（agy 實測會用一段話拒絕），
+/// 也算拒絕並附最後一句原話；都沒對上時附最後一句原話
 fn missing_reason(reply: &str) -> String {
-    if reply.contains("REFUSED") {
-        "REFUSED".to_owned()
+    let tail = last_sentence(reply);
+    // 暗號要是獨立的一個詞：回覆裡轉述 ECONNREFUSED 這類連線錯誤不算拒絕
+    let coded = |code: &str| {
+        reply
+            .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+            .any(|word| word == code)
+    };
+    if coded("REFUSED") {
+        IMAGE_REFUSED.to_owned()
     } else if reply.contains("NO_IMAGE") {
         "NO_IMAGE".to_owned()
+    } else if declines(reply) {
+        format!("{IMAGE_REFUSED}: {}", tail.unwrap_or_default())
     } else {
-        match last_sentence(reply) {
+        match tail {
             Some(tail) => UiMsg::ImageMissingInReplyTail { tail }.into(),
             None => UiMsg::ImageMissingInReply.into(),
         }
     }
+}
+
+/// 回覆裡的英文拒絕措辭（截斷前的整段比對）。只是保底：誤判時玩家看到「被拒絕」而不是「沒圖」
+fn declines(reply: &str) -> bool {
+    const PHRASES: [&str; 9] = [
+        "cannot fulfill",
+        "can't fulfill",
+        "cannot generate",
+        "can't generate",
+        "unable to generate",
+        "won't generate",
+        "content policy",
+        "safety guidelines",
+        "safety policy",
+    ];
+    let lowered = reply.to_lowercase();
+    PHRASES.iter().any(|phrase| lowered.contains(phrase))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

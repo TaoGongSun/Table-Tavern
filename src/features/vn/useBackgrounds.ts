@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ArtStatus, Backdrop, BackgroundStatus, BackgroundView } from "../../shared/contracts/backend-contracts";
+import { flushArtStyle } from "./art-flow/art-style-save";
 
 export const BACKGROUND_STATUS_EVENT = "vn-background-status";
 
@@ -88,8 +89,8 @@ export function useBackgrounds(worldId: string) {
   );
 
   /** status＝各鍵（slug－時段）的佇列狀態，美術一覽逐格看 */
-  const retry = useCallback((backdrop: Pick<Backdrop, "slug" | "period">) => pause
+  const retry = useCallback((backdrop: Pick<Backdrop, "slug" | "period">) => flushArtStyle(worldId).then(() => pause
     ? invoke("vn_art_retry", { worldId })
-    : invoke("vn_background_regenerate", { worldId, slug: backdrop.slug, period: backdrop.period }), [worldId, pause]);
+    : invoke("vn_background_regenerate", { worldId, slug: backdrop.slug, period: backdrop.period })), [worldId, pause]);
   return { images, status, statusOf, load, pause, retry };
 }

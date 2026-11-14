@@ -400,6 +400,7 @@ fn reference_searches_the_place_periods() {
 fn background_prompt_uses_card_art() {
     use crate::data::vn_art::CardArt;
     use crate::transport::vn_background_prompts::{background_prompt, BackgroundReference};
+    use crate::transport::vn_sprite_prompts::ArtStyle;
     let art = CardArt {
         style: "rough watercolor".to_owned(),
         background_rules: "few props".to_owned(),
@@ -414,7 +415,7 @@ fn background_prompt_uses_card_art() {
         "crisis",
         "",
         BackgroundReference::CoverStyle,
-        Some(&art),
+        ArtStyle::of(Some(&art), None),
     );
     for part in [
         "cave prompt",
@@ -427,10 +428,32 @@ fn background_prompt_uses_card_art() {
         assert!(prompt.contains(part), "{part}");
     }
     assert!(!prompt.contains("Clean anime"));
-    let plain = background_prompt("港口", None, "dusk", "", BackgroundReference::None, None);
+    let plain = background_prompt(
+        "港口",
+        None,
+        "dusk",
+        "",
+        BackgroundReference::None,
+        ArtStyle::default(),
+    );
     assert!(
         plain.contains("Clean anime") && plain.contains("sunset") && !plain.contains("card author")
     );
+    // 玩家畫風取代卡作者畫風與避免項，卡作者的背景規則照留
+    let player = crate::data::vn::ArtFlow {
+        style: "pixel art".to_owned(),
+        ..Default::default()
+    };
+    let styled = background_prompt(
+        "港口",
+        None,
+        "dusk",
+        "",
+        BackgroundReference::None,
+        ArtStyle::of(Some(&art), Some(&player)),
+    );
+    assert!(styled.contains("pixel art") && styled.contains("few props"));
+    assert!(!styled.contains("rough watercolor") && !styled.contains("3D render"));
 }
 
 /// 上傳的鍵：slug 要合格、時段要在該地點的清單內（卡自訂時段照卡，自由地點固定四時段）
@@ -562,4 +585,14 @@ fn gallery_targets_follow_slug_not_name() {
         "燈塔頂"
     );
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// 被模型拒絕的背景不自動重試；一般失敗照舊重試一次
+#[test]
+fn refused_background_is_not_retried() {
+    assert!(!super::retries("AI_IMAGE_REFUSED"));
+    assert!(!super::retries(
+        "AI_IMAGE_REFUSED: I cannot fulfill this request."
+    ));
+    assert!(super::retries("AI_CALL_FAILED: timeout"));
 }

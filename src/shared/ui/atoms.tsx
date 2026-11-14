@@ -13,7 +13,7 @@ import { CliUpdateAction } from "./CliUpdateAction";
 export function AiErrorText({ text, transport }: { text: string; transport?: string }) {
   const key = explainAiError(text, transport);
   const shown = redactAiErrorDetail(backendText(text));
-  if (key && /^(?:Error:\s*)?(?:AI_CALL_FAILED:\s*)?(?:AI_IMAGE_(?:QUOTA:|PAUSED)|NO_IMAGE|REFUSED|AI_CONTENT_FILTERED: agy)/.test(text)) return <>{t(key)}</>;
+  if (key && /^(?:Error:\s*)?(?:AI_CALL_FAILED:\s*)?(?:AI_IMAGE_(?:QUOTA:|PAUSED|REFUSED)|NO_IMAGE|AI_CONTENT_FILTERED: agy)/.test(text)) return <>{t(key)}</>;
   const offer = cliUpdateOffer(text, transport);
   const update = offer && (
     <>

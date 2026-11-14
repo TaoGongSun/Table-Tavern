@@ -58,7 +58,7 @@ export function TitleScreen({
     <div className="vn-title-screen" role="dialog" aria-label={tableName}>
       {image && <img className="vn-title-art" src={image} alt="" />}
       <div className="vn-title-body">
-        {!replay && <ArtFlowNotice worldId={worldId} compact />}
+        {!replay && <ArtFlowNotice worldId={worldId} compact onOpenGallery={onGallery} />}
         <h1 className="vn-title-name">{tableName}</h1>
         {tagline && <p className="vn-title-tagline">{tagline}</p>}
         {progress !== "loading" && (

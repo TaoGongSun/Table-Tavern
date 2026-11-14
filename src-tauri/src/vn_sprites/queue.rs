@@ -30,12 +30,14 @@ pub(crate) enum BgMode {
     Dedicated,
 }
 
-/// 背景工作：身分＝（桌、slug、時段）；地點文字與種類不算身分。基底鍵的時段固定是清單第一項，所以基底按地點去重
+/// 背景工作：身分＝（桌、slug、時段）；地點文字、種類與 `plain` 不算身分。基底鍵的時段固定是清單第一項，所以基底按地點去重
 #[derive(Clone, Debug)]
 pub(crate) struct BgSlot {
     pub world: String,
     pub backdrop: Backdrop,
     pub mode: BgMode,
+    /// 「這次不帶我的畫風重試」排回來的：不帶玩家畫風；不算身分
+    pub plain: bool,
 }
 
 impl BgSlot {
@@ -44,6 +46,7 @@ impl BgSlot {
             world: world.to_owned(),
             backdrop,
             mode,
+            plain: false,
         }
     }
 
@@ -473,27 +476,40 @@ fn park_if_paused(job: &Job, error: &str) -> bool {
     true
 }
 
-pub(crate) fn retry_world(app: &tauri::AppHandle, world: &str) {
-    {
-        let mut held = queue();
-        let failed: Vec<_> = held
+/// 這桌失敗的工作重排；`without_style`＝被模型拒絕的背景這次不帶玩家畫風（表情本來就不讀玩家畫風）
+pub(crate) fn retry_world(app: &tauri::AppHandle, world: &str, without_style: bool) {
+    queue().requeue_failed(world, without_style);
+    start_worker(app);
+}
+
+impl Queue {
+    fn requeue_failed(&mut self, world: &str, without_style: bool) {
+        let failed: Vec<_> = self
             .failed
-            .keys()
-            .filter(|job| match job {
+            .iter()
+            .filter(|(job, _)| match job {
                 Job::Face(s) => s.world == world,
                 Job::Background(s) => s.world == world,
             })
-            .cloned()
+            .map(|(job, reason)| (job.clone(), crate::generated_image::is_refused(reason)))
             .collect();
-        for job in failed {
-            held.failed.remove(&job);
-            if held.is_new(&job) {
-                held.push(job);
+        for (job, refused) in failed {
+            self.failed.remove(&job);
+            let job = match job {
+                // 每次重排都重新決定：上一次「不帶畫風」的旗標不沿用到之後的一般重試
+                Job::Background(mut slot) => {
+                    slot.plain = without_style && refused;
+                    Job::Background(slot)
+                }
+                job => job,
+            };
+            if self.is_new(&job) {
+                self.push(job);
             }
         }
     }
-    start_worker(app);
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -581,5 +597,49 @@ mod tests {
         assert!(queue.is_new(&bg("碼頭", false)));
         queue.failed.insert(bg("碼頭", false), "x".to_owned());
         assert!(!queue.is_new(&bg("碼頭", false)));
+    }
+
+    /// 不帶畫風重試：只有被拒絕的背景帶旗標，一般失敗與表情照常；旗標不參與去重
+    #[test]
+    fn plain_retry_marks_only_refused_backgrounds() {
+        let mut queue = Queue::default();
+        queue
+            .failed
+            .insert(bg("港口", false), "AI_IMAGE_REFUSED".to_owned());
+        queue
+            .failed
+            .insert(bg("教室", false), "AI_CALL_FAILED: x".to_owned());
+        queue
+            .failed
+            .insert(face("happy"), "AI_IMAGE_REFUSED".to_owned());
+        queue.requeue_failed("w", true);
+        assert!(queue.failed.is_empty());
+        let plain: Vec<(String, bool)> = queue
+            .waiting
+            .iter()
+            .filter_map(|job| match job {
+                Job::Background(slot) => Some((slot.backdrop.location.clone(), slot.plain)),
+                Job::Face(_) => None,
+            })
+            .collect();
+        assert!(plain.contains(&("港口".to_owned(), true)));
+        assert!(plain.contains(&("教室".to_owned(), false)));
+        assert!(queue.waiting.contains(&bg("港口", false)));
+        assert!(queue.waiting.contains(&face("happy")));
+        // 不帶畫風那次又被拒：之後的一般重試要把玩家畫風帶回去
+        let mut queue = Queue::default();
+        let Job::Background(mut slot) = bg("港口", false) else {
+            unreachable!()
+        };
+        slot.plain = true;
+        queue
+            .failed
+            .insert(Job::Background(slot), "AI_IMAGE_REFUSED".to_owned());
+        queue.requeue_failed("w", false);
+        assert_eq!(queue.waiting.len(), 1);
+        assert!(queue.waiting.iter().all(|job| match job {
+            Job::Background(slot) => !slot.plain,
+            Job::Face(_) => true,
+        }));
     }
 }

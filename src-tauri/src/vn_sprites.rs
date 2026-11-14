@@ -124,32 +124,47 @@ pub(crate) fn height_scale(card: Option<&data::vn::CardOrigin>, character: &str)
     Some(f64::from(height) / f64::from(tallest))
 }
 
-/// 封面當畫風參考（卡開了 `cover_as_style_ref`、桌上有封面；API 來源不帶）
+/// 封面當畫風參考（卡開了 `cover_as_style_ref`、玩家沒填畫風、桌上有封面；API 來源不帶）
 pub(crate) fn cover_reference(
     root: &std::path::Path,
     world: &str,
-    card: Option<&data::vn::CardOrigin>,
+    art: prompts::ArtStyle,
     source: &str,
 ) -> Option<Vec<u8>> {
-    let wanted = card
-        .and_then(|card| card.art.as_ref())
-        .is_some_and(|art| art.cover_as_style_ref);
-    if !wanted || source == "api" {
+    if !art.cover_as_style_ref() || source == "api" {
         return None;
     }
     std::fs::read(data::vn::cover_path(root, world).ok()?).ok()
 }
 
-/// 生一張定稿候選：角色名＋外觀規格（沒有＝公開設定）＋卡畫風；有卡圖就當外觀參考，沒有而卡開了封面參考就以封面取畫風。回候選檔名
+/// 這桌玩家填的畫風（工作開跑時讀）；`with_style` false 或讀不到檔＝不帶
+pub(crate) fn player_art(
+    root: &std::path::Path,
+    world: &str,
+    with_style: bool,
+) -> Option<data::vn::ArtFlow> {
+    with_style
+        .then(|| data::vn::art_flow(root, world).ok())
+        .flatten()
+}
+
+/// 生一張定稿候選：角色名＋外觀規格（沒有＝公開設定）＋畫風（玩家優先、否則卡作者）；有卡圖就當外觀參考，
+/// 沒有而卡開了封面參考就以封面取畫風。`with_style` false＝這次不帶玩家畫風。回候選檔名
 pub(crate) async fn generate_candidate(
     app: &tauri::AppHandle,
     world: &str,
     character: &str,
+    with_style: bool,
 ) -> Result<String, String> {
     let root = data_root(app)?;
     let config = read_config(app)?;
     let card = data::read_character(&root, world, character).map_err(|error| error.to_string())?;
     let origin = data::vn::read_card(&root, world);
+    let flow = player_art(&root, world, with_style);
+    let style = prompts::ArtStyle::of(
+        origin.as_ref().and_then(|origin| origin.art.as_ref()),
+        flow.as_ref(),
+    );
     let appearance = origin
         .as_ref()
         .and_then(|origin| origin.cast.get(character))
@@ -160,7 +175,7 @@ pub(crate) async fn generate_candidate(
         .and_then(|path| std::fs::read(path.with_extension("png")).ok());
     let (kind, reference) = match card_art {
         Some(png) => (SpriteReference::CardArt, Some(png)),
-        None => match cover_reference(&root, world, origin.as_ref(), source) {
+        None => match cover_reference(&root, world, style, source) {
             Some(png) => (SpriteReference::CoverStyle, Some(png)),
             None => (SpriteReference::None, None),
         },
@@ -169,7 +184,7 @@ pub(crate) async fn generate_candidate(
         &card.name,
         &card.public_md,
         appearance,
-        origin.as_ref().and_then(|origin| origin.art.as_ref()),
+        style,
         kind,
         transparent(source),
     );
@@ -533,8 +548,12 @@ pub(crate) async fn generate_variant(
     let label = declared.map_or(label, |entry| entry.label.clone());
     let change = declared.map_or(label.as_str(), |entry| entry.description());
     let origin = data::vn::read_card(&root, world);
-    let card_style = origin.as_ref().and_then(|origin| origin.art.as_ref());
-    let prompt = prompts::variant_prompt(change, transparent(sprite_source(&config)), card_style);
+    let flow = player_art(&root, world, true);
+    let style = prompts::ArtStyle::of(
+        origin.as_ref().and_then(|origin| origin.art.as_ref()),
+        flow.as_ref(),
+    );
+    let prompt = prompts::variant_prompt(change, transparent(sprite_source(&config)), style);
     let epochs = start_variant(&dir, world, character, key, &label, &art)?;
     let png = generate_png(app, &config, world, &prompt, Some(&body), "2:3").await?;
     place_variant(app, world, character, epochs, label, png, true).await

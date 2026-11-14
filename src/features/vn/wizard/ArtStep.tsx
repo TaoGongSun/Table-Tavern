@@ -11,6 +11,7 @@ import { backdropKey, useBackgrounds } from "../useBackgrounds";
 import { spriteError, useSpriteSlot, type SpriteSlot } from "../useSpriteSlot";
 import { ArtFlowNotice } from "../art-flow/ArtFlowNotice";
 import "../vn-sprites.css";
+import { flushArtStyle } from "../art-flow/art-style-save";
 
 export interface ArtProgress {
   started: boolean;
@@ -141,7 +142,10 @@ export function ArtStep({
       await finalize(slot).catch((reason) => (errors[id] = spriteError(reason)));
       await slot.reload().catch(() => {});
     }
-    if (rerolling.length) await invoke("vn_sprites_prepare", { worldId, adopt: rerolling });
+    if (rerolling.length) {
+      await flushArtStyle(worldId);
+      await invoke("vn_sprites_prepare", { worldId, adopt: rerolling });
+    }
     setFailed(errors);
     return Object.keys(errors).length === 0;
   };

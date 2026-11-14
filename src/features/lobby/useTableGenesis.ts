@@ -2,7 +2,7 @@
 // 草稿活在呼叫端的元件裡：對話窗關掉只是不畫、VN 精靈換步驟不卸載，草稿都留著。
 import { invoke } from "@tauri-apps/api/core";
 import { useRef, useState } from "react";
-import type { TableKind, VnPreferences } from "../../shared/contracts/backend-contracts";
+import type { PlayerStyle, TableKind, VnPreferences } from "../../shared/contracts/backend-contracts";
 
 export interface OutlineCharacter {
   name: string;
@@ -125,7 +125,7 @@ export function useTableGenesis(tableKind: TableKind, room: RoomGenesis | null =
   /** 展開成桌；成功回新桌 id（草稿清掉），失敗或解析不出回 null（錯誤留在畫面上） */
   async function createTable(
     genreLabels: string[],
-    vn: { preferences: VnPreferences; spoilerLock: boolean } | null = null,
+    vn: { preferences: VnPreferences; spoilerLock: boolean; artStyle?: PlayerStyle } | null = null,
   ): Promise<string | null> {
     if (!outline || !canCreate) return null;
     setBusy("expand");
@@ -143,6 +143,7 @@ export function useTableGenesis(tableKind: TableKind, room: RoomGenesis | null =
         tableKind,
         preferences: vn?.preferences ?? null,
         spoilerLock: vn?.spoilerLock ?? null,
+        artStyle: vn?.artStyle ?? null,
         room: roomNow,
       });
       if (!result.worldId) {

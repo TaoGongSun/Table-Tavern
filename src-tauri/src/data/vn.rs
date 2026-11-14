@@ -55,6 +55,37 @@ pub struct VnFile {
 pub struct ArtFlow {
     pub started: bool,
     pub appeared: Vec<String>,
+    /// 玩家填的畫風與避免項（每桌、選填）：有填畫風就取代卡作者的畫風與避免項
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub style: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub avoid: String,
+}
+
+/// 玩家填的畫風（精靈 ①、美術面板）：存進 `art` 前清洗並截到與卡作者欄位相同的上限
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PlayerStyle {
+    pub style: String,
+    pub avoid: String,
+}
+
+impl PlayerStyle {
+    fn apply(&self, art: &mut ArtFlow) -> Self {
+        use super::vn_art::{clean_art_text, AVOID_CAP, STYLE_CAP};
+        art.style = clean_art_text(&self.style, STYLE_CAP).0;
+        art.avoid = clean_art_text(&self.avoid, AVOID_CAP).0;
+        PlayerStyle {
+            style: art.style.clone(),
+            avoid: art.avoid.clone(),
+        }
+    }
+}
+
+/// 美術面板存畫風：匯入來的桌可能還沒有 vn.json，先照預設建檔。回清洗後實際存下的值
+pub fn set_player_style(tx: &CommitTx<'_>, input: &PlayerStyle) -> DataResult<PlayerStyle> {
+    create_if_missing(tx, None)?;
+    edit_vn(tx, |file| input.apply(&mut file.art))
 }
 
 pub fn art_flow(root: &Path, world: &str) -> DataResult<ArtFlow> {
@@ -831,15 +862,18 @@ pub fn create_if_missing(tx: &CommitTx<'_>, spoiler_lock: Option<bool>) -> DataR
 }
 
 /// 精靈建桌時寫入：偏好、劇透鎖、設定階段從 ② 起（展開建桌與聖經之間，偏好不靠模型轉述）。
+/// 精靈 ① 填的畫風也在這一筆寫入：建桌之後才有生圖工作，第一張就吃得到。
 pub fn start_setup(
     tx: &CommitTx<'_>,
     preferences: Preferences,
     spoiler_lock: bool,
+    style: &PlayerStyle,
 ) -> DataResult<()> {
     edit_vn(tx, |file| {
         file.preferences = Some(preferences);
         file.spoiler_lock = spoiler_lock;
         file.setup = Some(SetupStage::Story);
+        style.apply(&mut file.art);
     })
 }
 

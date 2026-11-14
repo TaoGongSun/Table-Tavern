@@ -540,11 +540,19 @@ export type UnknownMarker = { type: string };
 export type EventMarker = KnownMarker | UnknownMarker;
 
 /** VN 每桌僅持久化自動生成授權與首次上台名單。 */
+/** 玩家填的這桌畫風（vn.json `art.style`／`art.avoid`；空的不寫進檔） */
+export interface PlayerStyle {
+  style: string;
+  avoid: string;
+}
+
 export interface ArtStatus {
   pause: { reset: number | null } | null;
   pending: number;
+  /** 一般失敗；被模型拒絕的另計在 refused */
   failed: number;
-  art: { started: boolean; appeared: string[] };
+  refused: number;
+  art: { started: boolean; appeared: string[]; style?: string; avoid?: string };
   source: string;
   ready: number;
   total: number;

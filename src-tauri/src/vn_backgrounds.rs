@@ -579,7 +579,7 @@ pub(crate) fn streamed(
 }
 
 /// 一張背景。基底與重生成從零生（卡開了封面參考就以封面取畫風；API 來源不帶參考圖）；
-/// 專屬時段圖以同地點既有的圖當參考改光線。卡地點用卡上的描述與尺度，卡畫風與背景規則接在提示詞後。失敗自動重試一次。
+/// 專屬時段圖以同地點既有的圖當參考改光線。卡地點用卡上的描述與尺度，畫風（玩家優先）與背景規則接在提示詞後。失敗自動重試一次（模型拒絕不重試）。
 /// 寫前重驗桌仍在、基底仍缺（重生成與專屬圖除外）。Ok(false)＝桌已不在或別人先寫好，結果丟掉
 pub(crate) async fn job(app: &tauri::AppHandle, slot: &BgSlot) -> Result<bool, String> {
     let root = data_root(app)?;
@@ -591,6 +591,11 @@ pub(crate) async fn job(app: &tauri::AppHandle, slot: &BgSlot) -> Result<bool, S
     if !library.wants(slot, &periods) {
         return Ok(true);
     }
+    let flow = vn_sprites::player_art(&root, &slot.world, !slot.plain);
+    let style = crate::transport::vn_sprite_prompts::ArtStyle::of(
+        card.as_ref().and_then(|card| card.art.as_ref()),
+        flow.as_ref(),
+    );
     let config = vn_sprites::read_config(app)?;
     let source = vn_sprites::sprite_source(&config);
     let same_place = match (source, slot.mode) {
@@ -599,7 +604,7 @@ pub(crate) async fn job(app: &tauri::AppHandle, slot: &BgSlot) -> Result<bool, S
     };
     let (kind, reference) = match same_place {
         Some(png) => (BackgroundReference::SameLocation, Some(png)),
-        None => match vn_sprites::cover_reference(&root, &slot.world, card.as_ref(), source) {
+        None => match vn_sprites::cover_reference(&root, &slot.world, style, source) {
             Some(png) => (BackgroundReference::CoverStyle, Some(png)),
             None => (BackgroundReference::None, None),
         },
@@ -615,7 +620,7 @@ pub(crate) async fn job(app: &tauri::AppHandle, slot: &BgSlot) -> Result<bool, S
         &backdrop.period,
         &setting,
         kind,
-        card.as_ref().and_then(|card| card.art.as_ref()),
+        style,
     );
     let generate = || {
         vn_sprites::generate_png(
@@ -630,7 +635,7 @@ pub(crate) async fn job(app: &tauri::AppHandle, slot: &BgSlot) -> Result<bool, S
     let png = match generate().await {
         Ok(png) => png,
         Err(error) => {
-            if vn_sprites::pause::is_pause(&error) {
+            if !retries(&error) {
                 return Err(error);
             }
             log::warn!("背景生成失敗，重試一次：{error}");
@@ -648,6 +653,11 @@ pub(crate) async fn job(app: &tauri::AppHandle, slot: &BgSlot) -> Result<bool, S
     };
     library.write(backdrop, base.as_deref(), &png)?;
     Ok(true)
+}
+
+/// 背景失敗要不要自動重試一次：額度暫停與模型拒絕不重試（拒絕再送一次只是再花一次額度）
+fn retries(error: &str) -> bool {
+    !vn_sprites::pause::is_pause(error) && !crate::generated_image::is_refused(error)
 }
 
 #[cfg(test)]

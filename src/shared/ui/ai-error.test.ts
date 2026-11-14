@@ -35,7 +35,10 @@ describe("explainAiError", () => {
   });
 
   it("既有分流不受影響", () => {
-    expect(explainAiError("REFUSED")).toBe("errRefused");
+    expect(explainAiError("AI_IMAGE_REFUSED")).toBe("errRefused");
+    expect(explainAiError("AI_IMAGE_REFUSED: I cannot fulfill this request.")).toBe("errRefused");
+    // 連線被拒不是模型拒絕
+    expect(explainAiError("AI_CALL_FAILED: connect ECONNREFUSED 127.0.0.1:443")).not.toBe("errRefused");
     expect(explainAiError("401 unauthorized")).toBe("errAuth");
   });
 
@@ -73,7 +76,7 @@ describe("explainAiError", () => {
       explainAiError('AI_HTTP_STATUS_503: status=503 body={"message":"AI_EMPTY_RESPONSE"}', "api"),
     ).toBe("errApiUpstream");
     expect(
-      explainAiError('AI_HTTP_STATUS_503: status=503 body={"message":"REFUSED"}', "api"),
+      explainAiError('AI_HTTP_STATUS_503: status=503 body={"message":"AI_IMAGE_REFUSED"}', "api"),
     ).toBe("errApiUpstream");
     expect(
       explainAiError('AI_HTTP_STATUS_403: status=403 body={"message":"AI_CONTENT_FILTERED: x"}', "api"),

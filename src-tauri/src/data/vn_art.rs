@@ -98,3 +98,20 @@ pub fn valid_art_key(key: &str) -> bool {
             .bytes()
             .all(|byte| matches!(byte, b'a'..=b'z' | b'0'..=b'9' | b'_' | b'-'))
 }
+
+/// 畫風與避免項的字數上限：卡作者欄位與玩家欄位共用
+pub const STYLE_CAP: usize = 600;
+pub const AVOID_CAP: usize = 300;
+
+/// 美術文字欄位的清洗：控制字元換空白、去頭尾空白、截到上限。回 (文字, 是否截過)
+pub fn clean_art_text(text: &str, cap: usize) -> (String, bool) {
+    let text: String = text
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect();
+    let text = text.trim();
+    match text.chars().count() <= cap {
+        true => (text.to_owned(), false),
+        false => (text.chars().take(cap).collect(), true),
+    }
+}

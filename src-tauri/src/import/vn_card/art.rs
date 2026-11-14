@@ -1,14 +1,15 @@
 //! VN 卡美術欄位的驗證正規化（plans/vn-mode-pkg9b.md §2.1）：文字剝控制字元、照上限夾斷；鍵不合格、撞名、
 //! 重複或超量的整筆丟掉。夾斷記 Clipped、丟掉記 ArtDropped（target＝欄位路徑）。
 use super::schema::{notice, Notice, NoticeKind};
-use crate::data::vn_art::{valid_art_key, Appearance, ArtEntry, CardArt, CardLocation, CastArt};
+use crate::data::vn_art::{
+    clean_art_text, valid_art_key, Appearance, ArtEntry, CardArt, CardLocation, CastArt, AVOID_CAP,
+    STYLE_CAP,
+};
 use crate::transport::VN_EXPRESSIONS;
 use serde_json::Value;
 use std::collections::HashSet;
 
-const STYLE_CAP: usize = 600;
 const BACKGROUND_RULES_CAP: usize = 800;
-const NEGATIVE_CAP: usize = 300;
 const SPEC_CAP: usize = 600;
 const NOTES_CAP: usize = 300;
 const LOCATION_PROMPT_CAP: usize = 500;
@@ -24,19 +25,14 @@ const DIRECTIVES: [&str; 2] = ["closeup", "shake"];
 
 /// 一個欄位的文字：控制字元換空白、去頭尾空白，超過上限截短並記 Clipped
 fn field(value: &Value, key: &str, cap: usize, target: &str, notices: &mut Vec<Notice>) -> String {
-    let text: String = value
-        .get(key)
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .chars()
-        .map(|c| if c.is_control() { ' ' } else { c })
-        .collect();
-    let text = text.trim();
-    if text.chars().count() <= cap {
-        return text.to_owned();
+    let (text, clipped) = clean_art_text(
+        value.get(key).and_then(Value::as_str).unwrap_or_default(),
+        cap,
+    );
+    if clipped {
+        notices.push(notice(NoticeKind::Clipped, target));
     }
-    notices.push(notice(NoticeKind::Clipped, target));
-    text.chars().take(cap).collect()
+    text
 }
 
 fn list<'a>(value: &'a Value, key: &str) -> impl Iterator<Item = (usize, &'a Value)> {
@@ -69,7 +65,7 @@ pub(super) fn card_art(
                 "art.background_rules",
                 notices,
             ),
-            negative: field(art, "negative", NEGATIVE_CAP, "art.negative", notices),
+            negative: field(art, "negative", AVOID_CAP, "art.negative", notices),
             cover_as_style_ref: art.get("cover_as_style_ref").and_then(Value::as_bool)
                 == Some(true),
         });

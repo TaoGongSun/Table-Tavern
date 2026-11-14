@@ -26,6 +26,8 @@ struct Book {
     again: HashSet<String>,
     /// 自動定稿排著、生成中或失敗的角色與原因（畫面重掛時補讀，事件可能早於監聽）
     pending: HashMap<Key, (&'static str, Option<String>)>,
+    /// 「這次不帶我的畫風重試」排回來的角色：下一次生候選不帶玩家畫風，用掉就清
+    plain: HashSet<Key>,
 }
 
 fn book() -> MutexGuard<'static, Book> {
@@ -217,9 +219,10 @@ async fn run(app: &tauri::AppHandle, world: &str) -> Result<(), String> {
             continue;
         }
         emit(app, world, &character, "running", None);
+        let with_style = !book().plain.remove(&key(world, &character));
         let file = match dir.candidates().into_iter().next() {
             Some(file) => file,
-            None => match super::generate_candidate(app, world, &character).await {
+            None => match super::generate_candidate(app, world, &character, with_style).await {
                 Ok(file) => file,
                 Err(reason) => {
                     if super::pause::is_pause(&reason) {
@@ -276,9 +279,25 @@ pub(crate) fn resume_pending(app: &tauri::AppHandle) {
         let _ = start(app, &world, &[]);
     }
 }
-pub(crate) fn retry_world(world: &str) {
-    book()
+/// 失敗的角色清掉等重排；`without_style`＝被模型拒絕的那幾位下一次不帶玩家畫風
+pub(crate) fn retry_world(world: &str, without_style: bool) {
+    let mut book = book();
+    let refused: Vec<Key> = book
         .pending
+        .iter()
+        .filter(|((owner, _), (state, reason))| {
+            owner == world
+                && *state == "failed"
+                && reason
+                    .as_deref()
+                    .is_some_and(crate::generated_image::is_refused)
+        })
+        .map(|(key, _)| key.clone())
+        .collect();
+    if without_style {
+        book.plain.extend(refused);
+    }
+    book.pending
         .retain(|(owner, _), (state, _)| owner != world || *state != "failed");
 }
 
@@ -318,5 +337,26 @@ mod tests {
         );
         drop(second);
         assert!(!is_generating(world, character));
+    }
+
+    /// 不帶畫風重試：只有被拒絕的角色進 plain，一般失敗不進；失敗記錄都清掉
+    #[test]
+    fn plain_retry_marks_only_refused_characters() {
+        let world = "prepare-plain";
+        {
+            let mut held = book();
+            held.pending.insert(
+                key(world, "a"),
+                ("failed", Some("AI_IMAGE_REFUSED".to_owned())),
+            );
+            held.pending.insert(
+                key(world, "b"),
+                ("failed", Some("AI_CALL_FAILED: x".to_owned())),
+            );
+        }
+        retry_world(world, true);
+        let held = book();
+        assert!(held.plain.contains(&key(world, "a")) && !held.plain.contains(&key(world, "b")));
+        assert!(!held.pending.keys().any(|(owner, _)| owner == world));
     }
 }

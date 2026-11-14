@@ -60,10 +60,11 @@ enum CurrentSection {
     Opening,
 }
 
-/// 精靈建 VN 桌時一起寫進桌的：① 的偏好（名字有填就建玩家卡）與 ② 的劇透鎖。
+/// 精靈建 VN 桌時一起寫進桌的：① 的偏好（名字有填就建玩家卡）、① 的畫風與 ② 的劇透鎖。
 pub struct VnSetup {
     pub preferences: Preferences,
     pub spoiler_lock: bool,
+    pub style: data::vn::PlayerStyle,
 }
 
 /// VN 偏好（plans/vn-setup-wizard.md §2 ①）換成提示詞句子：氛圍、長度、選擇、主角名。題材另走 `genre_line`。
@@ -443,7 +444,7 @@ pub fn materialize(
             data::set_player_card(root, &world_id, Some(id))?;
         }
         data::state_commit::with_commit(root, &world_id, |tx| {
-            data::vn::start_setup(tx, setup.preferences, setup.spoiler_lock)
+            data::vn::start_setup(tx, setup.preferences, setup.spoiler_lock, &setup.style)
         })?;
     }
     Ok(world_id)

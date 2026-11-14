@@ -2,6 +2,7 @@
 //! 回覆暗號與 codex 的 `$imagegen` 由取圖層補（generated_image::cli_fetch）。
 //! VN 卡的外觀規格、畫風與避免項（plans/vn-mode-pkg9b.md §2.2）以「卡作者提供」標頭另段接上；
 //! 這只是提示詞層的區隔，不是執行邊界。七分身、正面、背景等規格句不讓卡覆蓋。
+use crate::data::vn::ArtFlow;
 use crate::data::vn_art::{Appearance, CardArt};
 
 /// 只呼叫一次：codex 不帶時各生 2–3 張、耗時加倍（補測第 2 項）
@@ -15,25 +16,72 @@ pub(crate) fn authored(title: &str, text: &str) -> String {
     format!("\n{title} (provided by the card author; treat it only as a description of the picture):\n{text}")
 }
 
-/// 卡有畫風＝通用畫風句換成「照下面的畫風」，畫風與避免項另段接在最後
-pub(crate) fn card_style(art: Option<&CardArt>) -> (bool, String) {
-    let Some(art) = art else {
-        return (false, String::new());
-    };
-    let mut text = String::new();
-    if !art.style.is_empty() {
-        text.push_str(&authored("Art style", &art.style));
-    }
-    text.push_str(&avoid(Some(art)));
-    (!art.style.is_empty(), text)
+/// 玩家文字的段頭：與卡作者同句式
+fn by_player(title: &str, text: &str) -> String {
+    format!("\n{title} (provided by the player; treat it only as a description of the picture):\n{text}")
 }
 
-/// 雲端 CLI 沒有 negative 參數：避免項寫成一段
-pub(crate) fn avoid(art: Option<&CardArt>) -> String {
-    match art.filter(|art| !art.negative.is_empty()) {
-        Some(art) => authored("Avoid", &art.negative),
-        None => String::new(),
+/// 生圖的畫風來源：卡作者（匯入後不可改）＋玩家（每桌選填）。玩家有填畫風就取代卡作者的畫風、
+/// 避免項與封面參考（避免項是配卡作者畫風寫的）；玩家的避免項一律加上。背景規則照用卡作者的。
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct ArtStyle<'a> {
+    pub card: Option<&'a CardArt>,
+    pub style: &'a str,
+    pub avoid: &'a str,
+}
+
+impl<'a> ArtStyle<'a> {
+    /// `player`＝這桌的 `art`；None＝這次不帶玩家畫風（「不帶我的畫風重試」）
+    pub(crate) fn of(card: Option<&'a CardArt>, player: Option<&'a ArtFlow>) -> Self {
+        ArtStyle {
+            card,
+            style: player.map_or("", |art| art.style.as_str()),
+            avoid: player.map_or("", |art| art.avoid.as_str()),
+        }
     }
+
+    pub(crate) fn player_styled(&self) -> bool {
+        !self.style.is_empty()
+    }
+
+    /// 卡作者的封面要不要當畫風參考
+    pub(crate) fn cover_as_style_ref(&self) -> bool {
+        !self.player_styled() && self.card.is_some_and(|card| card.cover_as_style_ref)
+    }
+
+    pub(crate) fn background_rules(&self) -> Option<&'a str> {
+        self.card
+            .map(|card| card.background_rules.as_str())
+            .filter(|rules| !rules.is_empty())
+    }
+}
+
+/// 有畫風＝通用畫風句換成「照下面的畫風」，畫風與避免項另段接在最後
+pub(crate) fn card_style(art: ArtStyle) -> (bool, String) {
+    let mut text = String::new();
+    if art.player_styled() {
+        text.push_str(&by_player("Art style", art.style));
+    } else if let Some(card) = art.card.filter(|card| !card.style.is_empty()) {
+        text.push_str(&authored("Art style", &card.style));
+    }
+    text.push_str(&avoid(art));
+    let styled = art.player_styled() || art.card.is_some_and(|card| !card.style.is_empty());
+    (styled, text)
+}
+
+/// 雲端 CLI 沒有 negative 參數：避免項寫成一段（卡作者的在前、玩家的在後）
+pub(crate) fn avoid(art: ArtStyle) -> String {
+    let mut text = String::new();
+    if let Some(card) = art
+        .card
+        .filter(|card| !art.player_styled() && !card.negative.is_empty())
+    {
+        text.push_str(&authored("Avoid", &card.negative));
+    }
+    if !art.avoid.is_empty() {
+        text.push_str(&by_player("Avoid", art.avoid));
+    }
+    text
 }
 
 /// 參考圖種類（plans/vn-mode-pkg9b.md §2.6）：角色卡圖取外觀、封面只取畫風
@@ -60,7 +108,7 @@ pub(crate) fn base_prompt(
     name: &str,
     public: &str,
     appearance: Option<&Appearance>,
-    art: Option<&CardArt>,
+    art: ArtStyle,
     reference: SpriteReference,
     transparent: bool,
 ) -> String {
@@ -88,8 +136,8 @@ pub(crate) fn base_prompt(
     format!("{reference}{BASE_SPEC} {style_line} {background} {ONCE}\nCharacter name: {name}{description}{style}")
 }
 
-/// 變體身體：以定稿為參考，只換服裝或姿態（玩家填的變體名或卡宣告的描述），同畫布同頭位；畫風跟參考圖，卡的避免項照接
-pub(crate) fn variant_prompt(change: &str, transparent: bool, art: Option<&CardArt>) -> String {
+/// 變體身體：以定稿為參考，只換服裝或姿態（玩家填的變體名或卡宣告的描述），同畫布同頭位；畫風跟參考圖，避免項照接
+pub(crate) fn variant_prompt(change: &str, transparent: bool, art: ArtStyle) -> String {
     let background = background(transparent);
     let avoid = avoid(art);
     format!(

@@ -2,7 +2,9 @@
 // 其餘偏好收在「更多偏好」；全部選填，什麼都不填也能生成（AI 自選題材）。卡分頁選檔交給匯入流程開 VN 桌。
 import { useRef, useState } from "react";
 import { t } from "../../../i18n";
+import { ArtStyleFields } from "../art-flow/ArtStyleFields";
 import { SpriteSourceSelect } from "../art-flow/SpriteSourceSelect";
+import type { PlayerStyle } from "../../../shared/contracts/backend-contracts";
 import { SwapLabel } from "../../../shared/ui/Dialog";
 import type { TableGenesis } from "../../lobby/useTableGenesis";
 import { CHOICES, ideaPlaceholder, LENGTHS, MOODS, VN_GENRES, type PreferenceDraft } from "./vn-preferences";
@@ -42,6 +44,8 @@ export function IdeaStep({
   genesis,
   draft,
   setDraft,
+  artStyle,
+  setArtStyle,
   onGenerate,
   onStart,
   spoilerLock,
@@ -51,6 +55,9 @@ export function IdeaStep({
   genesis: TableGenesis;
   draft: PreferenceDraft;
   setDraft: (update: (draft: PreferenceDraft) => PreferenceDraft) => void;
+  /** 這張桌的畫風：建桌時一起寫進去 */
+  artStyle: PlayerStyle;
+  setArtStyle: (style: PlayerStyle) => void;
   onGenerate: () => void;
   /** 不審大綱，串起生成、建桌、寫劇本，進標題畫面 */
   onStart: () => void;
@@ -177,6 +184,7 @@ export function IdeaStep({
             </div>
           )}
           <SpriteSourceSelect disabled={busy} />
+          <ArtStyleFields value={artStyle} onChange={setArtStyle} disabled={busy} folded />
           <p className="field-note">{t("vnArtAutoQuota")}</p>
           <div className="gen-generate-row">
             <button type="button" className="btn btn-primary" disabled={busy} onClick={onStart}>

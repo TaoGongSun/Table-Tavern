@@ -350,7 +350,7 @@ describe("AI 連線面代碼", () => {
   });
 
   it("生圖暗號只剩字樣本身，分流不變", () => {
-    expect(explainAiError("AI_CALL_FAILED: REFUSED", "codex")).toBe("errRefused");
+    expect(explainAiError("AI_CALL_FAILED: AI_IMAGE_REFUSED", "codex")).toBe("errRefused");
     expect(explainAiError("NO_IMAGE", "codex")).toBe("errNoImage");
   });
 

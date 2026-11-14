@@ -7,6 +7,7 @@ import type { SpriteSlotStatus, SpriteView } from "../../shared/contracts/backen
 import { ExpressionRow, FaceBoxEditor, FileInput } from "./SpriteExpressionRow";
 import { SpriteFigure, spriteLayers } from "./SpriteFigure";
 import { fileBytes, type SpriteSlot } from "./useSpriteSlot";
+import { flushArtStyle } from "./art-flow/art-style-save";
 
 export function SpriteVariants({
   sprite,
@@ -26,7 +27,10 @@ export function SpriteVariants({
   const ids = { worldId: slot.worldId, characterId: slot.characterId };
   const disabled = slot.busy !== null;
   const generate = (key: string | null, name: string) =>
-    slot.run("generate", () => invoke("vn_sprite_variant_generate", { ...ids, key, label: name }));
+    slot.run("generate", async () => {
+      await flushArtStyle(slot.worldId);
+      await invoke("vn_sprite_variant_generate", { ...ids, key, label: name });
+    });
   const upload = (key: string | null, name: string, file: File) =>
     slot.run("upload", async () =>
       invoke("vn_sprite_variant_upload", { ...ids, key, label: name, data: await fileBytes(file) }),
