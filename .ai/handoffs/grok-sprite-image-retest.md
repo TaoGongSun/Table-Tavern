@@ -13,4 +13,5 @@
 ## 下一步
 
 - 作者實機：用 Grok 當來源開一桌 VN，看定稿、四表情與換裝（排在[實測佇列](../reference/verification-queue.md)）。Grok 訂閱 2026-11-20 到期，之後這條來源無法再回歸測試。
-- 沒實測的範圍：人臉／動漫臉的表情改圖、Windows、背景生圖。
+- 人類角色已補測通過（兩個男性角色 9 張，見方案檔）。沒實測的範圍：有卡圖的變體、Windows、背景生圖。
+- 實測挖到的去背淺邊另立 [sprite-matting-defringe](../tasks/sprite-matting-defringe.md)。
