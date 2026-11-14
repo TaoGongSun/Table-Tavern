@@ -112,6 +112,8 @@ interface PlayViewProps {
   /** 容量提醒列上的換幕鈕：與工具列同一動作、同停用條件 */
   onAdvanceScene?: () => void;
   canAdvanceScene?: boolean;
+  /** 跳過開場白、還沒開始玩的空桌：對話區露「選擇開場白」重開匯入時那個面板；undefined＝不適用 */
+  onPickOpening?: () => void;
 }
 
 export function PlayView({
@@ -161,6 +163,7 @@ export function PlayView({
   sceneBudget = null,
   onAdvanceScene,
   canAdvanceScene = false,
+  onPickOpening,
 }: PlayViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLElement>(null);
@@ -313,6 +316,12 @@ export function PlayView({
         {/* 故事的補救動作集中在清單底部：收回、復原、換幕兩條補救路各依既有條件出現。
             容器本身清單空時也留著，補救鈕一出現不會把版面頂動 */}
         <div className="story-actions">
+          {/* 空桌找開場白就看這裡：放在幕書籤正下方、故事會開始的位置 */}
+          {!locked && onPickOpening && events.length === 0 && (
+            <button type="button" className="btn btn-sm" disabled={frozen} onClick={() => onPickOpening()}>
+              {t("openingChoiceTitle")}
+            </button>
+          )}
           {/* 收回上一句：清單空就沒東西可收；生成中或唯讀時停用但留位，不跳版 */}
           {events.length > 0 && (
             <button

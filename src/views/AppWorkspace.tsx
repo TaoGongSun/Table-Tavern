@@ -8,6 +8,7 @@ import type { CardInterfaceController } from "../features/card-interface/useCard
 import type { CharacterController } from "../features/characters/useCharacterController";
 import type { ChatController } from "../features/play/chat/useChatController";
 import { canUndoLastReceipt, type ImportController } from "../features/import/useImportController";
+import { useLaterOpening } from "../features/import/useLaterOpening";
 import { advanceThenReopen, type SceneActions } from "../features/play/scene/useSceneActions";
 import type { TableStateController } from "../features/table-state/useTableStateController";
 import {
@@ -262,6 +263,8 @@ export function AppWorkspace({
   // 容量提醒列的換幕鈕與工具列同一個停用條件
   const canAdvanceScene = gate === "play" && !(chat.busy || tableOpBusy) && chat.events.length > 0;
   const generatingMeta = chat.generating !== null ? characters.metaOf(chat.generating.id) : undefined;
+  // 跳過開場白的空桌回頭選；生成中不問（回合跑完再問一次，失敗的旁白不算開始玩）
+  const laterOpening = useLaterOpening(table, chat.events.length === 0 && !chat.busy, imports.receipts);
 
   return (
     <>
@@ -502,6 +505,7 @@ export function AppWorkspace({
                   sceneBudget={sceneBudget}
                   onAdvanceScene={() => void advanceScene()}
                   canAdvanceScene={canAdvanceScene}
+                  onPickOpening={laterOpening && gate === "play" ? () => void imports.offerTableOpenings() : undefined}
                 />
                 )
               }

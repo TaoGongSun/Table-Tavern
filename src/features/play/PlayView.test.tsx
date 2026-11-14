@@ -223,3 +223,27 @@ describe("PlayView 換幕容量", () => {
     full.host.remove();
   });
 });
+
+describe("PlayView 空桌選擇開場白", () => {
+  function render(events: TranscriptEvent[], onPickOpening?: () => void, busy = false) {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const base = view(events);
+    act(() => root.render(<PlayView {...base.props} busy={busy} onPickOpening={onPickOpening} />));
+    const entry = Array.from(host.querySelectorAll("button")).find(
+      (node) => node.textContent === t("openingChoiceTitle"),
+    );
+    act(() => root.unmount());
+    host.remove();
+    return entry;
+  }
+
+  it("只在空桌且可選時出現，生成中停用", () => {
+    const pick = vi.fn();
+    expect(render([], pick)?.hasAttribute("disabled")).toBe(false);
+    expect(render([], pick, true)?.hasAttribute("disabled")).toBe(true);
+    expect(render([])).toBeUndefined();
+    expect(render(story("r1"), pick)).toBeUndefined();
+  });
+});

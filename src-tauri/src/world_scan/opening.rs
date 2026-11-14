@@ -92,6 +92,27 @@ pub fn original_opening(
     Some((name, raw))
 }
 
+/// 跳過開場白後回頭選：還沒開始玩的一般聊天桌、第 0 幕還是空的，取最近一筆帶開場白的匯入原檔
+/// （原檔識別, 卡名, 開場白原文）。原檔不完整、已遊玩、VN／重播桌回 None。
+pub fn later_openings(root: &Path, world_id: &str) -> Option<(String, String, Vec<String>)> {
+    let state = data::read_state(root, world_id).ok()?;
+    if state.table_kind != data::TableKind::Chat
+        || state.replay
+        || crate::refactor::played(root, world_id, &state).unwrap_or(true)
+        || !data::read_transcript(root, world_id, 0).ok()?.is_empty()
+    {
+        return None;
+    }
+    crate::receipts::import_replays(root, world_id)
+        .ok()??
+        .into_iter()
+        .rev()
+        .find_map(|replay| {
+            let (name, openings) = crate::import::card_openings(&replay.bytes)?;
+            (!openings.is_empty()).then_some((replay.source.file, name, openings))
+        })
+}
+
 /// 求值之前：上一回合代落、再結算這一幕的世界書落地。崩潰留下的寫入中落地要先撤回，開場白的 `{{getvar}}`
 /// 才不會讀到還沒恢復的值（沒有變數操作的開場白也一樣）。失敗回 `WorldInfoSettleFailed`（前端給重設出路）。
 pub fn settle_before_opening(root: &Path, world_id: &str, scene: u64) -> Result<(), String> {

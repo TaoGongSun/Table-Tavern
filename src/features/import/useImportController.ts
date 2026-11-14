@@ -203,6 +203,8 @@ export interface ImportController {
   /** 翻好的那一則；null＝翻譯失敗或面板已關。force＝重新翻譯（忽略已有回覆，用原文重打） */
   translateOpening: (index: number, force?: boolean) => Promise<string | null>;
   translateAllOpenings: () => Promise<void>;
+  /** 跳過開場白後在空桌回頭選：重開同一個開場白面板 */
+  offerTableOpenings: () => Promise<void>;
 }
 
 // 探測失敗不擋匯入：舊版後端或格式未知時照原流程走（當成解析不了）
@@ -386,9 +388,8 @@ export function useImportController(input: {
   // 兩條匯入路徑共用。一律貼成旁白而不是角色發言——開場白不一定是那個角色說的話，
   // 也常是場景或角色本身的描寫。主開場白常是使用說明（真正的劇情藏在備用開場白），
   // 所以列全部讓玩家挑。直接讀匯入檔，不建卡也拿得到
-  const offerOpeningLine = useCallback(
-    async (worldId: string, data: number[], source: string | null) => {
-      const list = await invoke<string[]>("card_openings", { worldId, data, lang });
+  const showOpenings = useCallback(
+    async (worldId: string, list: string[], source: string | null) => {
       if (list.length === 0) return;
       setExpanded(null);
       setTransState({});
@@ -402,8 +403,27 @@ export function useImportController(input: {
       // 檔位選項讀失敗不擋匯入：選單少了模型名照樣能翻（預設低檔）
       setTierModels(await invoke<TierModel[]>("translate_tier_models").catch(() => []));
     },
-    [lang],
+    [],
   );
+  const offerOpeningLine = useCallback(
+    async (worldId: string, data: number[], source: string | null) =>
+      showOpenings(worldId, await invoke<string[]>("card_openings", { worldId, data, lang }), source),
+    [lang, showOpenings],
+  );
+  // 跳過開場白後在空桌回頭選：點下去後端再查一次（已開始玩、原檔不在就不開），
+  // 貼出時帶回原檔識別與序號，跟匯入當下貼的一樣
+  const offerTableOpenings = useCallback(async () => {
+    const found = await invoke<{ source: string; openings: string[] } | null>("table_openings", {
+      worldId,
+      lang,
+    }).catch((reason) => {
+      onError(String(reason));
+      return null;
+    });
+    if (found && worldRef.current === worldId) {
+      await showOpenings(worldId, found.openings, found.source);
+    }
+  }, [worldId, lang, showOpenings, onError]);
 
   const offerDice = useCallback(async (worldId: string, book: WorldbookImport) => {
     if (!book.dice_detected) return;
@@ -826,6 +846,7 @@ export function useImportController(input: {
       answerRoute,
       translateOpening,
       translateAllOpenings,
+      offerTableOpenings,
     }),
     [
       receipts,
@@ -854,6 +875,7 @@ export function useImportController(input: {
       answerRoute,
       translateOpening,
       translateAllOpenings,
+      offerTableOpenings,
     ],
   );
 }

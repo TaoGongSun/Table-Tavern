@@ -378,3 +378,52 @@ fn translated_openings_keep_the_original_initvar() {
     );
     assert_eq!(opening::with_original_initvar("譯文", "原文"), "譯文");
 }
+
+/// 跳過開場白後回頭選：未遊玩的空桌取最近一筆帶開場白的匯入原檔；貼過開場白、VN 桌、沒匯入過都不給。
+#[test]
+fn later_openings_only_on_unplayed_empty_chat_tables() {
+    const CARD: &str = r#"{"data":{"name":"驛站","first_mes":"十月初七。","alternate_greetings":["另一則"],"character_book":{"entries":[{"keys":["驛站"],"content":"北境驛站","enabled":true}]}}}"#;
+    let root = TempRoot::new("later-openings");
+    let import = |world: &str| {
+        let held = data::test_exclusive(world);
+        crate::import::import_worldbook_file(root.path(), world, CARD.as_bytes(), "驛站", &held)
+            .unwrap()
+            .source
+            .unwrap()
+    };
+    let blank = data::create_world(root.path(), "空桌").unwrap();
+    assert_eq!(opening::later_openings(root.path(), &blank), None);
+
+    let world = data::create_world(root.path(), "驛站").unwrap();
+    let source = import(&world);
+    let (found, name, openings) = opening::later_openings(root.path(), &world).unwrap();
+    assert_eq!((found.as_str(), name.as_str()), (source.as_str(), "驛站"));
+    assert_eq!(openings, ["十月初七。", "另一則"]);
+
+    let held = data::test_exclusive(&world);
+    crate::import::post_opening_text(
+        root.path(),
+        &world,
+        0,
+        "2026-11-14 12:00",
+        "另一則",
+        LANG,
+        Some(1),
+        Some(&source),
+        &held,
+    )
+    .unwrap();
+    assert_eq!(
+        opening::later_openings(root.path(), &world),
+        None,
+        "已有開場白"
+    );
+
+    let vn = data::create_world_of_kind(root.path(), "VN", data::TableKind::Vn).unwrap();
+    import(&vn);
+    assert_eq!(
+        opening::later_openings(root.path(), &vn),
+        None,
+        "VN 桌不適用"
+    );
+}

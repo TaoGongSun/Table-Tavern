@@ -216,17 +216,52 @@ pub(crate) fn card_openings(
     let Some((name, openings)) = import::card_openings(&data) else {
         return Ok(Vec::new());
     };
+    displayed_openings(&app, &world_id, &name, &openings, &lang)
+}
+
+/// 跳過開場白後回頭選的清單：source＝那筆匯入的原檔識別，貼出時照匯入當下一樣帶回。
+#[derive(serde::Serialize)]
+pub(crate) struct LaterOpenings {
+    source: String,
+    openings: Vec<String>,
+}
+
+/// 還沒開始玩的空桌重開開場白選單（見 world_scan::opening::later_openings）；不適用回 null。
+#[tauri::command]
+pub(crate) fn table_openings(
+    app: tauri::AppHandle,
+    world_id: String,
+    lang: String,
+) -> Result<Option<LaterOpenings>, String> {
     let root = data_root(&app)?;
-    let config = data::read_config(&crate::config_root(&app)?).unwrap_or_default();
+    let Some((source, name, openings)) =
+        crate::world_scan::opening::later_openings(&root, &world_id)
+    else {
+        return Ok(None);
+    };
+    Ok(Some(LaterOpenings {
+        source,
+        openings: displayed_openings(&app, &world_id, &name, &openings, &lang)?,
+    }))
+}
+
+fn displayed_openings(
+    app: &tauri::AppHandle,
+    world_id: &str,
+    name: &str,
+    openings: &[String],
+    lang: &str,
+) -> Result<Vec<String>, String> {
+    let root = data_root(app)?;
+    let config = data::read_config(&crate::config_root(app)?).unwrap_or_default();
     let path = crate::scene_budget::path_limits(
-        &crate::config_root(&app)?,
+        &crate::config_root(app)?,
         &root,
         &config,
         transport::gm_tier(&config),
     );
-    let macros = crate::world_scan::opening::OpeningMacros::load(
-        &root, &world_id, &name, &path, &lang, false,
-    );
+    let macros =
+        crate::world_scan::opening::OpeningMacros::load(&root, world_id, name, &path, lang, false);
     Ok(openings
         .iter()
         .map(|opening| macros.display(opening))
