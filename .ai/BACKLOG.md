@@ -13,7 +13,6 @@
 
 ## 實測挖到的（2026-11-15 清理待實測清單時）
 
-- [room-fixes-deploy](tasks/room-fixes-deploy.md) — 房間手機端修正待部署（小案（不寫程式，只部署）） — 下一步：等作者說要部署／發佈時一起做（不自動部署）
 - [refactor-survey-quality-retest](tasks/refactor-survey-quality-retest.md) — 重構盤點品質補測（原 refactor-survey-spans T1–T3）（未估（先確認還需不需要）） — 下一步：先對照現行重構流程，判斷原驗收單哪些項還成立，再決定補測或作廢〔模型判斷·未裁決〕
 - [undo-tail-trim](tasks/undo-tail-trim.md) — 收回時的快取截尾優化（小案，未估） — 下一步：未排程〔模型判斷·未裁決〕
 - [sponsor-locked-modal-sample](tasks/sponsor-locked-modal-sample.md) — 贊助未解鎖介紹窗補範例圖（小案（補素材）） — 下一步：未排程〔模型判斷·未裁決〕

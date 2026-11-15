@@ -6,7 +6,7 @@
 
 ## 進行中
 
-- [release-9](handoffs/release-9.md) — v0.5.4 發佈：版本、更新說明、README、截圖都已進 main；部署手機端、演練打包、推正式 tag 等作者說
+- [release-9](handoffs/release-9.md) — v0.5.4 發佈：準備都已進 main、手機端已部署、演練打包全綠；推正式 tag 等作者說
 
 ## 等這台機器驗不到的條件（細項見[待實測清單](reference/verification-queue.md)）
 

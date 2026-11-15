@@ -1,6 +1,6 @@
 # release-9 — v0.5.4 發佈
 
-Status: 發佈前的準備都已進 main（版本 0.5.4、CHANGELOG、README、截圖）；部署手機端、演練打包、推正式 tag 都等作者說。
+Status: 發佈前的準備都已進 main（版本 0.5.4、CHANGELOG、README、截圖）；手機端已部署、演練打包全綠；推正式 tag 等作者說。
 流程沿用 [plans/release-2-ci-windows.md](../plans/release-2-ci-windows.md)「發版檢查清單」。版號 0.5.4〔作者裁決 2026-11-15〕。
 
 ## 已在 main
@@ -11,10 +11,12 @@ Status: 發佈前的準備都已進 main（版本 0.5.4、CHANGELOG、README、�
 - 截圖重拍 6 組 × 三語：下載頁 `status`、`vnWizard`，說明書 `room-13`／`15`／`17`／`19`（主線親看）。圖上頂列版號是 v0.5.3（拍照時還沒改版號），照上一版慣例不重拍〔模型判斷·未裁決〕。`room-06`／`08`／`10` 桌面標頭格式沒變，不重拍〔模型判斷·未裁決〕。
 - 拍照手法與腳本在 `TestCards/download-tour/SHOOTING.md`（本機限定，已補這次的修正與「怎麼接生圖來源」）。
 
+## 已做（2026-11-15，作者說「部署並演練打包」）
+- 手機端已部署：`tt-room.pirahus.com`，Version 9e7b2ec5；線上檔案已確認是新版。伺服器邏輯沒改。
+- 演練 `test-v0.5.4`：check、build-macos、build-windows、finalize 全綠，artifact 8 個檔齊，`latest.json` 版本 0.5.4、兩平台都在。演練 tag 還留著，正式發佈後刪。
+
 ## 等作者說才做
-1. 部署手機端（[tasks/room-fixes-deploy.md](../tasks/room-fixes-deploy.md)；`party/` 先 `npm run build` 再 `wrangler deploy`，伺服器邏輯沒改）。要跟新版桌面同一批。
-2. 推 `test-v0.5.4` 演練，確認全綠、8 個檔齊。
-3. 推 `v0.5.4` 正式 tag。
+- 推 `v0.5.4` 正式 tag（tag 要指在 origin/main 上的 commit）。
 
 ## 發之後
 - 照檢查清單核對 release 頁（8 檔、Latest、三個固定下載連結）、下載頁兩顆鈕指向新檔、刪演練 tag。
