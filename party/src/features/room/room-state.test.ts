@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { playing, type Room } from "../../../server/core/room-test-kit";
 import { buildSnapshot } from "../../../server/core/snapshot";
-import { applyFrame, type RoomView } from "./room-state";
+import { applyFrame, shownRound, type RoomView } from "./room-state";
 import type { Frame } from "../../../server/core/types";
 
 const live = (room: Room, conn: string) =>
@@ -64,5 +64,39 @@ describe("客戶端投影", () => {
     expect(view.chat).toHaveLength(200);
     expect(view.chat[0].id).toBe(1005);
     expect(view.chat.at(-1)!.id).toBe(1204);
+  });
+
+  it("回合數給人看的是本幕第幾輪玩家行動：GM 鈕不跳號、收回改字回到同一輪，擲果列不算，即時與快照一致", async () => {
+    const room = await playing();
+    await room.send("x1", "status", { keepAwake: null, busy: false, diceEnabled: true });
+    const shown = () => [shownRound(live(room, "a")), shownRound(snap(room, "m1") as never)];
+    expect(shown()).toEqual([1, 1]); // 伺服器 acting(2)：開場那回合不算
+    const round = room.s.round!.round;
+    await room.ask("a", "action.roll", { round, formula: "1d20" });
+    await room.send("a", "action.submit", { round, text: "我拔劍" });
+    await room.send("b", "action.skip", { round });
+    await room.finishGen();
+    expect(shown()).toEqual([2, 2]);
+    await room.send("a", "round.undo", { round, mode: "edit" });
+    const job = room.frames("x1", "job.undo").at(-1)!.p;
+    await room.send("x1", "job.result", { jobId: job.jobId, ok: true });
+    expect(room.s.round!.round).toBe(4);
+    expect(shown()).toEqual([1, 1]); // 擲果列留在原位、帶被收回的回合號
+    await room.send("a", "host.gm", { round: 4, mode: "narrate" });
+    expect(shown()).toEqual([1, 1]);
+    await room.finishGen();
+    expect(room.s.round).toMatchObject({ round: 6, kind: "play" });
+    expect(shown()).toEqual([1, 1]);
+    // 只擲骰沒寫字也算一輪；重生上一回合數字不動
+    await room.ask("a", "action.roll", { round: 6, formula: "1d20", submit: true });
+    await room.send("b", "action.skip", { round: 6 });
+    await room.finishGen();
+    expect(shown()).toEqual([2, 2]);
+    await room.send("a", "round.undo", { round: 6, mode: "regenerate" });
+    const again = room.frames("x1", "job.undo").at(-1)!.p;
+    await room.send("x1", "job.result", { jobId: again.jobId, ok: true });
+    expect(shown()).toEqual([1, 1]); // 重生中：被收回的那輪重跑
+    await room.finishGen();
+    expect(shown()).toEqual([2, 2]);
   });
 });

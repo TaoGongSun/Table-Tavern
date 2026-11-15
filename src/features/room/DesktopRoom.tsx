@@ -118,8 +118,9 @@ export function DesktopRoom({ ctl, seat }: { ctl: DesktopRoomCtl; seat: DesktopS
 
   const v = ctl.view;
   const iAmHost = v !== null && v.room.hostId === v.me.memberId;
-  const popover = open || handoff !== null;
-  // 彈層：點外面或 Esc 收起（交給手機的連結出來時留著，等配對完）。Esc 掛在 document：WebKit 滑鼠點按鈕不給焦點，焦點常不在列內
+  // 交給手機的連結：手機配對成房主後就作廢不再顯示；還沒配對時收起彈層也留著，再按「⋯」看得到
+  const pending = iAmHost ? handoff : null;
+  // 彈層：點外面或 Esc 收起。Esc 掛在 document：WebKit 滑鼠點按鈕不給焦點，焦點常不在列內
   useEffect(() => {
     if (!open) return;
     const away = (event: PointerEvent) => !bar.current?.contains(event.target as Node) && setOpen(false);
@@ -164,10 +165,10 @@ export function DesktopRoom({ ctl, seat }: { ctl: DesktopRoomCtl; seat: DesktopS
           </button>
         </div>
       )}
-      {handoff && (
+      {pending && (
         <>
           <p>{t("roomToPhoneLink")}</p>
-          <CopyRow label={t("roomToPhone")} value={handoff} />
+          <CopyRow label={t("roomToPhone")} value={pending} />
           <div className="row">
             <span className="room-label">{t("roomPairCode")}</span>
             <strong>{status?.pairCode ?? "—"}</strong>
@@ -201,7 +202,7 @@ export function DesktopRoom({ ctl, seat }: { ctl: DesktopRoomCtl; seat: DesktopS
           <button type="button" className="btn btn-sm" disabled={!status?.inviteUrl} onClick={copy}>
             {copied ? t("roomCopied") : t("roomCopyInvite")}
           </button>
-          <button type="button" className="btn btn-sm" aria-label={t("roomMore")} title={t("roomMore")} aria-expanded={popover} onClick={() => setOpen(!open)}>
+          <button type="button" className="btn btn-sm" aria-label={t("roomMore")} title={t("roomMore")} aria-expanded={open} onClick={() => setOpen(!open)}>
             ⋯
           </button>
           <button type="button" className="btn btn-sm" disabled={busy} onClick={ctl.pause}>
@@ -209,7 +210,7 @@ export function DesktopRoom({ ctl, seat }: { ctl: DesktopRoomCtl; seat: DesktopS
           </button>
         </div>
         {notice && <p role="status">{notice}</p>}
-        {popover && (
+        {open && (
           <div className="room-popover party-themed" data-testid="room-popover">
             {v && room && iAmHost ? (
               <InviteControls view={v} act={room.act} src={{ origin: ctl.origin, inviteUrl: status?.inviteUrl ?? null }} initialOpen>

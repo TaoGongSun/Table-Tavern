@@ -8,7 +8,7 @@ import { allDelegated, offlineSeated } from "./delegation";
 import { clock, HOLD_TEXT } from "./error-text";
 import { HeldActions } from "../controls/HeldActions";
 import { PartyMenu } from "../controls/PartyMenu";
-import type { RoomView } from "./room-state";
+import { shownRound, type RoomView } from "./room-state";
 import { useRun, type Act } from "./useRoom";
 
 const mmss = (ms: number) =>
@@ -61,7 +61,7 @@ export interface Reopen {
 }
 
 /** `heldDetail`：桌面版本機遮罩過的錯誤原文；沒給就用房間的分類說明（只給出額度者，他才能處理）。
- *  `compact`（手機）：平時只一行摘要（狀態＋回合號，含倒數），點了展開 GM 模型與倒數說明；
+ *  `compact`（手機）：平時只一段摘要（狀態＋回合號，含倒數；放不下時回合號換行，不截），點了展開 GM 模型與倒數說明；
  *  能按、要處理的東西（回合鈕、卡住處理與錯誤詳情、重開提醒）不收。 */
 export function RoundBar({
   view,
@@ -119,7 +119,9 @@ export function RoundBar({
         ? t("roundHostSyncing")
         : null;
   const roundNo = r && (
-    <span className="round-no">{t("roundNumber", { round: r.round, scene: view.room.scene })}</span>
+    <span className="round-no">
+      {t("roundNumber", { round: shownRound(view), scene: view.room.scene })}
+    </span>
   );
   const statusText = <span className="round-status">{status(view, now)}</span>;
   const errDetail = detail && (
@@ -147,7 +149,7 @@ export function RoundBar({
           onClick={() => setMore((m) => !m)}
         >
           {statusText}
-          {roundNo && <> · {roundNo}</>}
+          {roundNo}
         </button>
       ) : (
         <div className="round-line">

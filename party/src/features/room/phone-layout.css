@@ -27,8 +27,12 @@
   padding: 4px 0 4px var(--gutter);
   border-bottom: 0;
 }
+/* 狀態句與回合號各自不拆行：一行放不下時回合號整段換到下一行，不被截掉；只有狀態句本身超過一行才截 */
 .app.party-phone .round-summary {
-  display: block;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 10px;
   width: 100%;
   min-height: 32px;
   padding: 4px 0;
@@ -38,17 +42,20 @@
   font-size: 14px;
   text-align: left;
   white-space: nowrap;
+}
+.app.party-phone .round-summary .round-status {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.app.party-phone .round-summary[aria-expanded]::after {
+.app.party-phone .round-summary[aria-expanded] > :last-child::after {
   content: " ▾";
   color: var(--muted);
 }
-.app.party-phone .round-summary[aria-expanded="true"] {
+.app.party-phone .round-summary[aria-expanded="true"] .round-status {
   white-space: normal;
 }
-.app.party-phone .round-summary[aria-expanded="true"]::after {
+.app.party-phone .round-summary[aria-expanded="true"] > :last-child::after {
   content: " ▴";
 }
 .app.party-phone .round-more {
@@ -195,10 +202,10 @@
   display: none;
 }
 .app.party-phone .reading .round-summary {
+  flex-wrap: nowrap;
   min-height: 24px;
   padding: 0;
   font-size: 13px;
-  white-space: nowrap;
 }
 
 /* 名單頁：自己那列的「編輯我的角色」、收起的配對碼、底部顯示設定 */

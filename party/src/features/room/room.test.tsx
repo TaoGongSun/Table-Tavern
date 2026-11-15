@@ -367,7 +367,7 @@ describe("手機客戶端對真伺服器核心", () => {
 
   it("房主結算；回合已往下走時送出被拒，草稿原樣保留", async () => {
     const { room, hub, A, B } = await table();
-    B.socket().held = true; // B 暫時收不到：畫面停在第 2 回合
+    B.socket().held = true; // B 暫時收不到：畫面停在第 1 輪
     A.click("結算這回合");
     await until(() => room.s.round?.phase === "queued");
     await room.finishGen("第二段");
@@ -385,7 +385,7 @@ describe("手機客戶端對真伺服器核心", () => {
     await until(() => B.q('[data-testid="action-error"]'));
     expect(B.q('[data-testid="action-error"]')!.textContent).toBe("回合已經往下走了，你的字還留著");
     expect(B.q<HTMLTextAreaElement>('[data-testid="action-text"]')!.value).toBe("我躲到吧台後面");
-    expect(B.text()).toContain("第 1 幕 · 第 3 回合");
+    expect(B.text()).toContain("第 1 幕 · 第 2 回合");
   });
 
   it("斷線後重連帶 lastSeq，只補漏掉的事件", async () => {
@@ -455,7 +455,7 @@ describe("手機客戶端對真伺服器核心", () => {
     expect(B.q<HTMLTextAreaElement>('[data-testid="action-text"]')!.value).toBe("我想走");
     const { jobId } = room.frames("x1", "job.scene_advance")[0].p;
     await hub.exec("job.result", { jobId, ok: true, result: { summary: "前情：大家進了酒館。" } });
-    await until(() => B.text().includes("第 2 幕 · 第 3 回合"));
+    await until(() => B.text().includes("第 2 幕 · 第 1 回合")); // 回合數每幕從 1 算起
     expect(B.q('[data-testid="story"]')!.textContent).toContain("前情摘要前情：大家進了酒館。");
 
     A.tab("host");

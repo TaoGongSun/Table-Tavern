@@ -64,6 +64,19 @@ export function mergeStory(story: StoryPart[], parts: StoryPart[], older = false
 export const storyOfFrames = (frames: Frame[]) =>
   storyOf(frames.map((f) => ({ seq: f.p.seq, at: f.p.at, type: f.p.e.type, payload: f.p.e })));
 
+/** 給玩家看的回合數：本幕（上一幕摘要之後）有玩家行動列或擲果列的回合數（收回的不算），當前回合還沒算進去就再 +1。
+ *  伺服器的回合號是流水號（開場、GM 鈕、收回後重開都會往上加），只拿來當識別，不給人看 */
+export function shownRound(v: Pick<RoomView, "story" | "round">): number {
+  const scene = v.story.slice(v.story.map((p) => p.part).lastIndexOf(32) + 1);
+  const undone = new Set(scene.filter((p) => p.part === 33).map((p) => p.round)); // 收回後擲果列留著舊回合號
+  const played = new Set(
+    scene
+      .filter((p) => (p.speaker.kind === "player" || p.rollBy) && !undone.has(p.round))
+      .map((p) => p.round),
+  );
+  return played.size + (v.round && !played.has(v.round.round) ? 1 : 0);
+}
+
 function fromSnapshot(s: Snapshot): RoomView {
   return {
     ...s,

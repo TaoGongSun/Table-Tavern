@@ -17,7 +17,6 @@
 - [refactor-survey-quality-retest](tasks/refactor-survey-quality-retest.md) — 重構盤點品質補測（原 refactor-survey-spans T1–T3）（未估（先確認還需不需要）） — 下一步：先對照現行重構流程，判斷原驗收單哪些項還成立，再決定補測或作廢〔模型判斷·未裁決〕
 - [undo-tail-trim](tasks/undo-tail-trim.md) — 收回時的快取截尾優化（小案，未估） — 下一步：未排程〔模型判斷·未裁決〕
 - [sponsor-locked-modal-sample](tasks/sponsor-locked-modal-sample.md) — 贊助未解鎖介紹窗補範例圖（小案（補素材）） — 下一步：未排程〔模型判斷·未裁決〕
-- [room-host-bar-observations](tasks/room-host-bar-observations.md) — 房間回合列三個小問題（小案，未估） — 下一步：未排程〔模型判斷·未裁決〕
 
 ## 優先：遊玩資料修復（2026-10-29 稽核）
 
