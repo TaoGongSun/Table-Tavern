@@ -378,8 +378,17 @@ fn dialogue(line: &str, roster: &VnRoster) -> Option<VnCell> {
             .map(str::to_owned),
         thought,
         directive,
-        text: text.to_owned(),
+        text: br_to_newline(text),
     })
+}
+
+/// 模型照酒館習慣寫的 `<br>` 當換行（仍是純文字）；緊跟的一個換行併進去，結尾不留空行。
+fn br_to_newline(text: &str) -> String {
+    static BR: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    BR.get_or_init(|| regex::Regex::new(r"(?i)<br\s*/?>\n?").unwrap())
+        .replace_all(text, "\n")
+        .trim_end()
+        .to_owned()
 }
 
 /// 語法層：逐行切格，不套任何刪格規則（串流版直接用）。
@@ -388,12 +397,11 @@ fn parse_cells(text: &str, source: &VnSource, roster: &VnRoster) -> Vec<VnCell> 
     let mut narration: Vec<&str> = Vec::new();
     let mut choices: Option<Vec<String>> = None;
     let flush = |narration: &mut Vec<&str>, cells: &mut Vec<VnCell>| {
-        if !narration.is_empty() {
-            cells.push(VnCell::Narration {
-                text: narration.join("\n"),
-            });
-            narration.clear();
+        let text = br_to_newline(&narration.join("\n"));
+        if !text.is_empty() {
+            cells.push(VnCell::Narration { text });
         }
+        narration.clear();
     };
     for line in text.lines() {
         let line = line.trim();

@@ -18,7 +18,6 @@
 - [undo-tail-trim](tasks/undo-tail-trim.md) — 收回時的快取截尾優化（小案，未估） — 下一步：未排程〔模型判斷·未裁決〕
 - [sponsor-locked-modal-sample](tasks/sponsor-locked-modal-sample.md) — 贊助未解鎖介紹窗補範例圖（小案（補素材）） — 下一步：未排程〔模型判斷·未裁決〕
 - [room-host-bar-observations](tasks/room-host-bar-observations.md) — 房間回合列三個小問題（小案，未估） — 下一步：未排程〔模型判斷·未裁決〕
-- [vn-bgm-multi-mood-tag](tasks/vn-bgm-multi-mood-tag.md) — VN 配樂標記寫兩個情緒時被當成新曲（小案，未估） — 下一步：未排程〔模型判斷·未裁決〕
 
 ## 優先：遊玩資料修復（2026-10-29 稽核）
 

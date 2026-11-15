@@ -401,6 +401,19 @@ fn leaked_relay_lines_never_become_cells() {
 }
 
 #[test]
+fn br_tags_become_line_breaks() {
+    assert_eq!(
+        gm("霧。<br>雨。<BR />\n風。<br/>"),
+        vec![narration("霧。\n雨。\n風。")]
+    );
+    assert_eq!(gm("<br>\n\n霧。"), vec![narration("霧。")]);
+    match &gm("狐狸 (happy): 「嗨<br>走吧」")[0] {
+        VnCell::Dialogue { text, .. } => assert_eq!(text, "嗨\n走吧"),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
 fn bgm_and_sfx_markers_parse_and_drop_unknown_moods() {
     match &gm("[bgm: Mysterious, Dark]")[0] {
         VnCell::Bgm { moods } => assert_eq!(moods, &["Mysterious".to_owned(), "Dark".to_owned()]),

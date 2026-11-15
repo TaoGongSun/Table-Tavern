@@ -6,7 +6,7 @@
 
 沿用 `[bg]` 的寫法，提示詞加在 `transport/vn_format.rs` 的場景那條後面，中英各一條；解析加在 `chat_turn/vn_script.rs` 的 `marker()`／`parse_cells`，型別加進 `VnCell`（Rust 與 `backend-contracts.ts`）。
 
-- **BGM**：`[bgm: 情緒]` 單獨一行，情緒只能用固定詞表（Incompetech `feel` 的 19 個詞，英文原字）：`Dark, Grooving, Relaxed, Bright, Calming, Bouncy, Driving, Mysterious, Intense, Eerie, Unnerving, Somber, Mystical, Uplifting, Humorous, Epic, Action, Suspenseful, Aggressive`；可寫兩個用逗號分隔（交集，沒交集退回第一個）；`[bgm: off]`＝靜音。只在氣氛改變時寫，通常緊接 `[bg]`；不寫＝沿用。提示詞附一行情境對照讓 GM 選詞：戰鬥→Action／Intense／Aggressive、懸疑→Mysterious／Suspenseful／Eerie、悲傷→Somber／Dark、日常→Bouncy／Relaxed／Grooving、溫情戀愛→Calming／Bright／Uplifting、壯闊→Epic、搞笑→Humorous。格：`{ type: "bgm"; moods: string[] }`（`off`＝空陣列）。詞不在表上的整格丟掉（當沒寫）。
+- **BGM**：`[bgm: 情緒]` 單獨一行，情緒只能用固定詞表（Incompetech `feel` 的 19 個詞，英文原字）：`Dark, Grooving, Relaxed, Bright, Calming, Bouncy, Driving, Mysterious, Intense, Eerie, Unnerving, Somber, Mystical, Uplifting, Humorous, Epic, Action, Suspenseful, Aggressive`；提示詞只請 GM 寫一個（兩個詞的組合會一組另抓一首、配樂越抓越多）；解析仍收兩個用逗號分隔（交集，沒交集退回第一個），為了舊桌與舊作品包裡的 `bgm-a+b.mp3` 照樣播〔模型判斷·未裁決〕；`[bgm: off]`＝靜音。只在氣氛改變時寫，通常緊接 `[bg]`；不寫＝沿用。提示詞附一行情境對照讓 GM 選詞：戰鬥→Action／Intense／Aggressive、懸疑→Mysterious／Suspenseful／Eerie、悲傷→Somber／Dark、日常→Bouncy／Relaxed／Grooving、溫情戀愛→Calming／Bright／Uplifting、壯闊→Epic、搞笑→Humorous。格：`{ type: "bgm"; moods: string[] }`（`off`＝空陣列）。詞不在表上的整格丟掉（當沒寫）。
 - **SFX**：`[sfx: 英文短描述]` 單獨一行，例如 `[sfx: door creak]`、`[sfx: thunder]`，播到這格時放一次；每回合最多兩個。格：`{ type: "sfx"; query: string; key: string }`，`key`＝query 正規化（小寫、去多餘空白）後 SHA-256 前 16 hex，與背景 slug 同法。
 - 角色線 `filter_character_reply` 一併剝掉這兩種標記。
 
@@ -49,7 +49,7 @@
 - 完整 verify 17 步綠；grep 帳號名乾淨。
 
 ## 6. 常識審（主線 Fable，設計開工前）
-- 一桌一情緒固定一首：對，VN 玩家靠重複聽到的主題記住場景；兩個詞的組合自然帶出變化。
+- 一桌一情緒固定一首：對，VN 玩家靠重複聽到的主題記住場景。
 - 19 詞夠用，但 GM 要有情境對照才不會亂選 → 已加進 §1 提示詞。
 - 新桌標題畫面本來會沒聲音（還沒有 `[bgm]` 格）→ 加主題曲（§2），建桌就排。
 - Freesound 說明文案要讓玩家一眼看出「選填、不填也有音樂」→ §3 用「選填」開頭。
@@ -59,6 +59,7 @@
 - 只挑情緒不挑曲風，古代場景可能配到電子樂。
 - 音效隨包帶走（vn-pack-opaque）。
 - 第一次播某情緒要等下載（5 分鐘曲約 12 MB），期間無聲。
+- GM 偶爾不照提示詞仍寫兩個情緒時，照舊另抓一首組合曲（低階模型遵守度不修）。
 
 ## 觀察（範圍外，只記一行）
 - 測試通道拿不到「正在出聲」的證據：Audio 物件不在 DOM、resource timing 不記媒體請求；下次要驗播放本身得在 hook 掛測試用鉤子，或留實機。
