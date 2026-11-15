@@ -34,7 +34,7 @@ export const ru: PartyMessages = {
   statusClues: "Зацепки",
   statusHp: "ОЗ",
   statusConditions: "Состояния",
-  statusInitiative: "Инициатива",
+  statusInitiative: "Порядок ходов",
   statusFoes: "Враги",
   statusTurn: "Ход: {name}",
   statusInCombat: "Идёт бой",

@@ -103,7 +103,7 @@ export const zhTW = {
   statusClues: "線索",
   statusHp: "HP",
   statusConditions: "狀態效果",
-  statusInitiative: "先攻",
+  statusInitiative: "行動順序",
   statusFoes: "敵人",
   statusTurn: "輪到 {name}",
   statusInCombat: "戰鬥中",

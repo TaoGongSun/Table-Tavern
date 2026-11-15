@@ -35,7 +35,7 @@ export const ja: PartyMessages = {
   statusClues: "手がかり",
   statusHp: "HP",
   statusConditions: "状態異常",
-  statusInitiative: "イニシアチブ",
+  statusInitiative: "行動順",
   statusFoes: "敵",
   statusTurn: "{name} の番",
   statusInCombat: "戦闘中",

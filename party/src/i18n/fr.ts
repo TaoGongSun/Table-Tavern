@@ -35,7 +35,7 @@ export const fr: PartyMessages = {
   statusClues: "Indices",
   statusHp: "PV",
   statusConditions: "États",
-  statusInitiative: "Initiative",
+  statusInitiative: "Ordre des tours",
   statusFoes: "Ennemis",
   statusTurn: "Au tour de {name}",
   statusInCombat: "En combat",

@@ -35,7 +35,7 @@ export const ptBR: PartyMessages = {
   statusClues: "Pistas",
   statusHp: "PV",
   statusConditions: "Condições",
-  statusInitiative: "Iniciativa",
+  statusInitiative: "Ordem dos turnos",
   statusFoes: "Inimigos",
   statusTurn: "Vez de {name}",
   statusInCombat: "Em combate",

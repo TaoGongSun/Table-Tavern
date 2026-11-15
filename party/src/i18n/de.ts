@@ -35,7 +35,7 @@ export const de: PartyMessages = {
   statusClues: "Hinweise",
   statusHp: "TP",
   statusConditions: "Zustände",
-  statusInitiative: "Initiative",
+  statusInitiative: "Zugreihenfolge",
   statusFoes: "Gegner",
   statusTurn: "{name} ist dran",
   statusInCombat: "Im Kampf",

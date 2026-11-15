@@ -102,7 +102,7 @@ export const zhCN: PartyMessages = {
   statusClues: "线索",
   statusHp: "HP",
   statusConditions: "状态效果",
-  statusInitiative: "先攻",
+  statusInitiative: "行动顺序",
   statusFoes: "敌人",
   statusTurn: "轮到 {name}",
   statusInCombat: "战斗中",

@@ -62,7 +62,7 @@ One person is the **host** and opens a room on their computer; everyone else is 
 ### 6. Tune the GM to how you play
 
 - On the "Host" tab: **Default countdown per round** — every round starts a countdown on its own and resolves when it runs out; **Shuffle action order every round** — nobody always goes first.
-- **Dice**: for tabletop play, turn on "Roll dice" in the table settings. The GM rules with dice the app rolled and says in the story which one it used; everyone's phone gets a dice button, and you can roll too if you take a seat. If a card doesn't bring its own status panel, character cells gain HP and conditions, with initiative and enemies during combat. For stricter rules, add the built-in condensed version of the open D&D 5th edition rules (called "5e SRD 5.1" in the app) in the table settings.
+- **Dice**: for tabletop play, turn on "Roll dice" in the table settings. The GM rules with dice the app rolled and says in the story which one it used; everyone's phone gets a dice button, and you can roll too if you take a seat. If a card doesn't bring its own status panel, character cells gain HP and conditions, with turn order and enemies during combat. For stricter rules, add the built-in condensed version of the open D&D 5th edition rules (called "5e SRD 5.1" in the app) in the table settings.
 - **Next scene**: when this scene is almost full, the round bar says so first; to start a new setting, click "Next scene ▾" → "End this scene". If the GM is stuck on "This scene is full", the round bar has a "Next scene" button right there. To switch models, save "Next scene settings" on the GM quota tab first.
 - **GM quota** tab: see how much AI you've used and choose the model for the next scene. If the AI provider blocks the GM (the round bar will say so), click "Retry" or "Switch model" right there.
 - Want a friend to cover the AI quota? See section 8 below.
@@ -135,7 +135,7 @@ One person is the **host** and opens a room on their computer; everyone else is 
 - "Next round" — they joined or came back after this round started, so their turn comes next round.
 - "The host paused the room. Waiting for them to reopen it" — the host called it a night; your seat is kept, wait for their message.
 - "The provider blocked this GM reply" — the AI provider refused this part; the host is dealing with it (switching model or skipping). Nothing for you to do.
-- The "Time · Place · Present" line at the top of the Story tab — the GM's notes on when, where and who's around. Tap it for the status panel: characters' condition and belongings; on tables with dice on, combat may also show HP, initiative and enemies.
+- The "Time · Place · Present" line at the top of the Story tab — the GM's notes on when, where and who's around. Tap it for the status panel: characters' condition and belongings; on tables with dice on, combat may also show HP, turn order and enemies.
 
 ![](room-19)
 

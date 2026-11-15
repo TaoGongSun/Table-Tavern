@@ -35,7 +35,7 @@ export const ko: PartyMessages = {
   statusClues: "단서",
   statusHp: "HP",
   statusConditions: "상태 이상",
-  statusInitiative: "우선권",
+  statusInitiative: "행동 순서",
   statusFoes: "적",
   statusTurn: "{name} 차례",
   statusInCombat: "전투 중",

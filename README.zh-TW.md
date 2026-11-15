@@ -39,7 +39,7 @@ AI 扮演一整桌角色，連 GM（主持人）也是 AI。丟一張角色卡�
 ## 為什麼好玩又省
 
 - **和朋友連線一起玩**：在電腦上開房，朋友用手機瀏覽器點邀請連結就能加入，不用安裝。每人控制自己的角色，開了擲骰還能在手機上自己擲；GM 由房主的 AI 主持，房主在電腦上照常玩。
-- **開擲骰就能跑團**：骰子由 App 真的擲，不是 AI 自己編數字，畫面上看得到每顆怎麼用（故事裡的 d20#1 就是骰池第 1 顆）；GM 點名擲骰時，按一下就擲。卡沒自帶狀態欄的桌（含空桌、一句話開的桌），狀態欄還會記 HP、狀態效果、先攻順序和敵人。也可以加入內建的 D&D 第五版公開規則精簡版（App 裡叫「5e SRD 5.1」）。
+- **開擲骰就能跑團**：骰子由 App 真的擲，不是 AI 自己編數字，畫面上看得到每顆怎麼用（故事裡的 d20#1 就是骰池第 1 顆）；GM 點名擲骰時，按一下就擲。卡沒自帶狀態欄的桌（含空桌、一句話開的桌），狀態欄還會記 HP、狀態效果、行動順序和敵人。也可以加入內建規則書，GM 就照那套裁決：D&D 第五版（App 裡叫「5e SRD 5.1」）、Dungeon World、Cairn、Basic Roleplaying（BRP）、Pathfinder 第二版（Remaster），都是公開規則的精簡版。
 - **視覺小說模式**：寫一句點子按「直接開始」就開演。AI 一邊寫劇本一邊畫背景與角色立繪，還會配背景音樂（想要音效，到 Freesound 免費申請金鑰填進去）。用選項推進劇情，有章節、結局與分岔；可以匯出成作品包給別人重播。
 - **沒有卡也有狀態欄**：空桌或一句話開的桌，App 也會替每個角色記現況和持有物，並追蹤目標、承諾與線索；AI 每輪只講有變動的部分，回得快也省額度。
 - **多角色桌想聽誰就點誰**：GM 旁白下方有「讓○○接話」，送出鍵旁有「送出並接話」。只提供設定、不會開口的卡（地點、勢力）可以設成「舞台卡」，不會被點名發言。
@@ -88,4 +88,9 @@ cd web && npm install && npm run dev   # 網頁版開發模式
 
 [AGPL-3.0-only](LICENSE)。
 
-內建規則書取自 Wizards of the Coast 的 [SRD 5.1](https://dnd.wizards.com/resources/systems-reference-document)，依 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/legalcode) 授權並經刪減整理；本專案與 Wizards of the Coast 無關。
+內建規則書都是公開授權規則的刪減整理版，本專案與各出版方無關；每本書在 App 裡都有一條「Source & License」條目寫著完整的來源與授權原文：
+- 5e：取自 Wizards of the Coast 的 [SRD 5.1](https://dnd.wizards.com/resources/systems-reference-document)，[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/legalcode)。
+- Dungeon World：取自 [Sagelt/Dungeon-World](https://github.com/Sagelt/Dungeon-World)，[CC BY 3.0](http://creativecommons.org/licenses/by/3.0/)；其中含 SRD 5.1 的內容（CC BY 4.0）。
+- Cairn 1e：取自 Yochai Gal 的 [Cairn SRD](https://github.com/yochaigal/cairn)，[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)；這本改編版以同一授權釋出。
+- BRP：依 ORC License，取自 Chaosium Inc. 的 [Basic Roleplaying: Universal Game Engine](https://www.chaosium.com/content/orclicense/BasicRoleplaying-ORC-Content-Document.pdf)（© 2024，Jason Durall、Steve Perrin）。
+- PF2 Remaster：依 ORC License，取自 Paizo Inc. 的 Pathfinder Player Core（© 2023）。

@@ -103,7 +103,7 @@ export const en: PartyMessages = {
   statusClues: "Clues",
   statusHp: "HP",
   statusConditions: "Conditions",
-  statusInitiative: "Initiative",
+  statusInitiative: "Turn order",
   statusFoes: "Foes",
   statusTurn: "{name}'s turn",
   statusInCombat: "In combat",

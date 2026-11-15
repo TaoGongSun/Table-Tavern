@@ -35,7 +35,7 @@ export const es: PartyMessages = {
   statusClues: "Pistas",
   statusHp: "PV",
   statusConditions: "Condiciones",
-  statusInitiative: "Iniciativa",
+  statusInitiative: "Orden de turnos",
   statusFoes: "Enemigos",
   statusTurn: "Turno de {name}",
   statusInCombat: "En combate",
