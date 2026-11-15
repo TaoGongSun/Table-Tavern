@@ -223,6 +223,12 @@ const WRAP_SAFE_LONG = new Set([
   "ru:removeImageBtn",
   "ru:send",
   "ru:worldbookSaveEntry",
+  // 設定頁版本分頁的更新／重試鈕：改回各語慣用說法，所在列 .row 可折行
+  "fr:updateBtn",
+  "de:updateBtn",
+  "de:updateRetryBtn",
+  "es:updateRetryBtn",
+  "pt-BR:updateRetryBtn",
   // features/ 字典併入檢查時既有的長字：所在列 .row／.smart-free-new-actions 都可折行
   "de:onboardManualSaving",
   "fr:onboardManualSaving",

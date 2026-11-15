@@ -21,7 +21,7 @@
 - [desktop-csp](handoffs/desktop-csp.md) — 桌面版 CSP：macOS 已驗；剩 Windows 安全驗收
 - [refactor-card-png-export](handoffs/refactor-card-png-export.md) — 重構卡 PNG 匯出：macOS 與 SillyTavern 拒收已驗；剩 Windows Explorer 縮圖
 - [release-2-ci-windows](handoffs/release-2-ci-windows.md) — 桌面版發佈：v0.5.3 已發布（未簽章）；剩作者在 Mac 與 Windows 照繞過步驟下載安裝能開
-- [ui-redesign](handoffs/ui-redesign.md) — 介面整體重新設計：已進 main；剩要新版才出現的對話窗與 Windows 外觀（譯詞重定另立 BACKLOG）
+- [ui-redesign](handoffs/ui-redesign.md) — 介面整體重新設計：已進 main；剩要新版才出現的對話窗與 Windows 外觀（譯詞重定已做，2026-11-15）
 - [desktop-update-detect](handoffs/desktop-update-detect.md) — 桌面版 App 內更新與回退：剩兩個真發佈版的端對端驗收〔作者裁決 2026-10-12〕
 - [image-model-picker](handoffs/image-model-picker.md) — 生圖模型下拉與統一存 PNG：三家 CLI 真生圖已驗；剩付費 OpenRouter 生圖模型（要儲值帳戶）
 - [image-model-free-tier-hide](handoffs/image-model-free-tier-hide.md) — 免費層不顯示生圖模型選單：免費金鑰已驗；剩付費金鑰那一半（列在 image-model-picker 那一列）

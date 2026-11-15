@@ -710,7 +710,7 @@ export const ptBR: Record<MsgKey, string> = {
   newVersionLabel: "Nova versão {version}",
   skippedBadge: "Ignorada",
   updateBtn: "Atualizar",
-  updateRetryBtn: "Repetir",
+  updateRetryBtn: "Tentar novamente",
   updateFormatNote: "Esta versão converte os registros das mesas e faz backup automático antes",
   updateDetailsSummary: "Novidades e ignorar",
   updateNotesEmpty: "Esta versão não tem notas.",

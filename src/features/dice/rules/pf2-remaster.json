@@ -42,7 +42,7 @@
    "keysecondary": [],
    "comment": "Natural 1 and Natural 20",
    "content": "If you rolled a 20 on the die (a “natural 20”), your result is one degree of success better than it would be by numbers alone. If you roll a 1 on the d20 (a “natural 1”), your result is one degree worse. This means that a natural 20 usually results in a critical success and natural 1 usually results in a critical failure.\nHowever, if you were going up against a very high DC, you might get only a success with a natural 20, or even a failure if 20 plus your total modifier is 10 or more below the DC.\nCertain abilities can change the degree of success on a roll. When resolving such an ability, apply the adjustment from a natural 20 or natural 1 before anything else.",
-   "constant": false,
+   "constant": true,
    "selective": true,
    "order": 100,
    "position": 0,

@@ -1,6 +1,6 @@
 # Task
 
-> **現況（2026-11-15）**：介面整體重新設計：已進 main；剩要新版才出現的對話窗與 Windows 外觀（譯詞重定另立 BACKLOG）。細項與「為什麼這台機器測不到」見 `reference/verification-queue.md`；本檔以下若還寫著其他「待實機／待部署／清單編號」，以這一行為準。
+> **現況（2026-11-15）**：介面整體重新設計：已進 main；剩要新版才出現的對話窗與 Windows 外觀（譯詞重定已做，2026-11-15）。細項與「為什麼這台機器測不到」見 `reference/verification-queue.md`；本檔以下若還寫著其他「待實機／待部署／清單編號」，以這一行為準。
 Task-ID: ui-redesign
 Title: 介面整體重新設計
 Status: awaiting-verification

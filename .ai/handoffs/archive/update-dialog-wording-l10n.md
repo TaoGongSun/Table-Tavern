@@ -3,3 +3,5 @@
 案別與估計：小案（只改譯文）。
 
 desktop-update-detect 移交給 ui-redesign 的殘項：法文「更新」用了 Installer、德文 Updaten／Nochmal、西文與葡文「重試」用 Repetir，讀起來不自然。
+
+> 結案（2026-11-15）：併入 rulebook-keyword-fixes 一案做完、已合 main。

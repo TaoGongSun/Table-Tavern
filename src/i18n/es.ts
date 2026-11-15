@@ -710,7 +710,7 @@ export const es: Record<MsgKey, string> = {
   newVersionLabel: "Nueva versión {version}",
   skippedBadge: "Omitida",
   updateBtn: "Actualizar",
-  updateRetryBtn: "Repetir",
+  updateRetryBtn: "Reintentar",
   updateFormatNote: "Esta versión convierte los registros de las mesas y antes hace una copia automática",
   updateDetailsSummary: "Novedades y omitir",
   updateNotesEmpty: "Esta versión no incluye novedades.",

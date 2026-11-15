@@ -16,10 +16,7 @@
 - [room-fixes-deploy](tasks/room-fixes-deploy.md) — 房間手機端修正待部署（小案（不寫程式，只部署）） — 下一步：等作者說要部署／發佈時一起做（不自動部署）
 - [refactor-survey-quality-retest](tasks/refactor-survey-quality-retest.md) — 重構盤點品質補測（原 refactor-survey-spans T1–T3）（未估（先確認還需不需要）） — 下一步：先對照現行重構流程，判斷原驗收單哪些項還成立，再決定補測或作廢〔模型判斷·未裁決〕
 - [undo-tail-trim](tasks/undo-tail-trim.md) — 收回時的快取截尾優化（小案，未估） — 下一步：未排程〔模型判斷·未裁決〕
-- [update-dialog-wording-l10n](tasks/update-dialog-wording-l10n.md) — 更新與重試按鈕的四語譯詞重定（小案（只改譯文）） — 下一步：未排程；要找各語慣用詞再改〔模型判斷·未裁決〕
 - [sponsor-locked-modal-sample](tasks/sponsor-locked-modal-sample.md) — 贊助未解鎖介紹窗補範例圖（小案（補素材）） — 下一步：未排程〔模型判斷·未裁決〕
-- [rulebook-ja-keyword-fix](tasks/rulebook-ja-keyword-fix.md) — 日文規則書關鍵字用了簡體寫法（小案（只改資料）） — 下一步：未排程〔模型判斷·未裁決〕
-- [pf2-natural-1-20-always-on](tasks/pf2-natural-1-20-always-on.md) — PF2 規則書「自然 1／自然 20」條目改常駐（小案（只改資料）） — 下一步：未排程；照 ttrpg-book-core-rules 的做法把這條加進常駐核心〔模型判斷·未裁決〕
 - [room-host-bar-observations](tasks/room-host-bar-observations.md) — 房間回合列三個小問題（小案，未估） — 下一步：未排程〔模型判斷·未裁決〕
 - [vn-bgm-multi-mood-tag](tasks/vn-bgm-multi-mood-tag.md) — VN 配樂標記寫兩個情緒時被當成新曲（小案，未估） — 下一步：未排程〔模型判斷·未裁決〕
 
@@ -87,4 +84,3 @@ mvu-zod-semantics 已結案（2026-10-27 合併 main，[交接檔](handoffs/arch
 - [release-1-mac-signing](tasks/release-1-mac-signing.md) — 發佈 1：Mac 正式簽章＋公證（Developer ID＋notarytool） — 下一步：首發不簽章〔作者裁決 2026-10-04〕，等使用者變多再考慮；Gatekeeper 繞過說明併入 release-2 發布說明
 - [cli-custom-provider](tasks/cli-custom-provider.md) — 自訂 CLI 供應商：使用者自填指令模板接任意 CLI（如 Kimi） — 下一步：暫不動工〔模型判斷·未裁決〕；確認真實需求後拍板設定 schema，v1 只做純文字模式
 - [character-to-player-card](tasks/character-to-player-card.md) — 角色卡升級成玩家卡（角色編輯頁的獨立入口） — 下一步：維持排後；兩項待拍板，建議最小版（直接互換、不做取消成零張）〔模型判斷·未裁決〕已寫進任務檔，開工時請作者確認
-- [rulebook-5e-single-char-keys](tasks/rulebook-5e-single-char-keys.md) — 內建 5e 規則書 10 個單字中日韓關鍵字會誤觸發，改成兩字以上（小案，核心 0 行、只改資料） — 下一步：未排程〔模型判斷·未裁決〕

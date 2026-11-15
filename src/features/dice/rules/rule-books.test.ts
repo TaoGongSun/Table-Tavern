@@ -49,6 +49,8 @@ it("keeps fingerprints and titles unique, and each book parseable with an attrib
     for (const entry of values) {
       const folded = entry.key.map((key) => key.toLowerCase());
       expect(new Set(folded).size).toBe(folded.length);
+      // 中日韓是子字串比對，單字關鍵字會在不相干的句子誤觸發（「毒舌」「一箭之地」）
+      expect(entry.key.filter((key) => /^[぀-ヿ一-鿿가-힯]$/.test(key))).toEqual([]);
       if (entry === credit || book.id === "srd51") continue;
       const lines = entry.content.split("\n").length;
       expect(lines).toBeGreaterThanOrEqual(2);

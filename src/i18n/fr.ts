@@ -710,7 +710,7 @@ export const fr: Record<MsgKey, string> = {
   checkUpdatesFailed: "Impossible de vérifier les mises à jour\u00a0: {reason}",
   newVersionLabel: "Nouvelle version {version}",
   skippedBadge: "Ignorée",
-  updateBtn: "Installer",
+  updateBtn: "Mettre à jour",
   updateRetryBtn: "Réessayer",
   updateFormatNote: "Cette version convertit les données des tables et les sauvegarde automatiquement avant",
   updateDetailsSummary: "Notes de version et ignorer",
